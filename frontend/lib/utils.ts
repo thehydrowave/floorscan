@@ -160,7 +160,7 @@ export async function downloadAnnotatedPDF(
   drawText(`Total Area:     ${summary.totalArea.toFixed(2)} m²`, 12, rgb(0.05, 0.4, 0.75));
 
   const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const blob = new Blob([pdfBytes as unknown as ArrayBuffer], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
