@@ -94,7 +94,7 @@ export async function downloadMockPdfReport(
   page.drawText(`Page 1/1`, { x: W - 70, y: 13, size: 8, font, color: rgb(0.6, 0.65, 0.72) });
 
   const bytes = await pdfDoc.save();
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const blob = new Blob([bytes as unknown as ArrayBuffer], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
