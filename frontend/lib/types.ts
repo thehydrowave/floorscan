@@ -67,3 +67,11 @@ export interface Surfaces {
   area_building_px2?: number;
   area_interior_px2?: number;
 }
+
+export interface ExportSummary {
+  doors: number;
+  windows: number;
+  walls: number;
+  surfaces: number;
+  totalArea: number;
+}
