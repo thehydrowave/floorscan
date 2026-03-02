@@ -1,0 +1,239 @@
+// ─── Traductions complètes pour 5 langues ────────────────────────────────────
+
+export type Lang = "fr" | "en" | "es" | "de" | "it";
+
+export const LANGUAGES: { code: Lang; label: string; flag: string }[] = [
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "en", label: "English",  flag: "🇬🇧" },
+  { code: "es", label: "Español",  flag: "🇪🇸" },
+  { code: "de", label: "Deutsch",  flag: "🇩🇪" },
+  { code: "it", label: "Italiano", flag: "🇮🇹" },
+];
+
+export const T = {
+  // ── Navbar ─────────────────────────────────────────────────────────────────
+  nav_features:    { fr:"Fonctionnalités", en:"Features",      es:"Funcionalidades", de:"Funktionen",    it:"Funzionalità"   },
+  nav_how:         { fr:"Comment ça marche", en:"How it works",es:"Cómo funciona",   de:"Wie es funktioniert", it:"Come funziona" },
+  nav_cases:       { fr:"Cas d'usage",     en:"Use cases",     es:"Casos de uso",    de:"Anwendungsfälle", it:"Casi d'uso"   },
+  nav_try:         { fr:"Essayer la démo", en:"Try the demo",  es:"Probar la demo",  de:"Demo testen",   it:"Prova la demo"  },
+  nav_start:       { fr:"Commencer →",     en:"Get started →", es:"Comenzar →",      de:"Starten →",     it:"Inizia →"       },
+
+  // ── Hero ───────────────────────────────────────────────────────────────────
+  hero_badge:      { fr:"Analyse IA de plans architecturaux", en:"AI analysis of architectural plans", es:"Análisis IA de planos arquitectónicos", de:"KI-Analyse von Architektenplänen", it:"Analisi IA di piante architettoniche" },
+  hero_title1:     { fr:"Analysez vos plans",           en:"Analyze your plans",          es:"Analice sus planos",           de:"Analysieren Sie Ihre Pläne",     it:"Analizzate i vostri piani"      },
+  hero_title2:     { fr:"instantanément avec l'IA",     en:"instantly with AI",           es:"al instante con IA",           de:"sofort mit KI",                 it:"istantaneamente con l'IA"       },
+  hero_sub:        { fr:"Importez un PDF de plan de construction. Notre IA détecte chaque porte, fenêtre, mur et surface en quelques secondes. Corrigez, quantifiez et exportez — sans jamais compter manuellement.", en:"Import a construction plan PDF. Our AI detects every door, window, wall and surface in seconds. Correct, quantify and export — without ever counting manually.", es:"Importe un PDF de plano de construcción. Nuestra IA detecta cada puerta, ventana, muro y superficie en segundos. Corrija, cuantifique y exporte — sin contar manualmente.", de:"Laden Sie eine Konstruktionsplan-PDF hoch. Unsere KI erkennt jede Tür, jedes Fenster, jede Wand und Fläche in Sekunden. Korrigieren, quantifizieren und exportieren — ohne manuelles Zählen.", it:"Importate un PDF di pianta. La nostra IA rileva ogni porta, finestra, muro e superficie in pochi secondi. Correggete, quantificate ed esportate — senza contare manualmente." },
+  hero_cta1:       { fr:"Lancer la démo",       en:"Launch demo",      es:"Lanzar demo",       de:"Demo starten",      it:"Avvia demo"         },
+  hero_cta2:       { fr:"Voir comment ça marche", en:"See how it works", es:"Ver cómo funciona", de:"So funktioniert es", it:"Scopri come funziona" },
+  hero_stat1v:     { fr:"> 90%", en:"> 90%", es:"> 90%", de:"> 90%", it:"> 90%" },
+  hero_stat1l:     { fr:"Précision de détection", en:"Detection accuracy", es:"Precisión de detección", de:"Erkennungsgenauigkeit", it:"Precisione di rilevamento" },
+  hero_stat2v:     { fr:"< 5 s",  en:"< 5 s",  es:"< 5 s",  de:"< 5 s",  it:"< 5 s"  },
+  hero_stat2l:     { fr:"Délai d'analyse",  en:"Analysis time",  es:"Tiempo de análisis",  de:"Analysezeit",  it:"Tempo di analisi"  },
+  hero_stat3v:     { fr:"100%", en:"100%", es:"100%", de:"100%", it:"100%" },
+  hero_stat3l:     { fr:"Données sur votre serveur", en:"Data on your server", es:"Datos en su servidor", de:"Daten auf Ihrem Server", it:"Dati sul vostro server" },
+  hero_label:      { fr:"Résultat d'analyse en temps réel", en:"Real-time analysis result", es:"Resultado de análisis en tiempo real", de:"Echtzeit-Analyseergebnis", it:"Risultato di analisi in tempo reale" },
+
+  // ── Features ───────────────────────────────────────────────────────────────
+  feat_badge:      { fr:"Fonctionnalités", en:"Features", es:"Funcionalidades", de:"Funktionen", it:"Funzionalità" },
+  feat_title1:     { fr:"Tout ce qu'il vous faut pour", en:"Everything you need to", es:"Todo lo que necesita para", de:"Alles was Sie brauchen, um", it:"Tutto ciò che serve per" },
+  feat_title2:     { fr:"analyser vos plans", en:"analyze your plans", es:"analizar sus planos", de:"Ihre Pläne zu analysieren", it:"analizzare i vostri piani" },
+  feat_sub:        { fr:"Du PDF brut à la donnée structurée en un workflow fluide.", en:"From raw PDF to structured data in a fluid workflow.", es:"Del PDF en bruto al dato estructurado en un flujo fluido.", de:"Vom rohen PDF zu strukturierten Daten in einem reibungslosen Workflow.", it:"Dal PDF grezzo al dato strutturato in un flusso fluido." },
+  feat1_title:     { fr:"Détection IA",           en:"AI Detection",        es:"Detección IA",           de:"KI-Erkennung",           it:"Rilevamento IA"          },
+  feat1_desc:      { fr:"Identifie automatiquement portes, fenêtres, murs porteurs et surfaces depuis n'importe quel PDF de construction avec une précision supérieure à 90%.", en:"Automatically identifies doors, windows, load-bearing walls and surfaces from any construction PDF with over 90% accuracy.", es:"Identifica automáticamente puertas, ventanas, muros portantes y superficies desde cualquier PDF de construcción con una precisión superior al 90%.", de:"Identifiziert automatisch Türen, Fenster, tragende Wände und Flächen aus beliebigen Bau-PDFs mit über 90% Genauigkeit.", it:"Identifica automaticamente porte, finestre, muri portanti e superfici da qualsiasi PDF di costruzione con una precisione superiore al 90%." },
+  feat2_title:     { fr:"Correction manuelle",    en:"Manual correction",   es:"Corrección manual",      de:"Manuelle Korrektur",      it:"Correzione manuale"      },
+  feat2_desc:      { fr:"Affinez chaque détection. Modifiez les types, ajustez les surfaces, supprimez les faux positifs — contrôle total sans relancer l'analyse.", en:"Refine each detection. Modify types, adjust surfaces, remove false positives — total control without restarting the analysis.", es:"Afine cada detección. Modifique los tipos, ajuste las superficies, elimine los falsos positivos — control total sin relanzar el análisis.", de:"Verfeinern Sie jede Erkennung. Typen ändern, Flächen anpassen, Falscherkennungen entfernen — volle Kontrolle ohne Neustart der Analyse.", it:"Perfezionate ogni rilevamento. Modificate i tipi, regolate le superfici, rimuovete i falsi positivi — controllo totale senza rilanciare l'analisi." },
+  feat3_title:     { fr:"Export Excel",           en:"Excel Export",        es:"Exportar Excel",         de:"Excel-Export",            it:"Export Excel"            },
+  feat3_desc:      { fr:"Un clic pour obtenir un tableur structuré avec les quantités, surfaces et décomptes par élément — prêt pour votre métré.", en:"One click to get a structured spreadsheet with quantities, surfaces and counts per element — ready for your bill of quantities.", es:"Un clic para obtener una hoja de cálculo estructurada con cantidades, superficies y recuentos por elemento — lista para su medición.", de:"Ein Klick für eine strukturierte Tabelle mit Mengen, Flächen und Zählungen pro Element — fertig für Ihr Leistungsverzeichnis.", it:"Un clic per ottenere un foglio strutturato con quantità, superfici e conteggi per elemento — pronto per il computo metrico." },
+  feat4_title:     { fr:"PDF annoté",             en:"Annotated PDF",       es:"PDF anotado",            de:"Annotiertes PDF",         it:"PDF annotato"            },
+  feat4_desc:      { fr:"Exportez un PDF professionnel avec boîtes colorées, étiquettes et page de synthèse pour vos présentations clients.", en:"Export a professional PDF with colored boxes, labels and summary page for your client presentations.", es:"Exporte un PDF profesional con cajas de colores, etiquetas y página de síntesis para sus presentaciones de clientes.", de:"Exportieren Sie ein professionelles PDF mit farbigen Boxen, Beschriftungen und Übersichtsseite für Ihre Kundenpräsentationen.", it:"Esportate un PDF professionale con riquadri colorati, etichette e pagina di sintesi per le presentazioni ai clienti." },
+  feat5_title:     { fr:"Précision à grande échelle", en:"Large-scale accuracy", es:"Precisión a gran escala", de:"Präzision im großen Maßstab", it:"Precisione su larga scala" },
+  feat5_desc:      { fr:"Traitez des plans multi-pièces volumineux avec des centaines d'éléments. Ce qui prend des heures manuellement prend quelques secondes avec FloorScan.", en:"Process large multi-room plans with hundreds of elements. What takes hours manually takes seconds with FloorScan.", es:"Procese grandes planos de varias habitaciones con cientos de elementos. Lo que tarda horas manualmente tarda segundos con FloorScan.", de:"Verarbeiten Sie große Mehrraumgrundrisse mit Hunderten von Elementen. Was manuell Stunden dauert, dauert mit FloorScan Sekunden.", it:"Elaborate grandi piante multi-ambiente con centinaia di elementi. Ciò che richiede ore manualmente richiede secondi con FloorScan." },
+  feat6_title:     { fr:"Résultats instantanés",  en:"Instant results",     es:"Resultados instantáneos", de:"Sofortergebnisse",        it:"Risultati istantanei"    },
+  feat6_desc:      { fr:"De l'import PDF au rapport de détection complet en moins de 5 secondes. Traitement par lots bientôt disponible pour les entreprises.", en:"From PDF import to complete detection report in under 5 seconds. Batch processing coming soon for enterprises.", es:"Desde la importación del PDF hasta el informe de detección completo en menos de 5 segundos. Procesamiento por lotes próximamente para empresas.", de:"Vom PDF-Import zum vollständigen Erkennungsbericht in unter 5 Sekunden. Stapelverarbeitung für Unternehmen demnächst verfügbar.", it:"Dall'importazione del PDF al rapporto di rilevamento completo in meno di 5 secondi. Elaborazione in batch presto disponibile per le aziende." },
+
+  // ── How it works ───────────────────────────────────────────────────────────
+  how_badge:       { fr:"Processus", en:"Process", es:"Proceso", de:"Prozess", it:"Processo" },
+  how_title1:      { fr:"Cinq étapes vers", en:"Five steps to", es:"Cinco pasos hacia", de:"Fünf Schritte zur", it:"Cinque passi verso" },
+  how_title2:      { fr:"l'analyse complète", en:"complete analysis", es:"el análisis completo", de:"vollständigen Analyse", it:"l'analisi completa" },
+  how1_title:      { fr:"Import PDF",    en:"PDF Import",    es:"Importar PDF",   de:"PDF-Import",     it:"Importa PDF"    },
+  how1_desc:       { fr:"Glissez votre plan de construction au format PDF. Ou chargez notre fichier exemple pour tester immédiatement.", en:"Drag your construction plan in PDF format. Or load our sample file to test immediately.", es:"Arrastre su plano de construcción en formato PDF. O cargue nuestro archivo de ejemplo para probar inmediatamente.", de:"Ziehen Sie Ihren Bauplan im PDF-Format. Oder laden Sie unsere Beispieldatei zum sofortigen Testen.", it:"Trascinate la vostra pianta in formato PDF. O caricate il nostro file di esempio per testare immediatamente." },
+  how2_title:      { fr:"Recadrage",     en:"Crop",           es:"Recorte",        de:"Zuschnitt",      it:"Ritaglio"       },
+  how2_desc:       { fr:"Sélectionnez la zone d'intérêt avec l'outil de recadrage interactif. Concentrez-vous sur ce qui compte.", en:"Select the area of interest with the interactive cropping tool. Focus on what matters.", es:"Seleccione el área de interés con la herramienta de recorte interactiva. Concéntrese en lo que importa.", de:"Wählen Sie den Bereich mit dem interaktiven Zuschneidewerkzeug. Konzentrieren Sie sich auf das Wesentliche.", it:"Selezionate l'area di interesse con lo strumento di ritaglio interattivo. Concentratevi su ciò che conta." },
+  how3_title:      { fr:"Détection IA",  en:"AI Detection",  es:"Detección IA",   de:"KI-Erkennung",   it:"Rilevamento IA" },
+  how3_desc:       { fr:"Notre modèle IA analyse le plan et détecte tous les éléments architecturaux avec des scores de confiance.", en:"Our AI model analyzes the plan and detects all architectural elements with confidence scores.", es:"Nuestro modelo de IA analiza el plano y detecta todos los elementos arquitectónicos con puntuaciones de confianza.", de:"Unser KI-Modell analysiert den Plan und erkennt alle Architekturelemente mit Konfidenzwerten.", it:"Il nostro modello IA analizza la pianta e rileva tutti gli elementi architettonici con punteggi di affidabilità." },
+  how4_title:      { fr:"Validation",    en:"Validation",    es:"Validación",     de:"Validierung",    it:"Validazione"    },
+  how4_desc:       { fr:"Vérifiez, corrigez ou complétez chaque détection dans l'interface de validation interactive.", en:"Verify, correct or complete each detection in the interactive validation interface.", es:"Verifique, corrija o complete cada detección en la interfaz de validación interactiva.", de:"Überprüfen, korrigieren oder vervollständigen Sie jede Erkennung in der interaktiven Validierungsschnittstelle.", it:"Verificate, correggete o completate ogni rilevamento nell'interfaccia di validazione interattiva." },
+  how5_title:      { fr:"Export",        en:"Export",        es:"Exportar",       de:"Export",         it:"Esporta"        },
+  how5_desc:       { fr:"Téléchargez votre PDF annoté et votre rapport Excel avec quantités complètes et surfaces détaillées.", en:"Download your annotated PDF and Excel report with complete quantities and detailed surfaces.", es:"Descargue su PDF anotado y su informe Excel con cantidades completas y superficies detalladas.", de:"Laden Sie Ihr annotiertes PDF und Ihren Excel-Bericht mit vollständigen Mengen und detaillierten Flächen herunter.", it:"Scaricate il vostro PDF annotato e il rapporto Excel con quantità complete e superfici dettagliate." },
+
+  // ── Use cases ─────────────────────────────────────────────────────────────
+  cases_badge:     { fr:"Cas d'usage", en:"Use cases", es:"Casos de uso", de:"Anwendungsfälle", it:"Casi d'uso" },
+  cases_title1:    { fr:"Conçu pour les", en:"Built for", es:"Diseñado para los", de:"Entwickelt für", it:"Progettato per i" },
+  cases_title2:    { fr:"professionnels du bâtiment", en:"construction professionals", es:"profesionales de la construcción", de:"Bauprofis", it:"professionisti dell'edilizia" },
+  cases_sub:       { fr:"Des petits projets résidentiels aux grands développements commerciaux.", en:"From small residential projects to large commercial developments.", es:"Desde pequeños proyectos residenciales hasta grandes desarrollos comerciales.", de:"Von kleinen Wohnprojekten bis hin zu großen Gewerbeprojekten.", it:"Dai piccoli progetti residenziali ai grandi sviluppi commerciali." },
+  case1_title:     { fr:"Entrepreneurs généraux", en:"General contractors", es:"Contratistas generales", de:"Generalunternehmer", it:"Imprenditori generali" },
+  case1_desc:      { fr:"Quantifiez instantanément les matériaux nécessaires. Fini le comptage manuel des portes et fenêtres avant un appel d'offres.", en:"Instantly quantify the materials needed. No more manual counting of doors and windows before a tender.", es:"Cuantifique instantáneamente los materiales necesarios. Se acabó el conteo manual de puertas y ventanas antes de una licitación.", de:"Quantifizieren Sie sofort die benötigten Materialien. Kein manuelles Zählen von Türen und Fenstern vor einer Ausschreibung mehr.", it:"Quantificate istantaneamente i materiali necessari. Basta con il conteggio manuale di porte e finestre prima di un'offerta." },
+  case1_stat:      { fr:"10×", en:"10×", es:"10×", de:"10×", it:"10×" },
+  case1_statl:     { fr:"plus rapide sur les métrés", en:"faster on quantity surveys", es:"más rápido en mediciones", de:"schneller bei Massenermittlungen", it:"più veloce sulle misurazioni" },
+  case2_title:     { fr:"Métreurs / Économistes", en:"Quantity surveyors", es:"Medidores / Economistas", de:"Kalkulator / Kostenplaner", it:"Geometri / Economisti" },
+  case2_desc:      { fr:"Automatisez la première passe fastidieuse. Concentrez-vous sur la vérification et l'ingénierie de valeur plutôt que la saisie.", en:"Automate the tedious first pass. Focus on verification and value engineering rather than data entry.", es:"Automatice el tedioso primer paso. Concéntrese en la verificación y la ingeniería de valor en lugar de la entrada de datos.", de:"Automatisieren Sie den mühsamen ersten Durchgang. Konzentrieren Sie sich auf Überprüfung und Value Engineering statt auf Dateneingabe.", it:"Automatizzate il noioso primo passaggio. Concentratevi sulla verifica e l'ingegneria del valore piuttosto che sull'inserimento dati." },
+  case2_stat:      { fr:"85%", en:"85%", es:"85%", de:"85%", it:"85%" },
+  case2_statl:     { fr:"de temps économisé", en:"time saved", es:"de tiempo ahorrado", de:"Zeitersparnis", it:"di tempo risparmiato" },
+  case3_title:     { fr:"Architectes & BIM", en:"Architects & BIM", es:"Arquitectos & BIM", de:"Architekten & BIM", it:"Architetti & BIM" },
+  case3_desc:      { fr:"Validez les plans existants, générez rapidement des nomenclatures de surfaces et vérifiez les décomptes d'éléments.", en:"Validate existing plans, quickly generate surface schedules and verify element counts.", es:"Valide los planos existentes, genere rápidamente listas de superficies y verifique los recuentos de elementos.", de:"Validieren Sie bestehende Pläne, erstellen Sie schnell Flächenverzeichnisse und überprüfen Sie Elementzählungen.", it:"Validate i piani esistenti, generate rapidamente distinte delle superfici e verificate i conteggi degli elementi." },
+  case3_stat:      { fr:"99%", en:"99%", es:"99%", de:"99%", it:"99%" },
+  case3_statl:     { fr:"couverture des éléments", en:"element coverage", es:"cobertura de elementos", de:"Elementabdeckung", it:"copertura degli elementi" },
+  case4_title:     { fr:"Promoteurs immobiliers", en:"Real estate developers", es:"Promotores inmobiliarios", de:"Immobilienentwickler", it:"Promotori immobiliari" },
+  case4_desc:      { fr:"Analysez des centaines de plans d'unités d'un coup. Générez des rapports standardisés sur l'ensemble de votre portefeuille.", en:"Analyze hundreds of unit plans at once. Generate standardized reports across your entire portfolio.", es:"Analice cientos de planos de unidades a la vez. Genere informes estandarizados en toda su cartera.", de:"Analysieren Sie Hunderte von Einheitenplänen auf einmal. Erstellen Sie standardisierte Berichte für Ihr gesamtes Portfolio.", it:"Analizzate centinaia di piante di unità in una volta sola. Generate report standardizzati su tutto il vostro portafoglio." },
+  case4_stat:      { fr:"1 clic", en:"1 click", es:"1 clic", de:"1 Klick", it:"1 clic" },
+  case4_statl:     { fr:"rapports portefeuille", en:"portfolio reports", es:"informes de cartera", de:"Portfolio-Berichte", it:"report portafoglio" },
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  footer_built:    { fr:"Développé avec Next.js · Propulsé par Roboflow IA", en:"Built with Next.js · Powered by Roboflow AI", es:"Desarrollado con Next.js · Impulsado por Roboflow IA", de:"Entwickelt mit Next.js · Betrieben von Roboflow KI", it:"Sviluppato con Next.js · Alimentato da Roboflow IA" },
+} as const;
+
+export type TKey = keyof typeof T;
+
+export function t(key: TKey, lang: Lang): string {
+  return (T[key] as Record<Lang, string>)[lang] ?? (T[key] as Record<Lang, string>)["fr"];
+}
+
+// ── Demo — stepper ────────────────────────────────────────────────────────────
+export const DEMO_T = {
+  // Stepper labels
+  step_upload:    { fr:"Import",      en:"Import",     es:"Importar",   de:"Import",     it:"Importa"    },
+  step_crop:      { fr:"Recadrage",   en:"Crop",       es:"Recorte",    de:"Zuschnitt",  it:"Ritaglio"   },
+  step_analyze:   { fr:"Analyse",     en:"Analysis",   es:"Análisis",   de:"Analyse",    it:"Analisi"    },
+  step_results:   { fr:"Résultats",   en:"Results",    es:"Resultados", de:"Ergebnisse", it:"Risultati"  },
+  step_validate:  { fr:"Validation",  en:"Validation", es:"Validación", de:"Validierung",it:"Validazione"},
+
+  // Top bar
+  bar_back:       { fr:"Retour",      en:"Back",       es:"Volver",     de:"Zurück",     it:"Indietro"   },
+  bar_restart:    { fr:"Recommencer", en:"Restart",    es:"Reiniciar",  de:"Neu starten",it:"Ricomincia" },
+
+  // Upload step
+  up_title:       { fr:"Importer un plan PDF",        en:"Import a PDF plan",              es:"Importar un plano PDF",       de:"PDF-Plan importieren",          it:"Importa un piano PDF"           },
+  up_sub:         { fr:"Glissez votre plan de construction ou cliquez pour parcourir vos fichiers.", en:"Drag your construction plan or click to browse your files.", es:"Arrastre su plano de construcción o haga clic para explorar sus archivos.", de:"Ziehen Sie Ihren Bauplan oder klicken Sie zum Durchsuchen.", it:"Trascinate la vostra pianta o cliccate per sfogliare i file." },
+  up_drop:        { fr:"Déposez ici !",               en:"Drop here!",                     es:"¡Suelte aquí!",               de:"Hier ablegen!",                 it:"Rilascia qui!"                  },
+  up_drag:        { fr:"Glissez votre plan PDF",      en:"Drag your PDF plan",             es:"Arrastre su plano PDF",       de:"PDF-Plan hierher ziehen",       it:"Trascinate il vostro piano PDF" },
+  up_click:       { fr:"ou cliquez pour parcourir",   en:"or click to browse",             es:"o haga clic para explorar",   de:"oder zum Durchsuchen klicken",  it:"o cliccate per sfogliare"       },
+  up_pdf_only:    { fr:"PDF uniquement",              en:"PDF only",                       es:"Solo PDF",                    de:"Nur PDF",                       it:"Solo PDF"                       },
+  up_processing:  { fr:"Traitement en cours...",      en:"Processing...",                  es:"Procesando...",               de:"Verarbeitung...",               it:"Elaborazione..."                },
+  up_imported:    { fr:"Importé avec succès",         en:"Imported successfully",          es:"Importado correctamente",     de:"Erfolgreich importiert",        it:"Importato con successo"         },
+  up_continue:    { fr:"Continuer",                   en:"Continue",                       es:"Continuar",                   de:"Weiter",                        it:"Continua"                       },
+  up_toast_ok:    { fr:"Plan importé",                en:"Plan imported",                  es:"Plano importado",             de:"Plan importiert",               it:"Piano importato"                },
+  up_toast_err:   { fr:"Format invalide",             en:"Invalid format",                 es:"Formato inválido",            de:"Ungültiges Format",             it:"Formato non valido"             },
+  up_toast_errd:  { fr:"Seuls les fichiers PDF sont acceptés.", en:"Only PDF files are accepted.", es:"Solo se aceptan archivos PDF.", de:"Nur PDF-Dateien werden akzeptiert.", it:"Sono accettati solo file PDF." },
+
+  // Crop step
+  cr_title:       { fr:"Délimiter la zone d'analyse",        en:"Define the analysis area",              es:"Delimitar la zona de análisis",        de:"Analysebereich festlegen",              it:"Definire l'area di analisi"              },
+  cr_sub:         { fr:"Faites glisser le cadre bleu pour sélectionner la zone du plan à analyser. L'aperçu vous sera présenté avant le lancement.", en:"Drag the blue frame to select the area of the plan to analyze. A preview will be shown before launching.", es:"Arrastre el marco azul para seleccionar la zona del plano a analizar. Se mostrará una vista previa antes del lanzamiento.", de:"Ziehen Sie den blauen Rahmen, um den zu analysierenden Planbereich auszuwählen. Eine Vorschau wird vor dem Start angezeigt.", it:"Trascinate il riquadro blu per selezionare l'area del piano da analizzare. Verrà mostrata un'anteprima prima del lancio." },
+  cr_hint:        { fr:"Faites glisser le cadre ou ses poignées pour ajuster la sélection", en:"Drag the frame or its handles to adjust the selection", es:"Arrastre el marco o sus asas para ajustar la selección", de:"Ziehen Sie den Rahmen oder seine Griffe, um die Auswahl anzupassen", it:"Trascinate il riquadro o le sue maniglie per regolare la selezione" },
+  cr_ready:       { fr:"Zone sélectionnée. Chargement de l'aperçu…", en:"Area selected. Loading preview…", es:"Zona seleccionada. Cargando vista previa…", de:"Bereich ausgewählt. Vorschau wird geladen…", it:"Area selezionata. Caricamento anteprima…" },
+  cr_reset:       { fr:"Réinitialiser",     en:"Reset",          es:"Restablecer",    de:"Zurücksetzen",   it:"Reimposta"      },
+  cr_full:        { fr:"Plan complet",      en:"Full plan",      es:"Plano completo", de:"Gesamtplan",     it:"Piano completo" },
+  cr_confirm:     { fr:"Confirmer la sélection", en:"Confirm selection", es:"Confirmar selección", de:"Auswahl bestätigen", it:"Conferma selezione" },
+  cr_full_label:  { fr:"Plan complet",      en:"Full plan",      es:"Plano completo", de:"Gesamtplan",     it:"Piano completo" },
+  cr_plan_label:  { fr:"Plan complet",      en:"Full plan",      es:"Plano completo", de:"Gesamtplan",     it:"Piano completo" },
+
+  // Analyze step
+  an_title:       { fr:"Analyse IA du plan",              en:"AI analysis of the plan",          es:"Análisis IA del plano",            de:"KI-Analyse des Plans",             it:"Analisi IA del piano"              },
+  an_sub:         { fr:"Vérifiez la zone sélectionnée avant de lancer l'analyse. Notre modèle détecte chaque porte, fenêtre et surface avec précision.", en:"Check the selected area before launching the analysis. Our model detects every door, window and surface with precision.", es:"Verifique la zona seleccionada antes de lanzar el análisis. Nuestro modelo detecta cada puerta, ventana y superficie con precisión.", de:"Überprüfen Sie den ausgewählten Bereich, bevor Sie die Analyse starten. Unser Modell erkennt jede Tür, jedes Fenster und jede Fläche präzise.", it:"Verificate l'area selezionata prima di avviare l'analisi. Il nostro modello rileva ogni porta, finestra e superficie con precisione." },
+  an_zone_label:  { fr:"Zone sélectionnée",    en:"Selected area",      es:"Zona seleccionada",   de:"Ausgewählter Bereich", it:"Area selezionata"    },
+  an_params:      { fr:"Paramètres d'analyse", en:"Analysis parameters", es:"Parámetros de análisis", de:"Analyseparameter", it:"Parametri di analisi" },
+  an_resolution:  { fr:"Résolution",           en:"Resolution",          es:"Resolución",          de:"Auflösung",          it:"Risoluzione"         },
+  an_precision:   { fr:"Précision cible",       en:"Target accuracy",     es:"Precisión objetivo",  de:"Zielgenauigkeit",    it:"Precisione obiettivo"},
+  an_zone:        { fr:"Zone d'analyse",        en:"Analysis zone",       es:"Zona de análisis",    de:"Analysebereich",     it:"Area di analisi"     },
+  an_will_scan:   { fr:"Cette zone sera analysée par l'IA", en:"This area will be analyzed by AI", es:"Esta zona será analizada por la IA", de:"Dieser Bereich wird von der KI analysiert", it:"Quest'area sarà analizzata dall'IA" },
+  an_ready:       { fr:"Tout est prêt.",        en:"All set.",            es:"Todo listo.",         de:"Alles bereit.",      it:"Tutto pronto."       },
+  an_ready_sub:   { fr:"L'analyse prend généralement moins de 5 secondes.", en:"Analysis typically takes less than 5 seconds.", es:"El análisis generalmente tarda menos de 5 segundos.", de:"Die Analyse dauert in der Regel weniger als 5 Sekunden.", it:"L'analisi richiede generalmente meno di 5 secondi." },
+  an_launch:      { fr:"Lancer l'analyse",      en:"Launch analysis",     es:"Lanzar análisis",     de:"Analyse starten",    it:"Avvia analisi"       },
+  an_p1:          { fr:"Pré-traitement de l'image...",                               en:"Pre-processing image...",                         es:"Preprocesando imagen...",                         de:"Bild vorverarbeiten...",                           it:"Pre-elaborazione immagine..."                      },
+  an_p2:          { fr:"Détection des éléments — passe haute résolution...",          en:"Element detection — high resolution pass...",      es:"Detección de elementos — pasada alta resolución...", de:"Elementerkennung — Hochauflösungsdurchlauf...",   it:"Rilevamento elementi — passata alta risoluzione..." },
+  an_p3:          { fr:"Détection des éléments — passe fine...",                      en:"Element detection — fine pass...",                 es:"Detección de elementos — pasada fina...",         de:"Elementerkennung — Feindurchlauf...",              it:"Rilevamento elementi — passata fine..."             },
+  an_p4:          { fr:"Fusion et validation des détections...",                       en:"Merging and validating detections...",              es:"Fusión y validación de detecciones...",           de:"Erkennungen zusammenführen und validieren...",     it:"Unione e validazione dei rilevamenti..."            },
+  an_p5:          { fr:"Calcul des surfaces et périmètres...",                         en:"Calculating surfaces and perimeters...",            es:"Calculando superficies y perímetros...",          de:"Flächen und Umfänge berechnen...",                 it:"Calcolo di superfici e perimetri..."                },
+  an_p6:          { fr:"Génération du rapport...",                                     en:"Generating report...",                             es:"Generando informe...",                            de:"Bericht erstellen...",                             it:"Generazione del rapporto..."                        },
+  an_done_title:  { fr:"Analyse terminée",      en:"Analysis complete",   es:"Análisis completado", de:"Analyse abgeschlossen", it:"Analisi completata" },
+
+  // Results step
+  re_step:        { fr:"ÉTAPE 4 / 5",           en:"STEP 4 / 5",          es:"PASO 4 / 5",          de:"SCHRITT 4 / 5",      it:"PASSO 4 / 5"         },
+  re_title:       { fr:"Résultats de l'analyse",en:"Analysis results",    es:"Resultados del análisis", de:"Analyseergebnisse", it:"Risultati dell'analisi" },
+  re_pdf:         { fr:"Rapport PDF",           en:"PDF Report",          es:"Informe PDF",         de:"PDF-Bericht",        it:"Rapporto PDF"        },
+  re_validate:    { fr:"Valider les détections",en:"Validate detections", es:"Validar detecciones", de:"Erkennungen validieren", it:"Valida i rilevamenti" },
+  re_exporting:   { fr:"Export...",             en:"Exporting...",        es:"Exportando...",       de:"Exportieren...",     it:"Esportazione..."     },
+  re_tab_all:     { fr:"Éléments détectés",     en:"Detected elements",   es:"Elementos detectados",de:"Erkannte Elemente",  it:"Elementi rilevati"   },
+  re_tab_surfaces:{ fr:"Surfaces habitables",   en:"Living areas",        es:"Superficies habitables",de:"Wohnflächen",      it:"Superfici abitabili" },
+  re_tab_doors:   { fr:"Portes",                en:"Doors",               es:"Puertas",             de:"Türen",              it:"Porte"               },
+  re_tab_windows: { fr:"Fenêtres",              en:"Windows",             es:"Ventanas",            de:"Fenster",            it:"Finestre"            },
+  re_tab_walls:   { fr:"Murs",                  en:"Walls",               es:"Muros",               de:"Wände",              it:"Muri"                },
+  re_no_vis:      { fr:"Visualisation non disponible", en:"Visualization not available", es:"Visualización no disponible", de:"Visualisierung nicht verfügbar", it:"Visualizzazione non disponibile" },
+  re_doors:       { fr:"Portes",                en:"Doors",               es:"Puertas",             de:"Türen",              it:"Porte"               },
+  re_windows:     { fr:"Fenêtres",              en:"Windows",             es:"Ventanas",            de:"Fenster",            it:"Finestre"            },
+  re_living:      { fr:"Surface habitable",     en:"Living area",         es:"Superficie habitable",de:"Wohnfläche",         it:"Superficie abitabile"},
+  re_walls_area:  { fr:"Surface murs",          en:"Wall area",           es:"Superficie muros",    de:"Wandfläche",         it:"Superficie muri"     },
+  re_detail_title:{ fr:"Surfaces & Périmètres", en:"Surfaces & Perimeters", es:"Superficies y Perímetros", de:"Flächen & Umfänge", it:"Superfici & Perimetri" },
+  re_footprint:   { fr:"Emprise bâtiment",      en:"Building footprint",  es:"Huella del edificio", de:"Gebäudefläche",      it:"Impronta edificio"   },
+  re_perim_bld:   { fr:"Pourtour bâtiment",     en:"Building perimeter",  es:"Perímetro edificio",  de:"Gebäudeumfang",      it:"Perimetro edificio"  },
+  re_perim_int:   { fr:"Pourtour habitable",    en:"Interior perimeter",  es:"Perímetro habitable", de:"Innenumfang",        it:"Perimetro interno"   },
+  re_scale:       { fr:"Échelle (px/m)",        en:"Scale (px/m)",        es:"Escala (px/m)",       de:"Maßstab (px/m)",     it:"Scala (px/m)"        },
+  re_openings:    { fr:"Détail des ouvertures", en:"Openings detail",     es:"Detalle de aberturas",de:"Öffnungsdetails",    it:"Dettaglio aperture"  },
+  re_door_lbl:    { fr:"Porte",                 en:"Door",                es:"Puerta",              de:"Tür",                it:"Porta"               },
+  re_window_lbl:  { fr:"Fenêtre",               en:"Window",              es:"Ventana",             de:"Fenster",            it:"Finestra"            },
+  re_restart:     { fr:"Analyser un autre plan",en:"Analyze another plan",es:"Analizar otro plano", de:"Anderen Plan analysieren", it:"Analizza un altro piano" },
+  re_pdf_ok:      { fr:"Rapport PDF téléchargé",en:"PDF report downloaded",es:"Informe PDF descargado",de:"PDF-Bericht heruntergeladen",it:"Rapporto PDF scaricato" },
+  re_pdf_err:     { fr:"Erreur export PDF",     en:"PDF export error",    es:"Error exportar PDF",  de:"PDF-Exportfehler",   it:"Errore export PDF"   },
+
+  // Editor step
+  ed_step:        { fr:"ÉTAPE 5 / 5",           en:"STEP 5 / 5",          es:"PASO 5 / 5",          de:"SCHRITT 5 / 5",      it:"PASSO 5 / 5"         },
+  ed_title:       { fr:"Validation et correction manuelle", en:"Manual validation and correction", es:"Validación y corrección manual", de:"Manuelle Validierung und Korrektur", it:"Validazione e correzione manuale" },
+  ed_sub:         { fr:"Vérifiez chaque élément détecté et corrigez si nécessaire avant l'export.", en:"Check each detected element and correct if necessary before exporting.", es:"Verifique cada elemento detectado y corrija si es necesario antes de exportar.", de:"Überprüfen Sie jedes erkannte Element und korrigieren Sie es ggf. vor dem Export.", it:"Verificate ogni elemento rilevato e correggete se necessario prima dell'esportazione." },
+  ed_banner:      { fr:"Étape de validation obligatoire. Parcourez les éléments détectés, apportez vos corrections, puis exportez votre rapport final.", en:"Mandatory validation step. Review the detected elements, make your corrections, then export your final report.", es:"Paso de validación obligatorio. Revise los elementos detectados, realice sus correcciones y exporte su informe final.", de:"Obligatorischer Validierungsschritt. Überprüfen Sie die erkannten Elemente, nehmen Sie Ihre Korrekturen vor und exportieren Sie dann Ihren Abschlussbericht.", it:"Fase di validazione obbligatoria. Revisionate gli elementi rilevati, apportate le correzioni e poi esportate il rapporto finale." },
+  ed_elements:    { fr:"Éléments détectés",     en:"Detected elements",   es:"Elementos detectados",de:"Erkannte Elemente",  it:"Elementi rilevati"   },
+  ed_windows:     { fr:"Fenêtres",              en:"Windows",             es:"Ventanas",            de:"Fenster",            it:"Finestre"            },
+  ed_doors:       { fr:"Portes",                en:"Doors",               es:"Puertas",             de:"Türen",              it:"Porte"               },
+  ed_surfaces:    { fr:"Surfaces",              en:"Surfaces",            es:"Superficies",         de:"Flächen",            it:"Superfici"           },
+  ed_tools:       { fr:"Outils de correction",  en:"Correction tools",    es:"Herramientas de corrección", de:"Korrekturwerkzeuge", it:"Strumenti di correzione" },
+  ed_pen:         { fr:"Stylo (édition)",        en:"Pen (edit)",          es:"Lápiz (edición)",     de:"Stift (Bearbeitung)",it:"Penna (modifica)"    },
+  ed_pen_desc:    { fr:"Ajouter ou modifier des éléments détectés.", en:"Add or modify detected elements.", es:"Agregar o modificar elementos detectados.", de:"Erkannte Elemente hinzufügen oder ändern.", it:"Aggiungere o modificare elementi rilevati." },
+  ed_eraser:      { fr:"Gomme",                 en:"Eraser",              es:"Goma",                de:"Radiergummi",        it:"Gomma"               },
+  ed_eraser_desc: { fr:"Supprimer des éléments détectés.", en:"Remove detected elements.", es:"Eliminar elementos detectados.", de:"Erkannte Elemente entfernen.", it:"Rimuovere elementi rilevati." },
+  ed_shape:       { fr:"Forme",                 en:"Shape",               es:"Forma",               de:"Form",               it:"Forma"               },
+  ed_rect:        { fr:"Rectangle",             en:"Rectangle",           es:"Rectángulo",          de:"Rechteck",           it:"Rettangolo"          },
+  ed_poly:        { fr:"Polygone",              en:"Polygon",             es:"Polígono",            de:"Polygon",            it:"Poligono"            },
+  ed_sam:         { fr:"Smart Detection (SAM)", en:"Smart Detection (SAM)", es:"Smart Detection (SAM)", de:"Smart Detection (SAM)", it:"Smart Detection (SAM)" },
+  ed_rect_desc:   { fr:"Tracez un rectangle autour de l'élément",    en:"Draw a rectangle around the element",    es:"Trace un rectángulo alrededor del elemento",   de:"Zeichnen Sie ein Rechteck um das Element",    it:"Disegna un rettangolo intorno all'elemento"    },
+  ed_poly_desc:   { fr:"Dessinez un contour point par point",        en:"Draw an outline point by point",         es:"Dibuje un contorno punto por punto",           de:"Zeichnen Sie einen Umriss Punkt für Punkt",   it:"Disegnate un contorno punto per punto"         },
+  ed_sam_desc:    { fr:"Cliquez sur un élément — l'IA le détecte automatiquement", en:"Click on an element — AI detects it automatically", es:"Haga clic en un elemento — la IA lo detecta automáticamente", de:"Klicken Sie auf ein Element — die KI erkennt es automatisch", it:"Cliccate su un elemento — l'IA lo rileva automaticamente" },
+  ed_erect_desc:  { fr:"Effacez une zone rectangulaire",             en:"Erase a rectangular area",               es:"Borrar una zona rectangular",                  de:"Einen rechteckigen Bereich löschen",          it:"Cancellate un'area rettangolare"               },
+  ed_epoly_desc:  { fr:"Effacez une zone de forme libre",            en:"Erase a free-form area",                 es:"Borrar una zona de forma libre",               de:"Einen freiformigen Bereich löschen",          it:"Cancellate un'area a forma libera"             },
+  ed_finish:      { fr:"Terminer",              en:"Finish",              es:"Terminar",            de:"Fertigstellen",      it:"Termina"             },
+  ed_summary:     { fr:"Résumé",                en:"Summary",             es:"Resumen",             de:"Zusammenfassung",    it:"Riepilogo"           },
+  ed_living_s:    { fr:"Surface hab.",          en:"Living area",         es:"Sup. habitable",      de:"Wohnfläche",         it:"Sup. abitabile"      },
+  ed_footprint:   { fr:"Emprise",               en:"Footprint",           es:"Huella",              de:"Gebäudefläche",      it:"Impronta"            },
+  ed_walls_s:     { fr:"Murs",                  en:"Walls",               es:"Muros",               de:"Wände",              it:"Muri"                },
+  ed_openings_det:{ fr:"Éléments détectés",     en:"Detected elements",   es:"Elementos detectados",de:"Erkannte Elemente",  it:"Elementi rilevati"   },
+  ed_no_elem:     { fr:"Aucun élément",         en:"No elements",         es:"Sin elementos",       de:"Keine Elemente",     it:"Nessun elemento"     },
+  ed_export:      { fr:"Exporter le rapport",   en:"Export report",       en2:"Export report",      de:"Bericht exportieren",it:"Esporta il rapporto" },
+  ed_added:       { fr:"Élément ajouté",        en:"Element added",       es:"Elemento añadido",    de:"Element hinzugefügt",it:"Elemento aggiunto"   },
+  ed_removed:     { fr:"Élément supprimé",      en:"Element removed",     es:"Elemento eliminado",  de:"Element entfernt",   it:"Elemento rimosso"    },
+  ed_saved:       { fr:"Correction enregistrée.", en:"Correction saved.",  es:"Corrección guardada.", de:"Korrektur gespeichert.", it:"Correzione salvata." },
+  ed_poly_added:  { fr:"Polygone ajouté",       en:"Polygon added",       es:"Polígono añadido",    de:"Polygon hinzugefügt",it:"Poligono aggiunto"   },
+  ed_zone_del:    { fr:"Zone supprimée",        en:"Area removed",        es:"Zona eliminada",      de:"Bereich entfernt",   it:"Area rimossa"        },
+  ed_min3:        { fr:"Minimum 3 points requis", en:"Minimum 3 points required", es:"Se requieren mínimo 3 puntos", de:"Mindestens 3 Punkte erforderlich", it:"Minimo 3 punti richiesti" },
+  ed_sam_done:    { fr:"Élément détecté automatiquement.", en:"Element detected automatically.", es:"Elemento detectado automáticamente.", de:"Element automatisch erkannt.", it:"Elemento rilevato automaticamente." },
+  ed_pdf_ok:      { fr:"Rapport PDF téléchargé",en:"PDF report downloaded",es:"Informe PDF descargado",de:"PDF-Bericht heruntergeladen",it:"Rapporto PDF scaricato" },
+  ed_pdf_err:     { fr:"Erreur export",         en:"Export error",        es:"Error de exportación",de:"Exportfehler",       it:"Errore di esportazione" },
+  ed_restart:     { fr:"Recommencer",           en:"Restart",             es:"Reiniciar",           de:"Neu starten",        it:"Ricomincia"          },
+
+  // Door label generic
+  door_lbl:       { fr:"Porte",    en:"Door",    es:"Puerta",  de:"Tür",    it:"Porta"   },
+  win_lbl:        { fr:"Fenêtre",  en:"Window",  es:"Ventana", de:"Fenster",it:"Finestra"},
+} as const;
+
+export type DTKey = keyof typeof DEMO_T;
+
+export function dt(key: DTKey, lang: Lang): string {
+  const entry = DEMO_T[key] as Record<string, string>;
+  return entry[lang] ?? entry["fr"];
+}
