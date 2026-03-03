@@ -12,7 +12,7 @@ from PIL import Image
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 import pipeline
 
@@ -139,6 +139,7 @@ def calibrate(req: CalibRequest):
 # ROUTE 5 — ANALYSE COMPLÈTE (Roboflow + surfaces)
 # ============================================================
 class AnalyzeRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     session_id: str
     roboflow_api_key: str
     model_id: str = "cubicasa-xmyt3-d4s04/3"

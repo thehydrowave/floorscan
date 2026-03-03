@@ -8,7 +8,6 @@ from PIL import Image
 import fitz  # PyMuPDF
 import pandas as pd
 
-from inference_sdk import InferenceHTTPClient
 
 # ============================================================
 # CONFIG (peut être surchargée depuis les paramètres API)
@@ -243,6 +242,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     img_pil = Image.fromarray(img_rgb).convert("RGB")
     W, H = img_pil.size
 
+    from inference_sdk import InferenceHTTPClient
     client = InferenceHTTPClient(
         api_url="https://serverless.roboflow.com",
         api_key=cfg["api_key"]
