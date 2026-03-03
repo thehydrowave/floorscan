@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 
-const BACKEND = "https://floorscan.onrengder.com";
+const BACKEND = "https://floorscan.onrender.com";
 
 interface UploadStepProps {
   onUploaded: (sessionId: string, imageB64: string) => void;
