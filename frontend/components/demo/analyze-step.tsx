@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 
-const BACKEND = ""https://floorscan.onrender.com";
+const BACKEND = "https://floorscan.onrender.com";
 
 interface AnalyzeStepProps {
   sessionId: string;
