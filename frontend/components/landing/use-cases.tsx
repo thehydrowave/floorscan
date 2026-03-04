@@ -15,7 +15,7 @@ export default function UseCasesSection() {
   const { lang } = useLang();
 
   return (
-    <section id="use-cases" className="py-32 relative bg-white">
+    <section id="use-cases" className="py-32 relative bg-[#0a0e1a]">
       <div className="max-w-7xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -24,15 +24,15 @@ export default function UseCasesSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="inline-block bg-brand-50 border border-brand-200 text-brand-700 text-xs font-semibold rounded-full px-4 py-1.5 mb-5">
+          <span className="inline-block bg-brand-950/50 border border-brand-800/50 text-brand-400 text-xs font-semibold rounded-full px-4 py-1.5 mb-5">
             {t("cases_badge", lang)}
           </span>
-          <h2 className="font-display text-4xl md:text-5xl font-800 tracking-tight mb-4 text-slate-900">
+          <h2 className="font-display text-4xl md:text-5xl font-800 tracking-tight mb-4 text-white">
             {t("cases_title1", lang)}
             <br />
             <span className="text-gradient">{t("cases_title2", lang)}</span>
           </h2>
-          <p className="text-slate-500 text-lg max-w-xl mx-auto">
+          <p className="text-slate-400 text-lg max-w-xl mx-auto">
             {t("cases_sub", lang)}
           </p>
         </motion.div>
@@ -47,11 +47,11 @@ export default function UseCasesSection() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
               className={`card card-hover p-8 border-l-4 ${c.accent}`}
             >
-              <h3 className="font-display font-600 text-slate-900 mb-2">{t(c.titleKey, lang)}</h3>
-              <p className="text-slate-500 text-sm leading-relaxed mb-5">{t(c.descKey, lang)}</p>
+              <h3 className="font-display font-600 text-slate-100 mb-2">{t(c.titleKey, lang)}</h3>
+              <p className="text-slate-400 text-sm leading-relaxed mb-5">{t(c.descKey, lang)}</p>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-display font-700 text-gradient">{t(c.statKey, lang)}</span>
-                <span className="text-xs text-slate-400">{t(c.statlKey, lang)}</span>
+                <span className="text-xs text-slate-500">{t(c.statlKey, lang)}</span>
               </div>
             </motion.div>
           ))}

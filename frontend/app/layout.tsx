@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className="scroll-smooth">
-      <body className="bg-slate-50 text-slate-900 font-body antialiased">
+      <body className="bg-ink text-slate-100 font-body antialiased">
         <LangProvider>
           {children}
           <Toaster />
