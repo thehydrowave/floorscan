@@ -6,7 +6,6 @@ import numpy as np
 import cv2
 from PIL import Image
 import fitz  # PyMuPDF
-import pandas as pd
 
 
 # ============================================================
@@ -308,6 +307,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
 
     openings = _extract_openings(md_binary, "door", cfg) + \
                _extract_openings(mw_binary, "window", cfg)
+    import pandas as pd
     df_openings = pd.DataFrame(openings)
 
     # === AUTO pixels_per_meter si pas fourni manuellement ===
