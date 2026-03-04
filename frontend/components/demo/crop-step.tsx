@@ -6,7 +6,7 @@ import { Crop, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 
-const BACKEND = "https://floorscan.onrender.com";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface CropStepProps {
   sessionId: string;

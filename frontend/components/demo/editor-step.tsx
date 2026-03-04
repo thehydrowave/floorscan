@@ -8,7 +8,7 @@ import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
-const BACKEND = "https://floorscan.onrender.com";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior";
 type Tool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam";
 

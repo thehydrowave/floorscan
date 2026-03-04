@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RoboflowConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const BACKEND = "https://floorscan.onrender.com";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface ConnectStepProps {
   onConnected: (config: RoboflowConfig) => void;
