@@ -39,7 +39,11 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
         reader.readAsDataURL(f);
       });
 
-      `const r = await fetch(`${BACKEND}/upload-pdf`, {`        method: "POST",`        headers: { "Content-Type": "application/json" },`        body: JSON.stringify({ pdf_base64: pdfBase64, filename: f.name, zoom: 3.0 }),`      });
+      const r = await fetch(`${BACKEND}/upload-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdf_base64: pdfBase64, filename: f.name, zoom: 3.0 }),
+      });
 
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
