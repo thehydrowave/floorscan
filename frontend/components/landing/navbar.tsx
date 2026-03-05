@@ -119,8 +119,8 @@ export default function Navbar() {
             </AnimatePresence>
           </div>
 
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/measure">Métré</Link>
+          <Button variant="outline" size="sm" asChild className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent">
+            <Link href="/measure">Métré ✦</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/demo">{t("nav_try", lang)}</Link>
