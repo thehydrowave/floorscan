@@ -6,6 +6,8 @@ import { Brain, Loader2, ArrowRight, AlertTriangle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -17,6 +19,9 @@ interface AnalyzeStepProps {
 }
 
 export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: AnalyzeStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState("");
@@ -26,11 +31,12 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
     setError(null);
 
     const steps = [
-      "Passe 1 : inférence tuiles 2048px...",
-      "Passe 2 : inférence tuiles 1024px...",
-      "Fusion des masques...",
-      "Calcul des surfaces...",
-      "Génération des overlays...",
+      dt("an_p1", lang),
+      dt("an_p2", lang),
+      dt("an_p3", lang),
+      dt("an_p4", lang),
+      dt("an_p5", lang),
+      dt("an_p6", lang),
     ];
     let i = 0;
     setProgress(steps[0]);
@@ -66,8 +72,8 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
       data.session_id = sessionId;
 
       toast({
-        title: "Analyse terminée !",
-        description: `${data.doors_count} portes · ${data.windows_count} fenêtres${data.surfaces?.area_hab_m2 ? ` · ${data.surfaces.area_hab_m2.toFixed(1)} m²` : ""}`,
+        title: dt("an_done_title", lang),
+        description: `${data.doors_count} ${dt("re_doors", lang).toLowerCase()} · ${data.windows_count} ${dt("re_windows", lang).toLowerCase()}${data.surfaces?.area_hab_m2 ? ` · ${data.surfaces.area_hab_m2.toFixed(1)} m²` : ""}`,
         variant: "success",
       });
 
@@ -75,7 +81,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
     } catch (e: any) {
       clearInterval(interval);
       setError(e.message);
-      toast({ title: "Analyse échouée", description: e.message, variant: "error" });
+      toast({ title: dt("an_fail", lang), description: e.message, variant: "error" });
     } finally {
       setLoading(false);
       setProgress("");
@@ -88,11 +94,8 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center mx-auto mb-4">
           <Brain className="w-8 h-8 text-white" />
         </div>
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Analyse IA Multi-scale</h2>
-        <p className="text-slate-400 text-sm">
-          Le backend lance 2 passes d'analyse IA (tuiles 2048px + 1024px) puis calcule les surfaces et périmètres.
-          Durée estimée : 30s–3min selon la taille du plan.
-        </p>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("an_title")}</h2>
+        <p className="text-slate-400 text-sm">{d("an_sub")}</p>
       </div>
 
       <div className="glass rounded-2xl border border-white/10 p-8 flex flex-col items-center gap-6">
@@ -111,9 +114,9 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
             <span className="text-accent">2048px + 1024px (multi-scale)</span>
           </div>
           <div className="flex justify-between">
-            <span>Échelle</span>
+            <span>{d("st_scale")}</span>
             <span className={ppm ? "text-accent-green" : "text-slate-500"}>
-              {ppm ? `${ppm.toFixed(1)} px/m` : "auto-détection"}
+              {ppm ? `${ppm.toFixed(1)} px/m` : d("an_auto")}
             </span>
           </div>
         </div>
@@ -128,7 +131,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
             <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-brand-500 to-accent rounded-full animate-pulse w-3/4" />
             </div>
-            <p className="text-slate-600 text-xs">Ne fermez pas cette fenêtre...</p>
+            <p className="text-slate-600 text-xs">{d("an_noclose")}</p>
           </div>
         )}
 
@@ -137,7 +140,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
           <div className="w-full glass rounded-xl border border-red-500/25 p-4 flex items-start gap-3">
             <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-600 text-red-400 mb-1">Erreur d'analyse</p>
+              <p className="text-sm font-600 text-red-400 mb-1">{d("an_err_label")}</p>
               <p className="text-xs text-red-300/80 leading-relaxed">{error}</p>
             </div>
           </div>
@@ -147,7 +150,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
         {!loading && (
           <Button onClick={runAnalysis} className="w-full" size="lg">
             <Zap className="w-4 h-4" />
-            {error ? "Relancer l'analyse" : "Lancer l'analyse"}
+            {error ? d("an_relance") : d("an_launch")}
             <ArrowRight className="w-4 h-4" />
           </Button>
         )}

@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -19,6 +21,8 @@ interface CropStepProps {
 interface CropRect { x: number; y: number; w: number; h: number; }
 
 export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: CropStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0, w: 0, h: 0 });
@@ -97,12 +101,12 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: Cro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, x0, y0, x1, y1 }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur crop");
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Crop error");
       const data = await r.json();
-      toast({ title: "Crop appliqué", description: `${data.width}×${data.height} px`, variant: "success" });
+      toast({ title: d("cr_confirm"), description: `${data.width}×${data.height} px`, variant: "success" });
       onCropped();
     } catch (e: any) {
-      toast({ title: "Erreur crop", description: e.message, variant: "error" });
+      toast({ title: "Error", description: e.message, variant: "error" });
     } finally {
       setConfirming(false);
     }
@@ -119,11 +123,9 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: Cro
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       <div className="text-center mb-6">
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Recadrer la zone d'analyse</h2>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("cr_title")}</h2>
         <p className="text-slate-400 text-sm">
-          {hasCrop
-            ? "Redessinez pour ajuster · Confirmez quand c'est bon."
-            : "Cliquez et glissez sur l'image pour définir la zone à analyser."}
+          {hasCrop ? d("cr_adjust_hint") : d("cr_drag_hint")}
         </p>
       </div>
 
@@ -204,7 +206,7 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: Cro
                 textAnchor="middle" dominantBaseline="middle"
                 fill="rgba(148,163,184,0.6)" fontSize={14} fontFamily="system-ui"
               >
-                ✛  Cliquez et glissez pour sélectionner
+                {d("cr_drag_hint")}
               </text>
             )
           )}
@@ -219,15 +221,15 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: Cro
 
       <div className="flex gap-3 justify-center mt-6">
         <Button variant="ghost" size="sm" onClick={() => setCrop(null)} disabled={confirming || !hasCrop}>
-          <RotateCcw className="w-4 h-4" /> Reset
+          <RotateCcw className="w-4 h-4" /> {d("cr_reset")}
         </Button>
         <Button variant="outline" onClick={onSkip} disabled={confirming}>
-          Ignorer le crop
+          {d("cr_skip")}
         </Button>
         <Button onClick={handleConfirm} disabled={confirming || !hasCrop}>
           {confirming
-            ? <><Loader2 className="w-4 h-4 animate-spin" /> Application...</>
-            : <>Confirmer <ArrowRight className="w-4 h-4" /></>}
+            ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("cr_applying")}</>
+            : <>{d("cr_confirm")} <ArrowRight className="w-4 h-4" /></>}
         </Button>
       </div>
     </motion.div>

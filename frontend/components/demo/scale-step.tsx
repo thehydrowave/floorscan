@@ -4,6 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Ruler, ArrowRight, ZoomIn, ZoomOut, RotateCcw, Crosshair, Wand2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 interface Point { x: number; y: number; }
 
@@ -13,6 +15,8 @@ interface ScaleStepProps {
 }
 
 export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const [mode, setMode] = useState<"manual" | null>(null);
   const [points, setPoints] = useState<(Point | null)[]>([null, null]);
   const [realDist, setRealDist] = useState("1");
@@ -137,10 +141,10 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
   const computedPpm = pixelDist ? pixelDist / realDistM : null;
 
   const hint = !points[0]
-    ? "Cliquez sur le point A"
+    ? d("sc_hint_a")
     : !points[1]
-    ? "Cliquez sur le point B"
-    : "Entrez la distance réelle A→B";
+    ? d("sc_hint_b")
+    : d("sc_hint_dist");
 
   const reset = () => { setZoom(1); setTranslate({ x: 0, y: 0 }); setPoints([null, null]); };
 
@@ -150,8 +154,8 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center mx-auto mb-4">
           <Ruler className="w-8 h-8 text-white" />
         </div>
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Échelle du plan</h2>
-        <p className="text-slate-400 text-sm">Définissez l'échelle pour des mesures précises en m².</p>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("sc_title")}</h2>
+        <p className="text-slate-400 text-sm">{d("sc_sub")}</p>
       </div>
 
       <AnimatePresence mode="wait">
@@ -164,20 +168,16 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
               className="flex-1 max-w-xs glass border border-white/10 rounded-2xl p-6 text-left hover:border-accent/40 transition-all"
             >
               <Wand2 className="w-8 h-8 text-accent mb-3" />
-              <div className="font-display font-700 text-white mb-1">Auto-détection</div>
-              <div className="text-slate-400 text-sm">
-                L'échelle est estimée depuis la taille des portes détectées (≈ 90 cm).
-              </div>
+              <div className="font-display font-700 text-white mb-1">{d("sc_auto")}</div>
+              <div className="text-slate-400 text-sm">{d("sc_auto_desc")}</div>
             </button>
             <button
               onClick={() => setMode("manual")}
               className="flex-1 max-w-xs glass border border-white/10 rounded-2xl p-6 text-left hover:border-brand-400/40 transition-all"
             >
               <Crosshair className="w-8 h-8 text-brand-400 mb-3" />
-              <div className="font-display font-700 text-white mb-1">Manuel</div>
-              <div className="text-slate-400 text-sm">
-                Cliquez sur 2 points à distance connue pour une précision maximale.
-              </div>
+              <div className="font-display font-700 text-white mb-1">{d("sc_manual")}</div>
+              <div className="text-slate-400 text-sm">{d("sc_manual_desc")}</div>
             </button>
           </motion.div>
         )}
@@ -264,7 +264,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
               {!points[0] && (
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
                   <div className="glass border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-400 whitespace-nowrap">
-                    🔍 Scroll pour zoomer · Glisser pour naviguer · Clic pour placer A
+                    {d("sc_nav_hint")}
                   </div>
                 </div>
               )}
@@ -275,7 +275,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-4 glass rounded-2xl border border-white/10 p-5">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-sm text-slate-400">Distance A→B :</span>
+                  <span className="text-sm text-slate-400">{d("sc_dist_label")}</span>
                   <input
                     type="number"
                     value={realDist}
@@ -285,7 +285,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
                     onChange={e => setRealDist(e.target.value)}
                     className="w-28 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-accent"
                   />
-                  <span className="text-slate-400 text-sm">mètres</span>
+                  <span className="text-slate-400 text-sm">{d("sc_meters")}</span>
                   {computedPpm && (
                     <span className="ml-auto font-mono text-sm text-accent">
                       → {computedPpm.toFixed(2)} px/m
@@ -297,10 +297,10 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
 
             <div className="flex gap-3 justify-center mt-5">
               <Button variant="outline" onClick={() => onScaled(null)}>
-                Passer (auto)
+                {d("sc_skip")}
               </Button>
               <Button onClick={() => computedPpm && onScaled(computedPpm)} disabled={!computedPpm}>
-                Valider l'échelle <ArrowRight className="w-4 h-4" />
+                {d("sc_validate")} <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
           </motion.div>

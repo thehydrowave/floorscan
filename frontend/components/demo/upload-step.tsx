@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useState } from "react";
 import { Upload, FileText, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -14,6 +15,9 @@ interface UploadStepProps {
 }
 
 export default function UploadStep({ onUploaded }: UploadStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,42 +26,36 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
   const processFile = useCallback(async (f: File) => {
     setError(null);
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setError("Seuls les fichiers PDF sont acceptés.");
+      setError(dt("up_toast_errd", lang));
       return;
     }
     setLoading(true);
     setFileName(f.name);
     try {
-      // Lire le PDF en base64
       const pdfBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = () => reject(new Error("Lecture fichier échouée"));
+        reader.onerror = () => reject(new Error("File read failed"));
         reader.readAsDataURL(f);
       });
 
-      // Envoyer au backend Python V1
-      const r = await fetch(`${BACKEND}/upload-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf_base64: pdfBase64, filename: f.name, zoom: 3.0 }),
-      });
+      `const r = await fetch(`${BACKEND}/upload-pdf`, {`        method: "POST",`        headers: { "Content-Type": "application/json" },`        body: JSON.stringify({ pdf_base64: pdfBase64, filename: f.name, zoom: 3.0 }),`      });
 
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail ?? `Erreur serveur ${r.status}`);
+        throw new Error(err.detail ?? `Server error ${r.status}`);
       }
 
       const data = await r.json();
-      toast({ title: "PDF chargé", description: `${data.width}×${data.height} px — Session créée`, variant: "success" });
+      toast({ title: dt("up_pdf_loaded", lang), description: `${data.width}x${data.height} px`, variant: "success" });
       onUploaded(data.session_id, data.image_b64);
     } catch (e: any) {
       setError(e.message);
-      toast({ title: "Erreur upload", description: e.message, variant: "error" });
+      toast({ title: dt("up_err_upload", lang), description: e.message, variant: "error" });
     } finally {
       setLoading(false);
     }
-  }, [onUploaded]);
+  }, [onUploaded, lang]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragging(false);
@@ -68,8 +66,8 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto">
       <div className="text-center mb-8">
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Importer un plan PDF</h2>
-        <p className="text-slate-400 text-sm">Le PDF sera rendu en haute résolution (×3) par le backend.</p>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("up_title")}</h2>
+        <p className="text-slate-400 text-sm">{d("up_sub")}</p>
       </div>
 
       <div
@@ -90,8 +88,8 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
             <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center animate-pulse">
               <FileText className="w-6 h-6 text-accent" />
             </div>
-            <p className="text-slate-400 text-sm">Envoi au backend...</p>
-            <p className="text-slate-600 text-xs">{fileName} — Rendu ×3 en cours, patientez</p>
+            <p className="text-slate-400 text-sm">{d("up_sending")}</p>
+            <p className="text-slate-600 text-xs">{fileName} — {d("up_sending_hint")}</p>
           </div>
         ) : fileName && !error ? (
           <div className="flex flex-col items-center gap-3">
@@ -99,7 +97,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
               <FileText className="w-6 h-6 text-accent-green" />
             </div>
             <p className="text-slate-200 font-medium">{fileName}</p>
-            <p className="text-slate-500 text-sm">Chargé avec succès</p>
+            <p className="text-slate-500 text-sm">{d("up_success")}</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-4">
@@ -107,10 +105,10 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
               <Upload className={cn("w-7 h-7 transition-colors", dragging ? "text-accent" : "text-slate-500")} />
             </div>
             <div>
-              <p className="text-slate-200 font-medium mb-1">{dragging ? "Déposez ici !" : "Glissez votre plan PDF"}</p>
-              <p className="text-slate-500 text-sm">ou cliquez pour parcourir</p>
+              <p className="text-slate-200 font-medium mb-1">{dragging ? d("up_drop") : d("up_drag")}</p>
+              <p className="text-slate-500 text-sm">{d("up_click")}</p>
             </div>
-            <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">PDF uniquement</span>
+            <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">{d("up_pdf_only")}</span>
           </div>
         )}
       </div>
@@ -124,7 +122,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
 
       {!loading && (
         <p className="text-center text-xs text-slate-600 mt-6">
-          Le backend Python doit être actif sur <code className="text-slate-500">localhost:8000</code>
+          {d("up_backend_hint")}
         </p>
       )}
     </motion.div>

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -18,20 +20,23 @@ interface ResultsStepProps {
 
 type OverlayType = "openings" | "interior" | "mask_doors" | "mask_windows" | "mask_walls";
 
-const OVERLAY_TABS: { key: OverlayType; label: string }[] = [
-  { key: "openings", label: "Portes + Fenêtres" },
-  { key: "interior", label: "Surface hab." },
-  { key: "mask_doors", label: "Masque Portes" },
-  { key: "mask_windows", label: "Masque Fenêtres" },
-  { key: "mask_walls", label: "Masque Murs" },
-];
-
 function fmt(v: number | undefined, nd = 1, suffix = "") {
   if (v === undefined || v === null) return "—";
   return v.toFixed(nd) + suffix;
 }
 
 export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+
+  const OVERLAY_TABS: { key: OverlayType; label: string }[] = [
+    { key: "openings",     label: d("re_tab_openings") },
+    { key: "interior",     label: d("re_tab_interior") },
+    { key: "mask_doors",   label: d("re_mask_doors")   },
+    { key: "mask_windows", label: d("re_mask_windows") },
+    { key: "mask_walls",   label: d("re_mask_walls")   },
+  ];
+
   const [activeOverlay, setActiveOverlay] = useState<OverlayType>("openings");
   const [exportingPdf, setExportingPdf] = useState(false);
 
@@ -57,9 +62,9 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
       const a = document.createElement("a");
       a.href = url; a.download = "floorscan_rapport.pdf";
       a.click(); URL.revokeObjectURL(url);
-      toast({ title: "Rapport PDF téléchargé !", variant: "success" });
+      toast({ title: d("re_pdf_ok"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur export PDF", description: e.message, variant: "error" });
+      toast({ title: d("re_pdf_err"), description: e.message, variant: "error" });
     } finally {
       setExportingPdf(false);
     }
@@ -71,15 +76,15 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">ÉTAPE 5 / 6</p>
-          <h2 className="font-display text-2xl font-700 text-white">Résultats de l'analyse</h2>
+          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">{d("re_step")}</p>
+          <h2 className="font-display text-2xl font-700 text-white">{d("re_title")}</h2>
         </div>
         <div className="flex gap-3">
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
-            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> Export...</> : <><Download className="w-4 h-4" /> Rapport PDF</>}
+            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
           <Button onClick={onGoEditor}>
-            <Edit3 className="w-4 h-4" /> Éditeur de masques
+            <Edit3 className="w-4 h-4" /> {d("re_editor")}
           </Button>
         </div>
       </div>
@@ -87,10 +92,10 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "🚪 Portes", value: result.doors_count, color: "#D946EF" },
-          { label: "🪟 Fenêtres", value: result.windows_count, color: "#22D3EE" },
-          { label: "🏠 Surface hab.", value: fmt(sf.area_hab_m2, 1, " m²"), color: "#34D399" },
-          { label: "⬜ Surface murs", value: fmt(sf.area_walls_m2, 1, " m²"), color: "#60A5FA" },
+          { label: `🚪 ${d("re_doors")}`, value: result.doors_count, color: "#D946EF" },
+          { label: `🪟 ${d("re_windows")}`, value: result.windows_count, color: "#22D3EE" },
+          { label: `🏠 ${d("re_living")}`, value: fmt(sf.area_hab_m2, 1, " m²"), color: "#34D399" },
+          { label: `⬜ ${d("re_walls_area")}`, value: fmt(sf.area_walls_m2, 1, " m²"), color: "#60A5FA" },
         ].map(({ label, value, color }) => (
           <div key={label} className="glass rounded-xl border border-white/10 p-4">
             <p className="text-xs text-slate-500 mb-2">{label}</p>
@@ -101,15 +106,15 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
 
       {/* Surfaces détaillées */}
       <div className="glass rounded-xl border border-white/10 p-5 mb-6">
-        <p className="text-xs font-mono text-accent uppercase tracking-widest mb-4">SURFACES & PÉRIMÈTRES</p>
+        <p className="text-xs font-mono text-accent uppercase tracking-widest mb-4">{d("re_detail_title")}</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
           {[
-            { label: "Emprise bâtiment", value: fmt(sf.area_building_m2, 2, " m²"), color: "#60A5FA" },
-            { label: "Pourtour bâtiment", value: fmt(sf.perim_building_m, 2, " m"), color: "#60A5FA" },
-            { label: "Surface murs", value: fmt(sf.area_walls_m2, 2, " m²"), color: "#D946EF" },
-            { label: "Surface habitable", value: fmt(sf.area_hab_m2, 2, " m²"), color: "#34D399" },
-            { label: "Pourtour habitable", value: fmt(sf.perim_interior_m, 2, " m"), color: "#34D399" },
-            { label: "pixels/mètre", value: result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "—", color: "#94a3b8" },
+            { label: d("re_footprint"),  value: fmt(sf.area_building_m2, 2, " m²"), color: "#60A5FA" },
+            { label: d("re_perim_bld"),  value: fmt(sf.perim_building_m, 2, " m"),  color: "#60A5FA" },
+            { label: d("re_walls_area"), value: fmt(sf.area_walls_m2, 2, " m²"),    color: "#D946EF" },
+            { label: d("re_living"),     value: fmt(sf.area_hab_m2, 2, " m²"),      color: "#34D399" },
+            { label: d("re_perim_int"),  value: fmt(sf.perim_interior_m, 2, " m"),  color: "#34D399" },
+            { label: d("re_scale"),      value: result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "—", color: "#94a3b8" },
           ].map(({ label, value, color }) => (
             <div key={label} className="flex justify-between items-center py-2 border-b border-white/5">
               <span className="text-slate-400">{label}</span>
@@ -138,13 +143,13 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
             className="w-full h-auto rounded-xl border border-white/10 max-h-[600px] object-contain"
           />
         ) : (
-          <div className="text-center py-10 text-slate-600 text-sm">Image non disponible</div>
+          <div className="text-center py-10 text-slate-600 text-sm">{d("re_no_img")}</div>
         )}
       </div>
 
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={onRestart}>
-          <RotateCcw className="w-4 h-4" /> Analyser un autre plan
+          <RotateCcw className="w-4 h-4" /> {d("re_restart")}
         </Button>
       </div>
     </motion.div>

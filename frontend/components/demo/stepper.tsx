@@ -1,35 +1,34 @@
 "use client";
 
-import { Check, KeyRound, Upload, Crop, Brain, PenSquare, Download } from "lucide-react";
+import { Check, KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
-const STEP_META = [
-  { label: "Connect", icon: KeyRound },
-  { label: "Upload", icon: Upload },
-  { label: "Crop", icon: Crop },
-  { label: "Detect", icon: Brain },
-  { label: "Correct", icon: PenSquare },
-  { label: "Export", icon: Download },
-];
+const STEP_ICONS = [KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare];
+const STEP_KEYS: DTKey[] = ["st_connect", "st_upload", "st_crop", "st_scale", "st_analyze", "st_results", "st_editor"];
 
 interface StepperProps {
   currentStep: number;   // 1-based
-  totalSteps?: number;   // defaults to STEP_META.length
+  totalSteps?: number;   // defaults to STEP_ICONS.length
 }
 
 export default function Stepper({ currentStep, totalSteps }: StepperProps) {
-  const steps = STEP_META.slice(0, totalSteps ?? STEP_META.length);
+  const { lang } = useLang();
+  const count = Math.min(totalSteps ?? STEP_ICONS.length, STEP_ICONS.length);
 
   return (
     <div className="flex items-center w-full max-w-3xl mx-auto">
-      {steps.map((step, index) => {
+      {Array.from({ length: count }).map((_, index) => {
         const stepNum = index + 1;
         const isActive = stepNum === currentStep;
         const isDone = stepNum < currentStep;
-        const isLast = index === steps.length - 1;
+        const isLast = index === count - 1;
+        const Icon = STEP_ICONS[index];
+        const label = dt(STEP_KEYS[index], lang);
 
         return (
-          <div key={step.label} className="flex items-center flex-1">
+          <div key={index} className="flex items-center flex-1">
             <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
               <div
                 className={cn(
@@ -42,7 +41,7 @@ export default function Stepper({ currentStep, totalSteps }: StepperProps) {
                 {isDone ? (
                   <Check className="w-3.5 h-3.5" />
                 ) : (
-                  <step.icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5" />
                 )}
               </div>
               <span
@@ -53,7 +52,7 @@ export default function Stepper({ currentStep, totalSteps }: StepperProps) {
                   !isActive && !isDone && "text-slate-600"
                 )}
               >
-                {step.label}
+                {label}
               </span>
             </div>
             {!isLast && (

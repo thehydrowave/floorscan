@@ -279,6 +279,64 @@ export const DEMO_T = {
   me_feat2:       { fr:"Échelle 2 points",               en:"2-point scale",                es:"Escala 2 puntos",               de:"2-Punkt-Maßstab",               it:"Scala 2 punti"                   },
   me_feat3:       { fr:"Agrégation par type",            en:"Aggregation by type",          es:"Agregación por tipo",           de:"Aggregation nach Typ",          it:"Aggregazione per tipo"           },
   me_back_ret:    { fr:"Retour",                         en:"Back",                         es:"Volver",                        de:"Zurück",                        it:"Indietro"                        },
+
+  // ── Crop step — additional ────────────────────────────────────────────────
+  cr_drag_hint:   { fr:"Cliquez et glissez sur l'image pour définir la zone à analyser.", en:"Click and drag on the image to define the area to analyze.", es:"Haga clic y arrastre para definir la zona.", de:"Klicken und ziehen zum Bereich definieren.", it:"Cliccate e trascinate per definire l'area." },
+  cr_adjust_hint: { fr:"Redessinez pour ajuster · Confirmez quand c'est bon.", en:"Redraw to adjust · Confirm when ready.", es:"Vuelva a dibujar · Confirme cuando esté listo.", de:"Neu zeichnen · Bestätigen wenn fertig.", it:"Ridisegnare · Confermare quando pronto." },
+  cr_skip:        { fr:"Ignorer le recadrage",  en:"Skip crop",          es:"Omitir recorte",          de:"Zuschnitt überspringen", it:"Salta il ritaglio"   },
+  cr_applying:    { fr:"Application...",         en:"Applying...",        es:"Aplicando...",            de:"Anwenden...",            it:"Applicando..."       },
+
+  // ── Scale step ────────────────────────────────────────────────────────────
+  sc_title:       { fr:"Échelle du plan",         en:"Plan scale",         es:"Escala del plano",        de:"Planmaßstab",            it:"Scala del piano"     },
+  sc_sub:         { fr:"Définissez l'échelle pour des mesures précises en m².", en:"Set the scale for precise measurements in m².", es:"Defina la escala para medidas precisas en m².", de:"Maßstab für präzise Messungen festlegen.", it:"Impostate la scala per misure precise in m²." },
+  sc_auto:        { fr:"Auto-détection",           en:"Auto-detect",        es:"Auto-detección",          de:"Auto-Erkennung",          it:"Auto-rilevamento"    },
+  sc_auto_desc:   { fr:"L'échelle est estimée depuis la taille des portes détectées (≈ 90 cm).", en:"Scale estimated from the size of detected doors (≈ 90 cm).", es:"Escala estimada por el tamaño de las puertas (≈ 90 cm).", de:"Maßstab aus erkannten Türgrößen (≈ 90 cm).", it:"Scala stimata dalle porte rilevate (≈ 90 cm)." },
+  sc_manual:      { fr:"Manuel",                   en:"Manual",             es:"Manual",                  de:"Manuell",                it:"Manuale"             },
+  sc_manual_desc: { fr:"Cliquez sur 2 points à distance connue pour une précision maximale.", en:"Click 2 points at a known distance for maximum accuracy.", es:"Haga clic en 2 puntos a distancia conocida para máxima precisión.", de:"2 Punkte bei bekanntem Abstand für maximale Genauigkeit.", it:"2 punti a distanza nota per massima precisione." },
+  sc_hint_a:      { fr:"Cliquez sur le point A",   en:"Click on point A",   es:"Haga clic en el punto A", de:"Punkt A klicken",         it:"Cliccate sul punto A"},
+  sc_hint_b:      { fr:"Cliquez sur le point B",   en:"Click on point B",   es:"Haga clic en el punto B", de:"Punkt B klicken",         it:"Cliccate sul punto B"},
+  sc_hint_dist:   { fr:"Entrez la distance réelle A→B", en:"Enter the real A→B distance", es:"Ingrese la distancia real A→B", de:"A→B-Abstand eingeben", it:"Inserite la distanza A→B" },
+  sc_nav_hint:    { fr:"🔍 Scroll pour zoomer · Glisser pour naviguer · Clic pour placer A", en:"🔍 Scroll to zoom · Drag to pan · Click to place A", es:"🔍 Scroll zoom · Arrastrar · Clic para A", de:"🔍 Scrollen zoomen · Ziehen · A klicken", it:"🔍 Scroll zoom · Trascina · Clic punto A" },
+  sc_dist_label:  { fr:"Distance A→B :",           en:"A→B distance:",      es:"Distancia A→B:",          de:"Abstand A→B:",            it:"Distanza A→B:"       },
+  sc_meters:      { fr:"mètres",                   en:"meters",             es:"metros",                  de:"Meter",                  it:"metri"               },
+  sc_skip:        { fr:"Passer (auto)",             en:"Skip (auto)",        es:"Omitir (auto)",           de:"Überspringen (auto)",     it:"Salta (auto)"        },
+  sc_validate:    { fr:"Valider l'échelle",         en:"Confirm scale",      es:"Confirmar escala",        de:"Maßstab bestätigen",      it:"Conferma scala"      },
+
+  // ── Analyze step — additional ─────────────────────────────────────────────
+  an_noclose:     { fr:"Ne fermez pas cette fenêtre...", en:"Don't close this window...", es:"No cierre esta ventana...", de:"Fenster nicht schließen...", it:"Non chiudere questa finestra..." },
+  an_err_label:   { fr:"Erreur d'analyse",          en:"Analysis error",     es:"Error de análisis",       de:"Analysefehler",          it:"Errore di analisi"   },
+  an_fail:        { fr:"Analyse échouée",            en:"Analysis failed",    es:"Análisis fallido",        de:"Analyse fehlgeschlagen", it:"Analisi fallita"     },
+  an_relance:     { fr:"Relancer l'analyse",         en:"Relaunch analysis",  es:"Relanzar análisis",       de:"Analyse neu starten",    it:"Riavvia analisi"     },
+  an_auto:        { fr:"auto-détection",             en:"auto-detection",     es:"auto-detección",          de:"Auto-Erkennung",         it:"auto-rilevamento"    },
+
+  // ── Results step — additional ─────────────────────────────────────────────
+  re_editor:      { fr:"Éditeur de masques",         en:"Mask editor",        es:"Editor de máscaras",      de:"Masken-Editor",          it:"Editor maschere"     },
+  re_tab_openings:{ fr:"Portes + Fenêtres",          en:"Doors + Windows",    es:"Puertas + Ventanas",      de:"Türen + Fenster",         it:"Porte + Finestre"    },
+  re_tab_interior:{ fr:"Surface hab.",               en:"Living area",        es:"Sup. habitable",          de:"Wohnfläche",              it:"Sup. abitabile"      },
+  re_mask_doors:  { fr:"Masque Portes",              en:"Door mask",          es:"Máscara Puertas",         de:"Türenmaske",              it:"Maschera Porte"      },
+  re_mask_windows:{ fr:"Masque Fenêtres",            en:"Window mask",        es:"Máscara Ventanas",        de:"Fenstermaske",            it:"Maschera Finestre"   },
+  re_mask_walls:  { fr:"Masque Murs",                en:"Wall mask",          es:"Máscara Muros",           de:"Wandmaske",               it:"Maschera Muri"       },
+  re_no_img:      { fr:"Image non disponible",       en:"Image not available",es:"Imagen no disponible",    de:"Bild nicht verfügbar",    it:"Immagine non disponibile" },
+
+  // ── Editor step — additional ──────────────────────────────────────────────
+  ed_ia_editor:   { fr:"Éditeur IA",                 en:"AI Editor",          es:"Editor IA",               de:"KI-Editor",               it:"Editor IA"           },
+  ed_layer_lbl:   { fr:"COUCHE",                     en:"LAYER",              es:"CAPA",                    de:"EBENE",                   it:"LAYER"               },
+  ed_tool_lbl:    { fr:"OUTIL",                      en:"TOOL",               es:"HERRAMIENTA",             de:"WERKZEUG",                it:"STRUMENTO"           },
+  ed_ia_results:  { fr:"RÉSULTATS IA",               en:"AI RESULTS",         es:"RESULTADOS IA",           de:"KI-ERGEBNISSE",           it:"RISULTATI IA"        },
+  ed_canvas_hint: { fr:"Rectangle : glissez pour ajouter/effacer. Polygone : cliquez les points puis \"Terminer\". SAM : cliquez un point.", en:"Rectangle: drag to add/erase. Polygon: click points then \"Finish\". SAM: click a point.", es:"Rectángulo: arrastre. Polígono: clic en puntos y \"Terminar\". SAM: clic.", de:"Rechteck: ziehen. Polygon: Punkte, dann \"Fertig\". SAM: Punkt klicken.", it:"Rettangolo: trascina. Poligono: clic poi \"Termina\". SAM: clic." },
+  ed_mask_updated:{ fr:"Masque mis à jour",          en:"Mask updated",       es:"Máscara actualizada",     de:"Maske aktualisiert",      it:"Maschera aggiornata" },
+  ed_scale_ia:    { fr:"échelle issue de l'analyse IA", en:"scale from AI analysis", es:"escala del análisis IA", de:"Maßstab aus KI-Analyse", it:"scala dall'analisi IA" },
+  ed_no_scale_warn:{ fr:"Pas d'échelle disponible — les surfaces s'afficheront en px². Relancez l'analyse avec l'étape Échelle pour avoir des m².", en:"No scale available — surfaces will be in px². Redo the Scale step to get m².", es:"Sin escala — en px². Repita el paso Escala para m².", de:"Kein Maßstab — px². Maßstabschritt wiederholen für m².", it:"Nessuna scala — px². Ripetere il passo Scala per m²." },
+  ed_finish_poly: { fr:"✓ Terminer polygone",        en:"✓ Finish polygon",   es:"✓ Terminar polígono",     de:"✓ Polygon fertigstellen", it:"✓ Termina poligono"  },
+  ed_step_label:  { fr:"ÉTAPE 7 / 7",                en:"STEP 7 / 7",         es:"PASO 7 / 7",              de:"SCHRITT 7 / 7",           it:"PASSO 7 / 7"         },
+
+  // ── Upload step — additional ──────────────────────────────────────────────
+  up_sending:     { fr:"Envoi au backend...",         en:"Sending to backend...", es:"Enviando al backend...", de:"An Backend senden...",  it:"Invio al backend..."  },
+  up_sending_hint:{ fr:"Rendu ×3 en cours, patientez", en:"Rendering ×3, please wait", es:"Procesando ×3, espere", de:"Rendering ×3, bitte warten", it:"Rendering ×3, attendere" },
+  up_success:     { fr:"Chargé avec succès",          en:"Loaded successfully", es:"Cargado con éxito",      de:"Erfolgreich geladen",     it:"Caricato con successo" },
+  up_backend_hint:{ fr:"Le backend Python doit être actif sur localhost:8000", en:"The Python backend must be running on localhost:8000", es:"El backend Python debe estar activo en localhost:8000", de:"Python-Backend muss auf localhost:8000 laufen.", it:"Il backend Python deve essere attivo su localhost:8000." },
+  up_pdf_loaded:  { fr:"PDF chargé",                 en:"PDF loaded",         es:"PDF cargado",             de:"PDF geladen",             it:"PDF caricato"         },
+  up_err_upload:  { fr:"Erreur upload",              en:"Upload error",       es:"Error de carga",          de:"Upload-Fehler",           it:"Errore upload"        },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

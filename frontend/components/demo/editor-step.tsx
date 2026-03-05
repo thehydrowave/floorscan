@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES } from "@/lib/measure-types";
@@ -23,6 +25,9 @@ interface EditorStepProps {
 }
 
 export default function EditorStep({ sessionId, initialResult, onRestart }: EditorStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+
   const [result, setResult] = useState(initialResult);
   const [mode, setMode] = useState<Mode>("editor");
   const [layer, setLayer] = useState<Layer>("door");
@@ -118,10 +123,10 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
       }));
-      toast({ title: "Masque mis à jour", variant: "success" });
+      toast({ title: dt("ed_mask_updated", lang), variant: "success" });
     } catch (e: any) {
       setError(e.message);
-      toast({ title: "Erreur", description: e.message, variant: "error" });
+      toast({ title: "Error", description: e.message, variant: "error" });
     } finally { setLoading(false); }
   };
 
@@ -200,9 +205,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = "floorscan_rapport.pdf"; a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "PDF téléchargé !", variant: "success" });
+      toast({ title: dt("ed_pdf_ok", lang), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur export", description: e.message, variant: "error" });
+      toast({ title: dt("ed_pdf_err", lang), description: e.message, variant: "error" });
     } finally { setExportingPdf(false); }
   };
 
@@ -214,9 +219,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">ÉTAPE 7 / 7</p>
+          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">{d("ed_step_label")}</p>
           <h2 className="font-display text-2xl font-700 text-white">
-            {mode === "editor" ? "Éditeur de masques" : "Métré manuel"}
+            {mode === "editor" ? d("re_editor") : d("sel_met_title")}
           </h2>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -226,20 +231,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
               onClick={() => setMode("editor")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "editor" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
             >
-              <Layers className="w-3.5 h-3.5" /> Éditeur IA
+              <Layers className="w-3.5 h-3.5" /> {d("ed_ia_editor")}
             </button>
             <button
               onClick={() => setMode("measure")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "measure" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
             >
-              <PenLine className="w-3.5 h-3.5" /> Métré
+              <PenLine className="w-3.5 h-3.5" /> {d("me_step_survey")}
             </button>
           </div>
 
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
-            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> Export...</> : <><Download className="w-4 h-4" /> Rapport PDF</>}
+            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
-          <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> Recommencer</Button>
+          <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
         </div>
       </div>
 
@@ -248,16 +253,16 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
           <div className="lg:col-span-3 flex flex-col gap-3">
             <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
-              <span className="text-xs text-slate-500 self-center font-mono mr-1">COUCHE:</span>
+              <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_layer_lbl")}:</span>
               {(["door", "window", "interior"] as Layer[]).map(l => (
                 <button key={l} onClick={() => setLayer(l)}
                   className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
                     layer === l ? "border-accent/40 bg-accent/10 text-accent" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                  {l === "door" ? "🚪 Portes" : l === "window" ? "🪟 Fenêtres" : "🏠 Surface hab."}
+                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : `🏠 ${d("ed_living_s")}`}
                 </button>
               ))}
               <div className="w-px bg-white/10 mx-1 self-stretch" />
-              <span className="text-xs text-slate-500 self-center font-mono mr-1">OUTIL:</span>
+              <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
               {([
                 { id: "add_rect", label: "+ Rectangle" },
                 { id: "erase_rect", label: "− Rectangle", erase: true },
@@ -275,7 +280,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
               ))}
               {(tool === "add_poly" || tool === "erase_poly") && (
                 <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
-                  ✓ Terminer polygone
+                  {d("ed_finish_poly")}
                 </button>
               )}
             </div>
@@ -291,9 +296,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: "crosshair" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
             </div>
-            <p className="text-xs text-slate-600">
-              Rectangle : glissez pour ajouter/effacer. Polygone : cliquez les points puis "Terminer". SAM : cliquez un point pour détecter la région.
-            </p>
+            <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
           </div>
 
           {/* Panel résultats */}
@@ -305,42 +308,42 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
               </div>
             )}
             <div className="glass rounded-xl border border-white/10 p-4">
-              <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">RÉSULTATS IA</p>
+              <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">{d("ed_ia_results")}</p>
               <div className="flex flex-col gap-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">🚪 Portes</span>
+                  <span className="text-slate-500">🚪 {d("ed_doors")}</span>
                   <span className="font-700 text-purple-400">{result.doors_count}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">🪟 Fenêtres</span>
+                  <span className="text-slate-500">🪟 {d("ed_windows")}</span>
                   <span className="font-700 text-cyan-400">{result.windows_count}</span>
                 </div>
                 <div className="border-t border-white/5 my-1" />
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Surface hab.</span>
+                  <span className="text-slate-500">{d("ed_living_s")}</span>
                   <span className="font-700 text-emerald-400">{sf.area_hab_m2 ? sf.area_hab_m2.toFixed(1) + " m²" : "—"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Emprise</span>
+                  <span className="text-slate-500">{d("ed_footprint")}</span>
                   <span className="font-700 text-blue-400">{sf.area_building_m2 ? sf.area_building_m2.toFixed(1) + " m²" : "—"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Murs</span>
+                  <span className="text-slate-500">{d("ed_walls_s")}</span>
                   <span className="font-700 text-slate-300">{sf.area_walls_m2 ? sf.area_walls_m2.toFixed(1) + " m²" : "—"}</span>
                 </div>
               </div>
             </div>
             <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
-              <p className="font-600 text-slate-500 mb-2">Ouvertures détectées</p>
+              <p className="font-600 text-slate-500 mb-2">{d("ed_openings_det")}</p>
               <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
                 {result.openings?.map((o, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className={cn("w-2 h-2 rounded-full shrink-0", o.class === "door" ? "bg-purple-400" : "bg-cyan-400")} />
-                    <span>{o.class === "door" ? "Porte" : "Fenêtre"} #{i + 1}</span>
+                    <span>{o.class === "door" ? d("door_lbl") : d("win_lbl")} #{i + 1}</span>
                     {o.length_m && <span className="ml-auto">{o.length_m.toFixed(2)}m</span>}
                   </div>
                 ))}
-                {(!result.openings || result.openings.length === 0) && <p>Aucune ouverture</p>}
+                {(!result.openings || result.openings.length === 0) && <p>{d("ed_no_elem")}</p>}
               </div>
             </div>
           </div>
@@ -354,13 +357,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
             {ppm && (
               <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
                 <span className="glass border border-white/5 rounded-lg px-2.5 py-1 font-mono text-accent">
-                  {ppm.toFixed(1)} px/m — échelle issue de l'analyse IA
+                  {ppm.toFixed(1)} px/m — {d("ed_scale_ia")}
                 </span>
               </div>
             )}
             {!ppm && (
               <div className="mb-3 text-xs text-orange-400/80 glass border border-orange-500/20 rounded-lg px-3 py-2">
-                ⚠️ Pas d'échelle disponible — les surfaces s'afficheront en px². Relancez l'analyse avec l'étape Échelle pour avoir des m².
+                ⚠️ {d("ed_no_scale_warn")}
               </div>
             )}
             <MeasureCanvas
