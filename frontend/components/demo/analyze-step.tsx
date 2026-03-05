@@ -12,10 +12,11 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 interface AnalyzeStepProps {
   sessionId: string;
   config: RoboflowConfig;
+  ppm?: number | null;
   onAnalyzed: (result: AnalysisResult) => void;
 }
 
-export default function AnalyzeStep({ sessionId, config, onAnalyzed }: AnalyzeStepProps) {
+export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: AnalyzeStepProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState("");
@@ -46,6 +47,7 @@ export default function AnalyzeStep({ sessionId, config, onAnalyzed }: AnalyzeSt
           session_id: sessionId,
           roboflow_api_key: config.apiKey,
           model_id: config.modelName,
+          pixels_per_meter: ppm ?? null,
           conf_min_door: 0.05,
           conf_min_win: 0.15,
           wall_thickness_m: 0.20,
@@ -107,6 +109,12 @@ export default function AnalyzeStep({ sessionId, config, onAnalyzed }: AnalyzeSt
           <div className="flex justify-between">
             <span>Passes</span>
             <span className="text-accent">2048px + 1024px (multi-scale)</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Échelle</span>
+            <span className={ppm ? "text-accent-green" : "text-slate-500"}>
+              {ppm ? `${ppm.toFixed(1)} px/m` : "auto-détection"}
+            </span>
           </div>
         </div>
 

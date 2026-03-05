@@ -8,6 +8,7 @@ import Stepper from "@/components/demo/stepper";
 import ConnectStep from "@/components/demo/connect-step";
 import UploadStep from "@/components/demo/upload-step";
 import CropStep from "@/components/demo/crop-step";
+import ScaleStep from "@/components/demo/scale-step";
 import AnalyzeStep from "@/components/demo/analyze-step";
 import ResultsStep from "@/components/demo/results-step";
 import EditorStep from "@/components/demo/editor-step";
@@ -17,6 +18,7 @@ const STEP_TITLES = [
   "Connexion",
   "Upload PDF",
   "Recadrer",
+  "Échelle",
   "Analyse IA",
   "Résultats",
   "Éditeur",
@@ -30,7 +32,9 @@ export default function DemoClient() {
   // Step 2
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [uploadedImageB64, setUploadedImageB64] = useState<string | null>(null);
-  // Step 4
+  // Step 4 - échelle
+  const [ppm, setPpm] = useState<number | null>(null);
+  // Step 5
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
 
   const handleConnected = (cfg: RoboflowConfig) => {
@@ -48,17 +52,23 @@ export default function DemoClient() {
     setStep(4);
   };
 
-  const handleAnalyzed = (result: AnalysisResult) => {
-    setAnalysisResult(result);
+  const handleScaled = (value: number | null) => {
+    setPpm(value);
     setStep(5);
   };
 
-  const handleGoEditor = () => setStep(6);
+  const handleAnalyzed = (result: AnalysisResult) => {
+    setAnalysisResult(result);
+    setStep(6);
+  };
+
+  const handleGoEditor = () => setStep(7);
 
   const handleRestart = () => {
     setStep(2);
     setSessionId(null);
     setUploadedImageB64(null);
+    setPpm(null);
     setAnalysisResult(null);
   };
 
@@ -67,6 +77,7 @@ export default function DemoClient() {
     setConfig(null);
     setSessionId(null);
     setUploadedImageB64(null);
+    setPpm(null);
     setAnalysisResult(null);
   };
 
@@ -123,10 +134,42 @@ export default function DemoClient() {
           >
             {step === 1 && <ConnectStep onConnected={handleConnected} />}
             {step === 2 && <UploadStep onUploaded={handleUploaded} />}
-            {step === 3 && sessionId && <CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} />}
-            {step === 4 && sessionId && config && <AnalyzeStep sessionId={sessionId} config={config} onAnalyzed={handleAnalyzed} />}
-            {step === 5 && analysisResult && <ResultsStep result={analysisResult} onGoEditor={handleGoEditor} onRestart={handleRestart} />}
-            {step === 6 && analysisResult && sessionId && <EditorStep sessionId={sessionId} initialResult={analysisResult} onRestart={handleRestart} />}
+            {step === 3 && sessionId && (
+              <CropStep
+                sessionId={sessionId}
+                imageB64={uploadedImageB64!}
+                onCropped={handleCropped}
+                onSkip={handleCropped}
+              />
+            )}
+            {step === 4 && (
+              <ScaleStep
+                imageB64={uploadedImageB64!}
+                onScaled={handleScaled}
+              />
+            )}
+            {step === 5 && sessionId && config && (
+              <AnalyzeStep
+                sessionId={sessionId}
+                config={config}
+                ppm={ppm}
+                onAnalyzed={handleAnalyzed}
+              />
+            )}
+            {step === 6 && analysisResult && (
+              <ResultsStep
+                result={analysisResult}
+                onGoEditor={handleGoEditor}
+                onRestart={handleRestart}
+              />
+            )}
+            {step === 7 && analysisResult && sessionId && (
+              <EditorStep
+                sessionId={sessionId}
+                initialResult={analysisResult}
+                onRestart={handleRestart}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
