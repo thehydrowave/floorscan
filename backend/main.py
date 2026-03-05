@@ -142,7 +142,7 @@ class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
     roboflow_api_key: str
-    model_id: str = "cubicasa-xmyt3-d4s04/3"
+    model_id: str = "cubicasa5k-2-qpmsa-1gd2e/1"
     pixels_per_meter: Optional[float] = None
     conf_min_door: float = 0.05
     conf_min_win: float = 0.15
