@@ -173,7 +173,7 @@ export default function DemoClient() {
 
                     <h2 className="font-display text-2xl font-700 text-white mb-3">Analyse IA</h2>
                     <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                      Importez un plan PDF, recadrez et laissez Roboflow détecter automatiquement les pièces, surfaces et dimensions. Exportez les résultats annotés.
+                      Importez un plan PDF, recadrez et laissez l'IA détecter automatiquement les pièces, surfaces et dimensions. Exportez les résultats annotés.
                     </p>
 
                     <div className="flex flex-wrap gap-2 mb-6">

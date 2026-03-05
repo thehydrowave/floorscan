@@ -48,7 +48,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center mx-auto mb-4 shadow-glow">
           <KeyRound className="w-7 h-7 text-white" />
         </div>
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Configuration Roboflow</h2>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">Configuration API</h2>
         <p className="text-slate-400 text-sm">Entrez votre clé API et le modèle à utiliser.</p>
       </div>
 
@@ -56,7 +56,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
         {/* API Key */}
         <div>
           <label className="block text-xs font-600 text-slate-400 uppercase tracking-wide mb-2">
-            <KeyRound className="inline w-3.5 h-3.5 mr-1 -mt-0.5" /> Clé API Roboflow
+            <KeyRound className="inline w-3.5 h-3.5 mr-1 -mt-0.5" /> Clé API
           </label>
           <div className="relative">
             <input
@@ -71,9 +71,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
               {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          <p className="text-xs text-slate-600 mt-1.5">
-            Trouvez-la sur <a href="https://app.roboflow.com/settings/api" target="_blank" rel="noopener noreferrer" className="text-accent/70 hover:text-accent">roboflow.com/settings/api</a>
-          </p>
+          <p className="text-xs text-slate-600 mt-1.5">Clé fournie par votre accès FloorScan.</p>
         </div>
 
         {/* Model ID */}

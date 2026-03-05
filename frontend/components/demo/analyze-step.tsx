@@ -90,7 +90,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
         </div>
         <h2 className="font-display text-2xl font-700 text-white mb-2">Analyse IA Multi-scale</h2>
         <p className="text-slate-400 text-sm">
-          Le backend lance 2 passes Roboflow (tuiles 2048px + 1024px) puis calcule les surfaces et périmètres.
+          Le backend lance 2 passes d'analyse IA (tuiles 2048px + 1024px) puis calcule les surfaces et périmètres.
           Durée estimée : 30s–3min selon la taille du plan.
         </p>
       </div>
