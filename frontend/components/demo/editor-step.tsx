@@ -2,15 +2,19 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import MeasureCanvas from "@/components/measure/measure-canvas";
+import SurfacePanel from "@/components/measure/surface-panel";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES } from "@/lib/measure-types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior";
-type Tool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam";
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam";
+type Mode = "editor" | "measure";
 
 interface EditorStepProps {
   sessionId: string;
@@ -20,13 +24,20 @@ interface EditorStepProps {
 
 export default function EditorStep({ sessionId, initialResult, onRestart }: EditorStepProps) {
   const [result, setResult] = useState(initialResult);
+  const [mode, setMode] = useState<Mode>("editor");
   const [layer, setLayer] = useState<Layer>("door");
-  const [tool, setTool] = useState<Tool>("add_rect");
+  const [tool, setTool] = useState<EditorTool>("add_rect");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  // Canvas
+  // Measure state
+  const [zones, setZones] = useState<MeasureZone[]>([]);
+  const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
+  const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
+  const [imageNatural, setImageNatural] = useState({ w: 0, h: 0 });
+
+  // Canvas (editor mode)
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -37,15 +48,18 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
     ? result.overlay_interior_b64
     : result.overlay_openings_b64;
 
-  // Initialiser le canvas quand l'image change
+  // Track natural image size for measure tool
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setImageNatural({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = `data:image/png;base64,${currentOverlay}`;
+  }, [currentOverlay]);
+
   useEffect(() => {
     const img = imgRef.current;
     const cv = canvasRef.current;
     if (!img || !cv) return;
-    const sync = () => {
-      cv.width = img.offsetWidth;
-      cv.height = img.offsetHeight;
-    };
+    const sync = () => { cv.width = img.offsetWidth; cv.height = img.offsetHeight; };
     if (img.complete) sync();
     else img.onload = sync;
   }, [currentOverlay]);
@@ -66,17 +80,6 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
     const color = isErase ? "#F87171" : (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE");
-
-    if (drawing.current && (tool === "add_rect" || tool === "erase_rect")) {
-      const img = imgRef.current!;
-      const x = startPt.current.x * img.offsetWidth / img.naturalWidth;
-      const y = startPt.current.y * img.offsetHeight / img.naturalHeight;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 2]);
-      ctx.strokeRect(x, y, cv.width - x, cv.height - y); // simplified, will be updated
-      ctx.setLineDash([]);
-    }
     if (pts.current.length > 0 && (tool === "add_poly" || tool === "erase_poly")) {
       const img = imgRef.current!;
       ctx.beginPath();
@@ -96,12 +99,10 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
   }, [tool, layer]);
 
   const sendEdit = async (params: any) => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const r = await fetch(`${BACKEND}/edit-mask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, layer, ...params }),
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur édition");
@@ -121,28 +122,21 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
     } catch (e: any) {
       setError(e.message);
       toast({ title: "Erreur", description: e.message, variant: "error" });
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const sendSam = async (x: number, y: number) => {
     setLoading(true);
     try {
       const r = await fetch(`${BACKEND}/sam-segment`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, x, y, mode: "interior", action: "add", apply_to: layer }),
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur SAM");
       const data = await r.json();
       setResult(prev => ({ ...prev, ...data }));
       toast({ title: "Région segmentée ✓", variant: "success" });
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -150,11 +144,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
     const rect = cv.getBoundingClientRect();
     const rx = scaleX(e.clientX - rect.left);
     const ry = scaleY(e.clientY - rect.top);
-
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
-    if (tool === "add_poly" || tool === "erase_poly") {
-      pts.current.push([rx, ry]); drawCanvas(); return;
-    }
+    if (tool === "add_poly" || tool === "erase_poly") { pts.current.push([rx, ry]); drawCanvas(); return; }
     drawing.current = true;
     startPt.current = { x: rx, y: ry };
   };
@@ -163,8 +154,6 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
     if (!drawing.current) return;
     const cv = canvasRef.current!;
     const rect = cv.getBoundingClientRect();
-    const rx = scaleX(e.clientX - rect.left);
-    const ry = scaleY(e.clientY - rect.top);
     const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
@@ -218,15 +207,35 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
   };
 
   const sf = result.surfaces ?? {};
+  const ppm = result.pixels_per_meter ?? null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">ÉTAPE 6 / 6</p>
-          <h2 className="font-display text-2xl font-700 text-white">Éditeur de masques</h2>
+          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">ÉTAPE 7 / 7</p>
+          <h2 className="font-display text-2xl font-700 text-white">
+            {mode === "editor" ? "Éditeur de masques" : "Métré manuel"}
+          </h2>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Mode toggle */}
+          <div className="flex glass border border-white/10 rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setMode("editor")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "editor" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
+            >
+              <Layers className="w-3.5 h-3.5" /> Éditeur IA
+            </button>
+            <button
+              onClick={() => setMode("measure")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "measure" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
+            >
+              <PenLine className="w-3.5 h-3.5" /> Métré
+            </button>
+          </div>
+
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> Export...</> : <><Download className="w-4 h-4" /> Rapport PDF</>}
           </Button>
@@ -234,112 +243,151 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-        {/* Canvas éditeur */}
-        <div className="lg:col-span-3 flex flex-col gap-3">
-          {/* Toolbar couches */}
-          <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
-            <span className="text-xs text-slate-500 self-center font-mono mr-1">COUCHE:</span>
-            {(["door", "window", "interior"] as Layer[]).map(l => (
-              <button key={l} onClick={() => setLayer(l)}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
-                  layer === l ? "border-accent/40 bg-accent/10 text-accent" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {l === "door" ? "🚪 Portes" : l === "window" ? "🪟 Fenêtres" : "🏠 Surface hab."}
-              </button>
-            ))}
-            <div className="w-px bg-white/10 mx-1 self-stretch" />
-            <span className="text-xs text-slate-500 self-center font-mono mr-1">OUTIL:</span>
-            {([
-              { id: "add_rect", label: "+ Rectangle" },
-              { id: "erase_rect", label: "− Rectangle", erase: true },
-              { id: "add_poly", label: "+ Polygone" },
-              { id: "erase_poly", label: "− Polygone", erase: true },
-              { id: "sam", label: "🪄 SAM auto", special: true },
-            ] as any[]).map(({ id, label, erase, special }) => (
-              <button key={id} onClick={() => { setTool(id as Tool); pts.current = []; }}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
-                  tool === id
-                    ? erase ? "border-red-500/40 bg-red-500/10 text-red-400" : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-accent/40 bg-accent/10 text-accent"
-                    : erase ? "border-red-500/20 text-red-500/60 hover:text-red-400" : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {label}
-              </button>
-            ))}
-            {(tool === "add_poly" || tool === "erase_poly") && (
-              <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
-                ✓ Terminer polygone
-              </button>
-            )}
-          </div>
-
-          {/* Canvas */}
-          <div className="relative glass rounded-xl border border-white/10 overflow-hidden bg-white">
-            {loading && (
-              <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-10">
-                <Loader2 className="w-8 h-8 text-accent animate-spin" />
-              </div>
-            )}
-            <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-              className="w-full h-auto block max-h-[550px] object-contain" />
-            <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: "crosshair" }}
-              onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
-          </div>
-
-          <p className="text-xs text-slate-600">
-            Rectangle : glissez pour ajouter/effacer. Polygone : cliquez les points puis "Terminer". SAM : cliquez un point pour détecter la région.
-          </p>
-        </div>
-
-        {/* Panel résultats */}
-        <div className="flex flex-col gap-4">
-          {error && (
-            <div className="glass rounded-xl border border-red-500/25 p-3 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-300">{error}</p>
-            </div>
-          )}
-
-          <div className="glass rounded-xl border border-white/10 p-4">
-            <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">RÉSULTATS</p>
-            <div className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">🚪 Portes</span>
-                <span className="font-700 text-purple-400">{result.doors_count}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">🪟 Fenêtres</span>
-                <span className="font-700 text-cyan-400">{result.windows_count}</span>
-              </div>
-              <div className="border-t border-white/5 my-1" />
-              <div className="flex justify-between">
-                <span className="text-slate-500">Surface hab.</span>
-                <span className="font-700 text-emerald-400">{sf.area_hab_m2 ? sf.area_hab_m2.toFixed(1) + " m²" : "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Emprise</span>
-                <span className="font-700 text-blue-400">{sf.area_building_m2 ? sf.area_building_m2.toFixed(1) + " m²" : "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Murs</span>
-                <span className="font-700 text-slate-300">{sf.area_walls_m2 ? sf.area_walls_m2.toFixed(1) + " m²" : "—"}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
-            <p className="font-600 text-slate-500 mb-2">Ouvertures détectées</p>
-            <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-              {result.openings?.map((o, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className={cn("w-2 h-2 rounded-full shrink-0", o.class === "door" ? "bg-purple-400" : "bg-cyan-400")} />
-                  <span>{o.class === "door" ? "Porte" : "Fenêtre"} #{i + 1}</span>
-                  {o.length_m && <span className="ml-auto">{o.length_m.toFixed(2)}m</span>}
-                </div>
+      {/* ── MODE ÉDITEUR ── */}
+      {mode === "editor" && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+          <div className="lg:col-span-3 flex flex-col gap-3">
+            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
+              <span className="text-xs text-slate-500 self-center font-mono mr-1">COUCHE:</span>
+              {(["door", "window", "interior"] as Layer[]).map(l => (
+                <button key={l} onClick={() => setLayer(l)}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
+                    layer === l ? "border-accent/40 bg-accent/10 text-accent" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                  {l === "door" ? "🚪 Portes" : l === "window" ? "🪟 Fenêtres" : "🏠 Surface hab."}
+                </button>
               ))}
-              {(!result.openings || result.openings.length === 0) && <p>Aucune ouverture</p>}
+              <div className="w-px bg-white/10 mx-1 self-stretch" />
+              <span className="text-xs text-slate-500 self-center font-mono mr-1">OUTIL:</span>
+              {([
+                { id: "add_rect", label: "+ Rectangle" },
+                { id: "erase_rect", label: "− Rectangle", erase: true },
+                { id: "add_poly", label: "+ Polygone" },
+                { id: "erase_poly", label: "− Polygone", erase: true },
+                { id: "sam", label: "🪄 SAM auto", special: true },
+              ] as any[]).map(({ id, label, erase, special }) => (
+                <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; }}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
+                    tool === id
+                      ? erase ? "border-red-500/40 bg-red-500/10 text-red-400" : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-accent/40 bg-accent/10 text-accent"
+                      : erase ? "border-red-500/20 text-red-500/60 hover:text-red-400" : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                  {label}
+                </button>
+              ))}
+              {(tool === "add_poly" || tool === "erase_poly") && (
+                <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
+                  ✓ Terminer polygone
+                </button>
+              )}
+            </div>
+
+            <div className="relative glass rounded-xl border border-white/10 overflow-hidden bg-white">
+              {loading && (
+                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-10">
+                  <Loader2 className="w-8 h-8 text-accent animate-spin" />
+                </div>
+              )}
+              <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
+                className="w-full h-auto block max-h-[550px] object-contain" />
+              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: "crosshair" }}
+                onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
+            </div>
+            <p className="text-xs text-slate-600">
+              Rectangle : glissez pour ajouter/effacer. Polygone : cliquez les points puis "Terminer". SAM : cliquez un point pour détecter la région.
+            </p>
+          </div>
+
+          {/* Panel résultats */}
+          <div className="flex flex-col gap-4">
+            {error && (
+              <div className="glass rounded-xl border border-red-500/25 p-3 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-red-300">{error}</p>
+              </div>
+            )}
+            <div className="glass rounded-xl border border-white/10 p-4">
+              <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">RÉSULTATS IA</p>
+              <div className="flex flex-col gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">🚪 Portes</span>
+                  <span className="font-700 text-purple-400">{result.doors_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">🪟 Fenêtres</span>
+                  <span className="font-700 text-cyan-400">{result.windows_count}</span>
+                </div>
+                <div className="border-t border-white/5 my-1" />
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Surface hab.</span>
+                  <span className="font-700 text-emerald-400">{sf.area_hab_m2 ? sf.area_hab_m2.toFixed(1) + " m²" : "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Emprise</span>
+                  <span className="font-700 text-blue-400">{sf.area_building_m2 ? sf.area_building_m2.toFixed(1) + " m²" : "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Murs</span>
+                  <span className="font-700 text-slate-300">{sf.area_walls_m2 ? sf.area_walls_m2.toFixed(1) + " m²" : "—"}</span>
+                </div>
+              </div>
+            </div>
+            <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
+              <p className="font-600 text-slate-500 mb-2">Ouvertures détectées</p>
+              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                {result.openings?.map((o, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className={cn("w-2 h-2 rounded-full shrink-0", o.class === "door" ? "bg-purple-400" : "bg-cyan-400")} />
+                    <span>{o.class === "door" ? "Porte" : "Fenêtre"} #{i + 1}</span>
+                    {o.length_m && <span className="ml-auto">{o.length_m.toFixed(2)}m</span>}
+                  </div>
+                ))}
+                {(!result.openings || result.openings.length === 0) && <p>Aucune ouverture</p>}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ── MODE MÉTRÉ ── */}
+      {mode === "measure" && (
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 min-w-0">
+            {ppm && (
+              <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+                <span className="glass border border-white/5 rounded-lg px-2.5 py-1 font-mono text-accent">
+                  {ppm.toFixed(1)} px/m — échelle issue de l'analyse IA
+                </span>
+              </div>
+            )}
+            {!ppm && (
+              <div className="mb-3 text-xs text-orange-400/80 glass border border-orange-500/20 rounded-lg px-3 py-2">
+                ⚠️ Pas d'échelle disponible — les surfaces s'afficheront en px². Relancez l'analyse avec l'étape Échelle pour avoir des m².
+              </div>
+            )}
+            <MeasureCanvas
+              imageB64={currentOverlay}
+              imageMime="image/png"
+              zones={zones}
+              activeTypeId={activeTypeId}
+              surfaceTypes={surfaceTypes}
+              ppm={ppm}
+              onZonesChange={setZones}
+            />
+          </div>
+
+          <div className="lg:w-64 shrink-0">
+            <SurfacePanel
+              types={surfaceTypes}
+              zones={zones}
+              activeTypeId={activeTypeId}
+              imageW={imageNatural.w}
+              imageH={imageNatural.h}
+              ppm={ppm}
+              onTypesChange={setSurfaceTypes}
+              onActiveTypeChange={setActiveTypeId}
+            />
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
