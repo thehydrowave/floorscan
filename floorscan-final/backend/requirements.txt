@@ -1,0 +1,25 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pydantic==2.7.0
+
+# Vision & traitement d'image
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+numpy>=2.0.0
+
+# PDF
+PyMuPDF==1.24.4
+reportlab==4.1.0
+
+# Roboflow
+inference-sdk==0.9.14
+
+# Compatibilité requests/urllib3
+requests>=2.32.0
+urllib3>=2.0.0,<3
+charset-normalizer>=2,<4
+
+# Data
+pandas==2.2.2
+
+

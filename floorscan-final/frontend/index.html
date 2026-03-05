@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FloorScan — Analyse de Plans IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:#080E1A; --bg2:#0B1220; --card:#0F172A; --card2:#111827;
+  --border:#1E2D44; --border2:#22304A;
+  --txt:#E8EEF7; --muted:#5A6A80; --muted2:#8896A9;
+  --blue:#60A5FA; --cyan:#22D3EE; --magenta:#D946EF;
+  --green:#34D399; --orange:#F97316; --red:#F87171;
+  --api: http://localhost:8000;
+}
+html.light {
+  --bg:#F4F6FA; --bg2:#ECEEF4; --card:#FFFFFF; --card2:#F8F9FC;
+  --border:#D4DBE8; --border2:#BCC5D6;
+  --txt:#0F172A; --muted:#8896A9; --muted2:#4A5568;
+  --blue:#2563EB; --cyan:#0891B2; --magenta:#A21CAF;
+  --green:#059669; --orange:#EA580C; --red:#DC2626;
+}
+html.light body{background:var(--bg);}
+html.light nav{background:rgba(244,246,250,.92);}
+html.light .grid-bg{display:none;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--txt);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+/* GRID BG */
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(34,211,238,.03)1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.03)1px,transparent 1px);
+  background-size:48px 48px;}
+.grid-bg::after{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(96,165,250,.06) 0%,transparent 70%);}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:14px 32px;background:rgba(8,14,26,.9);backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(34,211,238,.08);}
+.logo{font-size:1.1rem;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
+.logo-icon{width:28px;height:28px;border:1.5px solid var(--cyan);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;
+  font-size:.65rem;color:var(--cyan);}
+.logo span{color:var(--cyan);}
+.api-status{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--muted);}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);}
+.status-dot.ok{background:var(--green);box-shadow:0 0 8px rgba(52,211,153,.5);}
+.status-dot.err{background:var(--red);}
+
+/* LAYOUT */
+.app{position:relative;z-index:1;display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 57px);}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:24px 0;display:flex;flex-direction:column;gap:4px;}
+.step-btn{display:flex;align-items:center;gap:12px;padding:12px 20px;cursor:pointer;
+  border:none;background:transparent;color:var(--muted2);text-align:left;width:100%;
+  font-family:'Syne',sans-serif;font-size:.88rem;font-weight:600;transition:all .2s;
+  border-left:3px solid transparent;}
+.step-btn:hover{background:rgba(255,255,255,.03);color:var(--txt);}
+.step-btn.active{color:var(--cyan);background:rgba(34,211,238,.06);border-left-color:var(--cyan);}
+.step-btn.done{color:var(--green);}
+.step-num{width:26px;height:26px;border-radius:50%;border:1.5px solid currentColor;
+  display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;
+  font-size:.65rem;flex-shrink:0;}
+.step-btn.done .step-num{background:var(--green);border-color:var(--green);color:var(--bg);}
+
+.sidebar-bottom{margin-top:auto;padding:20px;}
+.cfg-toggle{background:transparent;border:1px solid var(--border2);color:var(--muted2);
+  padding:9px 14px;border-radius:7px;width:100%;cursor:pointer;font-family:'Syne',sans-serif;
+  font-size:.82rem;font-weight:600;transition:all .2s;}
+.cfg-toggle:hover{border-color:var(--cyan);color:var(--txt);}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;min-height:0;}
+.panel{display:none;flex:1;padding:28px 32px;overflow-y:auto;}
+.panel.active{display:flex;flex-direction:column;gap:20px;}
+
+/* PANEL HEADER */
+.panel-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+.panel-title-block .label{font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--cyan);letter-spacing:.1em;margin-bottom:4px;}
+.panel-title-block h2{font-size:1.5rem;font-weight:800;letter-spacing:-.03em;}
+.panel-actions{display:flex;gap:10px;flex-wrap:wrap;}
+
+/* BUTTONS */
+.btn{padding:10px 22px;border-radius:8px;font-family:'Syne',sans-serif;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;border:none;}
+.btn-primary{background:linear-gradient(135deg,var(--cyan),var(--blue));color:var(--bg);}
+.btn-primary:hover{opacity:.88;transform:translateY(-1px);}
+.btn-secondary{background:transparent;border:1px solid var(--border2);color:var(--muted2);}
+.btn-secondary:hover{border-color:var(--cyan);color:var(--txt);}
+.btn-danger{background:transparent;border:1px solid rgba(248,113,113,.3);color:var(--red);}
+.btn-danger:hover{background:rgba(248,113,113,.08);}
+.btn-green{background:linear-gradient(135deg,var(--green),var(--cyan));color:var(--bg);}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none !important;}
+
+/* UPLOAD ZONE */
+.upload-zone{border:2px dashed var(--border2);border-radius:14px;padding:60px 40px;
+  text-align:center;cursor:pointer;transition:all .3s;display:flex;flex-direction:column;align-items:center;gap:16px;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--cyan);background:rgba(34,211,238,.04);}
+.upload-icon{width:72px;height:72px;border-radius:50%;border:2px dashed var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:1.8rem;transition:all .3s;}
+.upload-zone:hover .upload-icon,.upload-zone.drag .upload-icon{border-color:var(--cyan);background:rgba(34,211,238,.08);}
+.upload-zone p{color:var(--muted2);font-size:.92rem;line-height:1.6;}
+.upload-zone strong{color:var(--txt);}
+
+/* CANVAS WRAPPER */
+.canvas-wrap{position:relative;display:block;width:100%;border-radius:10px;overflow:hidden;
+  border:1px solid var(--border);background:var(--bg2);}
+.canvas-wrap img{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;}
+.canvas-wrap canvas{position:absolute;left:0;top:0;cursor:crosshair;}
+
+/* CALIBRATION POINTS */
+.calib-pt{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--magenta);
+  border:2px solid white;transform:translate(-50%,-50%);pointer-events:none;}
+.calib-line{position:absolute;background:var(--magenta);height:2px;transform-origin:left center;pointer-events:none;}
+
+/* RESULTS GRID */
+.results-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+@media(max-width:900px){.results-grid{grid-template-columns:repeat(2,1fr);}}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+.kpi-label{font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--muted);margin-bottom:6px;}
+.kpi-value{font-size:1.6rem;font-weight:800;letter-spacing:-.03em;}
+.kpi-card.kd .kpi-value{color:var(--magenta);}
+.kpi-card.kw .kpi-value{color:var(--cyan);}
+.kpi-card.ks .kpi-value{color:var(--green);}
+.kpi-card.km .kpi-value{color:var(--blue);}
+
+/* EDITOR LAYOUT */
+.editor-layout{display:grid;grid-template-columns:1fr 300px;gap:20px;}
+@media(max-width:900px){.editor-layout{grid-template-columns:1fr;}}
+
+/* DETECTION LIST */
+.detect-list{display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;}
+.detect-item{background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .2s;}
+.detect-item:hover{border-color:var(--border2);}
+.detect-item.selected{border-color:var(--cyan);background:rgba(34,211,238,.04);}
+.detect-swatch{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+.detect-meta{flex:1;}
+.detect-name{font-size:.82rem;font-weight:600;}
+.detect-conf{font-family:'IBM Plex Mono',monospace;font-size:.66rem;color:var(--muted);margin-top:2px;}
+.detect-del{font-size:.68rem;color:var(--muted);padding:3px 8px;border-radius:4px;border:1px solid var(--border);}
+.detect-del:hover{color:var(--red);border-color:var(--red);}
+
+/* OVERLAYS TABS */
+.img-tabs{display:flex;gap:2px;background:var(--bg2);padding:4px;border-radius:10px;width:fit-content;}
+.img-tab{padding:7px 16px;border-radius:7px;font-size:.78rem;font-weight:600;color:var(--muted2);
+  cursor:pointer;transition:all .2s;background:transparent;border:none;font-family:'Syne',sans-serif;}
+.img-tab.active{background:var(--card);color:var(--txt);}
+
+.overlay-img{border-radius:10px;width:100%;height:auto;max-height:72vh;object-fit:contain;display:block;border:1px solid var(--border);}
+
+/* EDIT TOOLBAR */
+.edit-toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px;background:var(--bg2);
+  border-radius:10px;border:1px solid var(--border);}
+.tool-btn{padding:7px 14px;border-radius:7px;font-size:.78rem;font-weight:600;cursor:pointer;
+  background:transparent;border:1px solid var(--border2);color:var(--muted2);
+  font-family:'Syne',sans-serif;transition:all .2s;}
+.tool-btn:hover{border-color:var(--cyan);color:var(--txt);}
+.tool-btn.active{background:rgba(34,211,238,.1);border-color:var(--cyan);color:var(--cyan);}
+.tool-btn.erase{border-color:rgba(248,113,113,.3);color:var(--red);}
+.tool-btn.erase.active{background:rgba(248,113,113,.1);}
+
+/* FORM */
+.form-group{display:flex;flex-direction:column;gap:6px;}
+.form-label{font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:.06em;}
+.form-input{background:var(--bg2);border:1px solid var(--border2);color:var(--txt);
+  padding:10px 14px;border-radius:8px;font-family:'Syne',sans-serif;font-size:.9rem;width:100%;}
+.form-input:focus{outline:none;border-color:var(--cyan);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+/* CONFIG MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.hidden{display:none;}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:16px;
+  padding:28px;max-width:480px;width:100%;display:flex;flex-direction:column;gap:16px;}
+.modal h3{font-size:1.1rem;font-weight:700;}
+
+/* LOADER */
+.loader-overlay{position:fixed;inset:0;background:rgba(8,14,26,.85);z-index:150;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;}
+.loader-overlay.hidden{display:none;}
+.spinner{width:56px;height:56px;border:3px solid rgba(34,211,238,.15);
+  border-top-color:var(--cyan);border-radius:50%;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loader-msg{font-family:'IBM Plex Mono',monospace;font-size:.88rem;color:var(--cyan);}
+.loader-sub{font-size:.78rem;color:var(--muted);}
+
+/* TOAST */
+.toast-container{position:fixed;top:72px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px;}
+.toast{padding:12px 18px;border-radius:10px;font-size:.85rem;font-weight:600;
+  animation:slideIn .3s ease;border:1px solid;}
+.toast.ok{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.3);color:var(--green);}
+.toast.err{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3);color:var(--red);}
+.toast.info{background:rgba(34,211,238,.1);border-color:rgba(34,211,238,.25);color:var(--cyan);}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+
+/* SURFACES CARD */
+.surfaces-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.surf-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.04);}
+.surf-row:last-child{border-bottom:none;}
+.surf-key{font-size:.85rem;color:var(--muted2);}
+.surf-val{font-weight:700;font-family:'IBM Plex Mono',monospace;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+/* RESPONSIVE */
+/* THEME TOGGLE */
+.theme-toggle{width:34px;height:34px;border-radius:8px;border:1px solid var(--border2);
+  background:transparent;color:var(--muted2);cursor:pointer;font-size:1rem;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.theme-toggle:hover{border-color:var(--cyan);color:var(--txt);}
+
+@media(max-width:768px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px;}
+  .step-btn{flex-direction:column;gap:4px;padding:8px 12px;font-size:.7rem;border-left:none;border-bottom:3px solid transparent;}
+  .step-btn.active{border-bottom-color:var(--cyan);}
+  nav{padding:12px 16px;}
+  .panel{padding:16px;}
+}
+</style>
+</head>
+<body>
+
+<!-- GRID -->
+<div class="grid-bg"></div>
+
+<!-- TOASTS -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- LOADER -->
+<div class="loader-overlay hidden" id="loader">
+  <div class="spinner"></div>
+  <div class="loader-msg" id="loaderMsg">Analyse en cours...</div>
+  <div class="loader-sub" id="loaderSub">Inférence Roboflow multi-scale (2048 + 1024)</div>
+</div>
+
+<!-- CONFIG MODAL -->
+<div class="modal-overlay hidden" id="cfgModal">
+  <div class="modal">
+    <h3>⚙️ Configuration API</h3>
+    <div class="form-group">
+      <label class="form-label">URL BACKEND (FastAPI)</label>
+      <input class="form-input" id="cfgApiUrl" value="http://localhost:8000" placeholder="http://localhost:8000"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">CLÉ API ROBOFLOW</label>
+      <input class="form-input" id="cfgRoboflowKey" placeholder="Votre clé Roboflow" type="password"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">MODEL ID</label>
+      <input class="form-input" id="cfgModelId" value="cubicasa-xmyt3-d4s04/3"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">CONF MIN PORTES</label>
+        <input class="form-input" id="cfgConfDoor" type="number" value="0.05" step="0.01" min="0" max="1"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CONF MIN FENÊTRES</label>
+        <input class="form-input" id="cfgConfWin" type="number" value="0.15" step="0.01" min="0" max="1"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ÉPAISSEUR MURS (m)</label>
+      <input class="form-input" id="cfgWallThick" type="number" value="0.20" step="0.01"/>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" onclick="saveCfg()">Enregistrer</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('cfgModal').classList.add('hidden')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">
+    <div class="logo-icon">FS</div>
+    Floor<span>Scan</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="api-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusTxt">Vérification API...</span>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="Changer le thème">🌙</button>
+  </div>
+</nav>
+
+<!-- APP -->
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <button class="step-btn active" id="sBtn0" onclick="goStep(0)">
+      <div class="step-num">1</div><div>Upload PDF</div>
+    </button>
+    <button class="step-btn" id="sBtn1" onclick="goStep(1)">
+      <div class="step-num">2</div><div>Recadrer</div>
+    </button>
+    <button class="step-btn" id="sBtn2" onclick="goStep(2)">
+      <div class="step-num">3</div><div>Échelle</div>
+    </button>
+    <button class="step-btn" id="sBtn3" onclick="goStep(3)">
+      <div class="step-num">4</div><div>Calibration</div>
+    </button>
+    <button class="step-btn" id="sBtn4" onclick="goStep(4)">
+      <div class="step-num">5</div><div>Analyser</div>
+    </button>
+    <button class="step-btn" id="sBtn5" onclick="goStep(5)">
+      <div class="step-num">6</div><div>Résultats</div>
+    </button>
+    <button class="step-btn" id="sBtn6" onclick="goStep(6)">
+      <div class="step-num">7</div><div>Éditeur</div>
+    </button>
+    <div class="sidebar-bottom">
+      <button class="cfg-toggle" onclick="document.getElementById('cfgModal').classList.remove('hidden')">
+        ⚙️ Configuration API
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- STEP 0 : UPLOAD -->
+    <div class="panel active" id="panel0">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 1 / 7</div>
+          <h2>Importer un plan PDF</h2>
+        </div>
+      </div>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+           ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <div class="upload-icon" id="uploadIcon">📄</div>
+        <p><strong>Glissez votre plan PDF ici</strong><br/>ou cliquez pour parcourir</p>
+        <p style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--muted)">PDF · Page 1 rendue à ×3 de résolution</p>
+        <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Choisir un fichier</button>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf" style="display:none" onchange="handleFile(this.files[0])"/>
+    </div>
+
+    <!-- STEP 1 : CROP -->
+    <div class="panel" id="panel1">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 2 / 7</div>
+          <h2>Recadrer le plan</h2>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-secondary" onclick="resetCrop()">↺ Reset</button>
+          <button class="btn btn-primary" id="btnApplyCrop" onclick="applyCrop()" disabled>✅ Appliquer le crop</button>
+        </div>
+      </div>
+      <p style="color:var(--muted2);font-size:.88rem;">Tracez un rectangle sur la zone d'intérêt (glissé-déposé). Laissez vide pour garder l'image entière.</p>
+      <div>
+        <div class="canvas-wrap" id="cropWrap">
+          <img id="cropImg" src="" alt="Plan"/>
+          <canvas id="cropCanvas"></canvas>
+        </div>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:var(--muted2);" id="cropInfo">Aucun crop sélectionné</div>
+    </div>
+
+    <!-- STEP 2 : ÉCHELLE MANUELLE -->
+    <div class="panel" id="panel2">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 3 / 7</div>
+          <h2>Échelle du plan</h2>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-secondary" onclick="skipScale()">Passer</button>
+          <button class="btn btn-primary" id="btnApplyScale" onclick="applyScale()">✅ Valider l'échelle</button>
+        </div>
+      </div>
+      <p style="color:var(--muted2);font-size:.88rem;max-width:640px;">Entrez l'échelle imprimée sur le plan (ex : 1:100 signifie 1 cm papier = 1 m réel). Vous pouvez passer et utiliser la calibration par points à l'étape suivante.</p>
+
+      <div style="display:flex;gap:8px;margin-bottom:4px;">
+        <button class="tool-btn active" id="scaleModeRatioBtn" onclick="setScaleMode('ratio')">Ratio 1:N</button>
+        <button class="tool-btn" id="scaleModePpmBtn" onclick="setScaleMode('ppm')">px/m direct</button>
+      </div>
+
+      <div id="scaleRatioPanel" style="display:flex;flex-direction:column;gap:12px;max-width:480px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:1.1rem;font-weight:700;color:var(--txt);">1 :</span>
+          <input class="form-input" id="scaleRatioN" type="number" value="100" min="1" step="1" style="max-width:140px;" oninput="updateScalePreview()"/>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--muted);">COMMUNS :</span>
+          <button class="tool-btn" onclick="setScalePreset(20)">1:20</button>
+          <button class="tool-btn" onclick="setScalePreset(50)">1:50</button>
+          <button class="tool-btn" onclick="setScalePreset(100)">1:100</button>
+          <button class="tool-btn" onclick="setScalePreset(200)">1:200</button>
+          <button class="tool-btn" onclick="setScalePreset(500)">1:500</button>
+        </div>
+      </div>
+
+      <div id="scalePpmPanel" style="display:none;max-width:300px;">
+        <div class="form-group">
+          <label class="form-label">PIXELS PAR MÈTRE</label>
+          <input class="form-input" id="scalePpmInput" type="number" value="85" step="0.1" min="0.01"/>
+        </div>
+      </div>
+
+      <div id="scalePreview" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;max-width:480px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--cyan);letter-spacing:.1em;margin-bottom:8px;">APERÇU CALCUL</div>
+        <div id="scalePreviewText" style="font-family:'IBM Plex Mono',monospace;font-size:.82rem;color:var(--txt);line-height:1.8;">—</div>
+      </div>
+
+      <div class="canvas-wrap" id="scaleImgWrap">
+        <img id="scaleImg" src="" alt="Plan" style="pointer-events:none;"/>
+      </div>
+    </div>
+
+    <!-- STEP 3 : CALIBRATION -->
+    <div class="panel" id="panel3">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 4 / 7</div>
+          <h2>Calibration d'échelle</h2>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-secondary" onclick="resetCalib()">↺ Reset points</button>
+          <button class="btn btn-secondary" onclick="skipCalib()">Passer (auto)</button>
+          <button class="btn btn-primary" id="btnApplyCalib" onclick="applyCalib()" disabled>✅ Valider</button>
+        </div>
+      </div>
+      <p style="color:var(--muted2);font-size:.88rem;">Cliquez 2 points dont vous connaissez la distance réelle. Si vous passez, le ratio sera calculé automatiquement depuis les portes détectées.</p>
+      <div class="form-group" style="max-width:200px;">
+        <label class="form-label">DISTANCE RÉELLE (mètres)</label>
+        <input class="form-input" id="calibDistance" type="number" value="1.0" step="0.1" min="0.01"/>
+      </div>
+      <div>
+        <div class="canvas-wrap" id="calibWrap">
+          <img id="calibImg" src="" alt="Plan recadré"/>
+          <canvas id="calibCanvas"></canvas>
+        </div>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:var(--muted2);" id="calibInfo">Cliquez 2 points sur le plan</div>
+    </div>
+
+    <!-- STEP 4 : ANALYSE -->
+    <div class="panel" id="panel4">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 5 / 7</div>
+          <h2>Lancer l'analyse IA</h2>
+        </div>
+      </div>
+      <p style="color:var(--muted2);font-size:.88rem;max-width:600px;">L'analyse lance deux passes Roboflow (2048px + 1024px) puis calcule les surfaces et périmètres. Durée estimée : 30s–3min selon la taille du plan.</p>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px;max-width:520px;">
+        <div class="form-group">
+          <label class="form-label">CLÉ API ROBOFLOW</label>
+          <input class="form-input" id="analyzeKey" type="password" placeholder="Entrez votre clé Roboflow"/>
+        </div>
+        <div id="calibResult" style="font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:var(--muted2);display:none;"></div>
+        <button class="btn btn-primary" id="btnAnalyze" onclick="runAnalysis()" style="width:fit-content;">
+          🚀 Lancer l'analyse
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 5 : RÉSULTATS -->
+    <div class="panel" id="panel5">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 6 / 7</div>
+          <h2>Résultats</h2>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-green" onclick="exportPdf()">⬇ Exporter PDF</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="results-grid" id="kpiGrid">
+        <div class="kpi-card kd"><div class="kpi-label">🚪 Portes</div><div class="kpi-value" id="kpiDoors">—</div></div>
+        <div class="kpi-card kw"><div class="kpi-label">🪟 Fenêtres</div><div class="kpi-value" id="kpiWindows">—</div></div>
+        <div class="kpi-card ks"><div class="kpi-label">🏠 Surface habitable</div><div class="kpi-value" id="kpiHab">—</div></div>
+        <div class="kpi-card km"><div class="kpi-label">⬜ Surface murs</div><div class="kpi-value" id="kpiWalls">—</div></div>
+      </div>
+
+      <!-- Surfaces détaillées -->
+      <div class="surfaces-card">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--cyan);letter-spacing:.1em;margin-bottom:12px;">SURFACES & PÉRIMÈTRES</div>
+        <div class="surf-row"><span class="surf-key">Surface emprise</span><span class="surf-val" id="sfBuildM2" style="color:var(--blue)">—</span></div>
+        <div class="surf-row"><span class="surf-key">Pourtour bâtiment</span><span class="surf-val" id="sfBuildPerim" style="color:var(--blue)">—</span></div>
+        <div class="surf-row"><span class="surf-key">Surface murs</span><span class="surf-val" id="sfWalls" style="color:var(--magenta)">—</span></div>
+        <div class="surf-row"><span class="surf-key">Surface habitable</span><span class="surf-val" id="sfHab" style="color:var(--green)">—</span></div>
+        <div class="surf-row"><span class="surf-key">Pourtour habitable</span><span class="surf-val" id="sfHabPerim" style="color:var(--green)">—</span></div>
+        <div class="surf-row"><span class="surf-key">pixels / mètre</span><span class="surf-val" id="sfPpm" style="color:var(--muted2)">—</span></div>
+      </div>
+
+      <!-- Overlays -->
+      <div>
+        <div class="img-tabs" id="overlayTabs">
+          <button class="img-tab active" onclick="switchOverlay('openings')">Portes + Fenêtres</button>
+          <button class="img-tab" onclick="switchOverlay('interior')">Surface hab.</button>
+          <button class="img-tab" onclick="switchOverlay('mask_doors')">Masque Portes</button>
+          <button class="img-tab" onclick="switchOverlay('mask_windows')">Masque Fenêtres</button>
+          <button class="img-tab" onclick="switchOverlay('mask_walls')">Masque Murs</button>
+        </div>
+        <div style="margin-top:12px;">
+          <img id="overlayImg" class="overlay-img" src="" alt="Overlay" style="display:none;max-height:600px;"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 6 : ÉDITEUR -->
+    <div class="panel" id="panel6">
+      <div class="panel-header">
+        <div class="panel-title-block">
+          <div class="label">ÉTAPE 7 / 7</div>
+          <h2>Éditeur de détections</h2>
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-green" onclick="exportPdf()">⬇ Exporter PDF</button>
+        </div>
+      </div>
+
+      <div class="editor-layout">
+        <!-- Canvas éditeur -->
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <!-- Toolbar -->
+          <div class="edit-toolbar" id="editToolbar">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--muted);margin-right:4px;align-self:center;">COUCHE:</div>
+            <button class="tool-btn active" id="layerDoor" onclick="setLayer('door')">🚪 Portes</button>
+            <button class="tool-btn" id="layerWin" onclick="setLayer('window')">🪟 Fenêtres</button>
+            <button class="tool-btn" id="layerInterior" onclick="setLayer('interior')" style="border-color:rgba(52,211,153,.4);color:var(--green);">🏠 Surface hab.</button>
+            <div style="width:1px;background:var(--border);height:24px;align-self:center;margin:0 4px;"></div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--muted);align-self:center;">OUTIL:</div>
+            <button class="tool-btn active" id="toolAddRect" onclick="setTool('add_rect')">+ Rectangle</button>
+            <button class="tool-btn erase" id="toolEraseRect" onclick="setTool('erase_rect')">− Rectangle</button>
+            <button class="tool-btn" id="toolAddPoly" onclick="setTool('add_poly')">+ Polygone</button>
+            <button class="tool-btn erase" id="toolErasePoly" onclick="setTool('erase_poly')">− Polygone</button>
+            <button class="btn btn-secondary" id="btnFinishPoly" style="display:none;padding:6px 12px;font-size:.75rem;" onclick="finishPoly()">✓ Terminer</button>
+            <button class="tool-btn" id="toolSam" onclick="setTool('sam')" style="border-color:rgba(249,115,22,.4);color:var(--orange);">🪄 SAM auto</button>
+          </div>
+          <div>
+            <div class="canvas-wrap" id="editWrap" style="cursor:crosshair;">
+              <img id="editImg" src="" alt="Plan pour édition"/>
+              <canvas id="editCanvas"></canvas>
+            </div>
+          </div>
+          <p style="font-size:.78rem;color:var(--muted2);">Tracez des rectangles pour ajouter/supprimer des zones. <strong style="color:var(--orange);">Mode SAM</strong> : cliquez un point pour détecter automatiquement la région. Pour un polygone : cliquez les points puis "Terminer".</p>
+        </div>
+
+        <!-- Panel détections + résultats recalculés -->
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--cyan);letter-spacing:.1em;margin-bottom:10px;">DÉTECTIONS</div>
+            <div class="detect-list" id="editDetectList"></div>
+          </div>
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--cyan);letter-spacing:.1em;margin-bottom:10px;">SURFACES RECALCULÉES</div>
+            <div class="kpi-card ks" style="margin-bottom:8px;">
+              <div class="kpi-label">🏠 Surface habitable</div>
+              <div class="kpi-value" id="editHab">—</div>
+            </div>
+            <div class="kpi-card km" style="margin-bottom:8px;">
+              <div class="kpi-label">⬜ Surface emprise</div>
+              <div class="kpi-value" id="editEmprise" style="font-size:1rem;">—</div>
+            </div>
+            <div class="kpi-card kd">
+              <div class="kpi-label">🚪 Portes / 🪟 Fenêtres</div>
+              <div class="kpi-value" id="editCounts" style="font-size:1rem;">—</div>
+            </div>
+            <!-- SAM options (visible only in SAM mode) -->
+            <div id="samOptions" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(249,115,22,.3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--orange);letter-spacing:.08em;">🪄 OPTIONS SAM</div>
+              <div class="form-group">
+                <label class="form-label">ACTION</label>
+                <select class="form-input" id="samAction" style="padding:6px 10px;">
+                  <option value="add">Ajouter la zone</option>
+                  <option value="erase">Effacer la zone</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">MODE DÉTECTION</label>
+                <select class="form-input" id="samMode" style="padding:6px 10px;">
+                  <option value="interior">Zone intérieure</option>
+                  <option value="flood">Flood Fill</option>
+                </select>
+              </div>
+              <p style="font-size:.72rem;color:var(--muted2);">Cliquez sur un point du plan pour détecter automatiquement la région.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let API_URL = 'http://localhost:8000';
+let ROBOFLOW_KEY = '';
+let MODEL_ID = 'cubicasa-xmyt3-d4s04/3';
+let CFG_CONF_DOOR = 0.05, CFG_CONF_WIN = 0.15, CFG_WALL_THICK = 0.20;
+
+let sessionId = null;
+let currentStep = 0;
+let fullImgB64 = null;     // image avant crop
+let croppedImgB64 = null;  // après crop
+let ppm = null;            // pixels_per_meter
+let analysisResult = null;
+
+// Crop state
+let cropState = { drawing:false, x0:0, y0:0, x1:0, y1:0, hasBox:false };
+// Calib state
+let calibPts = [];
+// Editor state
+let editLayer = 'door', editTool = 'add_rect';
+let editDrawing = false, editPts = [];
+let editX0=0, editY0=0, editX1=0, editY1=0;
+
+// ============================================================
+// UTILS
+// ============================================================
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function showLoader(msg='Traitement...', sub='') {
+  document.getElementById('loaderMsg').textContent = msg;
+  document.getElementById('loaderSub').textContent = sub;
+  document.getElementById('loader').classList.remove('hidden');
+}
+
+function hideLoader() {
+  document.getElementById('loader').classList.add('hidden');
+}
+
+function goStep(n) {
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i === n));
+  document.querySelectorAll('.step-btn').forEach((b,i) => {
+    b.classList.remove('active');
+    if (i === n) b.classList.add('active');
+  });
+  currentStep = n;
+  if (n === 2) setupScaleStep();
+  if (n === 3 && croppedImgB64) setupCalibCanvas();
+  if (n === 6 && analysisResult) setupEditor();
+}
+
+function markDone(n) {
+  const btn = document.getElementById(`sBtn${n}`);
+  if (btn) { btn.classList.remove('active'); btn.classList.add('done'); }
+}
+
+function fmt(v, nd=2, suffix='') {
+  if (v === null || v === undefined) return '—';
+  return parseFloat(v).toFixed(nd) + suffix;
+}
+
+// ============================================================
+// API HEALTH CHECK
+// ============================================================
+async function checkApi() {
+  try {
+    const r = await fetch(`${API_URL}/`);
+    if (r.ok) {
+      document.getElementById('statusDot').className = 'status-dot ok';
+      document.getElementById('statusTxt').textContent = 'API connectée';
+    } else throw new Error();
+  } catch {
+    document.getElementById('statusDot').className = 'status-dot err';
+    document.getElementById('statusTxt').textContent = 'API hors ligne';
+  }
+}
+
+// ============================================================
+// CONFIG
+// ============================================================
+function saveCfg() {
+  API_URL = document.getElementById('cfgApiUrl').value.trim().replace(/\/$/, '');
+  ROBOFLOW_KEY = document.getElementById('cfgRoboflowKey').value.trim();
+  MODEL_ID = document.getElementById('cfgModelId').value.trim();
+  CFG_CONF_DOOR  = parseFloat(document.getElementById('cfgConfDoor').value);
+  CFG_CONF_WIN   = parseFloat(document.getElementById('cfgConfWin').value);
+  CFG_WALL_THICK = parseFloat(document.getElementById('cfgWallThick').value);
+  // Sync analyze key
+  if (ROBOFLOW_KEY) document.getElementById('analyzeKey').value = ROBOFLOW_KEY;
+  document.getElementById('cfgModal').classList.add('hidden');
+  toast('Configuration enregistrée', 'ok');
+  checkApi();
+}
+
+// ============================================================
+// STEP 0 — UPLOAD PDF
+// ============================================================
+function onDragOver(e) { e.preventDefault(); document.getElementById('uploadZone').classList.add('drag'); }
+function onDragLeave()  { document.getElementById('uploadZone').classList.remove('drag'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+}
+
+async function handleFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+    toast('Fichier PDF requis', 'err'); return;
+  }
+  showLoader('Lecture du PDF...', 'Encodage en base64');
+
+  // Lire le fichier en base64 pour éviter le blocage FormData en iframe
+  let pdfBase64;
+  try {
+    pdfBase64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = () => reject(new Error('Lecture fichier échouée'));
+      reader.readAsDataURL(file);
+    });
+  } catch(e) { toast('Erreur lecture : ' + e.message, 'err'); hideLoader(); return; }
+
+  document.getElementById('loaderSub').textContent = 'Rendu haute résolution (×3) en cours...';
+  try {
+    const r = await fetch(`${API_URL}/upload-pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pdf_base64: pdfBase64, filename: file.name, zoom: 3.0 })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    sessionId = data.session_id;
+    fullImgB64 = data.image_b64;
+
+    // Update upload zone
+    document.getElementById('uploadZone').innerHTML = `
+      <div class="upload-icon" style="border-color:var(--green);background:rgba(52,211,153,.08)">✅</div>
+      <p><strong>${file.name}</strong></p>
+      <p style="font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--green)">
+        ${data.width} × ${data.height} px · PDF rendu avec succès
+      </p>`;
+
+    // Setup crop canvas
+    setupCropCanvas(data.image_b64, data.width, data.height);
+    markDone(0);
+    toast(`PDF chargé : ${data.width}×${data.height} px`, 'ok');
+    goStep(1);
+  } catch(e) {
+    toast('Erreur : ' + e.message, 'err');
+  } finally { hideLoader(); }
+}
+
+// ============================================================
+// STEP 1 — CROP
+// ============================================================
+function setupCropCanvas(b64, W, H) {
+  const img = document.getElementById('cropImg');
+  img.src = `data:image/png;base64,${b64}`;
+  img.onload = () => {
+    const cv = document.getElementById('cropCanvas');
+    const rect = img.getBoundingClientRect();
+    cv.width = img.offsetWidth; cv.height = img.offsetHeight;
+    cv.style.width = img.offsetWidth + 'px';
+    cv.style.height = img.offsetHeight + 'px';
+    initCropListeners(cv, img, W, H);
+  };
+}
+
+function initCropListeners(cv, img, imgW, imgH) {
+  const ctx = cv.getContext('2d');
+
+  function scaleX(px) { return px * imgW / img.offsetWidth; }
+  function scaleY(py) { return py * imgH / img.offsetHeight; }
+  function unscaleX(ox) { return ox * img.offsetWidth / imgW; }
+  function unscaleY(oy) { return oy * img.offsetHeight / imgH; }
+
+  function draw() {
+    ctx.clearRect(0,0,cv.width,cv.height);
+    if (!cropState.hasBox && !cropState.drawing) return;
+    const x0 = unscaleX(Math.min(cropState.x0, cropState.x1));
+    const y0 = unscaleY(Math.min(cropState.y0, cropState.y1));
+    const w  = unscaleX(Math.abs(cropState.x1 - cropState.x0));
+    const h  = unscaleY(Math.abs(cropState.y1 - cropState.y0));
+    // Dark overlay outside selection
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fillRect(0, 0, cv.width, y0);
+    ctx.fillRect(0, y0 + h, cv.width, cv.height - y0 - h);
+    ctx.fillRect(0, y0, x0, h);
+    ctx.fillRect(x0 + w, y0, cv.width - x0 - w, h);
+    // Rule-of-thirds grid inside selection
+    ctx.strokeStyle = 'rgba(34,211,238,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+    [1/3, 2/3].forEach(f => {
+      ctx.beginPath(); ctx.moveTo(x0 + w*f, y0); ctx.lineTo(x0 + w*f, y0+h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, y0 + h*f); ctx.lineTo(x0+w, y0 + h*f); ctx.stroke();
+    });
+    // Selection border
+    ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.strokeRect(x0, y0, w, h);
+    // L-shaped corner handles
+    const hs = 18;
+    ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 3;
+    [[x0,y0,1,1],[x0+w,y0,-1,1],[x0,y0+h,1,-1],[x0+w,y0+h,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx + dx*hs, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + dy*hs);
+      ctx.stroke();
+    });
+  }
+
+  cv.addEventListener('mousedown', e => {
+    const r = cv.getBoundingClientRect();
+    const px = e.clientX-r.left, py = e.clientY-r.top;
+    cropState.drawing=true;
+    cropState.x0 = scaleX(px); cropState.y0 = scaleY(py);
+    cropState.x1 = cropState.x0; cropState.y1 = cropState.y0;
+    cropState.hasBox = false;
+  });
+  cv.addEventListener('mousemove', e => {
+    if (!cropState.drawing) return;
+    const r = cv.getBoundingClientRect();
+    cropState.x1 = scaleX(e.clientX-r.left);
+    cropState.y1 = scaleY(e.clientY-r.top);
+    draw();
+  });
+  cv.addEventListener('mouseup', e => {
+    if (!cropState.drawing) return;
+    cropState.drawing = false;
+    const r = cv.getBoundingClientRect();
+    cropState.x1 = scaleX(e.clientX-r.left);
+    cropState.y1 = scaleY(e.clientY-r.top);
+    const w = Math.abs(cropState.x1-cropState.x0);
+    const h = Math.abs(cropState.y1-cropState.y0);
+    if (w > 5 && h > 5) {
+      cropState.hasBox = true;
+      document.getElementById('cropInfo').textContent =
+        `Crop : x0=${Math.round(Math.min(cropState.x0,cropState.x1))}, y0=${Math.round(Math.min(cropState.y0,cropState.y1))}, x1=${Math.round(Math.max(cropState.x0,cropState.x1))}, y1=${Math.round(Math.max(cropState.y0,cropState.y1))}`;
+      document.getElementById('btnApplyCrop').disabled = false;
+    }
+    draw();
+  });
+
+  // Touch support
+  function toMouse(touch, type) {
+    return new MouseEvent(type, {clientX:touch.clientX, clientY:touch.clientY});
+  }
+  cv.addEventListener('touchstart', e => { e.preventDefault(); cv.dispatchEvent(toMouse(e.touches[0],'mousedown')); });
+  cv.addEventListener('touchmove', e => { e.preventDefault(); cv.dispatchEvent(toMouse(e.touches[0],'mousemove')); });
+  cv.addEventListener('touchend', e => { e.preventDefault(); cv.dispatchEvent(toMouse(e.changedTouches[0],'mouseup')); });
+}
+
+function resetCrop() {
+  cropState = { drawing:false, x0:0, y0:0, x1:0, y1:0, hasBox:false };
+  const cv = document.getElementById('cropCanvas');
+  cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+  document.getElementById('cropInfo').textContent = 'Aucun crop sélectionné';
+  document.getElementById('btnApplyCrop').disabled = false; // allow proceeding without crop
+}
+
+async function applyCrop() {
+  if (!sessionId) return;
+
+  if (!cropState.hasBox) {
+    // Pas de crop sélectionné → continuer avec image entière
+    croppedImgB64 = fullImgB64;
+    const img = document.getElementById('cropImg');
+    document.getElementById('calibImg').src = img.src;
+    markDone(1); toast('Pas de crop — image complète utilisée', 'info'); goStep(2); return;
+  }
+
+  showLoader('Recadrage...', '');
+  const xa = Math.round(Math.min(cropState.x0, cropState.x1));
+  const ya = Math.round(Math.min(cropState.y0, cropState.y1));
+  const xb = Math.round(Math.max(cropState.x0, cropState.x1));
+  const yb = Math.round(Math.max(cropState.y0, cropState.y1));
+
+  try {
+    const r = await fetch(`${API_URL}/crop`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id:sessionId, x0:xa, y0:ya, x1:xb, y1:yb })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    croppedImgB64 = data.image_b64;
+    document.getElementById('calibImg').src = `data:image/png;base64,${croppedImgB64}`;
+    markDone(1);
+    toast(`Crop appliqué : ${data.width}×${data.height} px`, 'ok');
+    goStep(2);
+  } catch(e) { toast('Erreur crop : ' + e.message, 'err'); }
+  finally { hideLoader(); }
+}
+
+// ============================================================
+// STEP 2 — ÉCHELLE MANUELLE
+// ============================================================
+const PDF_DPI = 72 * 3; // zoom=3.0 utilisé lors de l'upload
+let scaleModeState = 'ratio';
+
+function setupScaleStep() {
+  const img = document.getElementById('scaleImg');
+  if (croppedImgB64) {
+    img.src = `data:image/png;base64,${croppedImgB64}`;
+  } else if (fullImgB64) {
+    img.src = `data:image/png;base64,${fullImgB64}`;
+  }
+  updateScalePreview();
+}
+
+function setScaleMode(mode) {
+  scaleModeState = mode;
+  document.getElementById('scaleModeRatioBtn').classList.toggle('active', mode === 'ratio');
+  document.getElementById('scaleModePpmBtn').classList.toggle('active', mode === 'ppm');
+  document.getElementById('scaleRatioPanel').style.display = mode === 'ratio' ? 'flex' : 'none';
+  document.getElementById('scalePpmPanel').style.display = mode === 'ppm' ? 'block' : 'none';
+}
+
+function setScalePreset(n) {
+  document.getElementById('scaleRatioN').value = n;
+  updateScalePreview();
+}
+
+function updateScalePreview() {
+  const N = parseInt(document.getElementById('scaleRatioN').value) || 100;
+  const computed_ppm = PDF_DPI / (0.0254 * N);
+  const preview = document.getElementById('scalePreviewText');
+  preview.innerHTML =
+    `Échelle 1:${N} &nbsp;→&nbsp; <span style="color:var(--cyan)">${computed_ppm.toFixed(2)} px/m</span><br/>` +
+    `1 m² &nbsp;→&nbsp; <span style="color:var(--green)">${(computed_ppm * computed_ppm).toFixed(0)} px²</span>`;
+}
+
+function applyScale() {
+  if (scaleModeState === 'ratio') {
+    const N = parseInt(document.getElementById('scaleRatioN').value) || 100;
+    ppm = PDF_DPI / (0.0254 * N);
+    toast(`Échelle 1:${N} → ${ppm.toFixed(2)} px/m`, 'ok');
+  } else {
+    ppm = parseFloat(document.getElementById('scalePpmInput').value) || null;
+    if (ppm) toast(`Échelle manuelle : ${ppm.toFixed(2)} px/m`, 'ok');
+  }
+  if (ppm) {
+    const cr = document.getElementById('calibResult');
+    if (cr) { cr.style.display = 'block'; cr.textContent = `pixels_per_meter = ${ppm.toFixed(4)} (échelle manuelle)`; }
+  }
+  markDone(2);
+  goStep(3);
+}
+
+function skipScale() {
+  toast('Échelle manuelle ignorée', 'info');
+  goStep(3);
+}
+
+// ============================================================
+// STEP 3 — CALIBRATION
+// ============================================================
+function setupCalibCanvas() {
+  const img = document.getElementById('calibImg');
+  if (!img.src || img.src === window.location.href) return;
+  img.onload = () => {
+    const cv = document.getElementById('calibCanvas');
+    cv.width = img.offsetWidth; cv.height = img.offsetHeight;
+    cv.style.width = img.offsetWidth + 'px'; cv.style.height = img.offsetHeight + 'px';
+    initCalibListeners(cv, img);
+  };
+  if (img.complete) img.onload();
+}
+
+function initCalibListeners(cv, img) {
+  const ctx = cv.getContext('2d');
+
+  function draw() {
+    ctx.clearRect(0,0,cv.width,cv.height);
+    calibPts.forEach(([x,y]) => {
+      ctx.beginPath(); ctx.arc(x,y,7,0,2*Math.PI);
+      ctx.fillStyle='#D946EF'; ctx.fill();
+      ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.stroke();
+    });
+    if (calibPts.length === 2) {
+      ctx.beginPath();
+      ctx.moveTo(calibPts[0][0], calibPts[0][1]);
+      ctx.lineTo(calibPts[1][0], calibPts[1][1]);
+      ctx.strokeStyle='#D946EF'; ctx.lineWidth=2;
+      ctx.setLineDash([5,3]); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+
+  cv.addEventListener('click', e => {
+    if (calibPts.length >= 2) calibPts = [];
+    const r = cv.getBoundingClientRect();
+    const x = e.clientX-r.left, y = e.clientY-r.top;
+    const imgW = img.naturalWidth, imgH = img.naturalHeight;
+    const sx = imgW / img.offsetWidth, sy = imgH / img.offsetHeight;
+    calibPts.push([x, y]);
+    // Store real coords for API call
+    calibPts[calibPts.length-1].realX = x * sx;
+    calibPts[calibPts.length-1].realY = y * sy;
+    draw();
+    if (calibPts.length === 2) {
+      document.getElementById('calibInfo').textContent =
+        `P1=(${Math.round(calibPts[0].realX)}, ${Math.round(calibPts[0].realY)}) → P2=(${Math.round(calibPts[1].realX)}, ${Math.round(calibPts[1].realY)})`;
+      document.getElementById('btnApplyCalib').disabled = false;
+    } else {
+      document.getElementById('calibInfo').textContent = 'Point 1 placé — cliquez le point 2';
+      document.getElementById('btnApplyCalib').disabled = true;
+    }
+  });
+}
+
+function resetCalib() {
+  calibPts = [];
+  const cv = document.getElementById('calibCanvas');
+  cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+  document.getElementById('calibInfo').textContent = 'Cliquez 2 points sur le plan';
+  document.getElementById('btnApplyCalib').disabled = true;
+}
+
+async function applyCalib() {
+  if (calibPts.length < 2) return;
+  const dist = parseFloat(document.getElementById('calibDistance').value);
+  showLoader('Calibration...', '');
+  try {
+    const r = await fetch(`${API_URL}/calibrate`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        x1: calibPts[0].realX, y1: calibPts[0].realY,
+        x2: calibPts[1].realX, y2: calibPts[1].realY,
+        real_m: dist
+      })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    ppm = data.pixels_per_meter;
+    markDone(3);
+    toast(`Calibration OK : ${ppm.toFixed(2)} px/m`, 'ok');
+    goStep(4);
+    document.getElementById('calibResult').style.display = 'block';
+    document.getElementById('calibResult').textContent = `pixels_per_meter = ${ppm.toFixed(4)}`;
+  } catch(e) { toast('Erreur calibration : ' + e.message, 'err'); }
+  finally { hideLoader(); }
+}
+
+function skipCalib() {
+  ppm = null;
+  markDone(3);
+  toast('Calibration ignorée — auto depuis portes', 'info');
+  goStep(4);
+}
+
+// ============================================================
+// STEP 3 — ANALYSE
+// ============================================================
+async function runAnalysis() {
+  const key = document.getElementById('analyzeKey').value.trim() || ROBOFLOW_KEY;
+  if (!key) { toast('Clé Roboflow requise (⚙️ Configuration ou champ ci-dessus)', 'err'); return; }
+  if (!sessionId) { toast('Uploadez d\'abord un PDF', 'err'); return; }
+
+  showLoader('Analyse IA en cours...', 'Inférence Roboflow multi-scale 2048px + 1024px — patientez');
+  document.getElementById('btnAnalyze').disabled = true;
+
+  try {
+    const body = {
+      session_id: sessionId,
+      roboflow_api_key: key,
+      model_id: MODEL_ID,
+      conf_min_door: CFG_CONF_DOOR,
+      conf_min_win: CFG_CONF_WIN,
+      wall_thickness_m: CFG_WALL_THICK,
+    };
+    if (ppm !== null) body.pixels_per_meter = ppm;
+
+    const r = await fetch(`${API_URL}/analyze`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.detail || JSON.stringify(err));
+    }
+    analysisResult = await r.json();
+    ppm = analysisResult.pixels_per_meter;
+
+    updateResultsPanel(analysisResult);
+    populateEditDetectList(analysisResult.openings);
+    loadEditImage();
+
+    markDone(4);
+    toast('Analyse terminée !', 'ok');
+    goStep(5);
+  } catch(e) {
+    toast('Erreur analyse : ' + e.message, 'err');
+  } finally {
+    hideLoader();
+    document.getElementById('btnAnalyze').disabled = false;
+  }
+}
+
+// ============================================================
+// STEP 4 — RÉSULTATS
+// ============================================================
+function updateResultsPanel(data) {
+  document.getElementById('kpiDoors').textContent   = data.doors_count;
+  document.getElementById('kpiWindows').textContent = data.windows_count;
+
+  const sf = data.surfaces || {};
+  document.getElementById('kpiHab').textContent     = sf.area_hab_m2   ? fmt(sf.area_hab_m2,1) + ' m²' : '—';
+  document.getElementById('kpiWalls').textContent   = sf.area_walls_m2 ? fmt(sf.area_walls_m2,1) + ' m²' : '—';
+
+  document.getElementById('sfBuildM2').textContent    = sf.area_building_m2 ? fmt(sf.area_building_m2) + ' m²' : '—';
+  document.getElementById('sfBuildPerim').textContent = sf.perim_building_m  ? fmt(sf.perim_building_m)  + ' m'  : '—';
+  document.getElementById('sfWalls').textContent      = sf.area_walls_m2    ? fmt(sf.area_walls_m2)    + ' m²' : '—';
+  document.getElementById('sfHab').textContent        = sf.area_hab_m2      ? fmt(sf.area_hab_m2)      + ' m²' : '—';
+  document.getElementById('sfHabPerim').textContent   = sf.perim_interior_m  ? fmt(sf.perim_interior_m)  + ' m'  : '—';
+  document.getElementById('sfPpm').textContent        = data.pixels_per_meter ? fmt(data.pixels_per_meter) : '—';
+
+  // Afficher l'overlay openings par défaut
+  switchOverlay('openings');
+}
+
+function switchOverlay(type) {
+  const imgEl = document.getElementById('overlayImg');
+  const tabs   = document.querySelectorAll('#overlayTabs .img-tab');
+  const typeMap = {
+    'openings': 'overlay_openings_b64',
+    'interior': 'overlay_interior_b64',
+    'mask_doors': 'mask_doors_b64',
+    'mask_windows': 'mask_windows_b64',
+    'mask_walls': 'mask_walls_b64',
+  };
+
+  tabs.forEach((t,i) => {
+    const types = ['openings','interior','mask_doors','mask_windows','mask_walls'];
+    t.classList.toggle('active', types[i] === type);
+  });
+
+  if (!analysisResult) return;
+  const key = typeMap[type];
+  const b64 = analysisResult[key];
+  if (b64) {
+    imgEl.src = `data:image/png;base64,${b64}`;
+    imgEl.style.display = 'block';
+  } else {
+    imgEl.style.display = 'none';
+  }
+}
+
+// ============================================================
+// EXPORT PDF
+// ============================================================
+async function exportPdf() {
+  if (!sessionId || !analysisResult) {
+    toast('Lancez d\'abord une analyse', 'err'); return;
+  }
+  showLoader('Génération du rapport PDF...', '');
+  try {
+    const r = await fetch(`${API_URL}/export-pdf`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ session_id: sessionId })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'floorscan_report.pdf';
+    a.click(); URL.revokeObjectURL(url);
+    toast('Rapport PDF téléchargé !', 'ok');
+  } catch(e) { toast('Erreur export : ' + e.message, 'err'); }
+  finally { hideLoader(); }
+}
+
+// ============================================================
+// STEP 5 — ÉDITEUR
+// ============================================================
+function setupEditor() {
+  loadEditImage();
+  populateEditDetectList(analysisResult.openings);
+}
+
+function loadEditImage() {
+  if (!analysisResult) return;
+  const img = document.getElementById('editImg');
+  const b64 = analysisResult.overlay_openings_b64;
+  img.src = `data:image/png;base64,${b64}`;
+  img.onload = () => {
+    const cv = document.getElementById('editCanvas');
+    cv.width  = img.offsetWidth; cv.height = img.offsetHeight;
+    cv.style.width = img.offsetWidth + 'px'; cv.style.height = img.offsetHeight + 'px';
+    initEditorListeners(cv, img);
+  };
+}
+
+function initEditorListeners(cv, img) {
+  const ctx = cv.getContext('2d');
+  let polyPts = [];
+
+  function scaleX(px) { return px * img.naturalWidth / img.offsetWidth; }
+  function scaleY(py) { return py * img.naturalHeight / img.offsetHeight; }
+  function unscaleX(ox) { return ox * img.offsetWidth / img.naturalWidth; }
+  function unscaleY(oy) { return oy * img.offsetHeight / img.naturalHeight; }
+
+  function layerColor() {
+    if (editLayer === 'interior') return '#34D399';
+    return editLayer === 'door' ? '#D946EF' : '#22D3EE';
+  }
+
+  function draw() {
+    ctx.clearRect(0,0,cv.width,cv.height);
+    if (editDrawing && ['add_rect','erase_rect'].includes(editTool)) {
+      const x = Math.min(editX0,editX1)*img.offsetWidth/img.naturalWidth;
+      const y = Math.min(editY0,editY1)*img.offsetHeight/img.naturalHeight;
+      const w = Math.abs(editX1-editX0)*img.offsetWidth/img.naturalWidth;
+      const h = Math.abs(editY1-editY0)*img.offsetHeight/img.naturalHeight;
+      ctx.strokeStyle = editTool.startsWith('add') ? layerColor() : '#F87171';
+      ctx.lineWidth=2; ctx.setLineDash([4,2]);
+      ctx.fillStyle = ctx.strokeStyle + '26';
+      ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h);
+      ctx.setLineDash([]);
+    }
+    if (['add_poly','erase_poly'].includes(editTool) && polyPts.length > 0) {
+      ctx.beginPath();
+      ctx.moveTo(unscaleX(polyPts[0][0]), unscaleY(polyPts[0][1]));
+      polyPts.forEach(([px,py]) => ctx.lineTo(unscaleX(px), unscaleY(py)));
+      ctx.strokeStyle = editTool.startsWith('add') ? layerColor() : '#F87171';
+      ctx.lineWidth=2; ctx.stroke();
+      polyPts.forEach(([px,py]) => {
+        ctx.beginPath(); ctx.arc(unscaleX(px),unscaleY(py),5,0,2*Math.PI);
+        ctx.fillStyle='white'; ctx.fill();
+      });
+    }
+  }
+
+  cv.onmousedown = e => {
+    const r = cv.getBoundingClientRect();
+    const rx = scaleX(e.clientX-r.left), ry = scaleY(e.clientY-r.top);
+    if (editTool === 'sam') {
+      sendSam(Math.round(rx), Math.round(ry));
+      return;
+    }
+    if (['add_poly','erase_poly'].includes(editTool)) {
+      polyPts.push([rx,ry]);
+      editPts = polyPts;
+      draw();
+    } else {
+      editDrawing=true; editX0=rx; editY0=ry; editX1=rx; editY1=ry;
+    }
+  };
+  cv.onmousemove = e => {
+    if (!editDrawing) return;
+    const r = cv.getBoundingClientRect();
+    editX1=scaleX(e.clientX-r.left); editY1=scaleY(e.clientY-r.top);
+    draw();
+  };
+  cv.onmouseup = async e => {
+    if (!editDrawing) return;
+    editDrawing=false;
+    const r = cv.getBoundingClientRect();
+    editX1=scaleX(e.clientX-r.left); editY1=scaleY(e.clientY-r.top);
+    draw();
+    if (Math.abs(editX1-editX0) > 5 || Math.abs(editY1-editY0) > 5) {
+      await sendEdit({ action:editTool, x0:editX0,y0:editY0,x1:editX1,y1:editY1 });
+    }
+    editDrawing=false;
+  };
+
+  // Store finishPoly in window scope
+  window.finishPoly = async () => {
+    if (polyPts.length < 3) { toast('Minimum 3 points pour un polygone','err'); return; }
+    await sendEdit({ action:editTool, points:polyPts });
+    polyPts=[]; editPts=[];
+    draw();
+  };
+
+  cv.style.cursor = 'crosshair';
+}
+
+async function sendSam(x, y) {
+  if (!sessionId) return;
+  const action = document.getElementById('samAction')?.value || 'add';
+  const mode   = document.getElementById('samMode')?.value || 'interior';
+  showLoader('Segmentation auto...', 'Détection de région par clic');
+  try {
+    const body = { session_id: sessionId, x, y, mode, action, apply_to: editLayer };
+    const r = await fetch(`${API_URL}/sam-segment`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    updateEditorFromResult(data);
+    toast('Région segmentée ✓', 'ok');
+  } catch(e) { toast('Erreur SAM : ' + e.message, 'err'); }
+  finally { hideLoader(); }
+}
+
+async function sendEdit(params) {
+  if (!sessionId) return;
+  showLoader('Mise à jour...', '');
+  try {
+    const body = { session_id:sessionId, layer:editLayer, ...params };
+    const r = await fetch(`${API_URL}/edit-mask`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const data = await r.json();
+    updateEditorFromResult(data);
+    toast('Masque mis à jour', 'ok');
+  } catch(e) { toast('Erreur édition : ' + e.message, 'err'); }
+  finally { hideLoader(); }
+}
+
+function updateEditorFromResult(data) {
+  // Mettre à jour l'image affichée selon la couche active
+  if (editLayer === 'interior' && data.overlay_interior_b64) {
+    document.getElementById('editImg').src = `data:image/png;base64,${data.overlay_interior_b64}`;
+    if (analysisResult) analysisResult.overlay_interior_b64 = data.overlay_interior_b64;
+  } else if (data.overlay_openings_b64) {
+    document.getElementById('editImg').src = `data:image/png;base64,${data.overlay_openings_b64}`;
+    if (analysisResult) analysisResult.overlay_openings_b64 = data.overlay_openings_b64;
+  }
+  // Sauvegarder pour export PDF
+  if (analysisResult) {
+    if (data.overlay_interior_b64) analysisResult.overlay_interior_b64 = data.overlay_interior_b64;
+    if (data.overlay_openings_b64) analysisResult.overlay_openings_b64 = data.overlay_openings_b64;
+  }
+
+  // Mettre à jour les surfaces
+  const sf = data.surfaces || {};
+  document.getElementById('editHab').textContent = sf.area_hab_m2 ? fmt(sf.area_hab_m2,1)+' m²' : '—';
+  document.getElementById('editEmprise').textContent = sf.area_building_m2 ? fmt(sf.area_building_m2,1)+' m²' : '—';
+  document.getElementById('editCounts').textContent = `${data.doors_count ?? '—'} / ${data.windows_count ?? '—'}`;
+
+  // Refresh liste détections
+  populateEditDetectList(data.openings || []);
+}
+
+function populateEditDetectList(openings) {
+  const list = document.getElementById('editDetectList');
+  if (!list) return;
+  list.innerHTML = '';
+  openings.forEach((o, i) => {
+    const isDoor = o.class === 'door';
+    const color = isDoor ? '#D946EF' : '#22D3EE';
+    const icon = isDoor ? '🚪' : '🪟';
+    const conf = o.confidence !== undefined ? `conf: ${parseFloat(o.confidence).toFixed(2)}` : `area: ${Math.round(o.area_px2)} px²`;
+    const item = document.createElement('div');
+    item.className = 'detect-item';
+    item.innerHTML = `
+      <div class="detect-swatch" style="background:${color}"></div>
+      <div class="detect-meta">
+        <div class="detect-name">${icon} ${isDoor?'Porte':'Fenêtre'} #${i+1}</div>
+        <div class="detect-conf">${conf}</div>
+      </div>`;
+    list.appendChild(item);
+  });
+}
+
+function setLayer(layer) {
+  editLayer = layer;
+  document.getElementById('layerDoor').classList.toggle('active', layer==='door');
+  document.getElementById('layerWin').classList.toggle('active', layer==='window');
+  document.getElementById('layerInterior').classList.toggle('active', layer==='interior');
+  // Switch image shown in editor
+  const img = document.getElementById('editImg');
+  if (layer === 'interior' && analysisResult?.overlay_interior_b64) {
+    img.src = `data:image/png;base64,${analysisResult.overlay_interior_b64}`;
+  } else if (analysisResult?.overlay_openings_b64) {
+    img.src = `data:image/png;base64,${analysisResult.overlay_openings_b64}`;
+  }
+}
+
+function setTool(tool) {
+  editTool = tool;
+  ['addRect','eraseRect','addPoly','erasePoly','sam'].forEach(t => {
+    const idMap = { addRect:'toolAddRect', eraseRect:'toolEraseRect', addPoly:'toolAddPoly', erasePoly:'toolErasePoly', sam:'toolSam' };
+    const el = document.getElementById(idMap[t]);
+    if (el) el.classList.remove('active');
+  });
+  const map = { add_rect:'toolAddRect', erase_rect:'toolEraseRect', add_poly:'toolAddPoly', erase_poly:'toolErasePoly', sam:'toolSam' };
+  const btn = document.getElementById(map[tool]);
+  if (btn) btn.classList.add('active');
+  document.getElementById('btnFinishPoly').style.display = tool.includes('poly') ? 'block' : 'none';
+  // Show SAM options panel
+  const samOpts = document.getElementById('samOptions');
+  if (samOpts) samOpts.style.display = tool === 'sam' ? 'flex' : 'none';
+  editPts = [];
+}
+
+// ============================================================
+// THEME TOGGLE
+// ============================================================
+const themeToggle = document.getElementById('themeToggle');
+const isLight = localStorage.getItem('theme') === 'light';
+if (isLight) { document.documentElement.classList.add('light'); themeToggle.textContent = '☀️'; }
+themeToggle.addEventListener('click', () => {
+  const light = document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', light ? 'light' : 'dark');
+  themeToggle.textContent = light ? '☀️' : '🌙';
+});
+
+// ============================================================
+// INIT
+// ============================================================
+checkApi();
+setInterval(checkApi, 30000);
+</script>
+</body>
+</html>
