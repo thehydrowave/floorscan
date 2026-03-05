@@ -89,7 +89,7 @@ export const T = {
   case4_statl:     { fr:"rapports portefeuille", en:"portfolio reports", es:"informes de cartera", de:"Portfolio-Berichte", it:"report portafoglio" },
 
   // ── Footer ────────────────────────────────────────────────────────────────
-  footer_built:    { fr:"Développé avec Next.js · Propulsé par Roboflow IA", en:"Built with Next.js · Powered by Roboflow AI", es:"Desarrollado con Next.js · Impulsado por Roboflow IA", de:"Entwickelt mit Next.js · Betrieben von Roboflow KI", it:"Sviluppato con Next.js · Alimentato da Roboflow IA" },
+  footer_built:    { fr:"Développé avec Next.js · IA propriétaire FloorScan", en:"Built with Next.js · Powered by FloorScan AI", es:"Desarrollado con Next.js · Impulsado por FloorScan IA", de:"Entwickelt mit Next.js · Betrieben von FloorScan KI", it:"Sviluppato con Next.js · Alimentato da FloorScan IA" },
 } as const;
 
 export type TKey = keyof typeof T;
@@ -229,6 +229,56 @@ export const DEMO_T = {
   // Door label generic
   door_lbl:       { fr:"Porte",    en:"Door",    es:"Puerta",  de:"Tür",    it:"Porta"   },
   win_lbl:        { fr:"Fenêtre",  en:"Window",  es:"Ventana", de:"Fenster",it:"Finestra"},
+
+  // ── Demo — selection screen ───────────────────────────────────────────────
+  sel_title:      { fr:"Choisissez votre outil",         en:"Choose your tool",             es:"Elige tu herramienta",          de:"Wählen Sie Ihr Tool",           it:"Scegli il tuo strumento"         },
+  sel_sub:        { fr:"Analysez automatiquement un plan avec l'IA, ou mesurez manuellement vos surfaces au métré.", en:"Automatically analyze a plan with AI, or manually measure your surfaces.", es:"Analiza automáticamente un plano con IA, o mide manualmente tus superficies.", de:"Analysieren Sie automatisch einen Plan mit KI oder messen Sie manuell.", it:"Analizzate automaticamente un piano con l'IA o misurate manualmente." },
+  sel_ia_title:   { fr:"Analyse IA",                     en:"AI Analysis",                  es:"Análisis IA",                   de:"KI-Analyse",                    it:"Analisi IA"                      },
+  sel_ia_desc:    { fr:"Importez un plan PDF, recadrez et laissez l'IA détecter automatiquement les pièces, surfaces et dimensions. Exportez les résultats annotés.", en:"Import a PDF plan, crop it and let AI automatically detect rooms, surfaces and dimensions. Export annotated results.", es:"Importe un plano PDF, recórtelo y deje que la IA detecte habitaciones, superficies y dimensiones.", de:"Importieren Sie einen PDF-Plan, schneiden Sie zu und lassen Sie die KI Räume, Flächen erkennen.", it:"Importate un piano PDF, ritagliatelo e lasciate che l'IA rilevi stanze e superfici." },
+  sel_met_title:  { fr:"Métré manuel",                   en:"Manual Survey",                es:"Medición manual",               de:"Manuelles Aufmaß",              it:"Rilievo manuale"                 },
+  sel_met_desc:   { fr:"Importez n'importe quel plan (PDF, JPG, PNG), définissez l'échelle en 2 clics, puis dessinez vos zones par type de surface. Exportez le récapitulatif CSV.", en:"Import any plan (PDF, JPG, PNG), set the scale in 2 clicks, then draw zones by surface type. Export a CSV summary.", es:"Importe cualquier plano (PDF, JPG, PNG), defina la escala en 2 clics y dibuje zonas por tipo.", de:"Importieren Sie jeden Plan (PDF, JPG, PNG), Maßstab in 2 Klicks und Zonen zeichnen.", it:"Importate qualsiasi piano, scala in 2 clic e disegnate zone per tipo di superficie." },
+  sel_start:      { fr:"Démarrer",                       en:"Start",                        es:"Empezar",                       de:"Starten",                       it:"Inizia"                          },
+  sel_change:     { fr:"Changer",                        en:"Change",                       es:"Cambiar",                       de:"Wechseln",                      it:"Cambia"                          },
+
+  // ── Demo — step titles ────────────────────────────────────────────────────
+  st_connect:     { fr:"Connexion",                      en:"Connect",                      es:"Conexión",                      de:"Verbindung",                    it:"Connessione"                     },
+  st_upload:      { fr:"Upload PDF",                     en:"Upload PDF",                   es:"Subir PDF",                     de:"PDF hochladen",                 it:"Carica PDF"                      },
+  st_crop:        { fr:"Recadrer",                       en:"Crop",                         es:"Recortar",                      de:"Zuschneiden",                   it:"Ritaglia"                        },
+  st_scale:       { fr:"Échelle",                        en:"Scale",                        es:"Escala",                        de:"Maßstab",                       it:"Scala"                           },
+  st_analyze:     { fr:"Analyse IA",                     en:"AI Analysis",                  es:"Análisis IA",                   de:"KI-Analyse",                    it:"Analisi IA"                      },
+  st_results:     { fr:"Résultats",                      en:"Results",                      es:"Resultados",                    de:"Ergebnisse",                    it:"Risultati"                       },
+  st_editor:      { fr:"Éditeur",                        en:"Editor",                       es:"Editor",                       de:"Editor",                        it:"Editor"                          },
+
+  // ── Connect step ─────────────────────────────────────────────────────────
+  co_title:       { fr:"Configuration API",              en:"API Configuration",            es:"Configuración API",             de:"API-Konfiguration",             it:"Configurazione API"              },
+  co_sub:         { fr:"Entrez votre clé API et le modèle à utiliser.", en:"Enter your API key and the model to use.", es:"Ingrese su clave API y el modelo.", de:"API-Schlüssel und Modell eingeben.", it:"Inserite la chiave API e il modello." },
+  co_key:         { fr:"Clé API",                        en:"API Key",                      es:"Clave API",                     de:"API-Schlüssel",                 it:"Chiave API"                      },
+  co_key_hint:    { fr:"Clé fournie par votre accès FloorScan.", en:"Key provided by your FloorScan access.", es:"Clave proporcionada por FloorScan.", de:"Schlüssel aus Ihrem FloorScan-Zugang.", it:"Chiave fornita dal vostro accesso FloorScan." },
+  co_model:       { fr:"Model ID",                       en:"Model ID",                     es:"ID del modelo",                 de:"Modell-ID",                     it:"ID modello"                      },
+  co_test:        { fr:"Tester le backend",              en:"Test backend",                 es:"Probar backend",                de:"Backend testen",                it:"Testa il backend"                },
+  co_testing:     { fr:"Test en cours…",                 en:"Testing…",                     es:"Probando…",                     de:"Teste…",                        it:"Test in corso…"                  },
+  co_ok:          { fr:"Backend connecté ! Prêt pour l'analyse.", en:"Backend connected! Ready to analyze.", es:"¡Backend conectado! Listo para analizar.", de:"Backend verbunden! Bereit zur Analyse.", it:"Backend connesso! Pronto per l'analisi." },
+  co_err:         { fr:"Backend inaccessible. Vérifiez que START.bat tourne.", en:"Backend unreachable. Check that START.bat is running.", es:"Backend inaccesible. Verifique que START.bat esté corriendo.", de:"Backend nicht erreichbar. Prüfen Sie START.bat.", it:"Backend non raggiungibile. Verificare START.bat." },
+  co_backend:     { fr:"Le backend Python doit tourner sur http://localhost:8000 (START.bat).", en:"The Python backend must run on http://localhost:8000 (START.bat).", es:"El backend Python debe correr en http://localhost:8000 (START.bat).", de:"Das Python-Backend muss auf http://localhost:8000 laufen (START.bat).", it:"Il backend Python deve girare su http://localhost:8000 (START.bat)." },
+
+  // ── Measure flow ─────────────────────────────────────────────────────────
+  me_title:       { fr:"Outil de métré",                 en:"Measurement Tool",             es:"Herramienta de medición",       de:"Messtool",                      it:"Strumento di rilievo"            },
+  me_sub:         { fr:"Importez un plan, définissez l'échelle et mesurez vos surfaces par type.", en:"Import a plan, set the scale and measure your surfaces by type.", es:"Importe un plano, defina la escala y mida por tipo.", de:"Plan importieren, Maßstab setzen, Flächen messen.", it:"Importate un piano, impostate la scala e misurate per tipo." },
+  me_drop:        { fr:"Glissez votre fichier ici",      en:"Drop your file here",          es:"Arrastre su archivo aquí",      de:"Datei hier ablegen",            it:"Trascinate il file qui"          },
+  me_processing:  { fr:"Traitement en cours...",         en:"Processing...",                es:"Procesando...",                 de:"Verarbeitung...",               it:"Elaborazione..."                 },
+  me_draw:        { fr:"Dessiner les zones",             en:"Draw zones",                   es:"Dibujar zonas",                 de:"Zonen zeichnen",                it:"Disegna zone"                    },
+  me_view_results:{ fr:"Voir résultats →",               en:"View results →",               es:"Ver resultados →",              de:"Ergebnisse →",                  it:"Vedi risultati →"                },
+  me_summary:     { fr:"Récapitulatif",                  en:"Summary",                      es:"Resumen",                       de:"Zusammenfassung",               it:"Riepilogo"                       },
+  me_back_survey: { fr:"← Retour au métré",              en:"← Back to survey",             es:"← Volver a medición",           de:"← Zurück",                      it:"← Torna al rilievo"              },
+  me_export_csv:  { fr:"Exporter CSV",                   en:"Export CSV",                   es:"Exportar CSV",                  de:"CSV exportieren",               it:"Esporta CSV"                     },
+  me_step_import: { fr:"Import",                         en:"Import",                       es:"Importar",                      de:"Import",                        it:"Importa"                         },
+  me_step_scale:  { fr:"Échelle",                        en:"Scale",                        es:"Escala",                        de:"Maßstab",                       it:"Scala"                           },
+  me_step_survey: { fr:"Métré",                          en:"Survey",                       es:"Medición",                      de:"Aufmaß",                        it:"Rilievo"                         },
+  me_step_results:{ fr:"Résultats",                      en:"Results",                      es:"Resultados",                    de:"Ergebnisse",                    it:"Risultati"                       },
+  me_feat1:       { fr:"PDF, JPG, PNG…",                 en:"PDF, JPG, PNG…",               es:"PDF, JPG, PNG…",                de:"PDF, JPG, PNG…",                it:"PDF, JPG, PNG…"                  },
+  me_feat2:       { fr:"Échelle 2 points",               en:"2-point scale",                es:"Escala 2 puntos",               de:"2-Punkt-Maßstab",               it:"Scala 2 punti"                   },
+  me_feat3:       { fr:"Agrégation par type",            en:"Aggregation by type",          es:"Agregación por tipo",           de:"Aggregation nach Typ",          it:"Aggregazione per tipo"           },
+  me_back_ret:    { fr:"Retour",                         en:"Back",                         es:"Volver",                        de:"Zurück",                        it:"Indietro"                        },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

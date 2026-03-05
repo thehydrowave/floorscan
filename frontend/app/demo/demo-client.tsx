@@ -13,21 +13,21 @@ import AnalyzeStep from "@/components/demo/analyze-step";
 import ResultsStep from "@/components/demo/results-step";
 import EditorStep from "@/components/demo/editor-step";
 import MeasureClient from "@/app/measure/measure-client";
+import LangSwitcher from "@/components/ui/lang-switcher";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
-
-const STEP_TITLES = [
-  "Connexion",
-  "Upload PDF",
-  "Recadrer",
-  "Échelle",
-  "Analyse IA",
-  "Résultats",
-  "Éditeur",
-];
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 export default function DemoClient() {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const [step, setStep] = useState(1);
   const [demoMode, setDemoMode] = useState<null | "ia" | "measure">(null);
+
+  const STEP_TITLES = [
+    d("st_connect"), d("st_upload"), d("st_crop"),
+    d("st_scale"), d("st_analyze"), d("st_results"), d("st_editor"),
+  ];
 
   // Step 1
   const [config, setConfig] = useState<RoboflowConfig | null>(null);
@@ -97,6 +97,8 @@ export default function DemoClient() {
             </span>
           </Link>
 
+          <LangSwitcher />
+
           {/* Mode switcher — only shown once a mode is chosen */}
           {demoMode !== null && (
             <div className="flex items-center gap-1 glass border border-white/10 rounded-xl p-1">
@@ -107,7 +109,7 @@ export default function DemoClient() {
                 }`}
               >
                 <BrainCircuit className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Analyse IA</span>
+                <span className="hidden sm:inline">{d("sel_ia_title")}</span>
               </button>
               <button
                 onClick={() => setDemoMode("measure")}
@@ -116,21 +118,21 @@ export default function DemoClient() {
                 }`}
               >
                 <PenLine className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Métré</span>
+                <span className="hidden sm:inline">{d("sel_met_title")}</span>
               </button>
             </div>
           )}
 
           {demoMode === null ? (
             <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Retour
+              <ArrowLeft className="w-4 h-4" /> {d("bar_back")}
             </Link>
           ) : (
             <button
               onClick={() => { setDemoMode(null); handleFullReset(); }}
               className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" /> Changer
+              <ArrowLeft className="w-4 h-4" /> {d("sel_change")}
             </button>
           )}
         </div>
@@ -150,10 +152,10 @@ export default function DemoClient() {
             >
               <div className="text-center mb-12">
                 <h1 className="font-display text-4xl font-700 text-white mb-3">
-                  Choisissez votre outil
+                  {d("sel_title")}
                 </h1>
                 <p className="text-slate-400 text-lg max-w-lg mx-auto">
-                  Analysez automatiquement un plan avec l'IA, ou mesurez manuellement vos surfaces au métré.
+                  {d("sel_sub")}
                 </p>
               </div>
 
@@ -163,29 +165,20 @@ export default function DemoClient() {
                   onClick={() => setDemoMode("ia")}
                   className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-accent/40 hover:bg-accent/5 transition-all duration-300 overflow-hidden"
                 >
-                  {/* Glow */}
                   <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
-
                   <div className="relative">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent to-brand-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
                       <BrainCircuit className="w-7 h-7 text-white" />
                     </div>
-
-                    <h2 className="font-display text-2xl font-700 text-white mb-3">Analyse IA</h2>
-                    <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                      Importez un plan PDF, recadrez et laissez l'IA détecter automatiquement les pièces, surfaces et dimensions. Exportez les résultats annotés.
-                    </p>
-
+                    <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_ia_title")}</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_ia_desc")}</p>
                     <div className="flex flex-wrap gap-2 mb-6">
-                      {["PDF → Image", "Recadrage", "Échelle auto", "Détection IA", "Éditeur"].map(tag => (
-                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">
-                          {tag}
-                        </span>
+                      {["PDF → Image", d("st_crop"), "Auto scale", "AI detection", d("st_editor")].map(tag => (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>
                       ))}
                     </div>
-
                     <div className="flex items-center gap-2 text-accent text-sm font-medium group-hover:gap-3 transition-all">
-                      Démarrer <ArrowLeft className="w-4 h-4 rotate-180" />
+                      {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
                     </div>
                   </div>
                 </button>
@@ -195,29 +188,20 @@ export default function DemoClient() {
                   onClick={() => setDemoMode("measure")}
                   className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-brand-400/40 hover:bg-brand-400/5 transition-all duration-300 overflow-hidden"
                 >
-                  {/* Glow */}
                   <div className="absolute inset-0 bg-gradient-to-br from-brand-400/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
-
                   <div className="relative">
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
                       <PenLine className="w-7 h-7 text-white" />
                     </div>
-
-                    <h2 className="font-display text-2xl font-700 text-white mb-3">Métré manuel</h2>
-                    <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                      Importez n'importe quel plan (PDF, JPG, PNG), définissez l'échelle en 2 clics, puis dessinez vos zones par type de surface. Exportez le récapitulatif CSV.
-                    </p>
-
+                    <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_met_title")}</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_met_desc")}</p>
                     <div className="flex flex-wrap gap-2 mb-6">
-                      {["PDF, JPG, PNG", "Échelle 2 pts", "Polygone & Rect", "Types surfaces", "Export CSV"].map(tag => (
-                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">
-                          {tag}
-                        </span>
+                      {[d("me_feat1"), d("me_feat2"), "Polygon & Rect", "Surface types", "Export CSV"].map(tag => (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>
                       ))}
                     </div>
-
                     <div className="flex items-center gap-2 text-brand-400 text-sm font-medium group-hover:gap-3 transition-all">
-                      Démarrer <ArrowLeft className="w-4 h-4 rotate-180" />
+                      {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
                     </div>
                   </div>
                 </button>

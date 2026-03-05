@@ -9,12 +9,16 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType } from "@/lib/measure-types";
-
-const STEP_LABELS = ["Import", "Échelle", "Métré", "Résultats"];
+import LangSwitcher from "@/components/ui/lang-switcher";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export default function MeasureClient({ embedded = false }: { embedded?: boolean }) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+  const STEP_LABELS = [d("me_step_import"), d("me_step_scale"), d("me_step_survey"), d("me_step_results")];
   const [step, setStep] = useState(0);
 
   // Image state
@@ -100,8 +104,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center mx-auto mb-4">
                     <PenLine className="w-8 h-8 text-white" />
                   </div>
-                  <h1 className="font-display text-3xl font-700 text-white mb-2">Outil de métré</h1>
-                  <p className="text-slate-400">Importez un plan, définissez l'échelle et mesurez vos surfaces par type.</p>
+                  <h1 className="font-display text-3xl font-700 text-white mb-2">{d("me_title")}</h1>
+                  <p className="text-slate-400">{d("me_sub")}</p>
                 </div>
 
                 <div
@@ -116,7 +120,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     <Upload className="w-8 h-8 text-slate-500 mx-auto mb-3" />
                   )}
                   <p className="text-slate-300 font-medium mb-1">
-                    {uploading ? "Traitement en cours..." : "Glissez votre fichier ici"}
+                    {uploading ? d("me_processing") : d("me_drop")}
                   </p>
                   <p className="text-slate-600 text-sm">PDF, JPG, PNG, TIFF</p>
                   <input
@@ -130,9 +134,9 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
                 <div className="mt-6 grid grid-cols-3 gap-3">
                   {[
-                    { icon: <ImageIcon className="w-5 h-5" />, label: "PDF, JPG, PNG…" },
-                    { icon: <Ruler className="w-5 h-5" />, label: "Échelle 2 points" },
-                    { icon: <BarChart3 className="w-5 h-5" />, label: "Agrégation par type" },
+                    { icon: <ImageIcon className="w-5 h-5" />, label: d("me_feat1") },
+                    { icon: <Ruler className="w-5 h-5" />, label: d("me_feat2") },
+                    { icon: <BarChart3 className="w-5 h-5" />, label: d("me_feat3") },
                   ].map((item, i) => (
                     <div key={i} className="glass border border-white/5 rounded-xl p-4 text-center">
                       <div className="text-accent mx-auto mb-2 flex justify-center">{item.icon}</div>
@@ -154,7 +158,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                 {/* Canvas */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="font-display text-xl font-700 text-white">Dessiner les zones</h2>
+                    <h2 className="font-display text-xl font-700 text-white">{d("me_draw")}</h2>
                     <div className="flex items-center gap-2">
                       {ppm && (
                         <span className="text-xs text-slate-500 glass border border-white/5 rounded-lg px-2.5 py-1 font-mono">
@@ -162,7 +166,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         </span>
                       )}
                       <Button size="sm" onClick={() => setStep(3)} disabled={zones.length === 0}>
-                        Voir résultats →
+                        {d("me_view_results")}
                       </Button>
                     </div>
                   </div>
@@ -203,14 +207,14 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             {step === 3 && (
               <div className="max-w-2xl mx-auto">
                 <div className="text-center mb-8">
-                  <h2 className="font-display text-2xl font-700 text-white mb-2">Récapitulatif</h2>
-                  <p className="text-slate-400 text-sm">{zones.length} zone{zones.length > 1 ? "s" : ""} mesurée{zones.length > 1 ? "s" : ""}</p>
+                  <h2 className="font-display text-2xl font-700 text-white mb-2">{d("me_summary")}</h2>
+                  <p className="text-slate-400 text-sm">{zones.length} {d("me_step_survey").toLowerCase()}{zones.length > 1 ? "s" : ""}</p>
                 </div>
 
                 <div className="glass rounded-2xl border border-white/10 overflow-hidden mb-6">
                   <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                    <span className="text-sm font-600 text-slate-300">Type</span>
-                    <span className="text-sm font-600 text-slate-300">Surface</span>
+                    <span className="text-sm font-600 text-slate-300">{d("me_step_survey")}</span>
+                    <span className="text-sm font-600 text-slate-300">{d("me_step_scale")}</span>
                   </div>
                   {surfaceTypes.filter(t => totals[t.id] > 0).map(type => (
                     <div key={type.id} className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0">
@@ -232,11 +236,11 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
                 <div className="flex gap-3 justify-center">
                   <Button variant="outline" onClick={() => setStep(2)}>
-                    ← Retour au métré
+                    {d("me_back_survey")}
                   </Button>
                   <Button onClick={() => {
                     // Simple CSV export
-                    const rows = [["Type", ppm ? "Surface (m²)" : "Surface (px²)"]];
+                    const rows = [[d("me_step_survey"), ppm ? "Area (m²)" : "Area (px²)"]];
                     surfaceTypes.filter(t => totals[t.id] > 0).forEach(t => {
                       rows.push([t.name, ppm ? totals[t.id].toFixed(4) : String(Math.round(totals[t.id]))]);
                     });
@@ -248,7 +252,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     a.download = "metrage.csv";
                     a.click();
                   }}>
-                    Exporter CSV
+                    {d("me_export_csv")}
                   </Button>
                 </div>
               </div>
@@ -275,22 +279,23 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             </span>
           </Link>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1">
-              {STEP_LABELS.map((label, i) => (
-                <div key={i} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  i === step ? "bg-accent/15 text-accent" : i < step ? "text-slate-500" : "text-slate-700"
-                }`}>
-                  {i < step && <span className="text-accent-green">✓</span>}
-                  {label}
-                </div>
-              ))}
-            </div>
+          <div className="hidden sm:flex items-center gap-1">
+            {STEP_LABELS.map((label, i) => (
+              <div key={i} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                i === step ? "bg-accent/15 text-accent" : i < step ? "text-slate-500" : "text-slate-700"
+              }`}>
+                {i < step && <span className="text-accent-green">✓</span>}
+                {label}
+              </div>
+            ))}
           </div>
 
-          <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Retour
-          </Link>
+          <div className="flex items-center gap-3">
+            <LangSwitcher />
+            <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
+              <ArrowLeft className="w-4 h-4" /> {d("me_back_ret")}
+            </Link>
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,8 @@ import { KeyRound, Link2, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOf
 import { Button } from "@/components/ui/button";
 import { RoboflowConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -16,6 +18,8 @@ interface ConnectStepProps {
 type Status = "idle" | "testing" | "ok" | "error";
 
 export default function ConnectStep({ onConnected }: ConnectStepProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const [apiKey, setApiKey] = useState("Kh56un5foPflRVreiNOM");
   const [modelId, setModelId] = useState("cubicasa5k-2-qpmsa-1gd2e/1");
   const [showKey, setShowKey] = useState(false);
@@ -30,11 +34,11 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
       const r = await fetch(`${BACKEND}/`);
       if (r.ok) {
         setStatus("ok");
-        setMsg("Backend connecté ! Prêt pour l'analyse.");
+        setMsg(dt("co_ok", lang));
       } else throw new Error();
     } catch {
       setStatus("error");
-      setMsg("Backend inaccessible. Vérifiez que START.bat tourne sur le port 8000.");
+      setMsg(dt("co_err", lang));
     }
   };
 
@@ -48,15 +52,15 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center mx-auto mb-4 shadow-glow">
           <KeyRound className="w-7 h-7 text-white" />
         </div>
-        <h2 className="font-display text-2xl font-700 text-white mb-2">Configuration API</h2>
-        <p className="text-slate-400 text-sm">Entrez votre clé API et le modèle à utiliser.</p>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("co_title")}</h2>
+        <p className="text-slate-400 text-sm">{d("co_sub")}</p>
       </div>
 
       <div className="glass rounded-2xl border border-white/10 p-6 flex flex-col gap-5">
         {/* API Key */}
         <div>
           <label className="block text-xs font-600 text-slate-400 uppercase tracking-wide mb-2">
-            <KeyRound className="inline w-3.5 h-3.5 mr-1 -mt-0.5" /> Clé API
+            <KeyRound className="inline w-3.5 h-3.5 mr-1 -mt-0.5" /> {d("co_key")}
           </label>
           <div className="relative">
             <input
@@ -71,7 +75,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
               {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          <p className="text-xs text-slate-600 mt-1.5">Clé fournie par votre accès FloorScan.</p>
+          <p className="text-xs text-slate-600 mt-1.5">{d("co_key_hint")}</p>
         </div>
 
         {/* Model ID */}
@@ -106,15 +110,15 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
         {/* Info backend */}
         <div className="flex items-start gap-2 text-xs text-slate-600 bg-white/[0.02] rounded-xl p-3 border border-white/5">
           <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-500" />
-          <span>Le backend Python doit tourner sur <code>http://localhost:8000</code> (START.bat).</span>
+          <span>{d("co_backend")}</span>
         </div>
 
         <div className="flex gap-3 pt-1">
           <Button variant="outline" className="flex-1" onClick={handleTest} disabled={!canTest || status === "testing"}>
-            {status === "testing" ? <><Loader2 className="w-4 h-4 animate-spin" /> Test...</> : "Tester le backend"}
+            {status === "testing" ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("co_testing")}</> : d("co_test")}
           </Button>
           <Button className="flex-1" onClick={handleContinue} disabled={!canTest}>
-            Continuer <ArrowRight className="w-4 h-4" />
+            {d("up_continue")} <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
       </div>
