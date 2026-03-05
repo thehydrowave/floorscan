@@ -14,7 +14,7 @@ const STEP_LABELS = ["Import", "Échelle", "Métré", "Résultats"];
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
-export default function MeasureClient() {
+export default function MeasureClient({ embedded = false }: { embedded?: boolean }) {
   const [step, setStep] = useState(0);
 
   // Image state
@@ -82,41 +82,8 @@ export default function MeasureClient() {
 
   const totalAll = Object.values(totals).reduce((a, b) => a + b, 0);
 
-  return (
-    <div className="min-h-screen bg-ink">
-      {/* Top bar */}
-      <div className="border-b border-white/5 glass sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center">
-              <ScanLine className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-display font-700 text-base text-white">
-              Floor<span className="text-gradient">Scan</span>
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-3">
-            {/* Step pills */}
-            <div className="hidden sm:flex items-center gap-1">
-              {STEP_LABELS.map((label, i) => (
-                <div key={i} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  i === step ? "bg-accent/15 text-accent" : i < step ? "text-slate-500" : "text-slate-700"
-                }`}>
-                  {i < step && <span className="text-accent-green">✓</span>}
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Retour
-          </Link>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-6 py-10">
+  const content = (
+    <div className={embedded ? "" : "max-w-7xl mx-auto px-6 py-10"}>
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -290,6 +257,44 @@ export default function MeasureClient() {
           </motion.div>
         </AnimatePresence>
       </div>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div className="min-h-screen bg-ink">
+      {/* Top bar */}
+      <div className="border-b border-white/5 glass sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-accent flex items-center justify-center">
+              <ScanLine className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-display font-700 text-base text-white">
+              Floor<span className="text-gradient">Scan</span>
+            </span>
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1">
+              {STEP_LABELS.map((label, i) => (
+                <div key={i} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  i === step ? "bg-accent/15 text-accent" : i < step ? "text-slate-500" : "text-slate-700"
+                }`}>
+                  {i < step && <span className="text-accent-green">✓</span>}
+                  {label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </Link>
+        </div>
+      </div>
+
+      {content}
     </div>
   );
 }

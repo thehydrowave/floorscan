@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft } from "lucide-react";
+import { ScanLine, ArrowLeft, BrainCircuit, PenLine } from "lucide-react";
 import Stepper from "@/components/demo/stepper";
 import ConnectStep from "@/components/demo/connect-step";
 import UploadStep from "@/components/demo/upload-step";
@@ -12,6 +12,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import AnalyzeStep from "@/components/demo/analyze-step";
 import ResultsStep from "@/components/demo/results-step";
 import EditorStep from "@/components/demo/editor-step";
+import MeasureClient from "@/app/measure/measure-client";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
 
 const STEP_TITLES = [
@@ -26,6 +27,7 @@ const STEP_TITLES = [
 
 export default function DemoClient() {
   const [step, setStep] = useState(1);
+  const [demoMode, setDemoMode] = useState<"ia" | "measure">("ia");
 
   // Step 1
   const [config, setConfig] = useState<RoboflowConfig | null>(null);
@@ -95,16 +97,30 @@ export default function DemoClient() {
             </span>
           </Link>
 
-          <div className="flex items-center gap-4">
-            {sessionId && (
-              <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono text-slate-500 glass border border-white/5 rounded-lg px-2.5 py-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
-                Session active
-              </div>
-            )}
-            <div className="text-xs text-slate-500 hidden sm:block">
-              Étape {step}/{STEP_TITLES.length} — {STEP_TITLES[step - 1]}
-            </div>
+          {/* Mode switcher */}
+          <div className="flex items-center gap-1 glass border border-white/10 rounded-xl p-1">
+            <button
+              onClick={() => setDemoMode("ia")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                demoMode === "ia"
+                  ? "bg-accent text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <BrainCircuit className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Analyse IA</span>
+            </button>
+            <button
+              onClick={() => setDemoMode("measure")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                demoMode === "measure"
+                  ? "bg-accent text-white shadow-sm"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <PenLine className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Métré</span>
+            </button>
           </div>
 
           <button onClick={handleFullReset} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
@@ -120,57 +136,79 @@ export default function DemoClient() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-10">
-          <Stepper currentStep={step} totalSteps={STEP_TITLES.length} />
-        </div>
-
         <AnimatePresence mode="wait">
-          <motion.div
-            key={step}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.25 }}
-          >
-            {step === 1 && <ConnectStep onConnected={handleConnected} />}
-            {step === 2 && <UploadStep onUploaded={handleUploaded} />}
-            {step === 3 && sessionId && (
-              <CropStep
-                sessionId={sessionId}
-                imageB64={uploadedImageB64!}
-                onCropped={handleCropped}
-                onSkip={handleCropped}
-              />
-            )}
-            {step === 4 && (
-              <ScaleStep
-                imageB64={uploadedImageB64!}
-                onScaled={handleScaled}
-              />
-            )}
-            {step === 5 && sessionId && config && (
-              <AnalyzeStep
-                sessionId={sessionId}
-                config={config}
-                ppm={ppm}
-                onAnalyzed={handleAnalyzed}
-              />
-            )}
-            {step === 6 && analysisResult && (
-              <ResultsStep
-                result={analysisResult}
-                onGoEditor={handleGoEditor}
-                onRestart={handleRestart}
-              />
-            )}
-            {step === 7 && analysisResult && sessionId && (
-              <EditorStep
-                sessionId={sessionId}
-                initialResult={analysisResult}
-                onRestart={handleRestart}
-              />
-            )}
-          </motion.div>
+          {demoMode === "measure" ? (
+            <motion.div
+              key="measure"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <MeasureClient embedded />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="ia"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="mb-10">
+                <Stepper currentStep={step} totalSteps={STEP_TITLES.length} />
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={step}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  {step === 1 && <ConnectStep onConnected={handleConnected} />}
+                  {step === 2 && <UploadStep onUploaded={handleUploaded} />}
+                  {step === 3 && sessionId && (
+                    <CropStep
+                      sessionId={sessionId}
+                      imageB64={uploadedImageB64!}
+                      onCropped={handleCropped}
+                      onSkip={handleCropped}
+                    />
+                  )}
+                  {step === 4 && (
+                    <ScaleStep
+                      imageB64={uploadedImageB64!}
+                      onScaled={handleScaled}
+                    />
+                  )}
+                  {step === 5 && sessionId && config && (
+                    <AnalyzeStep
+                      sessionId={sessionId}
+                      config={config}
+                      ppm={ppm}
+                      onAnalyzed={handleAnalyzed}
+                    />
+                  )}
+                  {step === 6 && analysisResult && (
+                    <ResultsStep
+                      result={analysisResult}
+                      onGoEditor={handleGoEditor}
+                      onRestart={handleRestart}
+                    />
+                  )}
+                  {step === 7 && analysisResult && sessionId && (
+                    <EditorStep
+                      sessionId={sessionId}
+                      initialResult={analysisResult}
+                      onRestart={handleRestart}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
 
