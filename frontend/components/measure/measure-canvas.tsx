@@ -55,14 +55,24 @@ export default function MeasureCanvas({
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [panCursor, setPanCursor] = useState(false);
 
+  // Vertex edit state
+  const [dragVertex, setDragVertex] = useState<{ zoneId: string; idx: number } | null>(null);
+
   // Stable refs for use in event handlers
-  const zoomRef      = useRef(zoom);
-  const translateRef = useRef(translate);
-  const isPanRef     = useRef(false);
-  const panStartRef  = useRef({ mx: 0, my: 0, tx: 0, ty: 0 });
+  const zoomRef          = useRef(zoom);
+  const translateRef     = useRef(translate);
+  const isPanRef         = useRef(false);
+  const panStartRef      = useRef({ mx: 0, my: 0, tx: 0, ty: 0 });
+  const dragVertexRef    = useRef<{ zoneId: string; idx: number } | null>(null);
+  const zonesRef         = useRef(zones);
+  const onZonesChangeRef = useRef(onZonesChange);
+  const skipNextClickRef = useRef(false);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { translateRef.current = translate; }, [translate]);
+  useEffect(() => { dragVertexRef.current = dragVertex; }, [dragVertex]);
+  useEffect(() => { zonesRef.current = zones; }, [zones]);
+  useEffect(() => { onZonesChangeRef.current = onZonesChange; }, [onZonesChange]);
 
   // ── Update imgOffset after zoom/translate is committed to DOM ──────────────
   const updateOffset = useCallback(() => {
@@ -109,18 +119,38 @@ export default function MeasureCanvas({
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
-  // ── Global pan (right-click drag) ─────────────────────────────────────────
+  // ── Global pan (right-click drag) + vertex drag ───────────────────────────
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!isPanRef.current) return;
-      const dx = e.clientX - panStartRef.current.mx;
-      const dy = e.clientY - panStartRef.current.my;
-      setTranslate({ x: panStartRef.current.tx + dx, y: panStartRef.current.ty + dy });
+      if (isPanRef.current) {
+        const dx = e.clientX - panStartRef.current.mx;
+        const dy = e.clientY - panStartRef.current.my;
+        setTranslate({ x: panStartRef.current.tx + dx, y: panStartRef.current.ty + dy });
+        return;
+      }
+      if (dragVertexRef.current) {
+        const img = imgRef.current;
+        if (!img) return;
+        const r = img.getBoundingClientRect();
+        const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        const y = Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height));
+        const { zoneId, idx } = dragVertexRef.current;
+        onZonesChangeRef.current(zonesRef.current.map(z =>
+          z.id !== zoneId ? z :
+          { ...z, points: z.points.map((p, i) => i === idx ? { x, y } : p) }
+        ));
+      }
     };
     const onUp = (e: MouseEvent) => {
-      if (e.button !== 2) return;
-      isPanRef.current = false;
-      setPanCursor(false);
+      if (e.button === 2) {
+        isPanRef.current = false;
+        setPanCursor(false);
+        return;
+      }
+      if (e.button === 0 && dragVertexRef.current) {
+        dragVertexRef.current = null;
+        setDragVertex(null);
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup",   onUp);
@@ -167,6 +197,7 @@ export default function MeasureCanvas({
   }, [zones, activeTypeId, onZonesChange]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (dragVertexRef.current) return; // don't update drawing preview while dragging a vertex
     setMouseNorm(toNorm(e.clientX, e.clientY));
   }, [toNorm]);
 
@@ -191,6 +222,7 @@ export default function MeasureCanvas({
   }, [tool, toNorm]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
     if (tool !== "polygon" || e.button !== 0) return;
     const n = toNorm(e.clientX, e.clientY);
     if (!n) return;
@@ -206,6 +238,7 @@ export default function MeasureCanvas({
   }, [tool, drawingPoints, addZone]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (dragVertex) return; // handled by global listener
     if (tool !== "rect" || !rectStart || e.button !== 0) return;
     const n = toNorm(e.clientX, e.clientY);
     if (!n) { setRectStart(null); return; }
@@ -215,7 +248,7 @@ export default function MeasureCanvas({
       addZone([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]);
     }
     setRectStart(null);
-  }, [tool, rectStart, toNorm, addZone]);
+  }, [dragVertex, tool, rectStart, toNorm, addZone]);
 
   const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
@@ -248,7 +281,8 @@ export default function MeasureCanvas({
   const isDrawing   = drawingPoints.length > 0 || rectStart !== null;
   const activeColor = getColor(activeTypeId);
 
-  const hint = tool === "polygon"
+  const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
+    : tool === "polygon"
     ? drawingPoints.length === 0 ? "Cliquez pour placer le premier point"
     : drawingPoints.length < 2   ? "Continuez à cliquer pour tracer"
     : "Double-clic ou cliquez le 1er point pour fermer"
@@ -321,7 +355,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: 520, cursor: panCursor ? "grabbing" : "crosshair" }}
+        style={{ height: 520, cursor: dragVertex ? "move" : panCursor ? "grabbing" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -421,6 +455,28 @@ export default function MeasureCanvas({
                     </text>
                   )}
                 </g>
+                {/* Vertex handles — draggable */}
+                {zone.points.map((p, idx) => {
+                  const s = toSvg(p);
+                  const isDragging = dragVertex?.zoneId === zone.id && dragVertex?.idx === idx;
+                  return (
+                    <circle
+                      key={idx}
+                      cx={s.x} cy={s.y}
+                      r={isDragging ? 7 : 5}
+                      fill={isDragging ? color : "white"}
+                      stroke={color}
+                      strokeWidth={1.5}
+                      style={{ pointerEvents: "all", cursor: "move" }}
+                      onMouseDown={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        skipNextClickRef.current = true;
+                        setDragVertex({ zoneId: zone.id, idx });
+                      }}
+                    />
+                  );
+                })}
               </g>
             );
           })}
