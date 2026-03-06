@@ -455,7 +455,7 @@ export default function MeasureCanvas({
                     </text>
                   )}
                 </g>
-                {/* Vertex handles — draggable */}
+                {/* Vertex handles — draggable (left) / delete (right-click) */}
                 {zone.points.map((p, idx) => {
                   const s = toSvg(p);
                   const isDragging = dragVertex?.zoneId === zone.id && dragVertex?.idx === idx;
@@ -471,8 +471,20 @@ export default function MeasureCanvas({
                       onMouseDown={e => {
                         e.stopPropagation();
                         e.preventDefault();
-                        skipNextClickRef.current = true;
-                        setDragVertex({ zoneId: zone.id, idx });
+                        if (e.button === 0) {
+                          skipNextClickRef.current = true;
+                          setDragVertex({ zoneId: zone.id, idx });
+                        }
+                      }}
+                      onContextMenu={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        const newPts = zone.points.filter((_, i) => i !== idx);
+                        if (newPts.length < 3) {
+                          onZonesChange(zones.filter(z => z.id !== zone.id));
+                        } else {
+                          onZonesChange(zones.map(z => z.id !== zone.id ? z : { ...z, points: newPts }));
+                        }
                       }}
                     />
                   );
