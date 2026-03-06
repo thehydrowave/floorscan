@@ -554,7 +554,7 @@ export default function MeasureCanvas({
             const LH = areaLabel ? 32 : 20;
 
             return (
-              <g key={zone.id}>
+              <g key={zone.id} className="group">
                 <polygon
                   points={pts}
                   fill={hexToRgba(color, 0.28)}
@@ -629,6 +629,7 @@ export default function MeasureCanvas({
                     <g
                       key={`mid-${idx}`}
                       transform={`translate(${mid.x},${mid.y})`}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                       style={{ pointerEvents: "all", cursor: "copy" }}
                       onClick={e => {
                         e.stopPropagation();

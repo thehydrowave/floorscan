@@ -22,9 +22,10 @@ interface EditorStepProps {
   sessionId: string;
   initialResult: AnalysisResult;
   onRestart: () => void;
+  onSessionExpired?: () => void;
 }
 
-export default function EditorStep({ sessionId, initialResult, onRestart }: EditorStepProps) {
+export default function EditorStep({ sessionId, initialResult, onRestart, onSessionExpired }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -125,8 +126,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
       }));
       toast({ title: dt("ed_mask_updated", lang), variant: "success" });
     } catch (e: any) {
-      setError(e.message);
-      toast({ title: "Error", description: e.message, variant: "error" });
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else {
+        setError(e.message);
+        toast({ title: "Error", description: e.message, variant: "error" });
+      }
     } finally { setLoading(false); }
   };
 
@@ -141,7 +147,12 @@ export default function EditorStep({ sessionId, initialResult, onRestart }: Edit
       const data = await r.json();
       setResult(prev => ({ ...prev, ...data }));
       toast({ title: "Région segmentée ✓", variant: "success" });
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+    } catch (e: any) {
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else { setError(e.message); }
+    } finally { setLoading(false); }
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {

@@ -16,9 +16,10 @@ interface AnalyzeStepProps {
   config: RoboflowConfig;
   ppm?: number | null;
   onAnalyzed: (result: AnalysisResult) => void;
+  onSessionExpired?: () => void;
 }
 
-export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: AnalyzeStepProps) {
+export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSessionExpired }: AnalyzeStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -80,8 +81,13 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed }: Anal
       onAnalyzed(data as AnalysisResult);
     } catch (e: any) {
       clearInterval(interval);
-      setError(e.message);
-      toast({ title: dt("an_fail", lang), description: e.message, variant: "error" });
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else {
+        setError(e.message);
+        toast({ title: dt("an_fail", lang), description: e.message, variant: "error" });
+      }
     } finally {
       setLoading(false);
       setProgress("");

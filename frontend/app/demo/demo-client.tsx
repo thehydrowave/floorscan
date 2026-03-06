@@ -251,6 +251,7 @@ export default function DemoClient() {
                       imageB64={uploadedImageB64!}
                       onCropped={handleCropped}
                       onSkip={handleCropped}
+                      onSessionExpired={handleRestart}
                     />
                   )}
                   {step === 4 && (
@@ -262,6 +263,7 @@ export default function DemoClient() {
                       config={config}
                       ppm={ppm}
                       onAnalyzed={handleAnalyzed}
+                      onSessionExpired={handleRestart}
                     />
                   )}
                   {step === 6 && analysisResult && (
@@ -276,6 +278,7 @@ export default function DemoClient() {
                       sessionId={sessionId}
                       initialResult={analysisResult}
                       onRestart={handleRestart}
+                      onSessionExpired={handleRestart}
                     />
                   )}
                 </motion.div>

@@ -15,12 +15,13 @@ interface CropStepProps {
   imageB64: string;
   onCropped: () => void;
   onSkip: () => void;
+  onSessionExpired?: () => void;
 }
 
 // x, y, w, h in % of the rendered image
 interface CropRect { x: number; y: number; w: number; h: number; }
 
-export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: CropStepProps) {
+export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSessionExpired }: CropStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -106,7 +107,12 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip }: Cro
       toast({ title: d("cr_confirm"), description: `${data.width}×${data.height} px`, variant: "success" });
       onCropped();
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "error" });
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else {
+        toast({ title: "Error", description: e.message, variant: "error" });
+      }
     } finally {
       setConfirming(false);
     }
