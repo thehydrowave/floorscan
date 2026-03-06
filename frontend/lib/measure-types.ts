@@ -2,6 +2,7 @@ export interface SurfaceType {
   id: string;
   name: string;
   color: string; // hex
+  pricePerM2?: number; // €/m²
 }
 
 export interface MeasureZone {

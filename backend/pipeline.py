@@ -980,16 +980,17 @@ def generate_pdf_report(img_rgb: np.ndarray, overlay_openings: np.ndarray,
 # ============================================================
 def generate_measure_pdf_devis(
     image_b64: str,
-    surface_totals: list,   # [{name, color, area_m2}]
+    surface_totals: list,   # [{name, color, area_m2, price_per_m2}]
     total_m2: float,
     ppm: float = None,
     project_name: str = "",
     client_name: str = "",
     date_str: str = "",
+    tva_rate: float = 10.0,
 ) -> bytes:
     import datetime
     from reportlab.lib.pagesizes import A4
-    from reportlab.pdfgen import canvas
+    from reportlab.pdfgen import canvas as rl_canvas
 
     W_a4, H_a4 = A4
     M = 40
@@ -997,34 +998,45 @@ def generate_measure_pdf_devis(
     if not date_str:
         date_str = datetime.date.today().strftime("%d/%m/%Y")
 
+    # ── Calculs financiers ────────────────────────────────────────────────────
+    has_prices = any((item.get("price_per_m2") or 0) > 0 for item in surface_totals)
+    total_ht   = sum((item.get("area_m2") or 0) * (item.get("price_per_m2") or 0)
+                     for item in surface_totals) if has_prices else 0.0
+    tva_amount = total_ht * tva_rate / 100.0
+    total_ttc  = total_ht + tva_amount
+
+    def fmt_eur(v): return f"{v:,.2f} \u20ac".replace(",", "\u00a0")
+
+    # ── Mise en page ──────────────────────────────────────────────────────────
     buf_out = io.BytesIO()
-    c = canvas.Canvas(buf_out, pagesize=A4)
+    c = rl_canvas.Canvas(buf_out, pagesize=A4)
 
     # ── PAGE 1 : Plan + Tableau ───────────────────────────────────────────────
     c.setFillColor(cols["WHITE"]); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
-    hdr_h = _pdf_header(c, W_a4, H_a4, M, cols,
-                        "DEVIS DE MÉTRÉ",
-                        "Métré manuel de surfaces",
-                        date_str)
+    hdr_h = _pdf_header(c, W_a4, H_a4, M, cols, "DEVIS DE MÉTRÉ", "Métré manuel de surfaces", date_str)
     info_h = _pdf_info_strip(c, W_a4, H_a4, M, cols,
                               H_a4 - hdr_h,
                               [("Projet", project_name), ("Client", client_name), ("Date", date_str)])
     top_y = H_a4 - hdr_h - info_h - 8
 
-    # Table dimensions
+    # Hauteur de la section financière sous le tableau (HT / TVA / TTC)
+    fin_row_h = 22
+    finance_h = (3 * fin_row_h + 20) if (has_prices and total_ht > 0) else 0
+
+    # Dimensions du tableau
     row_h = 26; th = 28
     n_rows = len(surface_totals)
     total_row_h = 30
     table_total_h = th + n_rows * row_h + total_row_h + 20
-    table_bottom = 36 + 8  # footer + padding
+    table_bottom = 36 + 8 + finance_h  # footer + padding + section financière
 
-    # Image area (between info strip and table)
-    img_area_top = top_y
+    # Zone image (entre la bande info et le tableau)
+    img_area_top    = top_y
     img_area_bottom = table_bottom + table_total_h + 10
     img_area_h = img_area_top - img_area_bottom
     img_area_w = W_a4 - 2 * M
 
-    # Draw floor plan image
+    # Plan de sol
     if img_area_h > 40 and image_b64:
         try:
             ir, iw_nat, ih_nat = _pil_reader_from_b64(image_b64)
@@ -1040,58 +1052,102 @@ def generate_measure_pdf_devis(
         except Exception:
             pass
 
-    # Table: RÉCAPITULATIF
+    # ── Colonnes du tableau ───────────────────────────────────────────────────
+    TW = W_a4 - 2*M   # largeur totale du tableau (≈ 515 pt)
+    if has_prices:
+        # 5 colonnes : TYPE | SURFACE | PRIX/m² | MONTANT HT | %
+        c_name = 190; c_surf = 75; c_prix = 75; c_ht = 90; c_pct = TW - c_name - c_surf - c_prix - c_ht
+        col_xs = [M, M+c_name, M+c_name+c_surf, M+c_name+c_surf+c_prix, M+c_name+c_surf+c_prix+c_ht]
+        headers = ["TYPE DE SURFACE", "SURFACE (m²)", "PRIX/m²", "MONTANT HT", "% TOTAL"]
+    else:
+        # 3 colonnes : TYPE | SURFACE | %
+        c_name = TW - 200; c_surf = 100
+        col_xs = [M, M+c_name, M+c_name+c_surf]
+        headers = ["TYPE DE SURFACE", "SURFACE (m²)", "% DU TOTAL"]
+
+    # Titre du tableau
     t_top = table_bottom + table_total_h - 20
     c.setFont("Helvetica-Bold", 11); c.setFillColor(cols["TEXT"])
     c.drawString(M, t_top + 8, "RÉCAPITULATIF DES SURFACES")
 
-    col_name_w = W_a4 - 2*M - 200
-    col_xs = [M, M + col_name_w, M + col_name_w + 100, M + col_name_w + 200]
-
-    # Table header
-    c.setFillColor(cols["DARK2"]); c.rect(M, t_top - th, W_a4-2*M, th, stroke=0, fill=1)
+    # En-tête
+    c.setFillColor(cols["DARK2"]); c.rect(M, t_top - th, TW, th, stroke=0, fill=1)
     c.setFont("Helvetica-Bold", 8); c.setFillColor(cols["WHITE"])
-    for i, lbl in enumerate(["TYPE DE SURFACE", "SURFACE (m²)", "% DU TOTAL"]):
+    for i, lbl in enumerate(headers):
         c.drawString(col_xs[i]+8, t_top-th+9, lbl)
 
-    # Table rows
+    # Lignes de données
+    from reportlab.lib import colors as rlc
     for ri, item in enumerate(surface_totals):
         ry = t_top - th - (ri+1)*row_h
         c.setFillColor(cols["LIGHT"] if ri%2==0 else cols["LIGHT2"])
-        c.rect(M, ry, W_a4-2*M, row_h, stroke=0, fill=1)
+        c.rect(M, ry, TW, row_h, stroke=0, fill=1)
         try:
-            from reportlab.lib import colors as rlc
             dot_col = rlc.HexColor(item.get("color", "#6B7280"))
         except Exception:
             dot_col = cols["MUTED"]
         c.setFillColor(dot_col); c.circle(col_xs[0]+12, ry+row_h/2, 5, stroke=0, fill=1)
         c.setFont("Helvetica", 10); c.setFillColor(cols["TEXT"])
         c.drawString(col_xs[0]+26, ry+8, item.get("name", "—"))
-        area_val = item.get("area_m2", 0) or 0
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(col_xs[1]+8, ry+8, f"{area_val:.2f} m²")
+        area_val  = item.get("area_m2", 0) or 0
+        price_val = item.get("price_per_m2", 0) or 0
+        montant   = area_val * price_val
         pct = (area_val / total_m2 * 100) if total_m2 > 0 else 0
-        c.setFont("Helvetica", 10); c.setFillColor(cols["MUTED"])
-        c.drawString(col_xs[2]+8, ry+8, f"{pct:.1f} %")
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(col_xs[1]+8, ry+8, f"{area_val:.2f} m\u00b2")
+        if has_prices:
+            c.setFont("Helvetica", 10); c.setFillColor(cols["MUTED"])
+            c.drawString(col_xs[2]+8, ry+8, f"{price_val:.2f} \u20ac" if price_val else "\u2014")
+            c.setFont("Helvetica-Bold", 10); c.setFillColor(cols["TEXT"])
+            c.drawString(col_xs[3]+8, ry+8, fmt_eur(montant) if price_val else "\u2014")
+            c.setFont("Helvetica", 10); c.setFillColor(cols["MUTED"])
+            c.drawString(col_xs[4]+8, ry+8, f"{pct:.1f} %")
+        else:
+            c.setFont("Helvetica", 10); c.setFillColor(cols["MUTED"])
+            c.drawString(col_xs[2]+8, ry+8, f"{pct:.1f} %")
         c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.3)
-        c.line(M, ry, W_a4-M, ry)
+        c.line(M, ry, M+TW, ry)
 
-    # Total row
+    # Ligne TOTAL
     tot_y = t_top - th - n_rows*row_h - total_row_h
-    c.setFillColor(cols["BLUE"]); c.rect(M, tot_y, W_a4-2*M, total_row_h, stroke=0, fill=1)
+    c.setFillColor(cols["BLUE"]); c.rect(M, tot_y, TW, total_row_h, stroke=0, fill=1)
     c.setFont("Helvetica-Bold", 12); c.setFillColor(cols["WHITE"])
     c.drawString(col_xs[0]+26, tot_y+9, "TOTAL")
-    c.drawString(col_xs[1]+8,  tot_y+9, f"{total_m2:.2f} m²")
-    c.drawString(col_xs[2]+8,  tot_y+9, "100 %")
+    c.drawString(col_xs[1]+8,  tot_y+9, f"{total_m2:.2f} m\u00b2")
+    if has_prices:
+        c.drawString(col_xs[3]+8, tot_y+9, fmt_eur(total_ht))
+        c.drawString(col_xs[4]+8, tot_y+9, "100 %")
+    else:
+        c.drawString(col_xs[2]+8, tot_y+9, "100 %")
 
-    # Border autour du tableau
+    # Bordure du tableau
     c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.6)
-    c.rect(M, tot_y, W_a4-2*M, th + n_rows*row_h + total_row_h, stroke=1, fill=0)
+    c.rect(M, tot_y, TW, th + n_rows*row_h + total_row_h, stroke=1, fill=0)
 
-    # PPM note
+    # ── Section financière HT / TVA / TTC ─────────────────────────────────────
+    if has_prices and total_ht > 0:
+        fin_right = M + TW
+        fy = tot_y - 8
+        fin_data = [
+            ("Total HT",          fmt_eur(total_ht),  cols["TEXT"],  "Helvetica",      10),
+            (f"TVA ({tva_rate:.0f} %)", fmt_eur(tva_amount), cols["MUTED"], "Helvetica", 10),
+            ("Total TTC",         fmt_eur(total_ttc), cols["BLUE"],  "Helvetica-Bold", 12),
+        ]
+        for label, value, vcol, font, fsize in fin_data:
+            fy -= fin_row_h
+            c.setFont("Helvetica", 9); c.setFillColor(cols["MUTED"])
+            c.drawString(fin_right - 195, fy + 5, label + " :")
+            c.setFont(font, fsize); c.setFillColor(vcol)
+            c.drawRightString(fin_right, fy + 5, value)
+        # Souligner Total TTC
+        c.setStrokeColor(cols["BLUE"]); c.setLineWidth(0.8)
+        c.line(fin_right - 195, fy + fin_row_h, fin_right, fy + fin_row_h)
+
+    # Note calibration
+    note_y = table_bottom - 6
     if ppm:
         c.setFont("Helvetica", 8); c.setFillColor(cols["MUTED"])
-        c.drawString(M, tot_y - 14, f"Calibration : {ppm:.1f} px/m")
+        c.drawString(M, note_y, f"Calibration : {ppm:.1f} px/m")
 
     _pdf_footer(c, W_a4, M, cols, date_str)
     c.save()

@@ -465,12 +465,13 @@ def export_pdf(req: ExportRequest):
 # ============================================================
 class ExportMeasurePdfRequest(BaseModel):
     image_b64: str
-    surface_totals: list   # [{name, color, area_m2}]
+    surface_totals: list   # [{name, color, area_m2, price_per_m2}]
     total_m2: float
     ppm: Optional[float] = None
     project_name: str = ""
     client_name: str = ""
     date_str: str = ""
+    tva_rate: float = 10.0  # taux TVA en %
 
 @app.post("/export-measure-pdf")
 def export_measure_pdf(req: ExportMeasurePdfRequest):
@@ -483,6 +484,7 @@ def export_measure_pdf(req: ExportMeasurePdfRequest):
             project_name=req.project_name,
             client_name=req.client_name,
             date_str=req.date_str,
+            tva_rate=req.tva_rate,
         )
     except Exception as e:
         raise HTTPException(500, f"Erreur génération devis PDF : {e}")

@@ -49,6 +49,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [projectName, setProjectName] = useState("");
   const [clientName, setClientName] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [tvaRate, setTvaRate] = useState<number>(10); // 10% travaux par défaut
 
   // ── Sync imageNatural when image changes ──────────────────────────────────
   useEffect(() => {
@@ -169,7 +170,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     try {
       const surface_totals = surfaceTypes
         .filter(t => (totals[t.id] ?? 0) > 0)
-        .map(t => ({ name: t.name, color: t.color, area_m2: totals[t.id] ?? 0 }));
+        .map(t => ({
+          name: t.name,
+          color: t.color,
+          area_m2: totals[t.id] ?? 0,
+          price_per_m2: t.pricePerM2 ?? 0,
+        }));
 
       const r = await fetch(`${BACKEND}/export-measure-pdf`, {
         method: "POST",
@@ -181,6 +187,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           ppm,
           project_name: projectName,
           client_name: clientName,
+          tva_rate: tvaRate,
         }),
       });
       if (!r.ok) throw new Error(`Erreur PDF ${r.status}`);
@@ -387,89 +394,174 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           )}
 
           {/* ── STEP 3: Results ── */}
-          {step === 3 && (
-            <div className="max-w-2xl mx-auto">
-              <div className="text-center mb-8">
-                <h2 className="font-display text-2xl font-700 text-white mb-2">{d("me_summary")}</h2>
-                <p className="text-slate-400 text-sm">{zones.length} zone{zones.length > 1 ? "s" : ""} mesurée{zones.length > 1 ? "s" : ""}</p>
-              </div>
+          {step === 3 && (() => {
+            const activeSurfaces = surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0);
+            const hasPrices = activeSurfaces.some(t => (t.pricePerM2 ?? 0) > 0);
+            const totalHT = activeSurfaces.reduce((s, t) => s + (totals[t.id] ?? 0) * (t.pricePerM2 ?? 0), 0);
+            const tvaAmount = totalHT * tvaRate / 100;
+            const totalTTC = totalHT + tvaAmount;
 
-              {/* Project info for devis */}
-              <div className="glass border border-white/10 rounded-2xl p-4 mb-6 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Nom du projet</label>
-                  <input
-                    value={projectName}
-                    onChange={e => setProjectName(e.target.value)}
-                    placeholder="Ex. Appartement Paris 11e"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
-                  />
+            return (
+              <div className="max-w-2xl mx-auto">
+                <div className="text-center mb-8">
+                  <h2 className="font-display text-2xl font-700 text-white mb-2">{d("me_summary")}</h2>
+                  <p className="text-slate-400 text-sm">{zones.length} zone{zones.length > 1 ? "s" : ""} mesurée{zones.length > 1 ? "s" : ""}</p>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Client</label>
-                  <input
-                    value={clientName}
-                    onChange={e => setClientName(e.target.value)}
-                    placeholder="Nom du client"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
-                  />
-                </div>
-              </div>
 
-              {/* Surface table */}
-              <div className="glass rounded-2xl border border-white/10 overflow-hidden mb-6">
-                <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                  <span className="text-sm font-600 text-slate-300">Type de surface</span>
-                  <span className="text-sm font-600 text-slate-300">Surface</span>
+                {/* Project info */}
+                <div className="glass border border-white/10 rounded-2xl p-4 mb-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Nom du projet</label>
+                    <input
+                      value={projectName}
+                      onChange={e => setProjectName(e.target.value)}
+                      placeholder="Ex. Appartement Paris 11e"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Client</label>
+                    <input
+                      value={clientName}
+                      onChange={e => setClientName(e.target.value)}
+                      placeholder="Nom du client"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
+                    />
+                  </div>
                 </div>
-                {surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0).map(type => (
-                  <div key={type.id} className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0">
-                    <span className="w-3 h-3 rounded-full" style={{ background: type.color }} />
-                    <span className="text-slate-200 flex-1">{type.name}</span>
-                    <span className="font-mono text-white font-600">
-                      {ppm
-                        ? `${totals[type.id].toFixed(2)} m²`
-                        : `${Math.round(totals[type.id]).toLocaleString()} px²`}
+
+                {/* TVA rate selector (shown only when prices are set) */}
+                {hasPrices && ppm && (
+                  <div className="flex items-center gap-3 mb-4 px-1">
+                    <span className="text-xs text-slate-500">Taux TVA :</span>
+                    {[0, 10, 20].map(rate => (
+                      <button
+                        key={rate}
+                        onClick={() => setTvaRate(rate)}
+                        className={`px-3 py-1 rounded-lg text-xs font-mono font-600 transition-all ${
+                          tvaRate === rate
+                            ? "bg-accent text-white"
+                            : "glass border border-white/10 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {rate === 0 ? "Exo." : `${rate}%`}
+                      </button>
+                    ))}
+                    <span className="text-xs text-slate-600 ml-1">
+                      {tvaRate === 10 ? "— travaux rénovation" : tvaRate === 20 ? "— standard" : "— exonéré"}
                     </span>
                   </div>
-                ))}
-                <div className="flex items-center gap-3 px-4 py-3 bg-white/5">
-                  <span className="w-3 h-3" />
-                  <span className="text-white font-600 flex-1">Total</span>
-                  <span className="font-mono text-accent font-700 text-lg">
-                    {ppm
-                      ? `${totalAll.toFixed(2)} m²`
-                      : `${Math.round(totalAll).toLocaleString()} px²`}
-                  </span>
+                )}
+
+                {/* Surface + price table */}
+                <div className="glass rounded-2xl border border-white/10 overflow-hidden mb-4">
+                  {/* Header */}
+                  <div className="grid gap-0 border-b border-white/5 bg-white/5"
+                    style={{ gridTemplateColumns: hasPrices && ppm ? "1fr 90px 80px 100px" : "1fr 120px" }}>
+                    <div className="px-4 py-3 text-xs font-600 text-slate-400">Type de surface</div>
+                    <div className="px-2 py-3 text-xs font-600 text-slate-400 text-right">Surface</div>
+                    {hasPrices && ppm && <>
+                      <div className="px-2 py-3 text-xs font-600 text-slate-400 text-right">€/m²</div>
+                      <div className="px-4 py-3 text-xs font-600 text-slate-400 text-right">Montant HT</div>
+                    </>}
+                  </div>
+
+                  {/* Rows */}
+                  {activeSurfaces.map(type => (
+                    <div key={type.id}
+                      className="grid border-b border-white/5 last:border-0"
+                      style={{ gridTemplateColumns: hasPrices && ppm ? "1fr 90px 80px 100px" : "1fr 120px" }}>
+                      <div className="flex items-center gap-2.5 px-4 py-3">
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ background: type.color }} />
+                        <span className="text-slate-200 text-sm">{type.name}</span>
+                      </div>
+                      <div className="px-2 py-3 text-right font-mono text-white text-sm font-600">
+                        {ppm
+                          ? `${totals[type.id].toFixed(2)} m²`
+                          : `${Math.round(totals[type.id]).toLocaleString()} px²`}
+                      </div>
+                      {hasPrices && ppm && <>
+                        <div className="px-2 py-3 text-right font-mono text-slate-400 text-sm">
+                          {(type.pricePerM2 ?? 0) > 0 ? `${type.pricePerM2} €` : "—"}
+                        </div>
+                        <div className="px-4 py-3 text-right font-mono text-slate-200 text-sm font-600">
+                          {(type.pricePerM2 ?? 0) > 0
+                            ? `${(totals[type.id] * type.pricePerM2!).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                            : "—"}
+                        </div>
+                      </>}
+                    </div>
+                  ))}
+
+                  {/* Total surfaces row */}
+                  <div className="grid bg-white/5"
+                    style={{ gridTemplateColumns: hasPrices && ppm ? "1fr 90px 80px 100px" : "1fr 120px" }}>
+                    <div className="px-4 py-3 text-white font-600 text-sm">Total surfaces</div>
+                    <div className="px-2 py-3 text-right font-mono text-accent font-700">
+                      {ppm ? `${totalAll.toFixed(2)} m²` : `${Math.round(totalAll).toLocaleString()} px²`}
+                    </div>
+                    {hasPrices && ppm && <>
+                      <div />
+                      <div className="px-4 py-3 text-right font-mono text-accent font-700">
+                        {totalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      </div>
+                    </>}
+                  </div>
+                </div>
+
+                {/* Financial summary (HT/TVA/TTC) */}
+                {hasPrices && ppm && totalHT > 0 && (
+                  <div className="glass border border-white/10 rounded-2xl p-4 mb-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-slate-400">Total HT</span>
+                        <span className="font-mono text-white font-600">
+                          {totalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-slate-400">TVA ({tvaRate}%)</span>
+                        <span className="font-mono text-slate-300">
+                          {tvaAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                        <span className="text-base font-700 text-white">Total TTC</span>
+                        <span className="font-mono text-accent font-700 text-xl">
+                          {totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!ppm && (
+                  <p className="text-xs text-amber-400/80 text-center mb-4">
+                    ⚠ Aucune échelle définie — les surfaces sont en px². Retournez à l'étape 2 pour calibrer.
+                  </p>
+                )}
+
+                <div className="flex gap-3 justify-center flex-wrap">
+                  <Button variant="outline" onClick={() => setStep(2)}>
+                    {d("me_back_survey")}
+                  </Button>
+                  <Button variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" /> CSV
+                  </Button>
+                  <Button
+                    onClick={exportPdfDevis}
+                    disabled={exportingPdf || zones.length === 0}
+                    className="flex items-center gap-1.5"
+                  >
+                    {exportingPdf
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <FileDown className="w-4 h-4" />}
+                    {exportingPdf ? "Génération…" : "Devis PDF"}
+                  </Button>
                 </div>
               </div>
-
-              {!ppm && (
-                <p className="text-xs text-amber-400/80 text-center mb-4">
-                  ⚠ Aucune échelle définie — les surfaces sont en px². Retournez à l'étape 2 pour calibrer.
-                </p>
-              )}
-
-              <div className="flex gap-3 justify-center flex-wrap">
-                <Button variant="outline" onClick={() => setStep(2)}>
-                  {d("me_back_survey")}
-                </Button>
-                <Button variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
-                  <FileText className="w-4 h-4" /> CSV
-                </Button>
-                <Button
-                  onClick={exportPdfDevis}
-                  disabled={exportingPdf || zones.length === 0}
-                  className="flex items-center gap-1.5"
-                >
-                  {exportingPdf
-                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                    : <FileDown className="w-4 h-4" />}
-                  {exportingPdf ? "Génération…" : "Devis PDF"}
-                </Button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
         </motion.div>
       </AnimatePresence>
