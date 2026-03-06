@@ -155,6 +155,41 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
 
+  // Undo / Redo history
+  const historyRef  = useRef<MeasureZone[][]>([]);
+  const futureRef   = useRef<MeasureZone[][]>([]);
+  const zonesSnapRef = useRef<MeasureZone[]>(zones); // tracks latest zones for undo/redo
+  const [historyLen, setHistoryLen] = useState(0);
+  const [futureLen,  setFutureLen]  = useState(0);
+  useEffect(() => { zonesSnapRef.current = zones; }, [zones]);
+
+  const pushHistory = useCallback((snapshot: MeasureZone[]) => {
+    historyRef.current = [...historyRef.current.slice(-49), snapshot];
+    futureRef.current  = [];
+    setHistoryLen(historyRef.current.length);
+    setFutureLen(0);
+  }, []);
+
+  const undoHistory = useCallback(() => {
+    if (!historyRef.current.length) return;
+    const prev = historyRef.current[historyRef.current.length - 1];
+    futureRef.current  = [zonesSnapRef.current, ...futureRef.current.slice(0, 49)];
+    historyRef.current = historyRef.current.slice(0, -1);
+    setHistoryLen(historyRef.current.length);
+    setFutureLen(futureRef.current.length);
+    setZones(prev);
+  }, []);
+
+  const redoHistory = useCallback(() => {
+    if (!futureRef.current.length) return;
+    const next = futureRef.current[0];
+    historyRef.current = [...historyRef.current.slice(-49), zonesSnapRef.current];
+    futureRef.current  = futureRef.current.slice(1);
+    setHistoryLen(historyRef.current.length);
+    setFutureLen(futureRef.current.length);
+    setZones(next);
+  }, []);
+
   // Devis info
   const [projectName, setProjectName] = useState("");
   const [clientName, setClientName] = useState("");
@@ -202,6 +237,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const newProject = () => {
     if (!confirm("Effacer le projet en cours et repartir de zéro ?")) return;
     localStorage.removeItem(STORAGE_KEY);
+    historyRef.current = []; futureRef.current = [];
+    setHistoryLen(0); setFutureLen(0);
     setImageB64(null); setImageMime("image/png"); setImageNatural({ w: 0, h: 0 });
     setZones([]); setSurfaceTypes(DEFAULT_SURFACE_TYPES);
     setPpm(null); setProjectName(""); setClientName("");
@@ -539,6 +576,11 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   surfaceTypes={surfaceTypes}
                   ppm={ppm}
                   onZonesChange={setZones}
+                  onHistoryPush={pushHistory}
+                  onHistoryUndo={undoHistory}
+                  onHistoryRedo={redoHistory}
+                  canUndo={historyLen > 0}
+                  canRedo={futureLen > 0}
                 />
               </div>
               <div className="lg:w-64 shrink-0">

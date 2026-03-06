@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
-import { Trash2, Undo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { SurfaceType, MeasureZone } from "@/lib/measure-types";
 
 interface MeasureCanvasProps {
@@ -12,6 +12,11 @@ interface MeasureCanvasProps {
   surfaceTypes: SurfaceType[];
   ppm: number | null;
   onZonesChange: (zones: MeasureZone[]) => void;
+  onHistoryPush?: (snapshot: MeasureZone[]) => void;
+  onHistoryUndo?: () => void;
+  onHistoryRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 type Tool = "polygon" | "rect";
@@ -35,6 +40,7 @@ function getCentroid(points: { x: number; y: number }[]) {
 export default function MeasureCanvas({
   imageB64, imageMime = "image/png",
   zones, activeTypeId, surfaceTypes, ppm, onZonesChange,
+  onHistoryPush, onHistoryUndo, onHistoryRedo, canUndo = false, canRedo = false,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
@@ -192,9 +198,10 @@ export default function MeasureCanvas({
   // ── Drawing actions ───────────────────────────────────────────────────────
   const addZone = useCallback((points: { x: number; y: number }[]) => {
     if (points.length < 3) return;
+    onHistoryPush?.(zonesRef.current);
     onZonesChange([...zones, { id: crypto.randomUUID(), typeId: activeTypeId, points }]);
     setDrawingPoints([]);
-  }, [zones, activeTypeId, onZonesChange]);
+  }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (dragVertexRef.current) return; // don't update drawing preview while dragging a vertex
@@ -254,15 +261,30 @@ export default function MeasureCanvas({
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") cancelDrawing(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { cancelDrawing(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (drawingPoints.length > 0) setDrawingPoints(p => p.slice(0, -1));
+        else onHistoryUndo?.();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        onHistoryRedo?.();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cancelDrawing]);
+  }, [cancelDrawing, drawingPoints, onHistoryUndo, onHistoryRedo]);
 
-  const deleteZone = (id: string) => onZonesChange(zones.filter(z => z.id !== id));
-  const undoLast   = () => {
+  const deleteZone = (id: string) => {
+    onHistoryPush?.(zonesRef.current);
+    onZonesChange(zones.filter(z => z.id !== id));
+  };
+  const undoLast = () => {
     if (drawingPoints.length > 0) { setDrawingPoints(p => p.slice(0, -1)); return; }
-    onZonesChange(zones.slice(0, -1));
+    onHistoryUndo?.();
   };
 
   const getColor = (typeId: string) => surfaceTypes.find(t => t.id === typeId)?.color ?? "#6B7280";
@@ -315,9 +337,15 @@ export default function MeasureCanvas({
           </button>
         </div>
 
-        <button onClick={undoLast} title="Annuler dernier point / dernière zone"
-          className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
+        <button onClick={undoLast} title="Annuler (Ctrl+Z)"
+          disabled={drawingPoints.length === 0 && !canUndo}
+          className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
           <Undo2 className="w-4 h-4" />
+        </button>
+        <button onClick={() => onHistoryRedo?.()} title="Rétablir (Ctrl+Y)"
+          disabled={!canRedo}
+          className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
+          <Redo2 className="w-4 h-4" />
         </button>
 
         {isDrawing && (
@@ -468,6 +496,7 @@ export default function MeasureCanvas({
                       onClick={e => {
                         e.stopPropagation();
                         e.preventDefault();
+                        onHistoryPush?.(zonesRef.current); // snapshot avant insertion
                         skipNextClickRef.current = true;
                         const newPts = [...zone.points];
                         newPts.splice(idx + 1, 0, midNorm);
@@ -497,6 +526,7 @@ export default function MeasureCanvas({
                         e.stopPropagation();
                         e.preventDefault();
                         if (e.button === 0) {
+                          onHistoryPush?.(zonesRef.current); // snapshot avant drag
                           skipNextClickRef.current = true;
                           setDragVertex({ zoneId: zone.id, idx });
                         }
@@ -504,6 +534,7 @@ export default function MeasureCanvas({
                       onContextMenu={e => {
                         e.stopPropagation();
                         e.preventDefault();
+                        onHistoryPush?.(zonesRef.current); // snapshot avant suppression
                         const newPts = zone.points.filter((_, i) => i !== idx);
                         if (newPts.length < 3) {
                           onZonesChange(zones.filter(z => z.id !== zone.id));
