@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
@@ -191,10 +191,18 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   }, []);
 
   // Devis info
-  const [projectName, setProjectName] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [tvaRate, setTvaRate] = useState<number>(10); // 10% travaux par défaut
+  const [projectName, setProjectName]     = useState("");
+  const [clientName, setClientName]       = useState("");
+  const [clientAddress, setClientAddress] = useState("");
+  const [quoteNumber, setQuoteNumber]     = useState("");
+  const [quoteDate, setQuoteDate]         = useState(() => new Date().toISOString().slice(0, 10));
+  const [exportingPdf, setExportingPdf]   = useState(false);
+  const [tvaRate, setTvaRate]             = useState<number>(10);
+
+  // Multi-plan
+  const [savedPlans, setSavedPlans]   = useState<PlanSnapshot[]>([]);
+  const [activePlanId, setActivePlanId] = useState("plan-main");
+  const [currentPlanName, setCurrentPlanName] = useState("Plan 1");
 
   // ── localStorage : restauration au montage ────────────────────────────────
   useEffect(() => {
@@ -206,8 +214,13 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       if (s.zones)        setZones(s.zones);
       if (s.ppm !== undefined && s.ppm !== null) setPpm(s.ppm);
       if (s.tvaRate !== undefined)  setTvaRate(s.tvaRate);
-      if (s.projectName) setProjectName(s.projectName);
-      if (s.clientName)  setClientName(s.clientName);
+      if (s.projectName)   setProjectName(s.projectName);
+      if (s.clientName)    setClientName(s.clientName);
+      if (s.clientAddress) setClientAddress(s.clientAddress);
+      if (s.quoteNumber)   setQuoteNumber(s.quoteNumber);
+      if (s.quoteDate)     setQuoteDate(s.quoteDate);
+      if (s.savedPlans)    setSavedPlans(s.savedPlans);
+      if (s.currentPlanName) setCurrentPlanName(s.currentPlanName);
       if (s.activeTypeId) setActiveTypeId(s.activeTypeId);
       if (s.imageB64) {
         setImageB64(s.imageB64);
@@ -221,7 +234,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   // ── localStorage : sauvegarde à chaque changement ─────────────────────────
   useEffect(() => {
     if (!imageB64) return; // ne pas sauvegarder un projet vide
-    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step };
+    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -231,7 +244,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, step: 0 }));
       } catch { /* silencieux */ }
     }
-  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step]);
+  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step]);
 
   // ── Nouveau projet ─────────────────────────────────────────────────────────
   const newProject = () => {
@@ -242,6 +255,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setImageB64(null); setImageMime("image/png"); setImageNatural({ w: 0, h: 0 });
     setZones([]); setSurfaceTypes(DEFAULT_SURFACE_TYPES);
     setPpm(null); setProjectName(""); setClientName("");
+    setClientAddress(""); setQuoteNumber(""); setQuoteDate(new Date().toISOString().slice(0, 10));
+    setSavedPlans([]); setCurrentPlanName("Plan 1"); setActivePlanId("plan-main");
     setActiveTypeId(DEFAULT_SURFACE_TYPES[0].id); setStep(0);
   };
 
@@ -250,7 +265,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
   const exportProject = () => {
     if (!imageB64) return;
-    const payload = { version: "floorscan_v1", imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step };
+    const payload = { version: "floorscan_v1", imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step };
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -267,13 +282,19 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
         if (!s.version?.startsWith("floorscan")) throw new Error("Format invalide");
         historyRef.current = []; futureRef.current = [];
         setHistoryLen(0); setFutureLen(0);
-        if (s.surfaceTypes) setSurfaceTypes(s.surfaceTypes);
-        if (s.zones)        setZones(s.zones);
-        if (s.ppm != null)  setPpm(s.ppm);
+        if (s.surfaceTypes)    setSurfaceTypes(s.surfaceTypes);
+        if (s.zones)           setZones(s.zones);
+        if (s.ppm != null)     setPpm(s.ppm);
         if (s.tvaRate != null) setTvaRate(s.tvaRate);
-        if (s.projectName)  setProjectName(s.projectName);
-        if (s.clientName)   setClientName(s.clientName);
-        if (s.activeTypeId) setActiveTypeId(s.activeTypeId);
+        if (s.projectName)     setProjectName(s.projectName);
+        if (s.clientName)      setClientName(s.clientName);
+        if (s.clientAddress)   setClientAddress(s.clientAddress);
+        if (s.quoteNumber)     setQuoteNumber(s.quoteNumber);
+        if (s.quoteDate)       setQuoteDate(s.quoteDate);
+        if (s.savedPlans)      setSavedPlans(s.savedPlans);
+        if (s.currentPlanName) setCurrentPlanName(s.currentPlanName);
+        if (s.activePlanId)    setActivePlanId(s.activePlanId);
+        if (s.activeTypeId)    setActiveTypeId(s.activeTypeId);
         if (s.imageB64) {
           setImageB64(s.imageB64);
           setImageMime(s.imageMime || "image/png");
@@ -378,6 +399,58 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setStep(2);
   };
 
+  // ── Multi-plan ─────────────────────────────────────────────────────────────
+  const saveCurrentPlan = (): PlanSnapshot | null => {
+    if (!imageB64) return null;
+    return { id: activePlanId, name: currentPlanName, imageB64, imageMime, zones, ppm };
+  };
+
+  const switchToPlan = (plan: PlanSnapshot) => {
+    // Save current before switching
+    const cur = saveCurrentPlan();
+    if (cur) setSavedPlans(ps => {
+      const exists = ps.find(p => p.id === cur.id);
+      return exists ? ps.map(p => p.id === cur.id ? cur : p) : [...ps, cur];
+    });
+    // Load new plan
+    setActivePlanId(plan.id);
+    setCurrentPlanName(plan.name);
+    setImageB64(plan.imageB64);
+    setImageMime(plan.imageMime);
+    setZones(plan.zones);
+    setPpm(plan.ppm);
+    historyRef.current = []; futureRef.current = [];
+    setHistoryLen(0); setFutureLen(0);
+    setStep(plan.imageB64 ? 2 : 0);
+  };
+
+  const addNewPlan = () => {
+    const cur = saveCurrentPlan();
+    if (cur) setSavedPlans(ps => {
+      const exists = ps.find(p => p.id === cur.id);
+      return exists ? ps.map(p => p.id === cur.id ? cur : p) : [...ps, cur];
+    });
+    const newId = "plan-" + Date.now();
+    const newName = `Plan ${savedPlans.length + 2}`;
+    setActivePlanId(newId);
+    setCurrentPlanName(newName);
+    setImageB64(null); setImageMime("image/png");
+    setZones([]); setPpm(null);
+    historyRef.current = []; futureRef.current = [];
+    setHistoryLen(0); setFutureLen(0);
+    setStep(0);
+  };
+
+  const deletePlan = (id: string) => {
+    setSavedPlans(ps => ps.filter(p => p.id !== id));
+  };
+
+  // All plans (current + saved) for tab bar
+  const allPlans: PlanSnapshot[] = [
+    ...(imageB64 ? [{ id: activePlanId, name: currentPlanName, imageB64, imageMime, zones, ppm }] : []),
+    ...savedPlans.filter(p => p.id !== activePlanId),
+  ];
+
   const totals = imageNatural.w > 0
     ? aggregateByType(zones, imageNatural.w, imageNatural.h, ppm)
     : {};
@@ -399,48 +472,155 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     a.click();
   };
 
-  // ── Export PDF Devis ───────────────────────────────────────────────────────
+  // ── Export PDF Devis (client-side jsPDF) ──────────────────────────────────
   const exportPdfDevis = async () => {
     if (!imageB64) return;
     setExportingPdf(true);
     try {
-      // Rendu du plan annoté côté client (zones colorées + labels)
-      let planB64 = imageB64;
+      const { jsPDF } = await import("jspdf");
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const W = 210, M = 15;
+      let y = M;
+
+      const hex2rgb = (hex: string): [number,number,number] => [
+        parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)
+      ];
+
+      // ── En-tête ──
+      doc.setFillColor(15,23,42);
+      doc.rect(0, 0, W, 28, "F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(18); doc.setFont("helvetica","bold");
+      doc.text("FloorScan", M, 12);
+      doc.setFontSize(9); doc.setFont("helvetica","normal");
+      doc.setTextColor(148,163,184);
+      doc.text("Métré & Devis de surfaces", M, 18);
+      if (quoteNumber) { doc.setTextColor(255,255,255); doc.text(`Devis N° ${quoteNumber}`, W-M, 12, { align:"right" }); }
+      doc.setTextColor(148,163,184);
+      doc.text(new Date(quoteDate).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"}), W-M, 18, { align:"right" });
+      y = 36;
+
+      // ── Infos projet / client ──
+      doc.setTextColor(30,41,59); doc.setFontSize(9); doc.setFont("helvetica","normal");
+      const col2 = W/2 + 5;
+      doc.setFont("helvetica","bold"); doc.text("Projet", M, y); doc.setFont("helvetica","normal");
+      doc.text(projectName || "—", M, y+5);
+      doc.setFont("helvetica","bold"); doc.text("Client", col2, y); doc.setFont("helvetica","normal");
+      doc.text(clientName || "—", col2, y+5);
+      if (clientAddress) doc.text(clientAddress, col2, y+10);
+      y += clientAddress ? 20 : 16;
+
+      doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.line(M, y, W-M, y); y += 6;
+
+      // ── Plans multi ──
+      const plansToExport = allPlans.length > 1 ? allPlans : [{ id:"main", name: currentPlanName||"Plan", imageB64, imageMime, zones, ppm }];
+
+      for (const plan of plansToExport) {
+        if (plansToExport.length > 1) {
+          doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(30,41,59);
+          doc.text(plan.name, M, y); y += 6;
+        }
+
+        const planTotals = imageNatural.w > 0 ? aggregateByType(plan.zones, imageNatural.w, imageNatural.h, plan.ppm) : {};
+        const planPerims = plan.ppm && imageNatural.w > 0 ? aggregatePerimeterByType(plan.zones, imageNatural.w, imageNatural.h, plan.ppm) : {};
+        const activeSurfaces = surfaceTypes.filter(t => (planTotals[t.id] ?? 0) > 0);
+        const hasPrices = activeSurfaces.some(t => (t.pricePerM2 ?? 0) > 0);
+        if (activeSurfaces.length === 0) continue;
+
+        // Table header
+        const cols = hasPrices && plan.ppm
+          ? [M, 70, 100, 120, 145, 170]
+          : [M, 90, 130, 160];
+        const headers = hasPrices && plan.ppm
+          ? ["Type","Surface","Périm.","Chute","Qté cmd","Montant HT"]
+          : ["Type","Surface","Périm.","—"];
+
+        doc.setFillColor(248,250,252); doc.rect(M, y-4, W-2*M, 8, "F");
+        doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(100,116,139);
+        headers.forEach((h,i) => doc.text(h, cols[i], y));
+        y += 5; doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 4;
+
+        let planHT = 0;
+        doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(30,41,59);
+        for (const type of activeSurfaces) {
+          const area   = planTotals[type.id] ?? 0;
+          const perim  = planPerims[type.id] ?? 0;
+          const waste  = type.wastePercent ?? 10;
+          const cmd    = area * (1 + waste/100);
+          const lineHT = area * (type.pricePerM2 ?? 0);
+          planHT += lineHT;
+          const [r,g,b] = hex2rgb(type.color);
+          doc.setFillColor(r,g,b); doc.circle(cols[0]+1.5, y-1.5, 1.5, "F");
+          doc.text(type.name, cols[0]+5, y);
+          doc.text(plan.ppm ? `${area.toFixed(2)} m²` : "—", cols[1], y);
+          if (hasPrices && plan.ppm) {
+            doc.text(perim > 0 ? `${perim.toFixed(1)} ml` : "—", cols[2], y);
+            doc.text(`+${waste}%`, cols[3], y);
+            doc.text(`${cmd.toFixed(2)} m²`, cols[4], y);
+            doc.text(lineHT > 0 ? `${lineHT.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €` : "—", cols[5], y);
+          } else if (plan.ppm) {
+            doc.text(perim > 0 ? `${perim.toFixed(1)} ml` : "—", cols[2], y);
+          }
+          y += 5;
+          // Note de zone
+          const zonesOfType = plan.zones.filter(z => z.typeId === type.id && z.note);
+          for (const z of zonesOfType) {
+            doc.setFontSize(7.5); doc.setTextColor(100,116,139);
+            doc.text(`  ↳ ${z.name || type.name}: ${z.note}`, cols[0]+5, y);
+            doc.setFontSize(8.5); doc.setTextColor(30,41,59);
+            y += 4;
+          }
+          if (y > 260) { doc.addPage(); y = M; }
+        }
+
+        // Total plan
+        const planTotalM2 = Object.values(planTotals).reduce((a,b) => a+b, 0);
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 3;
+        doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(30,41,59);
+        doc.text("Total surfaces", M, y);
+        doc.text(plan.ppm ? `${planTotalM2.toFixed(2)} m²` : "—", cols[1], y);
+        if (hasPrices && plan.ppm && planHT > 0) {
+          doc.text(`${planHT.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €`, cols[5], y);
+        }
+        y += 8;
+      }
+
+      // ── Récap financier ──
+      const hasPrices = surfaceTypes.some(t => (t.pricePerM2 ?? 0) > 0);
+      const totalHT   = surfaceTypes.reduce((s,t) => s + (totals[t.id]??0)*(t.pricePerM2??0), 0);
+      if (hasPrices && ppm && totalHT > 0) {
+        doc.line(M, y, W-M, y); y += 5;
+        doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(30,41,59);
+        const rows: [string,string][] = [
+          ["Total HT", `${totalHT.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €`],
+          [`TVA ${tvaRate}%`, `${(totalHT*tvaRate/100).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €`],
+        ];
+        rows.forEach(([k,v]) => { doc.text(k, W-M-50, y); doc.text(v, W-M, y, {align:"right"}); y += 5; });
+        doc.setFont("helvetica","bold"); doc.setFontSize(11);
+        doc.text("Total TTC", W-M-50, y);
+        doc.text(`${(totalHT*(1+tvaRate/100)).toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €`, W-M, y, {align:"right"});
+        y += 8;
+      }
+
+      // ── Plan annoté ──
       try {
-        planB64 = await renderAnnotatedPlan(imageB64, imageMime, zones, surfaceTypes, ppm);
-      } catch { /* fallback sur image brute */ }
+        const planB64 = await renderAnnotatedPlan(imageB64, imageMime, zones, surfaceTypes, ppm);
+        if (y > 180) { doc.addPage(); y = M; }
+        const imgProps = (doc as any).getImageProperties?.(`data:image/png;base64,${planB64}`) ?? { width: 1, height: 1 };
+        const maxW = W - 2*M;
+        const ratio = imgProps.height / imgProps.width;
+        const imgH = Math.min(maxW * ratio, 100);
+        doc.addImage(`data:image/png;base64,${planB64}`, "PNG", M, y, maxW, imgH);
+        y += imgH + 5;
+      } catch { /* skip plan image */ }
 
-      const surface_totals = surfaceTypes
-        .filter(t => (totals[t.id] ?? 0) > 0)
-        .map(t => ({
-          name: t.name,
-          color: t.color,
-          area_m2: totals[t.id] ?? 0,
-          price_per_m2: t.pricePerM2 ?? 0,
-        }));
+      // ── Pied de page ──
+      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(148,163,184);
+      doc.text("Généré par FloorScan · floorscan.app", W/2, 292, { align:"center" });
 
-      const r = await fetch(`${BACKEND}/export-measure-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_b64: planB64,       // ← plan avec zones superposées
-          surface_totals,
-          total_m2: totalAll,
-          ppm,
-          project_name: projectName,
-          client_name: clientName,
-          tva_rate: tvaRate,
-        }),
-      });
-      if (!r.ok) throw new Error(`Erreur PDF ${r.status}`);
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "floorscan_devis.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ title: "Devis PDF exporté", variant: "success" });
+      const filename = `devis_${(projectName||"floorscan").replace(/\s+/g,"-")}_${quoteDate}.pdf`;
+      doc.save(filename);
+      toast({ title: "Devis PDF exporté ✓", variant: "success" });
     } catch (e: any) {
       toast({ title: "Erreur export PDF", description: e.message, variant: "error" });
     } finally {
@@ -597,6 +777,37 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           {step === 2 && imageB64 && (
             <div className="flex flex-col lg:flex-row gap-6">
               <div className="flex-1 min-w-0">
+                {/* Multi-plan tab bar */}
+                {(savedPlans.length > 0 || true) && (
+                  <div className="flex items-center gap-1 mb-4 flex-wrap">
+                    {/* Current plan tab */}
+                    <div className="flex items-center gap-1 bg-accent/20 border border-accent/40 rounded-lg px-3 py-1.5 text-xs text-white">
+                      <Layers className="w-3 h-3" />
+                      <input
+                        value={currentPlanName}
+                        onChange={e => setCurrentPlanName(e.target.value)}
+                        className="bg-transparent w-20 text-white text-xs outline-none font-medium"
+                      />
+                    </div>
+                    {/* Saved plans */}
+                    {savedPlans.map(plan => (
+                      <button key={plan.id}
+                        onClick={() => switchToPlan(plan)}
+                        className="flex items-center gap-1.5 glass border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white transition-colors group">
+                        <Layers className="w-3 h-3" />
+                        {plan.name}
+                        <span onClick={e => { e.stopPropagation(); deletePlan(plan.id); }}
+                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all ml-1">
+                          <X className="w-3 h-3" />
+                        </span>
+                      </button>
+                    ))}
+                    <button onClick={addNewPlan}
+                      className="glass border border-white/10 border-dashed rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:text-white hover:border-white/30 transition-colors flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Nouveau plan
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-display text-xl font-700 text-white">{d("me_draw")}</h2>
                   <div className="flex items-center gap-2">
@@ -673,6 +884,33 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                       onChange={e => setClientName(e.target.value)}
                       placeholder="Nom du client"
                       className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-slate-500 mb-1">Adresse client</label>
+                    <input
+                      value={clientAddress}
+                      onChange={e => setClientAddress(e.target.value)}
+                      placeholder="Ex. 12 rue de la Paix, 75001 Paris"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">N° de devis</label>
+                    <input
+                      value={quoteNumber}
+                      onChange={e => setQuoteNumber(e.target.value)}
+                      placeholder="Ex. 2025-001"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Date du devis</label>
+                    <input
+                      type="date"
+                      value={quoteDate}
+                      onChange={e => setQuoteDate(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-accent"
                     />
                   </div>
                 </div>

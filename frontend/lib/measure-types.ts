@@ -11,8 +11,18 @@ export interface MeasureZone {
   id: string;
   typeId: string;
   name?: string;                       // nom personnalisé optionnel
+  note?: string;                       // remarque libre (ex: "attention dénivelé")
   points: { x: number; y: number }[]; // normalized 0-1 relative to image
   isDeduction?: boolean;               // si true, zone soustraite du total
+}
+
+export interface PlanSnapshot {
+  id: string;
+  name: string;
+  imageB64: string;
+  imageMime: string;
+  zones: MeasureZone[];
+  ppm: number | null;
 }
 
 export const DEFAULT_SURFACE_TYPES: SurfaceType[] = [

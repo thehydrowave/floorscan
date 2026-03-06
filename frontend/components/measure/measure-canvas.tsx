@@ -37,6 +37,26 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** Snap point to nearest 45° angle from anchor, using image pixel space for correct aspect ratio */
+function snapTo45(
+  anchor: { x: number; y: number },
+  cur: { x: number; y: number },
+  imageW: number,
+  imageH: number
+): { x: number; y: number } {
+  const ax = anchor.x * imageW, ay = anchor.y * imageH;
+  const cx = cur.x * imageW,    cy = cur.y * imageH;
+  const dx = cx - ax, dy = cy - ay;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return cur;
+  const dist  = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx);
+  const snap  = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+  return {
+    x: anchor.x + dist * Math.cos(snap) / imageW,
+    y: anchor.y + dist * Math.sin(snap) / imageH,
+  };
+}
+
 function getCentroid(points: { x: number; y: number }[]) {
   return {
     x: points.reduce((s, p) => s + p.x, 0) / points.length,
@@ -331,9 +351,13 @@ export default function MeasureCanvas({
   }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (dragVertexRef.current) return; // don't update drawing preview while dragging a vertex
-    setMouseNorm(toNorm(e.clientX, e.clientY));
-  }, [toNorm]);
+    if (dragVertexRef.current) return;
+    let n = toNorm(e.clientX, e.clientY);
+    if (n && e.shiftKey && tool === "polygon" && drawingPoints.length > 0 && naturalSize.w > 0) {
+      n = snapTo45(drawingPoints[drawingPoints.length - 1], n, naturalSize.w, naturalSize.h);
+    }
+    setMouseNorm(n);
+  }, [toNorm, tool, drawingPoints, naturalSize]);
 
   const handleMouseLeave = () => setMouseNorm(null);
 
@@ -361,6 +385,8 @@ export default function MeasureCanvas({
     const n = toNorm(e.clientX, e.clientY);
     if (!n) return;
     if (tool === "polygon") {
+      // Use already-snapped mouseNorm if shift is held
+      if (e.shiftKey && mouseNorm && drawingPoints.length > 0) n = mouseNorm;
       if (nearFirst(e.clientX, e.clientY)) { addZone(drawingPoints); return; }
       setDrawingPoints(prev => [...prev, n]);
     } else if (tool === "angle") {
@@ -455,8 +481,8 @@ export default function MeasureCanvas({
       ? zones.length > 0
         ? "Cliquez pour tracer · Glissez un ● pour déplacer · Clic droit ● pour supprimer · ＋ pour insérer"
         : "Cliquez pour placer le premier point"
-      : drawingPoints.length < 2   ? "Continuez à cliquer pour tracer"
-      : "Double-clic ou cliquez le 1er point pour fermer"
+      : drawingPoints.length < 2   ? "Continuez à cliquer · Maj pour contraindre à 45°"
+      : "Double-clic ou cliquez le 1er point pour fermer · Maj = snap 45°"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -925,24 +951,36 @@ export default function MeasureCanvas({
             })();
             const areaM2 = ppm ? areaPx / ppm ** 2 : null;
             return (
-              <div key={zone.id} className="flex items-center gap-2 glass border border-white/5 rounded-lg px-3 py-2 text-xs">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: type?.color ?? "#6B7280" }} />
+              <div key={zone.id} className="glass border border-white/5 rounded-lg px-3 py-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${zone.isDeduction ? "ring-1 ring-red-400" : ""}`}
+                    style={{ background: zone.isDeduction ? "#EF4444" : (type?.color ?? "#6B7280") }} />
+                  <input
+                    value={zone.name ?? ""}
+                    onChange={e => {
+                      const name = e.target.value;
+                      onZonesChange(zones.map(z => z.id === zone.id ? { ...z, name: name || undefined } : z));
+                    }}
+                    placeholder={`${zone.isDeduction ? "Déduction" : (type?.name ?? zone.typeId)} #${i + 1}`}
+                    className="flex-1 min-w-0 bg-transparent text-slate-300 placeholder-slate-600 focus:outline-none focus:text-white text-xs"
+                  />
+                  <span className={`font-mono shrink-0 ${zone.isDeduction ? "text-red-400" : "text-slate-300"}`}>
+                    {zone.isDeduction ? "−" : ""}{areaM2 != null ? `${areaM2.toFixed(2)} m²` : `${Math.round(areaPx).toLocaleString()} px²`}
+                  </span>
+                  <button onClick={() => deleteZone(zone.id)}
+                    className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <input
-                  value={zone.name ?? ""}
+                  value={zone.note ?? ""}
                   onChange={e => {
-                    const name = e.target.value;
-                    onZonesChange(zones.map(z => z.id === zone.id ? { ...z, name: name || undefined } : z));
+                    const note = e.target.value;
+                    onZonesChange(zones.map(z => z.id === zone.id ? { ...z, note: note || undefined } : z));
                   }}
-                  placeholder={`${type?.name ?? zone.typeId} #${i + 1}`}
-                  className="flex-1 min-w-0 bg-transparent text-slate-300 placeholder-slate-600 focus:outline-none focus:text-white text-xs"
+                  placeholder="Note… (ex: attention dénivelé)"
+                  className="mt-1 w-full bg-transparent text-slate-500 placeholder-slate-700 focus:outline-none focus:text-slate-300 text-[10px] italic"
                 />
-                <span className="font-mono text-slate-300 shrink-0">
-                  {areaM2 != null ? `${areaM2.toFixed(2)} m²` : `${Math.round(areaPx).toLocaleString()} px²`}
-                </span>
-                <button onClick={() => deleteZone(zone.id)}
-                  className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
               </div>
             );
           })}
