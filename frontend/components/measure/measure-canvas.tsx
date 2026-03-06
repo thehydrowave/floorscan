@@ -309,9 +309,9 @@ export default function MeasureCanvas({
                 return (
                   <circle key={i}
                     cx={s.x} cy={s.y}
-                    r={isFirst ? 7 : 4}
+                    r={isFirst ? 5 : 3}
                     fill={isFirst ? activeColor : "white"}
-                    stroke={activeColor} strokeWidth={2}
+                    stroke={activeColor} strokeWidth={1.5}
                   />
                 );
               })}
