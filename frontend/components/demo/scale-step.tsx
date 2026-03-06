@@ -22,7 +22,6 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
   const [realDist, setRealDist] = useState("1");
   const [zoom, setZoom] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
-  const [svgSize, setSvgSize] = useState({ w: 0, h: 0 });
   const [cursor, setCursor] = useState<"crosshair" | "grab" | "grabbing">("crosshair");
 
   const imgRef = useRef<HTMLImageElement>(null);
@@ -35,17 +34,6 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { translateRef.current = translate; }, [translate]);
-
-  // Track container size for SVG overlay
-  useEffect(() => {
-    const update = () => {
-      const c = containerRef.current;
-      if (c) setSvgSize({ w: c.offsetWidth, h: c.offsetHeight });
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
 
   // Zoom centered on cursor
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -234,13 +222,13 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
                   ref={imgRef}
                   src={`data:image/png;base64,${imageB64}`}
                   alt="Plan"
-                  style={{ display: "block", maxWidth: svgSize.w || 800, maxHeight: 400 }}
+                  style={{ display: "block", maxWidth: 800, maxHeight: 400 }}
                   draggable={false}
                 />
               </div>
 
-              {/* SVG overlay: points + line */}
-              <svg className="absolute inset-0 pointer-events-none" width={svgSize.w} height={svgSize.h}>
+              {/* SVG overlay: points + line — sized via CSS so it always covers the container */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
                 {p1Svg && p2Svg && (
                   <line
                     x1={p1Svg.x} y1={p1Svg.y} x2={p2Svg.x} y2={p2Svg.y}
