@@ -25,6 +25,13 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function getCentroid(points: { x: number; y: number }[]) {
+  return {
+    x: points.reduce((s, p) => s + p.x, 0) / points.length,
+    y: points.reduce((s, p) => s + p.y, 0) / points.length,
+  };
+}
+
 export default function MeasureCanvas({
   imageB64, imageMime = "image/png",
   zones, activeTypeId, surfaceTypes, ppm, onZonesChange,
@@ -353,6 +360,25 @@ export default function MeasureCanvas({
           {zones.map(zone => {
             const color = getColor(zone.typeId);
             const pts = zone.points.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(" ");
+
+            // Label at centroid
+            const centroid = toSvg(getCentroid(zone.points));
+            const typeName = zone.name || surfaceTypes.find(t => t.id === zone.typeId)?.name || zone.typeId;
+            const areaPx = (() => {
+              if (naturalSize.w === 0) return 0;
+              let a = 0;
+              for (let j = 0; j < zone.points.length; j++) {
+                const k = (j + 1) % zone.points.length;
+                a += zone.points[j].x * naturalSize.w * zone.points[k].y * naturalSize.h;
+                a -= zone.points[k].x * naturalSize.w * zone.points[j].y * naturalSize.h;
+              }
+              return Math.abs(a) / 2;
+            })();
+            const areaM2 = ppm ? areaPx / ppm ** 2 : null;
+            const areaLabel = areaM2 != null ? `${areaM2.toFixed(2)} m²` : null;
+            const LW = 82;
+            const LH = areaLabel ? 32 : 20;
+
             return (
               <g key={zone.id}>
                 <polygon
@@ -362,6 +388,39 @@ export default function MeasureCanvas({
                   strokeWidth={2}
                   strokeLinejoin="round"
                 />
+                {/* Zone label */}
+                <g transform={`translate(${centroid.x},${centroid.y})`}>
+                  <rect
+                    x={-LW / 2} y={-LH / 2}
+                    width={LW} height={LH}
+                    rx={5} ry={5}
+                    fill="rgba(0,0,0,0.62)"
+                    stroke={color} strokeWidth={1.2}
+                  />
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    y={areaLabel ? -7 : 0}
+                    fontSize={10.5}
+                    fontWeight="600"
+                    fill="white"
+                    fontFamily="system-ui, sans-serif"
+                  >
+                    {typeName}
+                  </text>
+                  {areaLabel && (
+                    <text
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      y={7}
+                      fontSize={9.5}
+                      fill={color}
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {areaLabel}
+                    </text>
+                  )}
+                </g>
               </g>
             );
           })}
@@ -446,13 +505,20 @@ export default function MeasureCanvas({
             return (
               <div key={zone.id} className="flex items-center gap-2 glass border border-white/5 rounded-lg px-3 py-2 text-xs">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: type?.color ?? "#6B7280" }} />
-                <span className="text-slate-400">{type?.name ?? zone.typeId}</span>
-                <span className="text-slate-500 ml-1">#{i + 1}</span>
-                <span className="ml-auto font-mono text-slate-300">
+                <input
+                  value={zone.name ?? ""}
+                  onChange={e => {
+                    const name = e.target.value;
+                    onZonesChange(zones.map(z => z.id === zone.id ? { ...z, name: name || undefined } : z));
+                  }}
+                  placeholder={`${type?.name ?? zone.typeId} #${i + 1}`}
+                  className="flex-1 min-w-0 bg-transparent text-slate-300 placeholder-slate-600 focus:outline-none focus:text-white text-xs"
+                />
+                <span className="font-mono text-slate-300 shrink-0">
                   {areaM2 != null ? `${areaM2.toFixed(2)} m²` : `${Math.round(areaPx).toLocaleString()} px²`}
                 </span>
                 <button onClick={() => deleteZone(zone.id)}
-                  className="text-slate-600 hover:text-red-400 transition-colors ml-1">
+                  className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

@@ -8,6 +8,7 @@ export interface SurfaceType {
 export interface MeasureZone {
   id: string;
   typeId: string;
+  name?: string;                       // nom personnalisé optionnel
   points: { x: number; y: number }[]; // normalized 0-1 relative to image
 }
 

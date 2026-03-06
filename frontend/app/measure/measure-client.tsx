@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
@@ -16,6 +16,116 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const STORAGE_KEY = "floorscan_project_v2";
+
+// ── Rendu canvas : plan annoté avec zones colorées + labels ──────────────────
+async function renderAnnotatedPlan(
+  imageB64: string,
+  imageMime: string,
+  zones: MeasureZone[],
+  surfaceTypes: SurfaceType[],
+  ppm: number | null,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+
+      const hexRgb = (hex: string): [number, number, number] => [
+        parseInt(hex.slice(1, 3), 16),
+        parseInt(hex.slice(3, 5), 16),
+        parseInt(hex.slice(5, 7), 16),
+      ];
+
+      // Helper: rounded rect path
+      const rrect = (x: number, y: number, w: number, h: number, r: number) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+        ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+        ctx.lineTo(x + r,  y + h);  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+        ctx.lineTo(x,      y + r);  ctx.arcTo(x,     y,     x + r, y,         r);
+        ctx.closePath();
+      };
+
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+
+      for (const zone of zones) {
+        const type  = surfaceTypes.find(t => t.id === zone.typeId);
+        const hex   = type?.color ?? "#6B7280";
+        const [r, g, b] = hexRgb(hex);
+        const pts   = zone.points.map(p => ({ x: p.x * W, y: p.y * H }));
+        if (pts.length < 3) continue;
+
+        // ── Polygon fill + stroke ─────────────────────────────────────────
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath();
+        ctx.fillStyle   = `rgba(${r},${g},${b},0.32)`;
+        ctx.fill();
+        ctx.strokeStyle = hex;
+        ctx.lineWidth   = Math.max(2.5, W / 400);
+        (ctx as any).lineJoin = "round";
+        ctx.stroke();
+
+        // ── Label au centroïde ────────────────────────────────────────────
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        const zoneName = zone.name || type?.name || zone.typeId;
+
+        // Surface
+        let areaPx = 0;
+        for (let j = 0; j < zone.points.length; j++) {
+          const k = (j + 1) % zone.points.length;
+          areaPx += zone.points[j].x * W * zone.points[k].y * H;
+          areaPx -= zone.points[k].x * W * zone.points[j].y * H;
+        }
+        areaPx = Math.abs(areaPx) / 2;
+        const areaM2    = ppm ? areaPx / ppm ** 2 : null;
+        const areaLabel = areaM2 !== null ? `${areaM2.toFixed(2)} m\u00b2` : null;
+
+        // Dimensions du label
+        const fs  = Math.max(14, Math.min(W / 52, 42));
+        const pad = fs * 0.5;
+        ctx.font = `bold ${fs}px system-ui, sans-serif`;
+        const tw1 = ctx.measureText(zoneName).width;
+        ctx.font = `${Math.round(fs * 0.85)}px monospace`;
+        const tw2 = areaLabel ? ctx.measureText(areaLabel).width : 0;
+        const bw  = Math.max(tw1, tw2) + pad * 2;
+        const bh  = areaLabel ? fs * 2.6 : fs * 1.8;
+
+        // Background
+        rrect(cx - bw / 2, cy - bh / 2, bw, bh, 5);
+        ctx.fillStyle   = "rgba(0,0,0,0.70)";
+        ctx.fill();
+        ctx.strokeStyle = hex;
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+
+        // Texte
+        ctx.textAlign    = "center";
+        ctx.textBaseline = "middle";
+        ctx.font         = `bold ${fs}px system-ui, sans-serif`;
+        ctx.fillStyle    = "#ffffff";
+        ctx.fillText(zoneName, cx, areaLabel ? cy - fs * 0.65 : cy);
+        if (areaLabel) {
+          ctx.font      = `${Math.round(fs * 0.85)}px monospace`;
+          ctx.fillStyle = hex;
+          ctx.fillText(areaLabel, cx, cy + fs * 0.75);
+        }
+      }
+      resolve(canvas.toDataURL("image/png").split(",")[1]);
+    };
+    img.onerror = () => reject(new Error("Image load failed"));
+    img.src = `data:${imageMime};base64,${imageB64}`;
+  });
+}
 
 export default function MeasureClient({ embedded = false }: { embedded?: boolean }) {
   const { lang } = useLang();
@@ -50,6 +160,53 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [clientName, setClientName] = useState("");
   const [exportingPdf, setExportingPdf] = useState(false);
   const [tvaRate, setTvaRate] = useState<number>(10); // 10% travaux par défaut
+
+  // ── localStorage : restauration au montage ────────────────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.surfaceTypes) setSurfaceTypes(s.surfaceTypes);
+      if (s.zones)        setZones(s.zones);
+      if (s.ppm !== undefined && s.ppm !== null) setPpm(s.ppm);
+      if (s.tvaRate !== undefined)  setTvaRate(s.tvaRate);
+      if (s.projectName) setProjectName(s.projectName);
+      if (s.clientName)  setClientName(s.clientName);
+      if (s.activeTypeId) setActiveTypeId(s.activeTypeId);
+      if (s.imageB64) {
+        setImageB64(s.imageB64);
+        setImageMime(s.imageMime || "image/png");
+        if (s.step !== undefined) setStep(s.step);
+      }
+    } catch { /* silencieux */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── localStorage : sauvegarde à chaque changement ─────────────────────────
+  useEffect(() => {
+    if (!imageB64) return; // ne pas sauvegarder un projet vide
+    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Quota dépassé → sauvegarder sans l'image
+      try {
+        const { imageB64: _img, imageMime: _mime, ...rest } = payload;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, step: 0 }));
+      } catch { /* silencieux */ }
+    }
+  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step]);
+
+  // ── Nouveau projet ─────────────────────────────────────────────────────────
+  const newProject = () => {
+    if (!confirm("Effacer le projet en cours et repartir de zéro ?")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    setImageB64(null); setImageMime("image/png"); setImageNatural({ w: 0, h: 0 });
+    setZones([]); setSurfaceTypes(DEFAULT_SURFACE_TYPES);
+    setPpm(null); setProjectName(""); setClientName("");
+    setActiveTypeId(DEFAULT_SURFACE_TYPES[0].id); setStep(0);
+  };
 
   // ── Sync imageNatural when image changes ──────────────────────────────────
   useEffect(() => {
@@ -168,6 +325,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     if (!imageB64) return;
     setExportingPdf(true);
     try {
+      // Rendu du plan annoté côté client (zones colorées + labels)
+      let planB64 = imageB64;
+      try {
+        planB64 = await renderAnnotatedPlan(imageB64, imageMime, zones, surfaceTypes, ppm);
+      } catch { /* fallback sur image brute */ }
+
       const surface_totals = surfaceTypes
         .filter(t => (totals[t.id] ?? 0) > 0)
         .map(t => ({
@@ -181,7 +344,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          image_b64: imageB64,
+          image_b64: planB64,       // ← plan avec zones superposées
           surface_totals,
           total_m2: totalAll,
           ppm,
@@ -597,6 +760,15 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
           <div className="flex items-center gap-3">
             <LangSwitcher />
+            {imageB64 && (
+              <button
+                onClick={newProject}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white glass border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+                title="Nouveau projet"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Nouveau
+              </button>
+            )}
             <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
               <ArrowLeft className="w-4 h-4" /> {d("me_back_ret")}
             </Link>
