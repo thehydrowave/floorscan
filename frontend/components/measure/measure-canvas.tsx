@@ -483,6 +483,31 @@ export default function MeasureCanvas({
                     </text>
                   )}
                 </g>
+                {/* Edge length labels (shown only when scale is set) */}
+                {ppm && naturalSize.w > 0 && zone.points.map((p, idx) => {
+                  const next = zone.points[(idx + 1) % zone.points.length];
+                  const s1 = toSvg(p);
+                  const s2 = toSvg(next);
+                  const screenLen = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+                  if (screenLen < 32) return null; // skip tiny edges
+                  const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
+                  const dxImg = (next.x - p.x) * naturalSize.w;
+                  const dyImg = (next.y - p.y) * naturalSize.h;
+                  const lenM = Math.sqrt(dxImg * dxImg + dyImg * dyImg) / ppm;
+                  const label = lenM >= 1 ? `${lenM.toFixed(2)} m` : `${(lenM * 100).toFixed(0)} cm`;
+                  const rawAngle = Math.atan2(s2.y - s1.y, s2.x - s1.x) * 180 / Math.PI;
+                  const angle = (rawAngle > 90 || rawAngle <= -90) ? rawAngle + 180 : rawAngle;
+                  const rw = label.length * 5 + 10;
+                  return (
+                    <g key={`len-${idx}`} transform={`translate(${mid.x},${mid.y}) rotate(${angle})`}>
+                      <rect x={-rw / 2} y={-7} width={rw} height={13} rx={3} fill="rgba(0,0,0,0.65)" />
+                      <text textAnchor="middle" dominantBaseline="middle"
+                        fontSize={8.5} fill="white" fontFamily="ui-monospace, monospace">
+                        {label}
+                      </text>
+                    </g>
+                  );
+                })}
                 {/* Edge midpoints — click to insert a new vertex */}
                 {zone.points.map((p, idx) => {
                   const next = zone.points[(idx + 1) % zone.points.length];
