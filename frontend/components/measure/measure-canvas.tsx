@@ -382,19 +382,20 @@ export default function MeasureCanvas({
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
     if (e.button !== 0) return;
-    const n = toNorm(e.clientX, e.clientY);
-    if (!n) return;
+    const raw = toNorm(e.clientX, e.clientY);
+    if (!raw) return;
+    // Use already-snapped mouseNorm if shift is held while drawing
+    const pt: { x: number; y: number } =
+      (tool === "polygon" && e.shiftKey && mouseNorm && drawingPoints.length > 0) ? mouseNorm : raw;
     if (tool === "polygon") {
-      // Use already-snapped mouseNorm if shift is held
-      if (e.shiftKey && mouseNorm && drawingPoints.length > 0) n = mouseNorm;
       if (nearFirst(e.clientX, e.clientY)) { addZone(drawingPoints); return; }
-      setDrawingPoints(prev => [...prev, n]);
+      setDrawingPoints(prev => [...prev, pt]);
     } else if (tool === "angle") {
       if (anglePts.length < 2) {
-        setAnglePts(prev => [...prev, n]);
+        setAnglePts(prev => [...prev, pt]);
       } else {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        setAngleMeasurements(prev => [...prev, { id, a: anglePts[0], v: anglePts[1], b: n }]);
+        setAngleMeasurements(prev => [...prev, { id, a: anglePts[0], v: anglePts[1], b: pt }]);
         setAnglePts([]);
       }
     }
