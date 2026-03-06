@@ -26,11 +26,11 @@ export interface PlanSnapshot {
 }
 
 export const DEFAULT_SURFACE_TYPES: SurfaceType[] = [
-  { id: "carrelage", name: "Carrelage",  color: "#3B82F6", wastePercent: 10 },
-  { id: "parquet",   name: "Parquet",    color: "#F97316", wastePercent: 10 },
-  { id: "peinture",  name: "Peinture",   color: "#8B5CF6", wastePercent: 15 },
-  { id: "beton",     name: "Béton",      color: "#6B7280", wastePercent: 10 },
-  { id: "moquette",  name: "Moquette",   color: "#EC4899", wastePercent: 10 },
+  { id: "carrelage", name: "Carrelage",  color: "#3B82F6", wastePercent: 10, pricePerM2: 35 },
+  { id: "parquet",   name: "Parquet",    color: "#F97316", wastePercent: 10, pricePerM2: 50 },
+  { id: "peinture",  name: "Peinture",   color: "#8B5CF6", wastePercent: 15, pricePerM2: 12 },
+  { id: "beton",     name: "Béton",      color: "#6B7280", wastePercent: 10, pricePerM2: 80 },
+  { id: "moquette",  name: "Moquette",   color: "#EC4899", wastePercent: 10, pricePerM2: 25 },
 ];
 
 /** Shoelace formula — points en coords normalisées (0-1), imageW/H en px */
