@@ -414,9 +414,12 @@ export default function MeasureCanvas({
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
     : tool === "polygon"
-    ? drawingPoints.length === 0 ? "Cliquez pour placer le premier point"
-    : drawingPoints.length < 2   ? "Continuez à cliquer pour tracer"
-    : "Double-clic ou cliquez le 1er point pour fermer"
+    ? drawingPoints.length === 0
+      ? zones.length > 0
+        ? "Cliquez pour tracer · Glissez un ● pour déplacer un sommet · Clic droit sur ● pour supprimer · ＋ pour insérer"
+        : "Cliquez pour placer le premier point"
+      : drawingPoints.length < 2   ? "Continuez à cliquer pour tracer"
+      : "Double-clic ou cliquez le 1er point pour fermer"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -637,8 +640,8 @@ export default function MeasureCanvas({
                         onZonesChange(zones.map(z => z.id !== zone.id ? z : { ...z, points: newPts }));
                       }}
                     >
-                      <circle r={7} fill="white" stroke={color} strokeWidth={1.2} opacity={0.8} />
-                      <text textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight="700"
+                      <circle r={9} fill="white" stroke={color} strokeWidth={1.5} opacity={0.85} />
+                      <text textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight="700"
                         fill={color} style={{ userSelect: "none", pointerEvents: "none" }}>+</text>
                     </g>
                   );
@@ -651,10 +654,10 @@ export default function MeasureCanvas({
                     <circle
                       key={idx}
                       cx={s.x} cy={s.y}
-                      r={isDragging ? 7 : 5}
+                      r={isDragging ? 10 : 7}
                       fill={isDragging ? color : "white"}
                       stroke={color}
-                      strokeWidth={1.5}
+                      strokeWidth={2}
                       style={{ pointerEvents: "all", cursor: "move" }}
                       onMouseDown={e => {
                         e.stopPropagation();
