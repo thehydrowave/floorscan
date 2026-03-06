@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline } from "lucide-react";
 import { SurfaceType, MeasureZone } from "@/lib/measure-types";
 
 interface MeasureCanvasProps {
@@ -19,7 +19,14 @@ interface MeasureCanvasProps {
   canRedo?: boolean;
 }
 
-type Tool = "polygon" | "rect";
+type Tool = "polygon" | "rect" | "angle";
+
+interface AngleMeasurement {
+  id: string;
+  a: { x: number; y: number };
+  v: { x: number; y: number };
+  b: { x: number; y: number };
+}
 
 const CLOSE_RADIUS = 12; // px screen-space
 
@@ -63,6 +70,10 @@ export default function MeasureCanvas({
 
   // Vertex edit state
   const [dragVertex, setDragVertex] = useState<{ zoneId: string; idx: number } | null>(null);
+
+  // Angle tool state
+  const [anglePts, setAnglePts]               = useState<{ x: number; y: number }[]>([]);
+  const [angleMeasurements, setAngleMeasurements] = useState<AngleMeasurement[]>([]);
 
   // Stable refs for use in event handlers
   const zoomRef          = useRef(zoom);
@@ -335,12 +346,22 @@ export default function MeasureCanvas({
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
-    if (tool !== "polygon" || e.button !== 0) return;
+    if (e.button !== 0) return;
     const n = toNorm(e.clientX, e.clientY);
     if (!n) return;
-    if (nearFirst(e.clientX, e.clientY)) { addZone(drawingPoints); return; }
-    setDrawingPoints(prev => [...prev, n]);
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone]);
+    if (tool === "polygon") {
+      if (nearFirst(e.clientX, e.clientY)) { addZone(drawingPoints); return; }
+      setDrawingPoints(prev => [...prev, n]);
+    } else if (tool === "angle") {
+      if (anglePts.length < 2) {
+        setAnglePts(prev => [...prev, n]);
+      } else {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        setAngleMeasurements(prev => [...prev, { id, a: anglePts[0], v: anglePts[1], b: n }]);
+        setAnglePts([]);
+      }
+    }
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool !== "polygon") return;
@@ -366,7 +387,7 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); }, []);
+  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setAnglePts([]); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
@@ -374,8 +395,9 @@ export default function MeasureCanvas({
       if (e.key === "Escape") { cancelDrawing(); return; }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        if (drawingPoints.length > 0) setDrawingPoints(p => p.slice(0, -1));
-        else onHistoryUndo?.();
+        if (drawingPoints.length > 0) { setDrawingPoints(p => p.slice(0, -1)); return; }
+        if (anglePts.length > 0) { setAnglePts(p => p.slice(0, -1)); return; }
+        onHistoryUndo?.();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
@@ -385,7 +407,7 @@ export default function MeasureCanvas({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cancelDrawing, drawingPoints, onHistoryUndo, onHistoryRedo]);
+  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo]);
 
   const deleteZone = (id: string) => {
     onHistoryPush?.(zonesRef.current);
@@ -413,10 +435,14 @@ export default function MeasureCanvas({
   const activeColor = getColor(activeTypeId);
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
+    : tool === "angle"
+    ? anglePts.length === 0 ? "Cliquez pour placer le 1er point de la mesure d'angle"
+    : anglePts.length === 1 ? "Cliquez pour placer le sommet de l'angle"
+    : "Cliquez pour valider l'angle · Clic droit sur ∠ pour supprimer"
     : tool === "polygon"
     ? drawingPoints.length === 0
       ? zones.length > 0
-        ? "Cliquez pour tracer · Glissez un ● pour déplacer un sommet · Clic droit sur ● pour supprimer · ＋ pour insérer"
+        ? "Cliquez pour tracer · Glissez un ● pour déplacer · Clic droit ● pour supprimer · ＋ pour insérer"
         : "Cliquez pour placer le premier point"
       : drawingPoints.length < 2   ? "Continuez à cliquer pour tracer"
       : "Double-clic ou cliquez le 1er point pour fermer"
@@ -446,6 +472,14 @@ export default function MeasureCanvas({
             }`}
           >
             <Square className="w-3.5 h-3.5" /> Rectangle
+          </button>
+          <button
+            onClick={() => { setTool("angle"); cancelDrawing(); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "angle" ? "bg-amber-500 text-white" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Spline className="w-3.5 h-3.5" /> Angle
           </button>
         </div>
 
@@ -686,6 +720,99 @@ export default function MeasureCanvas({
               </g>
             );
           })}
+
+          {/* Angle measurements */}
+          {angleMeasurements.map(({ id, a, v, b }) => {
+            const sA = toSvg(a), sV = toSvg(v), sB = toSvg(b);
+            const dA = { x: sA.x - sV.x, y: sA.y - sV.y };
+            const dB = { x: sB.x - sV.x, y: sB.y - sV.y };
+            const lenA = Math.hypot(dA.x, dA.y), lenB = Math.hypot(dB.x, dB.y);
+            if (lenA < 1 || lenB < 1) return null;
+            const uA = { x: dA.x / lenA, y: dA.y / lenA };
+            const uB = { x: dB.x / lenB, y: dB.y / lenB };
+            const dot = Math.max(-1, Math.min(1, uA.x * uB.x + uA.y * uB.y));
+            const angleRad = Math.acos(dot);
+            const angleDeg = angleRad * 180 / Math.PI;
+            const cross = uA.x * uB.y - uA.y * uB.x;
+            const arcR = Math.min(32, lenA * 0.35, lenB * 0.35);
+            const arcStart = { x: sV.x + uA.x * arcR, y: sV.y + uA.y * arcR };
+            const arcEnd   = { x: sV.x + uB.x * arcR, y: sV.y + uB.y * arcR };
+            const sweepFlag = cross >= 0 ? 0 : 1;
+            const arcPath = `M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`;
+            const bisX = uA.x + uB.x, bisY = uA.y + uB.y;
+            const bisLen = Math.hypot(bisX, bisY);
+            const labelDist = arcR + 16;
+            const lx = bisLen > 0.01 ? sV.x + (bisX / bisLen) * labelDist : sV.x;
+            const ly = bisLen > 0.01 ? sV.y + (bisY / bisLen) * labelDist : sV.y - labelDist;
+            const label = `${angleDeg.toFixed(1)}°`;
+            const lw = label.length * 6 + 10;
+            return (
+              <g key={id} style={{ pointerEvents: "all" }}
+                onContextMenu={e => { e.stopPropagation(); e.preventDefault(); setAngleMeasurements(ms => ms.filter(m => m.id !== id)); }}>
+                <line x1={sV.x} y1={sV.y} x2={sA.x} y2={sA.y} stroke="#FBBF24" strokeWidth={1.5} />
+                <line x1={sV.x} y1={sV.y} x2={sB.x} y2={sB.y} stroke="#FBBF24" strokeWidth={1.5} />
+                <path d={arcPath} fill="none" stroke="#FBBF24" strokeWidth={1.5} />
+                <circle cx={sV.x} cy={sV.y} r={3} fill="#FBBF24" />
+                <circle cx={sA.x} cy={sA.y} r={3} fill="#FBBF24" />
+                <circle cx={sB.x} cy={sB.y} r={3} fill="#FBBF24" />
+                <rect x={lx - lw / 2} y={ly - 8} width={lw} height={15} rx={3} fill="rgba(0,0,0,0.75)" />
+                <text x={lx} y={ly + 1} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={9} fill="#FBBF24" fontFamily="ui-monospace, monospace" fontWeight="700">{label}</text>
+              </g>
+            );
+          })}
+
+          {/* Angle in progress */}
+          {tool === "angle" && (
+            <>
+              {anglePts.length >= 1 && mouseNorm && (
+                <line
+                  x1={anglePts.length === 1 ? toSvg(anglePts[0]).x : toSvg(anglePts[1]).x}
+                  y1={anglePts.length === 1 ? toSvg(anglePts[0]).y : toSvg(anglePts[1]).y}
+                  x2={toSvg(mouseNorm).x} y2={toSvg(mouseNorm).y}
+                  stroke="#FBBF24" strokeWidth={1.5} strokeDasharray="5 3"
+                />
+              )}
+              {anglePts.length === 2 && mouseNorm && (() => {
+                const sV = toSvg(anglePts[1]);
+                const sA = toSvg(anglePts[0]);
+                const sB = toSvg(mouseNorm);
+                const dA = { x: sA.x - sV.x, y: sA.y - sV.y };
+                const dB = { x: sB.x - sV.x, y: sB.y - sV.y };
+                const lenA = Math.hypot(dA.x, dA.y), lenB = Math.hypot(dB.x, dB.y);
+                if (lenA < 1 || lenB < 1) return null;
+                const uA = { x: dA.x / lenA, y: dA.y / lenA };
+                const uB = { x: dB.x / lenB, y: dB.y / lenB };
+                const dot = Math.max(-1, Math.min(1, uA.x * uB.x + uA.y * uB.y));
+                const angleRad = Math.acos(dot);
+                const cross = uA.x * uB.y - uA.y * uB.x;
+                const arcR = Math.min(28, lenA * 0.35, lenB * 0.35);
+                const arcStart = { x: sV.x + uA.x * arcR, y: sV.y + uA.y * arcR };
+                const arcEnd   = { x: sV.x + uB.x * arcR, y: sV.y + uB.y * arcR };
+                const sweepFlag = cross >= 0 ? 0 : 1;
+                const arcPath = `M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 0 ${sweepFlag} ${arcEnd.x} ${arcEnd.y}`;
+                const bisX = uA.x + uB.x, bisY = uA.y + uB.y;
+                const bisLen = Math.hypot(bisX, bisY);
+                const lx = bisLen > 0.01 ? sV.x + (bisX / bisLen) * (arcR + 16) : sV.x;
+                const ly = bisLen > 0.01 ? sV.y + (bisY / bisLen) * (arcR + 16) : sV.y - arcR - 16;
+                const label = `${(angleRad * 180 / Math.PI).toFixed(1)}°`;
+                const lw = label.length * 6 + 10;
+                return (
+                  <g>
+                    <line x1={sV.x} y1={sV.y} x2={sA.x} y2={sA.y} stroke="#FBBF24" strokeWidth={1.5} />
+                    <path d={arcPath} fill="none" stroke="#FBBF24" strokeWidth={1.5} strokeDasharray="4 2" />
+                    <rect x={lx - lw / 2} y={ly - 8} width={lw} height={15} rx={3} fill="rgba(0,0,0,0.75)" />
+                    <text x={lx} y={ly + 1} textAnchor="middle" dominantBaseline="middle"
+                      fontSize={9} fill="#FBBF24" fontFamily="ui-monospace, monospace" fontWeight="700">{label}</text>
+                  </g>
+                );
+              })()}
+              {anglePts.map((p, i) => {
+                const s = toSvg(p);
+                return <circle key={i} cx={s.x} cy={s.y} r={4} fill="#FBBF24" stroke="white" strokeWidth={1.5} />;
+              })}
+            </>
+          )}
 
           {/* Rectangle preview */}
           {rectPreview && (
