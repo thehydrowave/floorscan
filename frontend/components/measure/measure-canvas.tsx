@@ -72,7 +72,14 @@ export default function MeasureCanvas({
   const dragVertexRef    = useRef<{ zoneId: string; idx: number } | null>(null);
   const zonesRef         = useRef(zones);
   const onZonesChangeRef = useRef(onZonesChange);
-  const skipNextClickRef = useRef(false);
+  const skipNextClickRef  = useRef(false);
+  // Touch-specific refs (stable values for touch effect with [] deps)
+  const drawingPointsRef  = useRef<{ x: number; y: number }[]>([]);
+  const addZoneRef        = useRef<(pts: { x: number; y: number }[]) => void>(() => {});
+  const nearFirstRef      = useRef<(cx: number, cy: number) => boolean>(() => false);
+  const touchPinchRef     = useRef<{ dist: number; zoom: number; tx: number; ty: number; cx: number; cy: number } | null>(null);
+  const lastTapTimeRef    = useRef(0);
+  const touchStartRef     = useRef({ time: 0, x: 0, y: 0 });
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { translateRef.current = translate; }, [translate]);
@@ -195,6 +202,104 @@ export default function MeasureCanvas({
     return Math.hypot(dx, dy) < CLOSE_RADIUS;
   }, [drawingPoints, toSvg]);
 
+  // ── Touch refs — synced after each render ──────────────────────────────────
+  useEffect(() => { drawingPointsRef.current = drawingPoints; }, [drawingPoints]);
+
+  // ── Touch support (synced via refs → [] deps, no re-registration) ──────────
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const getDist = (t1: Touch, t2: Touch) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        touchPinchRef.current = null;
+        touchStartRef.current = { time: Date.now(), x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        const rect = el.getBoundingClientRect();
+        touchPinchRef.current = {
+          dist: getDist(e.touches[0], e.touches[1]),
+          zoom: zoomRef.current,
+          tx: translateRef.current.x,
+          ty: translateRef.current.y,
+          cx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width  / 2,
+          cy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top  - rect.height / 2,
+        };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 2 && touchPinchRef.current) {
+        const p = touchPinchRef.current;
+        const newDist = getDist(e.touches[0], e.touches[1]);
+        const newZoom = Math.max(1, Math.min(12, p.zoom * (newDist / p.dist)));
+        const ratio   = newZoom / p.zoom;
+        const rect    = el.getBoundingClientRect();
+        const newCx   = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left - rect.width  / 2;
+        const newCy   = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top  - rect.height / 2;
+        setZoom(newZoom);
+        setTranslate({ x: p.cx * (1 - ratio) + p.tx * ratio + (newCx - p.cx), y: p.cy * (1 - ratio) + p.ty * ratio + (newCy - p.cy) });
+      } else if (e.touches.length === 1 && !touchPinchRef.current) {
+        // Draw preview
+        const img = imgRef.current;
+        if (!img) return;
+        const r = img.getBoundingClientRect();
+        const x = (e.touches[0].clientX - r.left) / r.width;
+        const y = (e.touches[0].clientY - r.top)  / r.height;
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) setMouseNorm({ x, y });
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.changedTouches.length === 1 && e.touches.length === 0 && !touchPinchRef.current) {
+        const ts      = touchStartRef.current;
+        const elapsed = Date.now() - ts.time;
+        const moved   = Math.hypot(e.changedTouches[0].clientX - ts.x, e.changedTouches[0].clientY - ts.y);
+        if (elapsed < 350 && moved < 15) {
+          const t   = e.changedTouches[0];
+          const now = Date.now();
+          if (now - lastTapTimeRef.current < 350) {
+            // Double tap → close polygon
+            lastTapTimeRef.current = 0;
+            const pts = drawingPointsRef.current;
+            if (pts.length >= 3) addZoneRef.current(pts.slice(0, -1));
+          } else {
+            lastTapTimeRef.current = now;
+            // Single tap → add point
+            const img = imgRef.current;
+            if (!img) return;
+            const r = img.getBoundingClientRect();
+            const x = (t.clientX - r.left) / r.width;
+            const y = (t.clientY - r.top)  / r.height;
+            if (x < 0 || y < 0 || x > 1 || y > 1) return;
+            if (nearFirstRef.current(t.clientX, t.clientY)) {
+              addZoneRef.current(drawingPointsRef.current);
+            } else {
+              setDrawingPoints(prev => [...prev, { x, y }]);
+            }
+          }
+        }
+      }
+      if (e.touches.length < 2) touchPinchRef.current = null;
+      if (e.touches.length === 0) setMouseNorm(null);
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove",  onTouchMove,  { passive: false });
+    el.addEventListener("touchend",   onTouchEnd,   { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove",  onTouchMove);
+      el.removeEventListener("touchend",   onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // all mutable values accessed via stable refs
+
   // ── Drawing actions ───────────────────────────────────────────────────────
   const addZone = useCallback((points: { x: number; y: number }[]) => {
     if (points.length < 3) return;
@@ -256,6 +361,10 @@ export default function MeasureCanvas({
     }
     setRectStart(null);
   }, [dragVertex, tool, rectStart, toNorm, addZone]);
+
+  // Sync touch refs after these callbacks are (re)created
+  useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
+  useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
   const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
