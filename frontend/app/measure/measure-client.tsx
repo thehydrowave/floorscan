@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
@@ -243,6 +243,48 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setZones([]); setSurfaceTypes(DEFAULT_SURFACE_TYPES);
     setPpm(null); setProjectName(""); setClientName("");
     setActiveTypeId(DEFAULT_SURFACE_TYPES[0].id); setStep(0);
+  };
+
+  // ── Import / Export .floorscan ─────────────────────────────────────────────
+  const importRef = useRef<HTMLInputElement>(null);
+
+  const exportProject = () => {
+    if (!imageB64) return;
+    const payload = { version: "floorscan_v1", imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, activeTypeId, step };
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${projectName || "floorscan"}.floorscan`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const importProject = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const s = JSON.parse(e.target?.result as string);
+        if (!s.version?.startsWith("floorscan")) throw new Error("Format invalide");
+        historyRef.current = []; futureRef.current = [];
+        setHistoryLen(0); setFutureLen(0);
+        if (s.surfaceTypes) setSurfaceTypes(s.surfaceTypes);
+        if (s.zones)        setZones(s.zones);
+        if (s.ppm != null)  setPpm(s.ppm);
+        if (s.tvaRate != null) setTvaRate(s.tvaRate);
+        if (s.projectName)  setProjectName(s.projectName);
+        if (s.clientName)   setClientName(s.clientName);
+        if (s.activeTypeId) setActiveTypeId(s.activeTypeId);
+        if (s.imageB64) {
+          setImageB64(s.imageB64);
+          setImageMime(s.imageMime || "image/png");
+          if (s.step !== undefined) setStep(s.step);
+        }
+        toast({ title: "Projet importé", variant: "success" });
+      } catch {
+        toast({ title: "Erreur import", description: "Fichier .floorscan invalide", variant: "error" });
+      }
+    };
+    reader.readAsText(file);
   };
 
   // ── Sync imageNatural when image changes ──────────────────────────────────
@@ -800,8 +842,28 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <LangSwitcher />
+            {/* Import .floorscan */}
+            <button
+              onClick={() => importRef.current?.click()}
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white glass border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+              title="Importer un projet .floorscan"
+            >
+              <FolderOpen className="w-3.5 h-3.5" /> Importer
+            </button>
+            <input ref={importRef} type="file" accept=".floorscan,.json" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) importProject(f); e.target.value = ""; }} />
+            {/* Export .floorscan */}
+            {imageB64 && (
+              <button
+                onClick={exportProject}
+                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white glass border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+                title="Exporter le projet .floorscan"
+              >
+                <Download className="w-3.5 h-3.5" /> Exporter
+              </button>
+            )}
             {imageB64 && (
               <button
                 onClick={newProject}
