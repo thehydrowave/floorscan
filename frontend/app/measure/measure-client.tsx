@@ -42,12 +42,20 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     try {
       if (file.type === "application/pdf") {
         // Send to backend to render first page as image
-        const fd = new FormData();
-        fd.append("file", file);
-        const r = await fetch(`${BACKEND}/upload`, { method: "POST", body: fd });
+        const pdfBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
+          reader.onerror = () => reject(new Error("File read failed"));
+          reader.readAsDataURL(file);
+        });
+        const r = await fetch(`${BACKEND}/upload-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pdf_base64: pdfBase64, filename: file.name, zoom: 3.0 }),
+        });
         if (!r.ok) throw new Error("Erreur upload PDF");
         const data = await r.json();
-        setImageB64(data.preview_b64);
+        setImageB64(data.image_b64);
         setImageMime("image/png");
       } else {
         // Direct image — read as base64
