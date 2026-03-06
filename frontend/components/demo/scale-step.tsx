@@ -246,16 +246,16 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
                 )}
                 {p1Svg && (
                   <>
-                    <circle cx={p1Svg.x} cy={p1Svg.y} r={9} fill="#22D3EE" fillOpacity={0.18} stroke="#22D3EE" strokeWidth={2} />
-                    <circle cx={p1Svg.x} cy={p1Svg.y} r={3} fill="#22D3EE" />
-                    <text x={p1Svg.x + 13} y={p1Svg.y + 4} fill="#22D3EE" fontSize={13} fontWeight="bold" fontFamily="monospace">A</text>
+                    <circle cx={p1Svg.x} cy={p1Svg.y} r={5} fill="#22D3EE" fillOpacity={0.20} stroke="#22D3EE" strokeWidth={1.5} />
+                    <circle cx={p1Svg.x} cy={p1Svg.y} r={2} fill="#22D3EE" />
+                    <text x={p1Svg.x + 8} y={p1Svg.y + 4} fill="#22D3EE" fontSize={11} fontWeight="bold" fontFamily="monospace">A</text>
                   </>
                 )}
                 {p2Svg && (
                   <>
-                    <circle cx={p2Svg.x} cy={p2Svg.y} r={9} fill="#60A5FA" fillOpacity={0.18} stroke="#60A5FA" strokeWidth={2} />
-                    <circle cx={p2Svg.x} cy={p2Svg.y} r={3} fill="#60A5FA" />
-                    <text x={p2Svg.x + 13} y={p2Svg.y + 4} fill="#60A5FA" fontSize={13} fontWeight="bold" fontFamily="monospace">B</text>
+                    <circle cx={p2Svg.x} cy={p2Svg.y} r={5} fill="#60A5FA" fillOpacity={0.20} stroke="#60A5FA" strokeWidth={1.5} />
+                    <circle cx={p2Svg.x} cy={p2Svg.y} r={2} fill="#60A5FA" />
+                    <text x={p2Svg.x + 8} y={p2Svg.y + 4} fill="#60A5FA" fontSize={11} fontWeight="bold" fontFamily="monospace">B</text>
                   </>
                 )}
               </svg>

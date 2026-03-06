@@ -41,10 +41,16 @@ DEFAULT_CONFIG = {
 # ============================================================
 # STEP 1 — PDF → PNG (zoom ×3)
 # ============================================================
-def pdf_to_image(pdf_bytes: bytes, zoom: float = 3.0) -> np.ndarray:
-    """Rendu de la page 1 d'un PDF en numpy RGB array."""
+def get_pdf_page_count(pdf_bytes: bytes) -> int:
+    """Retourne le nombre de pages d'un PDF."""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    page = doc[0]
+    return len(doc)
+
+def pdf_to_image(pdf_bytes: bytes, zoom: float = 3.0, page_index: int = 0) -> np.ndarray:
+    """Rendu d'une page d'un PDF en numpy RGB array."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page_index = max(0, min(page_index, len(doc) - 1))
+    page = doc[page_index]
     mat = fitz.Matrix(zoom, zoom)
     pix = page.get_pixmap(matrix=mat, alpha=False)
     img_pil = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
@@ -703,51 +709,115 @@ def sam_segment_point(img_rgb: np.ndarray, x: int, y: int,
 
 
 # ============================================================
-# STEP 6 — EXPORT RAPPORT PDF
-# FIX: utilise maintenant les masques/overlays passés en paramètre
-#      (qui peuvent venir d'une session après édition)
+# HELPERS PDF communs (couleurs + utilitaires)
+# ============================================================
+def _pdf_colors():
+    from reportlab.lib import colors
+    return dict(
+        WHITE  = colors.HexColor("#FFFFFF"),
+        LIGHT  = colors.HexColor("#F8FAFC"),
+        LIGHT2 = colors.HexColor("#F1F5F9"),
+        BORDER = colors.HexColor("#E2E8F0"),
+        DARK   = colors.HexColor("#1E293B"),
+        DARK2  = colors.HexColor("#0F172A"),
+        TEXT   = colors.HexColor("#1E293B"),
+        MUTED  = colors.HexColor("#64748B"),
+        BLUE   = colors.HexColor("#3B82F6"),
+        BLUE2  = colors.HexColor("#1D4ED8"),
+        CYAN   = colors.HexColor("#22D3EE"),
+        GREEN  = colors.HexColor("#10B981"),
+        ORANGE = colors.HexColor("#F97316"),
+        RED    = colors.HexColor("#EF4444"),
+        PURPLE = colors.HexColor("#8B5CF6"),
+    )
+
+def _pil_reader_from_arr(arr):
+    from reportlab.lib.utils import ImageReader
+    buf = io.BytesIO()
+    Image.fromarray(arr.astype(np.uint8)).save(buf, format="PNG")
+    buf.seek(0)
+    return ImageReader(buf)
+
+def _pil_reader_from_b64(b64_str, mime="image/png"):
+    from reportlab.lib.utils import ImageReader
+    img_data = base64.b64decode(b64_str)
+    img_pil = Image.open(io.BytesIO(img_data)).convert("RGB")
+    arr = np.array(img_pil)
+    return _pil_reader_from_arr(arr), arr.shape[1], arr.shape[0]
+
+def _pdf_header(c, W_a4, H_a4, M, cols, title_right, subtitle_right, date_str):
+    """Dessine l'en-tête du PDF (bandeau sombre)."""
+    header_h = 68
+    c.setFillColor(cols["DARK2"]); c.rect(0, H_a4-header_h, W_a4, header_h, stroke=0, fill=1)
+    c.setFillColor(cols["BLUE"]);  c.rect(0, H_a4-header_h-3, W_a4, 3, stroke=0, fill=1)
+    # Logo
+    c.setFillColor(cols["WHITE"]); c.setFont("Helvetica-Bold", 17)
+    c.drawString(M, H_a4-36, "FloorScan")
+    c.setFillColor(cols["CYAN"]); c.setFont("Helvetica", 9)
+    c.drawString(M, H_a4-52, "Analyse de plan de sol")
+    # Titre droite
+    c.setFillColor(cols["WHITE"]); c.setFont("Helvetica-Bold", 15)
+    c.drawRightString(W_a4-M, H_a4-36, title_right)
+    c.setFillColor(cols["MUTED"]); c.setFont("Helvetica", 9)
+    c.drawRightString(W_a4-M, H_a4-52, subtitle_right)
+    return header_h + 3  # height consumed
+
+def _pdf_info_strip(c, W_a4, H_a4, M, cols, top_y, fields):
+    """Dessine la bande infos projet (champs = list of (label, value))."""
+    strip_h = 50
+    y0 = top_y - strip_h
+    c.setFillColor(cols["LIGHT2"]); c.rect(0, y0, W_a4, strip_h, stroke=0, fill=1)
+    c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+    c.line(0, y0, W_a4, y0); c.line(0, top_y, W_a4, top_y)
+    col_w = (W_a4 - 2*M) / max(len(fields), 1)
+    for i, (lbl, val) in enumerate(fields):
+        x = M + i * col_w
+        c.setFont("Helvetica", 7); c.setFillColor(cols["MUTED"])
+        c.drawString(x, y0 + strip_h - 16, lbl.upper())
+        c.setFont("Helvetica-Bold", 10); c.setFillColor(cols["TEXT"])
+        c.drawString(x, y0 + strip_h - 32, val or "—")
+    return strip_h  # height consumed
+
+def _pdf_footer(c, W_a4, M, cols, date_str):
+    """Dessine le pied de page."""
+    c.setFillColor(cols["LIGHT2"]); c.rect(0, 0, W_a4, 26, stroke=0, fill=1)
+    c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5); c.line(0, 26, W_a4, 26)
+    c.setFont("Helvetica", 7); c.setFillColor(cols["MUTED"])
+    c.drawString(M, 8, f"Généré par FloorScan  •  {date_str}")
+    c.drawRightString(W_a4-M, 8, "floorscan.app")
+
+def _draw_image_in_area(c, img_arr, x, y, w, h, border_color=None):
+    """Dessine une image centrée dans la zone donnée, avec cadre optionnel."""
+    H_i, W_i = img_arr.shape[:2]
+    scale = min(w / W_i, h / H_i)
+    dw, dh = W_i * scale, H_i * scale
+    ix = x + (w - dw) / 2
+    iy = y + (h - dh) / 2
+    if border_color:
+        from reportlab.lib import colors as rlc
+        c.setStrokeColor(border_color); c.setLineWidth(0.5)
+        c.rect(ix-2, iy-2, dw+4, dh+4, stroke=1, fill=0)
+    c.drawImage(_pil_reader_from_arr(img_arr), ix, iy, dw, dh)
+
+
+# ============================================================
+# STEP 6a — EXPORT RAPPORT PDF — Module IA (devis professionnel)
 # ============================================================
 def generate_pdf_report(img_rgb: np.ndarray, overlay_openings: np.ndarray,
                         overlay_interior, mask_doors, mask_windows, mask_walls,
                         surfaces: dict, doors_count: int, windows_count: int,
-                        ppm: float) -> bytes:
+                        ppm: float,
+                        project_name: str = "",
+                        client_name: str = "") -> bytes:
+    import datetime
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     from reportlab.lib import colors
-    from reportlab.lib.utils import ImageReader
 
     W_a4, H_a4 = A4
-    M = 42
-
-    BG     = colors.HexColor("#0B1220")
-    CARD   = colors.HexColor("#101A2E")
-    CARD2  = colors.HexColor("#0F172A")
-    BORDER = colors.HexColor("#22304A")
-    TXT    = colors.HexColor("#E8EEF7")
-    MUTED  = colors.HexColor("#A9B4C7")
-    ACCENT  = colors.HexColor("#60A5FA")
-    MAGENTA = colors.HexColor("#D946EF")
-    CYAN    = colors.HexColor("#22D3EE")
-    GREEN   = colors.HexColor("#34D399")
-
-    def pil_reader(arr):
-        buf = io.BytesIO()
-        Image.fromarray(arr.astype(np.uint8)).save(buf, format="PNG")
-        buf.seek(0)
-        return ImageReader(buf)
-
-    def round_rect(c, x, y, w, h, r=16, fillColor=CARD, strokeColor=BORDER):
-        c.saveState()
-        c.setLineWidth(1); c.setFillColor(fillColor); c.setStrokeColor(strokeColor)
-        c.roundRect(x, y, w, h, r, stroke=1, fill=1)
-        c.restoreState()
-
-    def kpi_card(c, x, y, w, h, label, value, color=ACCENT):
-        round_rect(c, x, y, w, h, fillColor=CARD, strokeColor=BORDER)
-        c.setFillColor(MUTED); c.setFont("Helvetica", 9)
-        c.drawString(x+14, y+h-20, label)
-        c.setFillColor(color); c.setFont("Helvetica-Bold", 18)
-        c.drawString(x+14, y+16, value)
+    M = 40
+    cols = _pdf_colors()
+    date_str = datetime.date.today().strftime("%d/%m/%Y")
 
     def fmt(v, nd=2):
         if v is None: return "—"
@@ -757,121 +827,272 @@ def generate_pdf_report(img_rgb: np.ndarray, overlay_openings: np.ndarray,
     buf_out = io.BytesIO()
     c = canvas.Canvas(buf_out, pagesize=A4)
 
-    def page_bg():
-        c.setFillColor(BG); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
+    # ── PAGE 1 : Résumé + Plan + Overlay ────────────────────────────────────
+    c.setFillColor(cols["WHITE"]); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
+    hdr_h = _pdf_header(c, W_a4, H_a4, M, cols,
+                        "RAPPORT D'ANALYSE IA",
+                        "Multi-scale · Roboflow + CubiCasa5k",
+                        date_str)
+    info_h = _pdf_info_strip(c, W_a4, H_a4, M, cols,
+                              H_a4 - hdr_h,
+                              [("Projet", project_name), ("Client", client_name), ("Date", date_str)])
+    top_y = H_a4 - hdr_h - info_h
 
-    # === PAGE 1 ===
-    page_bg()
-    c.setFillColor(TXT); c.setFont("Helvetica-Bold", 20)
-    c.drawString(M, H_a4-M-8, "FloorScan — Rapport d'Analyse")
-    c.setFillColor(MUTED); c.setFont("Helvetica", 10)
-    c.drawString(M, H_a4-M-28, "Multi-scale (2048 + 1024) · Roboflow + CubiCasa5k")
+    # KPIs row
+    kpi_top = top_y - 6
+    kpi_h = 52; kpi_gap = 8
+    kpi_count = 5
+    kpi_w = (W_a4 - 2*M - kpi_gap*(kpi_count-1)) / kpi_count
 
-    kpi_y = H_a4-M-92
-    gap = 12
-    kpi_w = (W_a4-2*M-gap)/2
-    kpi_h = 60
+    def kpi(i, label, value, col):
+        x = M + i*(kpi_w+kpi_gap)
+        c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+        c.roundRect(x, kpi_top-kpi_h, kpi_w, kpi_h, 6, stroke=1, fill=1)
+        c.setFont("Helvetica", 7); c.setFillColor(cols["MUTED"])
+        c.drawString(x+8, kpi_top-16, label.upper())
+        c.setFont("Helvetica-Bold", 13); c.setFillColor(col)
+        c.drawString(x+8, kpi_top-34, value)
 
-    kpi_card(c, M, kpi_y, kpi_w, kpi_h, "Portes détectées", f"🚪 {doors_count}", MAGENTA)
-    kpi_card(c, M+(kpi_w+gap), kpi_y, kpi_w, kpi_h, "Fenêtres détectées", f"🪟 {windows_count}", CYAN)
+    kpi(0, "Portes",    str(doors_count),   cols["BLUE"])
+    kpi(1, "Fenêtres",  str(windows_count), cols["CYAN"])
+    kpi(2, "Emprise",   f"{fmt(surfaces.get('area_building_m2'))} m²" if surfaces.get('area_building_m2') else "—", cols["ORANGE"])
+    kpi(3, "Murs",      f"{fmt(surfaces.get('area_walls_m2'))} m²"    if surfaces.get('area_walls_m2')    else "—", cols["PURPLE"])
+    kpi(4, "Habitable", f"{fmt(surfaces.get('area_hab_m2'))} m²"      if surfaces.get('area_hab_m2')      else "—", cols["GREEN"])
 
-    # Surfaces
-    surf_y = kpi_y - 132
-    surf_h = 112
-    round_rect(c, M, surf_y, W_a4-2*M, surf_h, fillColor=CARD2, strokeColor=BORDER)
-    c.setFillColor(TXT); c.setFont("Helvetica-Bold", 11)
-    c.drawString(M+14, surf_y+surf_h-20, "Surfaces & périmètres")
-    c.setFont("Helvetica", 10)
-    yy = surf_y+surf_h-42
-    if surfaces.get("area_building_m2"):
-        c.setFillColor(ACCENT)
-        c.drawString(M+14, yy, f"■ Emprise: {fmt(surfaces['area_building_m2'])} m²  •  Pourtour: {fmt(surfaces.get('perim_building_m'))} m")
-        yy -= 16
-    if surfaces.get("area_walls_m2"):
-        c.setFillColor(MAGENTA)
-        c.drawString(M+14, yy, f"■ Murs: {fmt(surfaces['area_walls_m2'])} m²")
-        yy -= 16
-    if surfaces.get("area_hab_m2"):
-        c.setFillColor(GREEN)
-        c.drawString(M+14, yy, f"■ Surface habitable: {fmt(surfaces['area_hab_m2'])} m²  •  Pourtour: {fmt(surfaces.get('perim_interior_m'))} m")
-        yy -= 16
-    if ppm:
-        c.setFillColor(MUTED)
-        c.drawString(M+14, yy, f"pixels_per_meter = {fmt(ppm)}")
+    # Two images side by side
+    img_area_top = kpi_top - kpi_h - 8
+    img_area_bottom = 36  # footer height
+    img_area_h = img_area_top - img_area_bottom
+    img_gap = 8
+    img_w = (W_a4 - 2*M - img_gap) / 2
 
-    # Images
-    img_gap = 12
-    img_card_h = (surf_y-M-img_gap)/2
-    img_card_w = W_a4-2*M
+    # Left: plan de base
+    c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+    c.roundRect(M, img_area_bottom, img_w, img_area_h, 6, stroke=1, fill=1)
+    c.setFont("Helvetica-Bold", 9); c.setFillColor(cols["TEXT"])
+    c.drawString(M+8, img_area_bottom+img_area_h-14, "PLAN DE BASE")
+    _draw_image_in_area(c, img_rgb, M+6, img_area_bottom+6, img_w-12, img_area_h-22)
 
-    # Plan de base
-    round_rect(c, M, M+img_card_h+img_gap, img_card_w, img_card_h, fillColor=CARD2, strokeColor=BORDER)
-    c.setFillColor(TXT); c.setFont("Helvetica-Bold", 12)
-    c.drawString(M+16, M+2*img_card_h+img_gap-22, "Plan de base")
-    iw, ih = img_card_w-28, img_card_h-34
-    H_arr, W_arr = img_rgb.shape[:2]
-    scale = min(iw/W_arr, ih/H_arr)
-    dw, dh = W_arr*scale, H_arr*scale
-    c.drawImage(pil_reader(img_rgb), M+14+(iw-dw)/2, M+img_card_h+img_gap+14+(ih-dh)/2, dw, dh)
+    # Right: overlay ouvertures
+    ox = M + img_w + img_gap
+    c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+    c.roundRect(ox, img_area_bottom, img_w, img_area_h, 6, stroke=1, fill=1)
+    c.setFont("Helvetica-Bold", 9); c.setFillColor(cols["TEXT"])
+    c.drawString(ox+8, img_area_bottom+img_area_h-14, "OVERLAY — PORTES & FENÊTRES")
+    _draw_image_in_area(c, overlay_openings, ox+6, img_area_bottom+6, img_w-12, img_area_h-22)
 
-    # Overlay
-    round_rect(c, M, M, img_card_w, img_card_h, fillColor=CARD2, strokeColor=BORDER)
-    c.setFillColor(TXT); c.setFont("Helvetica-Bold", 12)
-    c.drawString(M+16, M+img_card_h-22, "Overlay — Emprise + Portes + Fenêtres")
-    H_ov, W_ov = overlay_openings.shape[:2]
-    scale2 = min(iw/W_ov, ih/H_ov)
-    dw2, dh2 = W_ov*scale2, H_ov*scale2
-    c.drawImage(pil_reader(overlay_openings), M+14+(iw-dw2)/2, M+14+(ih-dh2)/2, dw2, dh2)
-
+    _pdf_footer(c, W_a4, M, cols, date_str)
     c.showPage()
 
-    # === PAGE 2 : Intérieur ===
-    if overlay_interior is not None:
-        page_bg()
-        c.setFillColor(TXT); c.setFont("Helvetica-Bold", 18)
-        c.drawString(M, H_a4-M-8, "Overlay — Surface habitable (vert)")
-        round_rect(c, M, M, W_a4-2*M, H_a4-2*M-44, fillColor=CARD2, strokeColor=BORDER)
-        iw2, ih2 = W_a4-2*M-28, H_a4-2*M-44-34
-        H_in, W_in = overlay_interior.shape[:2]
-        scale3 = min(iw2/W_in, ih2/H_in)
-        dw3, dh3 = W_in*scale3, H_in*scale3
-        c.drawImage(pil_reader(overlay_interior), M+14+(iw2-dw3)/2, M+14+(ih2-dh3)/2, dw3, dh3)
-        c.showPage()
+    # ── PAGE 2 : Surfaces + Tableau ─────────────────────────────────────────
+    c.setFillColor(cols["WHITE"]); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
+    _pdf_header(c, W_a4, H_a4, M, cols, "SURFACES & MÉTRÉS", f"Échelle : {fmt(ppm)} px/m" if ppm else "Échelle non définie", date_str)
+    hdr_h2 = 71
 
-    # === PAGE 3 : Masques ===
+    # Surface habitable overlay
+    if overlay_interior is not None:
+        oi_top = H_a4 - hdr_h2 - 8
+        oi_h = 240
+        c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+        c.roundRect(M, oi_top-oi_h, W_a4-2*M, oi_h, 6, stroke=1, fill=1)
+        c.setFont("Helvetica-Bold", 9); c.setFillColor(cols["TEXT"])
+        c.drawString(M+8, oi_top-14, "OVERLAY — SURFACE HABITABLE")
+        _draw_image_in_area(c, overlay_interior, M+6, oi_top-oi_h+6, W_a4-2*M-12, oi_h-22)
+        table_top = oi_top - oi_h - 16
+    else:
+        table_top = H_a4 - hdr_h2 - 16
+
+    # Tableau récapitulatif
+    rows = []
+    if surfaces.get("area_building_m2"): rows.append(("Emprise totale",    f"{fmt(surfaces['area_building_m2'])} m²", f"{fmt(surfaces.get('perim_building_m'))} m", cols["BLUE"]))
+    if surfaces.get("area_walls_m2"):    rows.append(("Surfaces de murs",  f"{fmt(surfaces['area_walls_m2'])} m²",    "—",                                             cols["PURPLE"]))
+    if surfaces.get("area_hab_m2"):      rows.append(("Surface habitable", f"{fmt(surfaces['area_hab_m2'])} m²",      f"{fmt(surfaces.get('perim_interior_m'))} m",    cols["GREEN"]))
+
+    col_widths = [W_a4-2*M-180, 90, 90]
+    col_xs = [M, M+col_widths[0], M+col_widths[0]+col_widths[1]]
+    row_h = 24; th = 26
+
+    if rows:
+        # Header
+        c.setFillColor(cols["DARK2"]); c.rect(M, table_top-th, W_a4-2*M, th, stroke=0, fill=1)
+        c.setFont("Helvetica-Bold", 8); c.setFillColor(cols["WHITE"])
+        for i, lbl in enumerate(["TYPE DE SURFACE", "SURFACE", "PÉRIMÈTRE"]):
+            c.drawString(col_xs[i]+8, table_top-th+8, lbl)
+        # Rows
+        for ri, (name, area, perim, color) in enumerate(rows):
+            ry = table_top - th - (ri+1)*row_h
+            c.setFillColor(cols["LIGHT"] if ri%2==0 else cols["LIGHT2"])
+            c.rect(M, ry, W_a4-2*M, row_h, stroke=0, fill=1)
+            c.setFillColor(color); c.circle(col_xs[0]+12, ry+row_h/2, 4, stroke=0, fill=1)
+            c.setFont("Helvetica", 10); c.setFillColor(cols["TEXT"])
+            c.drawString(col_xs[0]+24, ry+7, name)
+            c.setFont("Helvetica-Bold", 10); c.drawString(col_xs[1]+8, ry+7, area)
+            c.setFont("Helvetica", 10);      c.drawString(col_xs[2]+8, ry+7, perim)
+            c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.4)
+            c.line(M, ry, W_a4-M, ry)
+        # Outer border
+        c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.6)
+        c.rect(M, table_top-th-len(rows)*row_h, W_a4-2*M, th+len(rows)*row_h, stroke=1, fill=0)
+
+    # PPM info
+    if ppm:
+        c.setFont("Helvetica", 8); c.setFillColor(cols["MUTED"])
+        c.drawString(M, table_top-th-len(rows)*row_h-14, f"Calibration : {fmt(ppm)} pixels/mètre")
+
+    _pdf_footer(c, W_a4, M, cols, date_str)
+    c.showPage()
+
+    # ── PAGE 3 : Masques ─────────────────────────────────────────────────────
     masks = []
-    if mask_doors   is not None: masks.append(("Masque — Portes",    mask_doors))
-    if mask_windows is not None: masks.append(("Masque — Fenêtres",  mask_windows))
-    if mask_walls   is not None: masks.append(("Masque — Murs",      mask_walls))
+    if mask_doors   is not None: masks.append(("Masque Portes",    mask_doors))
+    if mask_windows is not None: masks.append(("Masque Fenêtres",  mask_windows))
+    if mask_walls   is not None: masks.append(("Masque Murs",      mask_walls))
 
     if masks:
-        page_bg()
-        c.setFillColor(TXT); c.setFont("Helvetica-Bold", 18)
-        c.drawString(M, H_a4-M-8, "Masques de détection")
-        grid_top = H_a4-M-44; grid_bottom = M
-        grid_h = grid_top-grid_bottom; grid_w = W_a4-2*M
-        gap_g = 12
+        c.setFillColor(cols["WHITE"]); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
+        _pdf_header(c, W_a4, H_a4, M, cols, "MASQUES DE DÉTECTION", "Résultats bruts du modèle", date_str)
+        hdr_h3 = 71
+        grid_top = H_a4 - hdr_h3 - 8
+        grid_bottom = 36
+        grid_h = grid_top - grid_bottom
+        grid_w = W_a4 - 2*M
+        gap_g = 10
         cell_w = (grid_w-gap_g)/2; cell_h = (grid_h-gap_g)/2
-        positions = [
-            (M,                grid_bottom+cell_h+gap_g),
-            (M+cell_w+gap_g,   grid_bottom+cell_h+gap_g),
-            (M,                grid_bottom),
-            (M+cell_w+gap_g,   grid_bottom),
-        ]
+        positions = [(M, grid_bottom+cell_h+gap_g), (M+cell_w+gap_g, grid_bottom+cell_h+gap_g),
+                     (M, grid_bottom), (M+cell_w+gap_g, grid_bottom)]
         for i, (title, arr) in enumerate(masks[:4]):
             xx, yy = positions[i]
-            round_rect(c, xx, yy, cell_w, cell_h, fillColor=CARD2, strokeColor=BORDER)
-            c.setFillColor(TXT); c.setFont("Helvetica-Bold", 12)
-            c.drawString(xx+16, yy+cell_h-22, title)
-            iw3, ih3 = cell_w-28, cell_h-34
-            if arr.ndim == 2:
-                arr_rgb = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
-            else:
-                arr_rgb = arr
-            Hm, Wm = arr_rgb.shape[:2]
-            sc = min(iw3/Wm, ih3/Hm)
-            c.drawImage(pil_reader(arr_rgb), xx+14+(iw3-Wm*sc)/2, yy+14+(ih3-Hm*sc)/2, Wm*sc, Hm*sc)
+            c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+            c.roundRect(xx, yy, cell_w, cell_h, 6, stroke=1, fill=1)
+            c.setFont("Helvetica-Bold", 9); c.setFillColor(cols["TEXT"])
+            c.drawString(xx+8, yy+cell_h-14, title.upper())
+            arr_rgb = cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB) if arr.ndim==2 else arr
+            _draw_image_in_area(c, arr_rgb, xx+6, yy+6, cell_w-12, cell_h-22)
+        _pdf_footer(c, W_a4, M, cols, date_str)
         c.showPage()
 
+    c.save()
+    return buf_out.getvalue()
+
+
+# ============================================================
+# STEP 6b — EXPORT DEVIS PDF — Module Métré Manuel
+# ============================================================
+def generate_measure_pdf_devis(
+    image_b64: str,
+    surface_totals: list,   # [{name, color, area_m2}]
+    total_m2: float,
+    ppm: float = None,
+    project_name: str = "",
+    client_name: str = "",
+    date_str: str = "",
+) -> bytes:
+    import datetime
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    W_a4, H_a4 = A4
+    M = 40
+    cols = _pdf_colors()
+    if not date_str:
+        date_str = datetime.date.today().strftime("%d/%m/%Y")
+
+    buf_out = io.BytesIO()
+    c = canvas.Canvas(buf_out, pagesize=A4)
+
+    # ── PAGE 1 : Plan + Tableau ───────────────────────────────────────────────
+    c.setFillColor(cols["WHITE"]); c.rect(0, 0, W_a4, H_a4, stroke=0, fill=1)
+    hdr_h = _pdf_header(c, W_a4, H_a4, M, cols,
+                        "DEVIS DE MÉTRÉ",
+                        "Métré manuel de surfaces",
+                        date_str)
+    info_h = _pdf_info_strip(c, W_a4, H_a4, M, cols,
+                              H_a4 - hdr_h,
+                              [("Projet", project_name), ("Client", client_name), ("Date", date_str)])
+    top_y = H_a4 - hdr_h - info_h - 8
+
+    # Table dimensions
+    row_h = 26; th = 28
+    n_rows = len(surface_totals)
+    total_row_h = 30
+    table_total_h = th + n_rows * row_h + total_row_h + 20
+    table_bottom = 36 + 8  # footer + padding
+
+    # Image area (between info strip and table)
+    img_area_top = top_y
+    img_area_bottom = table_bottom + table_total_h + 10
+    img_area_h = img_area_top - img_area_bottom
+    img_area_w = W_a4 - 2 * M
+
+    # Draw floor plan image
+    if img_area_h > 40 and image_b64:
+        try:
+            ir, iw_nat, ih_nat = _pil_reader_from_b64(image_b64)
+            scale = min(img_area_w / iw_nat, img_area_h / ih_nat)
+            dw, dh = iw_nat * scale, ih_nat * scale
+            ix = M + (img_area_w - dw) / 2
+            iy = img_area_bottom + (img_area_h - dh) / 2
+            c.setFillColor(cols["LIGHT2"]); c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.5)
+            c.roundRect(M, img_area_bottom, img_area_w, img_area_h, 6, stroke=1, fill=1)
+            c.setFont("Helvetica-Bold", 8); c.setFillColor(cols["MUTED"])
+            c.drawString(M+8, img_area_bottom+img_area_h-14, "PLAN DE SOL")
+            c.drawImage(ir, ix, iy, dw, dh)
+        except Exception:
+            pass
+
+    # Table: RÉCAPITULATIF
+    t_top = table_bottom + table_total_h - 20
+    c.setFont("Helvetica-Bold", 11); c.setFillColor(cols["TEXT"])
+    c.drawString(M, t_top + 8, "RÉCAPITULATIF DES SURFACES")
+
+    col_name_w = W_a4 - 2*M - 200
+    col_xs = [M, M + col_name_w, M + col_name_w + 100, M + col_name_w + 200]
+
+    # Table header
+    c.setFillColor(cols["DARK2"]); c.rect(M, t_top - th, W_a4-2*M, th, stroke=0, fill=1)
+    c.setFont("Helvetica-Bold", 8); c.setFillColor(cols["WHITE"])
+    for i, lbl in enumerate(["TYPE DE SURFACE", "SURFACE (m²)", "% DU TOTAL"]):
+        c.drawString(col_xs[i]+8, t_top-th+9, lbl)
+
+    # Table rows
+    for ri, item in enumerate(surface_totals):
+        ry = t_top - th - (ri+1)*row_h
+        c.setFillColor(cols["LIGHT"] if ri%2==0 else cols["LIGHT2"])
+        c.rect(M, ry, W_a4-2*M, row_h, stroke=0, fill=1)
+        try:
+            from reportlab.lib import colors as rlc
+            dot_col = rlc.HexColor(item.get("color", "#6B7280"))
+        except Exception:
+            dot_col = cols["MUTED"]
+        c.setFillColor(dot_col); c.circle(col_xs[0]+12, ry+row_h/2, 5, stroke=0, fill=1)
+        c.setFont("Helvetica", 10); c.setFillColor(cols["TEXT"])
+        c.drawString(col_xs[0]+26, ry+8, item.get("name", "—"))
+        area_val = item.get("area_m2", 0) or 0
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(col_xs[1]+8, ry+8, f"{area_val:.2f} m²")
+        pct = (area_val / total_m2 * 100) if total_m2 > 0 else 0
+        c.setFont("Helvetica", 10); c.setFillColor(cols["MUTED"])
+        c.drawString(col_xs[2]+8, ry+8, f"{pct:.1f} %")
+        c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.3)
+        c.line(M, ry, W_a4-M, ry)
+
+    # Total row
+    tot_y = t_top - th - n_rows*row_h - total_row_h
+    c.setFillColor(cols["BLUE"]); c.rect(M, tot_y, W_a4-2*M, total_row_h, stroke=0, fill=1)
+    c.setFont("Helvetica-Bold", 12); c.setFillColor(cols["WHITE"])
+    c.drawString(col_xs[0]+26, tot_y+9, "TOTAL")
+    c.drawString(col_xs[1]+8,  tot_y+9, f"{total_m2:.2f} m²")
+    c.drawString(col_xs[2]+8,  tot_y+9, "100 %")
+
+    # Border autour du tableau
+    c.setStrokeColor(cols["BORDER"]); c.setLineWidth(0.6)
+    c.rect(M, tot_y, W_a4-2*M, th + n_rows*row_h + total_row_h, stroke=1, fill=0)
+
+    # PPM note
+    if ppm:
+        c.setFont("Helvetica", 8); c.setFillColor(cols["MUTED"])
+        c.drawString(M, tot_y - 14, f"Calibration : {ppm:.1f} px/m")
+
+    _pdf_footer(c, W_a4, M, cols, date_str)
     c.save()
     return buf_out.getvalue()

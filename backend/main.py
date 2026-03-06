@@ -65,6 +65,7 @@ class UploadPdfRequest(BaseModel):
     pdf_base64: str
     filename: str = "plan.pdf"
     zoom: float = 3.0
+    page: int = 0          # index de page (0 = première page)
 
 @app.post("/upload-pdf")
 async def upload_pdf(req: UploadPdfRequest):
@@ -75,7 +76,8 @@ async def upload_pdf(req: UploadPdfRequest):
     except Exception:
         raise HTTPException(400, "Base64 invalide")
     try:
-        img_rgb = pipeline.pdf_to_image(pdf_bytes, zoom=req.zoom)
+        page_count = pipeline.get_pdf_page_count(pdf_bytes)
+        img_rgb = pipeline.pdf_to_image(pdf_bytes, zoom=req.zoom, page_index=req.page)
     except Exception as e:
         raise HTTPException(500, f"Erreur rendu PDF : {e}")
 
@@ -89,6 +91,8 @@ async def upload_pdf(req: UploadPdfRequest):
         "session_id": session_id,
         "width": W, "height": H,
         "image_b64": b64,
+        "page_count": page_count,
+        "page": req.page,
     }
 
 
@@ -403,6 +407,8 @@ def sam_segment(req: SamSegmentRequest):
 # ============================================================
 class ExportRequest(BaseModel):
     session_id: str
+    project_name: str = ""
+    client_name: str = ""
 
 @app.post("/export-pdf")
 def export_pdf(req: ExportRequest):
@@ -438,6 +444,8 @@ def export_pdf(req: ExportRequest):
             doors_count=a["doors_count"],
             windows_count=a["windows_count"],
             ppm=a.get("pixels_per_meter"),
+            project_name=req.project_name,
+            client_name=req.client_name,
         )
     except Exception as e:
         raise HTTPException(500, f"Erreur génération PDF : {e}")
@@ -452,6 +460,39 @@ def export_pdf(req: ExportRequest):
 # ============================================================
 # ROUTE 9 — RÉCUPÉRER UNE IMAGE (overlay/masque) par session
 # ============================================================
+# ============================================================
+# ROUTE 10 — EXPORT DEVIS PDF — Module Métré Manuel
+# ============================================================
+class ExportMeasurePdfRequest(BaseModel):
+    image_b64: str
+    surface_totals: list   # [{name, color, area_m2}]
+    total_m2: float
+    ppm: Optional[float] = None
+    project_name: str = ""
+    client_name: str = ""
+    date_str: str = ""
+
+@app.post("/export-measure-pdf")
+def export_measure_pdf(req: ExportMeasurePdfRequest):
+    try:
+        pdf_bytes = pipeline.generate_measure_pdf_devis(
+            image_b64=req.image_b64,
+            surface_totals=req.surface_totals,
+            total_m2=req.total_m2,
+            ppm=req.ppm,
+            project_name=req.project_name,
+            client_name=req.client_name,
+            date_str=req.date_str,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur génération devis PDF : {e}")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=floorscan_devis.pdf"}
+    )
+
+
 @app.get("/image/{session_id}/{image_type}")
 def get_image(session_id: str, image_type: str):
     s = sessions.get(session_id)
