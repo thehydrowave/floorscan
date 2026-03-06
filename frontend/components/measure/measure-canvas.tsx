@@ -455,6 +455,31 @@ export default function MeasureCanvas({
                     </text>
                   )}
                 </g>
+                {/* Edge midpoints — click to insert a new vertex */}
+                {zone.points.map((p, idx) => {
+                  const next = zone.points[(idx + 1) % zone.points.length];
+                  const midNorm = { x: (p.x + next.x) / 2, y: (p.y + next.y) / 2 };
+                  const mid = toSvg(midNorm);
+                  return (
+                    <g
+                      key={`mid-${idx}`}
+                      transform={`translate(${mid.x},${mid.y})`}
+                      style={{ pointerEvents: "all", cursor: "copy" }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        skipNextClickRef.current = true;
+                        const newPts = [...zone.points];
+                        newPts.splice(idx + 1, 0, midNorm);
+                        onZonesChange(zones.map(z => z.id !== zone.id ? z : { ...z, points: newPts }));
+                      }}
+                    >
+                      <circle r={7} fill="white" stroke={color} strokeWidth={1.2} opacity={0.8} />
+                      <text textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight="700"
+                        fill={color} style={{ userSelect: "none", pointerEvents: "none" }}>+</text>
+                    </g>
+                  );
+                })}
                 {/* Vertex handles — draggable (left) / delete (right-click) */}
                 {zone.points.map((p, idx) => {
                   const s = toSvg(p);
