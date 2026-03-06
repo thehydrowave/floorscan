@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline } from "lucide-react";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare } from "lucide-react";
 import { SurfaceType, MeasureZone } from "@/lib/measure-types";
 
 interface MeasureCanvasProps {
@@ -70,6 +70,11 @@ export default function MeasureCanvas({
 
   // Vertex edit state
   const [dragVertex, setDragVertex] = useState<{ zoneId: string; idx: number } | null>(null);
+
+  // Déduction mode
+  const [isDeductionMode, setIsDeductionMode] = useState(false);
+  const isDeductionRef = useRef(false);
+  useEffect(() => { isDeductionRef.current = isDeductionMode; }, [isDeductionMode]);
 
   // Angle tool state
   const [anglePts, setAnglePts]               = useState<{ x: number; y: number }[]>([]);
@@ -315,7 +320,13 @@ export default function MeasureCanvas({
   const addZone = useCallback((points: { x: number; y: number }[]) => {
     if (points.length < 3) return;
     onHistoryPush?.(zonesRef.current);
-    onZonesChange([...zones, { id: crypto.randomUUID(), typeId: activeTypeId, points }]);
+    const newZone: MeasureZone = {
+      id: crypto.randomUUID(),
+      typeId: activeTypeId,
+      points,
+      ...(isDeductionRef.current ? { isDeduction: true } : {}),
+    };
+    onZonesChange([...zones, newZone]);
     setDrawingPoints([]);
   }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
@@ -483,6 +494,20 @@ export default function MeasureCanvas({
           </button>
         </div>
 
+        {/* Déduction toggle */}
+        <button
+          onClick={() => setIsDeductionMode(v => !v)}
+          title="Mode déduction — la zone dessinée sera soustraite du total"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+            isDeductionMode
+              ? "bg-red-500/20 border-red-500/50 text-red-400"
+              : "glass border-white/10 text-slate-400 hover:text-white"
+          }`}
+        >
+          <MinusSquare className="w-3.5 h-3.5" />
+          {isDeductionMode ? "Déduction ON" : "Déduction"}
+        </button>
+
         <button onClick={undoLast} title="Annuler (Ctrl+Z)"
           disabled={drawingPoints.length === 0 && !canUndo}
           className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
@@ -563,10 +588,15 @@ export default function MeasureCanvas({
 
         {/* SVG overlay — same coordinate space as container */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
+          <defs>
+            <pattern id="hatch-deduction" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(239,68,68,0.55)" strokeWidth="3" />
+            </pattern>
+          </defs>
 
           {/* Completed zones */}
           {zones.map(zone => {
-            const color = getColor(zone.typeId);
+            const color = zone.isDeduction ? "#EF4444" : getColor(zone.typeId);
             const pts = zone.points.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(" ");
 
             // Label at centroid
@@ -583,7 +613,9 @@ export default function MeasureCanvas({
               return Math.abs(a) / 2;
             })();
             const areaM2 = ppm ? areaPx / ppm ** 2 : null;
-            const areaLabel = areaM2 != null ? `${areaM2.toFixed(2)} m²` : null;
+            const areaLabel = zone.isDeduction
+              ? (areaM2 != null ? `−${areaM2.toFixed(2)} m²` : "EXCLU")
+              : (areaM2 != null ? `${areaM2.toFixed(2)} m²` : null);
             const LW = 82;
             const LH = areaLabel ? 32 : 20;
 
@@ -591,9 +623,10 @@ export default function MeasureCanvas({
               <g key={zone.id} className="group">
                 <polygon
                   points={pts}
-                  fill={hexToRgba(color, 0.28)}
+                  fill={zone.isDeduction ? "url(#hatch-deduction)" : hexToRgba(color, 0.28)}
                   stroke={color}
-                  strokeWidth={2}
+                  strokeWidth={zone.isDeduction ? 2 : 2}
+                  strokeDasharray={zone.isDeduction ? "6 3" : undefined}
                   strokeLinejoin="round"
                 />
                 {/* Zone label */}
