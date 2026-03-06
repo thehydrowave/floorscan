@@ -74,9 +74,10 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
-  // Pan + click distinction
+  // Pan via RIGHT-click drag only — left click is reserved for placing points
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== 2) return; // right-click only
+    e.preventDefault();
     isDraggingRef.current = true;
     hasDraggedRef.current = false;
     dragStartRef.current = { mx: e.clientX, my: e.clientY, tx: translateRef.current.x, ty: translateRef.current.y };
@@ -88,12 +89,13 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
       if (!isDraggingRef.current) return;
       const dx = e.clientX - dragStartRef.current.mx;
       const dy = e.clientY - dragStartRef.current.my;
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
         hasDraggedRef.current = true;
         setTranslate({ x: dragStartRef.current.tx + dx, y: dragStartRef.current.ty + dy });
       }
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
+      if (e.button !== 2) return;
       isDraggingRef.current = false;
       setCursor("crosshair");
     };
@@ -102,9 +104,9 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
-  // Place points on click (not after drag)
+  // LEFT click always places a calibration point
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (hasDraggedRef.current) return;
+    if (e.button !== 0) return;
     const img = imgRef.current;
     if (!img) return;
     const rect = img.getBoundingClientRect();
@@ -219,6 +221,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
               style={{ height: 440, cursor }}
               onMouseDown={handleMouseDown}
               onClick={handleClick}
+              onContextMenu={e => e.preventDefault()}
             >
               {/* Transformed image */}
               <div style={{
@@ -260,14 +263,12 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
                 )}
               </svg>
 
-              {/* Empty state hint */}
-              {!points[0] && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
-                  <div className="glass border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-400 whitespace-nowrap">
-                    {d("sc_nav_hint")}
-                  </div>
+              {/* Hint */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
+                <div className="glass border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-400 whitespace-nowrap">
+                  🖱 Clic gauche — poser point &nbsp;·&nbsp; Clic droit glisser — déplacer &nbsp;·&nbsp; Scroll — zoom
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Distance input — only when both points placed */}
