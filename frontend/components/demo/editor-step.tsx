@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2 } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -40,6 +40,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   // Opening selection & highlight
   const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
   const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
+  const [showOpeningOverlay, setShowOpeningOverlay] = useState(true);
 
   // Measure state
   const [zones, setZones] = useState<MeasureZone[]>([]);
@@ -535,6 +536,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   {d("ed_finish_poly")}
                 </button>
               )}
+              <div className="w-px bg-white/10 mx-1 self-stretch" />
+              {/* Toggle opening number overlay */}
+              <button
+                onClick={() => setShowOpeningOverlay(v => !v)}
+                title={showOpeningOverlay ? "Masquer les numéros" : "Afficher les numéros"}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showOpeningOverlay
+                    ? "border-white/20 bg-white/5 text-white"
+                    : "border-white/10 text-slate-500 hover:text-slate-300"
+                )}
+              >
+                {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                {showOpeningOverlay ? "Numéros ON" : "Numéros OFF"}
+              </button>
             </div>
 
             <div className="relative glass rounded-xl border border-white/10 overflow-hidden bg-white">
@@ -548,7 +563,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 onLoad={updateImgDisplaySize} />
 
               {/* SVG overlay: shows every opening bbox + number, highlights selected */}
-              {imgDisplaySize.w > 0 && imageNatural.w > 0 && (
+              {showOpeningOverlay && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
                   {result.openings?.map((o, i) => {
                     const scx = imgDisplaySize.w / imageNatural.w;
@@ -695,21 +710,50 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   <p className="text-slate-600">{d("ed_no_elem")}</p>
                 )}
               </div>
-              {/* Hint when selection active */}
+              {/* Actions when selection active */}
               {selectedOpeningIdx !== null && result.openings?.[selectedOpeningIdx] && (
-                <div className="mt-3 pt-3 border-t border-white/5 text-slate-600">
-                  <p className="mb-1.5 font-500 text-slate-500">Ouverture #{selectedOpeningIdx + 1} sélectionnée</p>
-                  <button
-                    onClick={() => {
-                      const o = result.openings![selectedOpeningIdx];
-                      setLayer(o.class === "door" ? "door" : "window");
-                      setTool("erase_rect");
-                      toast({ title: "Effacez puis redessinez", description: "Utilisez − Rectangle sur cette zone, puis + Rectangle pour recréer.", variant: "default" });
-                    }}
-                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-                  >
-                    <PenLine className="w-3 h-3" /> Retracer manuellement
-                  </button>
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  <p className="mb-2 text-[10px] font-500 text-slate-500 uppercase tracking-wide">
+                    #{selectedOpeningIdx + 1} — Modifier le masque
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {/* Extend */}
+                    <button
+                      onClick={() => {
+                        const o = result.openings![selectedOpeningIdx];
+                        setLayer(o.class === "door" ? "door" : "window");
+                        setTool("add_rect");
+                        toast({ title: "Mode Étendre actif", description: "Dessinez un rectangle sur la zone à ajouter au masque.", variant: "default" });
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
+                    >
+                      <span className="text-sm">＋</span> Étendre le masque
+                    </button>
+                    {/* Reduce */}
+                    <button
+                      onClick={() => {
+                        const o = result.openings![selectedOpeningIdx];
+                        setLayer(o.class === "door" ? "door" : "window");
+                        setTool("erase_rect");
+                        toast({ title: "Mode Réduire actif", description: "Dessinez un rectangle sur la zone à retirer du masque.", variant: "default" });
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors text-xs"
+                    >
+                      <span className="text-sm">－</span> Réduire le masque
+                    </button>
+                    {/* Redraw from scratch */}
+                    <button
+                      onClick={() => {
+                        const o = result.openings![selectedOpeningIdx];
+                        setLayer(o.class === "door" ? "door" : "window");
+                        setTool("add_poly");
+                        toast({ title: "Mode Polygone actif", description: "Tracez un nouveau contour précis autour de l'ouverture.", variant: "default" });
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
+                    >
+                      <PenLine className="w-3 h-3" /> Tracer au polygone
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

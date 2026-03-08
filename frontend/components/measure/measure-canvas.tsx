@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare } from "lucide-react";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler } from "lucide-react";
 import { SurfaceType, MeasureZone } from "@/lib/measure-types";
 
 interface MeasureCanvasProps {
@@ -19,7 +19,7 @@ interface MeasureCanvasProps {
   canRedo?: boolean;
 }
 
-type Tool = "polygon" | "rect" | "angle";
+type Tool = "polygon" | "rect" | "angle" | "wall";
 
 interface AngleMeasurement {
   id: string;
@@ -82,6 +82,9 @@ export default function MeasureCanvas({
   const [drawingPoints, setDrawingPoints] = useState<{ x: number; y: number }[]>([]);
   const [mouseNorm, setMouseNorm]     = useState<{ x: number; y: number } | null>(null);
   const [rectStart, setRectStart]     = useState<{ x: number; y: number } | null>(null);
+  // Wall tool state
+  const [wallStart, setWallStart]       = useState<{ x: number; y: number } | null>(null);
+  const [wallThicknessCm, setWallThicknessCm] = useState(15);
 
   // Zoom / pan state
   const [zoom, setZoom]         = useState(1);
@@ -377,6 +380,10 @@ export default function MeasureCanvas({
       const n = toNorm(e.clientX, e.clientY);
       if (n) setRectStart(n);
     }
+    if (tool === "wall" && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) setWallStart(n);
+    }
   }, [tool, toNorm]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -410,22 +417,48 @@ export default function MeasureCanvas({
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragVertex) return; // handled by global listener
-    if (tool !== "rect" || !rectStart || e.button !== 0) return;
-    const n = toNorm(e.clientX, e.clientY);
-    if (!n) { setRectStart(null); return; }
-    const x0 = Math.min(rectStart.x, n.x), y0 = Math.min(rectStart.y, n.y);
-    const x1 = Math.max(rectStart.x, n.x), y1 = Math.max(rectStart.y, n.y);
-    if (x1 - x0 > 0.01 && y1 - y0 > 0.01) {
-      addZone([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]);
+    if (e.button !== 0) return;
+    // Rect tool
+    if (tool === "rect" && rectStart) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (!n) { setRectStart(null); return; }
+      const x0 = Math.min(rectStart.x, n.x), y0 = Math.min(rectStart.y, n.y);
+      const x1 = Math.max(rectStart.x, n.x), y1 = Math.max(rectStart.y, n.y);
+      if (x1 - x0 > 0.01 && y1 - y0 > 0.01) {
+        addZone([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]);
+      }
+      setRectStart(null);
     }
-    setRectStart(null);
-  }, [dragVertex, tool, rectStart, toNorm, addZone]);
+    // Wall tool — creates a rotated rectangle (4-point polygon) oriented along the drag axis
+    if (tool === "wall" && wallStart && naturalSize.w > 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (!n) { setWallStart(null); return; }
+      const sx = wallStart.x * naturalSize.w, sy = wallStart.y * naturalSize.h;
+      const ex = n.x * naturalSize.w,        ey = n.y * naturalSize.h;
+      const dx = ex - sx, dy = ey - sy;
+      const len = Math.hypot(dx, dy);
+      if (len > 3) {
+        // Perpendicular unit vector in image-pixel space
+        const px = -dy / len, py = dx / len;
+        // Half-thickness: if ppm known → cm→pixels; otherwise treat value as raw image pixels
+        const halfT = ppm ? (wallThicknessCm / 100) * ppm / 2 : wallThicknessCm / 2;
+        const corners: { x: number; y: number }[] = [
+          { x: (sx + px * halfT) / naturalSize.w, y: (sy + py * halfT) / naturalSize.h },
+          { x: (ex + px * halfT) / naturalSize.w, y: (ey + py * halfT) / naturalSize.h },
+          { x: (ex - px * halfT) / naturalSize.w, y: (ey - py * halfT) / naturalSize.h },
+          { x: (sx - px * halfT) / naturalSize.w, y: (sy - py * halfT) / naturalSize.h },
+        ];
+        addZone(corners);
+      }
+      setWallStart(null);
+    }
+  }, [dragVertex, tool, rectStart, wallStart, wallThicknessCm, naturalSize, ppm, toNorm, addZone]);
 
   // Sync touch refs after these callbacks are (re)created
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setAnglePts([]); }, []);
+  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
@@ -469,7 +502,28 @@ export default function MeasureCanvas({
     return { x: s0.x, y: s0.y, w: s1.x - s0.x, h: s1.y - s0.y };
   })() : null;
 
-  const isDrawing   = drawingPoints.length > 0 || rectStart !== null;
+  // Wall preview: rotated rectangle oriented along the drag axis
+  const wallPreviewPts: { x: number; y: number }[] | null =
+    tool === "wall" && wallStart && mouseNorm && naturalSize.w > 0
+      ? (() => {
+          const sx = wallStart.x * naturalSize.w, sy = wallStart.y * naturalSize.h;
+          const ex = mouseNorm.x * naturalSize.w,  ey = mouseNorm.y * naturalSize.h;
+          const dx = ex - sx, dy = ey - sy;
+          const len = Math.hypot(dx, dy);
+          if (len < 1) return null;
+          const px = -dy / len, py = dx / len;
+          const halfT = ppm ? (wallThicknessCm / 100) * ppm / 2 : wallThicknessCm / 2;
+          const corners: { x: number; y: number }[] = [
+            { x: (sx + px * halfT) / naturalSize.w, y: (sy + py * halfT) / naturalSize.h },
+            { x: (ex + px * halfT) / naturalSize.w, y: (ey + py * halfT) / naturalSize.h },
+            { x: (ex - px * halfT) / naturalSize.w, y: (ey - py * halfT) / naturalSize.h },
+            { x: (sx - px * halfT) / naturalSize.w, y: (sy - py * halfT) / naturalSize.h },
+          ];
+          return corners.map(c => toSvg(c));
+        })()
+      : null;
+
+  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null;
   const activeColor = getColor(activeTypeId);
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
@@ -484,6 +538,10 @@ export default function MeasureCanvas({
         : "Cliquez pour placer le premier point"
       : drawingPoints.length < 2   ? "Continuez à cliquer · Maj pour contraindre à 45°"
       : "Double-clic ou cliquez le 1er point pour fermer · Maj = snap 45°"
+    : tool === "wall"
+    ? wallStart
+      ? `Relâchez pour valider le mur · épaisseur ${wallThicknessCm} ${ppm ? "cm" : "px"}`
+      : `Cliquez et glissez pour tracer un mur · épaisseur : ${wallThicknessCm} ${ppm ? "cm" : "px"}`
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -519,7 +577,40 @@ export default function MeasureCanvas({
           >
             <Spline className="w-3.5 h-3.5" /> Angle
           </button>
+          <button
+            onClick={() => { setTool("wall"); cancelDrawing(); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "wall"
+                ? "bg-orange-500/20 border border-orange-500/40 text-orange-300"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Ruler className="w-3.5 h-3.5" /> Mur
+          </button>
         </div>
+
+        {/* Wall thickness control — shown only when wall tool is active */}
+        {tool === "wall" && (
+          <div className="flex items-center gap-2 glass border border-orange-500/20 rounded-xl px-3 py-1.5">
+            <Ruler className="w-3 h-3 text-orange-400 shrink-0" />
+            <span className="text-xs text-slate-400">Épaisseur</span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              step={1}
+              value={wallThicknessCm}
+              onChange={e => setWallThicknessCm(Math.max(1, parseInt(e.target.value) || 15))}
+              className="w-14 bg-transparent text-orange-300 text-xs font-mono text-center border-b border-orange-500/30 focus:outline-none focus:border-orange-400"
+            />
+            <span className="text-xs text-slate-500">{ppm ? "cm" : "px"}</span>
+            {ppm && (
+              <span className="text-[10px] text-slate-600 font-mono">
+                = {((wallThicknessCm / 100) * ppm).toFixed(0)} px
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Déduction toggle */}
         <button
@@ -881,6 +972,23 @@ export default function MeasureCanvas({
               width={rectPreview.w} height={rectPreview.h}
               fill={hexToRgba(activeColor, 0.2)}
               stroke={activeColor} strokeWidth={2} strokeDasharray="6 3"
+            />
+          )}
+
+          {/* Wall preview — rotated rectangle oriented along drag direction */}
+          {wallPreviewPts && (
+            <polygon
+              points={wallPreviewPts.map(p => `${p.x},${p.y}`).join(" ")}
+              fill={hexToRgba(activeColor, 0.25)}
+              stroke={activeColor} strokeWidth={2} strokeDasharray="6 3"
+              strokeLinejoin="round"
+            />
+          )}
+          {/* Wall start anchor dot */}
+          {tool === "wall" && wallStart && (
+            <circle
+              cx={toSvg(wallStart).x} cy={toSvg(wallStart).y}
+              r={5} fill={activeColor} stroke="white" strokeWidth={1.5}
             />
           )}
 
