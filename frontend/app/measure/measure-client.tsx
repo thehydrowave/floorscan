@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
+import MeasureCropStep from "@/components/measure/measure-crop-step";
 import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -130,7 +131,7 @@ async function renderAnnotatedPlan(
 export default function MeasureClient({ embedded = false }: { embedded?: boolean }) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
-  const STEP_LABELS = [d("me_step_import"), d("me_step_scale"), d("me_step_survey"), d("me_step_results")];
+  const STEP_LABELS = [d("me_step_import"), d("cr_title"), d("me_step_scale"), d("me_step_survey"), d("me_step_results")];
   const [step, setStep] = useState(0);
 
   // Image state
@@ -225,7 +226,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       if (s.imageB64) {
         setImageB64(s.imageB64);
         setImageMime(s.imageMime || "image/png");
-        if (s.step !== undefined) setStep(s.step);
+        // Migrate old step numbers (v1: 0=Upload,1=Scale,2=Measure,3=Results)
+        // New: 0=Upload,1=Crop,2=Scale,3=Measure,4=Results
+        if (s.step !== undefined) {
+          const migrated: Record<number, number> = { 0: 0, 1: 2, 2: 3, 3: 4 };
+          setStep(migrated[s.step] ?? s.step);
+        }
       }
     } catch { /* silencieux */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -394,9 +400,16 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     if (file) handleFile(file);
   };
 
+  // Callback when crop is confirmed (client-side crop)
+  const handleCropped = (b64: string, mime: string) => {
+    setImageB64(b64);
+    setImageMime(mime);
+    setStep(2);
+  };
+
   const handleScaled = (value: number | null) => {
     setPpm(value);
-    setStep(2);
+    setStep(3);
   };
 
   // ── Multi-plan ─────────────────────────────────────────────────────────────
@@ -421,7 +434,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setPpm(plan.ppm);
     historyRef.current = []; futureRef.current = [];
     setHistoryLen(0); setFutureLen(0);
-    setStep(plan.imageB64 ? 2 : 0);
+    setStep(plan.imageB64 ? 3 : 0);
   };
 
   const addNewPlan = () => {
@@ -751,8 +764,18 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           {/* ── PAGE SELECTOR ── */}
           {step === 0 && awaitingPage && <PageSelector />}
 
-          {/* ── STEP 1: Scale ── */}
+          {/* ── STEP 1: Crop ── */}
           {step === 1 && imageB64 && (
+            <MeasureCropStep
+              imageB64={imageB64}
+              imageMime={imageMime}
+              onCropped={handleCropped}
+              onSkip={() => setStep(2)}
+            />
+          )}
+
+          {/* ── STEP 2: Scale ── */}
+          {step === 2 && imageB64 && (
             <div>
               {/* Page change hint for multi-page PDFs */}
               {pageCount > 1 && (
@@ -773,8 +796,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             </div>
           )}
 
-          {/* ── STEP 2: Measure ── */}
-          {step === 2 && imageB64 && (
+          {/* ── STEP 3: Measure ── */}
+          {step === 3 && imageB64 && (
             <div className="flex flex-col lg:flex-row gap-6">
               <div className="flex-1 min-w-0">
                 {/* Multi-plan tab bar */}
@@ -816,7 +839,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
-                    <Button size="sm" onClick={() => setStep(3)} disabled={zones.length === 0}>
+                    <Button size="sm" onClick={() => setStep(4)} disabled={zones.length === 0}>
                       {d("me_view_results")}
                     </Button>
                   </div>
@@ -851,8 +874,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             </div>
           )}
 
-          {/* ── STEP 3: Results ── */}
-          {step === 3 && (() => {
+          {/* ── STEP 4: Results ── */}
+          {step === 4 && (() => {
             const activeSurfaces = surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0);
             const hasPrices = activeSurfaces.some(t => (t.pricePerM2 ?? 0) > 0);
             const totalHT = activeSurfaces.reduce((s, t) => s + (totals[t.id] ?? 0) * (t.pricePerM2 ?? 0), 0);
@@ -1022,12 +1045,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
                 {!ppm && (
                   <p className="text-xs text-amber-400/80 text-center mb-4">
-                    ⚠ Aucune échelle définie — les surfaces sont en px². Retournez à l'étape 2 pour calibrer.
+                    ⚠ Aucune échelle définie — les surfaces sont en px². Retournez à l'étape 3 pour calibrer.
                   </p>
                 )}
 
                 <div className="flex gap-3 justify-center flex-wrap">
-                  <Button variant="outline" onClick={() => setStep(2)}>
+                  <Button variant="outline" onClick={() => setStep(3)}>
                     {d("me_back_survey")}
                   </Button>
                   <Button variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
