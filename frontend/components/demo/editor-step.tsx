@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -15,7 +15,7 @@ import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType, aggre
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior";
-type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam";
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select";
 type Mode = "editor" | "measure";
 
 interface EditorStepProps {
@@ -36,6 +36,10 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+
+  // Opening selection & highlight
+  const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
+  const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
 
   // Measure state
   const [zones, setZones] = useState<MeasureZone[]>([]);
@@ -79,6 +83,18 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     setZones(next);
   }, []);
 
+  // Track img display size for SVG overlay positioning
+  const updateImgDisplaySize = useCallback(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    setImgDisplaySize({ w: img.offsetWidth, h: img.offsetHeight });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("resize", updateImgDisplaySize);
+    return () => window.removeEventListener("resize", updateImgDisplaySize);
+  }, [updateImgDisplaySize]);
+
   // Canvas (editor mode)
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -101,10 +117,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const img = imgRef.current;
     const cv = canvasRef.current;
     if (!img || !cv) return;
-    const sync = () => { cv.width = img.offsetWidth; cv.height = img.offsetHeight; };
+    const sync = () => {
+      cv.width = img.offsetWidth;
+      cv.height = img.offsetHeight;
+      updateImgDisplaySize();
+    };
     if (img.complete) sync();
     else img.onload = sync;
-  }, [currentOverlay]);
+  }, [currentOverlay, updateImgDisplaySize]);
 
   function scaleX(px: number) {
     const img = imgRef.current!;
@@ -159,6 +179,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         doors_count: data.doors_count ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
+        openings: data.openings ?? prev.openings,
       }));
       toast({ title: dt("ed_mask_updated", lang), variant: "success" });
     } catch (e: any) {
@@ -191,12 +212,81 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     } finally { setLoading(false); }
   };
 
+  // Delete an individual opening by erasing its bounding-box region
+  const deleteOpening = useCallback(async (idx: number) => {
+    const o = result.openings?.[idx];
+    if (!o) return;
+    setLoading(true); setError(null);
+    try {
+      const r = await fetch(`${BACKEND}/edit-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          layer: o.class === "door" ? "door" : "window",
+          action: "erase_rect",
+          x0: Math.round(o.x_px),
+          y0: Math.round(o.y_px),
+          x1: Math.round(o.x_px + o.width_px),
+          y1: Math.round(o.y_px + o.height_px),
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur suppression");
+      const data = await r.json();
+      setResult(prev => ({
+        ...prev,
+        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
+        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
+        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
+        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
+        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
+        doors_count: data.doors_count ?? prev.doors_count,
+        windows_count: data.windows_count ?? prev.windows_count,
+        surfaces: data.surfaces ?? prev.surfaces,
+        // If backend doesn't return fresh openings, optimistically remove from list
+        openings: data.openings ?? prev.openings?.filter((_, i) => i !== idx),
+      }));
+      setSelectedOpeningIdx(null);
+      toast({ title: "Ouverture supprimée ✓", variant: "success" });
+    } catch (e: any) {
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else {
+        setError(e.message);
+        toast({ title: "Erreur suppression", description: e.message, variant: "error" });
+      }
+    } finally { setLoading(false); }
+  }, [result.openings, sessionId, onSessionExpired]);
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvasRef.current!;
     const rect = cv.getBoundingClientRect();
     const rx = scaleX(e.clientX - rect.left);
     const ry = scaleY(e.clientY - rect.top);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
+    if (tool === "select") {
+      // Find the opening that the user clicked inside, or the closest one
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      result.openings?.forEach((o, i) => {
+        const inside = rx >= o.x_px && rx <= o.x_px + o.width_px
+                    && ry >= o.y_px && ry <= o.y_px + o.height_px;
+        if (inside) {
+          if (0 < bestDist) { bestDist = 0; bestIdx = i; }
+        } else {
+          const cx = o.x_px + o.width_px / 2;
+          const cy = o.y_px + o.height_px / 2;
+          const dist = Math.hypot(cx - rx, cy - ry);
+          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+      });
+      if (bestIdx >= 0 && (bestDist === 0 || bestDist < 150)) {
+        setSelectedOpeningIdx(prev => prev === bestIdx ? null : bestIdx);
+      } else {
+        setSelectedOpeningIdx(null);
+      }
+      return;
+    }
     if (tool === "add_poly" || tool === "erase_poly") { pts.current.push([rx, ry]); drawCanvas(); return; }
     drawing.current = true;
     startPt.current = { x: rx, y: ry };
@@ -423,12 +513,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 { id: "add_poly", label: "+ Polygone" },
                 { id: "erase_poly", label: "− Polygone", erase: true },
                 { id: "sam", label: "🪄 SAM auto", special: true },
-              ] as any[]).map(({ id, label, erase, special }) => (
-                <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; }}
-                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
+                { id: "select", label: "Sélectionner", select: true },
+              ] as any[]).map(({ id, label, erase, special, select: sel }) => (
+                <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; if (id !== "select") setSelectedOpeningIdx(null); }}
+                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                     tool === id
-                      ? erase ? "border-red-500/40 bg-red-500/10 text-red-400" : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-accent/40 bg-accent/10 text-accent"
-                      : erase ? "border-red-500/20 text-red-500/60 hover:text-red-400" : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                      ? erase   ? "border-red-500/40 bg-red-500/10 text-red-400"
+                        : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
+                        : sel    ? "border-teal-500/40 bg-teal-500/10 text-teal-400"
+                        :          "border-accent/40 bg-accent/10 text-accent"
+                      : erase   ? "border-red-500/20 text-red-500/60 hover:text-red-400"
+                        : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400"
+                        : sel    ? "border-teal-500/20 text-teal-500/60 hover:text-teal-400"
+                        :          "border-white/10 text-slate-500 hover:text-slate-300")}>
+                  {sel && <MousePointer2 className="w-3 h-3" />}
                   {label}
                 </button>
               ))}
@@ -446,8 +544,53 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               )}
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                className="w-full h-auto block max-h-[550px] object-contain" />
-              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: "crosshair" }}
+                className="w-full h-auto block max-h-[550px] object-contain"
+                onLoad={updateImgDisplaySize} />
+
+              {/* SVG overlay: shows every opening bbox + number, highlights selected */}
+              {imgDisplaySize.w > 0 && imageNatural.w > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+                  {result.openings?.map((o, i) => {
+                    const scx = imgDisplaySize.w / imageNatural.w;
+                    const scy = imgDisplaySize.h / imageNatural.h;
+                    const bx = o.x_px * scx;
+                    const by = o.y_px * scy;
+                    const bw = o.width_px * scx;
+                    const bh = o.height_px * scy;
+                    const isSelected = selectedOpeningIdx === i;
+                    const color = o.class === "door" ? "#D946EF" : "#22D3EE";
+                    const cx = bx + bw / 2;
+                    const cy = by + bh / 2;
+                    return (
+                      <g key={i} opacity={isSelected ? 1 : 0.45}>
+                        {/* Bounding box */}
+                        <rect x={bx} y={by} width={bw} height={bh}
+                          fill={color + (isSelected ? "22" : "0A")}
+                          stroke={color}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          strokeDasharray={isSelected ? undefined : "5 3"}
+                        />
+                        {/* Number badge */}
+                        <rect x={cx - 12} y={cy - 9} width={24} height={18} rx={4} fill="rgba(0,0,0,0.80)" />
+                        <text x={cx} y={cy}
+                          textAnchor="middle" dominantBaseline="central"
+                          fill={color}
+                          fontSize={isSelected ? 12 : 10}
+                          fontWeight={isSelected ? "bold" : "normal"}
+                          fontFamily="monospace"
+                        >{i + 1}</text>
+                        {/* Selection glow ring */}
+                        {isSelected && (
+                          <rect x={bx - 3} y={by - 3} width={bw + 6} height={bh + 6} rx={3}
+                            fill="none" stroke={color} strokeWidth={1} opacity={0.35} />
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: tool === "select" ? "default" : "crosshair", zIndex: 10 }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
             </div>
             <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
@@ -487,18 +630,88 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               </div>
             </div>
-            <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
-              <p className="font-600 text-slate-500 mb-2">{d("ed_openings_det")}</p>
-              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                {result.openings?.map((o, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", o.class === "door" ? "bg-purple-400" : "bg-cyan-400")} />
-                    <span>{o.class === "door" ? d("door_lbl") : d("win_lbl")} #{i + 1}</span>
-                    {o.length_m && <span className="ml-auto">{o.length_m.toFixed(2)}m</span>}
-                  </div>
-                ))}
-                {(!result.openings || result.openings.length === 0) && <p>{d("ed_no_elem")}</p>}
+            <div className="glass rounded-xl border border-white/10 p-4 text-xs">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
+                {selectedOpeningIdx !== null && (
+                  <button
+                    onClick={() => setSelectedOpeningIdx(null)}
+                    className="text-slate-600 hover:text-slate-400 transition-colors text-[10px]"
+                  >Désélectionner</button>
+                )}
               </div>
+              <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-0.5">
+                {result.openings?.map((o, i) => {
+                  const isSelected = selectedOpeningIdx === i;
+                  const color = o.class === "door" ? "purple" : "cyan";
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setSelectedOpeningIdx(prev => prev === i ? null : i);
+                        setTool("select");
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all border",
+                        isSelected
+                          ? color === "purple"
+                            ? "bg-purple-500/15 border-purple-500/40 text-white"
+                            : "bg-cyan-500/15 border-cyan-500/40 text-white"
+                          : "border-transparent text-slate-500 hover:bg-white/5 hover:text-slate-300"
+                      )}
+                    >
+                      {/* Numbered badge */}
+                      <span className={cn(
+                        "w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0",
+                        isSelected
+                          ? color === "purple" ? "bg-purple-500/30 text-purple-300" : "bg-cyan-500/30 text-cyan-300"
+                          : color === "purple" ? "bg-purple-500/15 text-purple-500" : "bg-cyan-500/15 text-cyan-500"
+                      )}>
+                        {i + 1}
+                      </span>
+                      {/* Label */}
+                      <span className="flex-1 truncate">
+                        {o.class === "door" ? d("door_lbl") : d("win_lbl")}
+                      </span>
+                      {/* Length */}
+                      {o.length_m && (
+                        <span className="text-slate-600 font-mono">{o.length_m.toFixed(2)}m</span>
+                      )}
+                      {/* Delete button — visible only when selected */}
+                      {isSelected && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteOpening(i); }}
+                          className="ml-0.5 p-0.5 rounded text-red-500 hover:text-red-300 hover:bg-red-500/15 transition-colors shrink-0"
+                          title="Supprimer cette ouverture"
+                          disabled={loading}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {(!result.openings || result.openings.length === 0) && (
+                  <p className="text-slate-600">{d("ed_no_elem")}</p>
+                )}
+              </div>
+              {/* Hint when selection active */}
+              {selectedOpeningIdx !== null && result.openings?.[selectedOpeningIdx] && (
+                <div className="mt-3 pt-3 border-t border-white/5 text-slate-600">
+                  <p className="mb-1.5 font-500 text-slate-500">Ouverture #{selectedOpeningIdx + 1} sélectionnée</p>
+                  <button
+                    onClick={() => {
+                      const o = result.openings![selectedOpeningIdx];
+                      setLayer(o.class === "door" ? "door" : "window");
+                      setTool("erase_rect");
+                      toast({ title: "Effacez puis redessinez", description: "Utilisez − Rectangle sur cette zone, puis + Rectangle pour recréer.", variant: "default" });
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                  >
+                    <PenLine className="w-3 h-3" /> Retracer manuellement
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
