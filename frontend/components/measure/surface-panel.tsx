@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Check, Package } from "lucide-react";
+import { Plus, Trash2, Check, Package, Download } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
@@ -79,16 +79,85 @@ export default function SurfacePanel({
     onTypesChange(types.map(t => t.id === id ? { ...t, color } : t));
   };
 
+  /** Export CSV du métré */
+  const exportCSV = () => {
+    const sep = ";";
+    const headers = [
+      "Type", "Surface nette (m²)", "Périmètre (ml)", "Chute (%)",
+      "Qté à commander (m²)", "m²/boîte", "Boîtes", "Prix/m²", "Montant HT (€)",
+    ];
+    const rows: (string | number)[][] = types
+      .filter(t => (totals[t.id] ?? 0) > 0 || zones.some(z => z.typeId === t.id))
+      .map(type => {
+        const area  = totals[type.id] ?? 0;
+        const perim = perims[type.id] ?? 0;
+        const waste = type.wastePercent ?? 10;
+        const cmd   = area > 0 ? area * (1 + waste / 100) : 0;
+        const boxes = type.boxSizeM2 && type.boxSizeM2 > 0 && cmd > 0
+          ? Math.ceil(cmd / type.boxSizeM2) : "";
+        const ht = ppm && area > 0 && (type.pricePerM2 ?? 0) > 0
+          ? (area * type.pricePerM2!).toFixed(2) : "";
+        return [
+          type.name,
+          ppm ? area.toFixed(2) : "",
+          ppm ? perim.toFixed(2) : "",
+          waste,
+          ppm ? cmd.toFixed(2) : "",
+          type.boxSizeM2 ?? "",
+          boxes,
+          type.pricePerM2 ?? "",
+          ht,
+        ];
+      });
+
+    const totalCmd = ppm
+      ? types.reduce((s, t) => {
+          const a = totals[t.id] ?? 0;
+          return s + a * (1 + (t.wastePercent ?? 10) / 100);
+        }, 0)
+      : 0;
+
+    const lines = [
+      headers.join(sep),
+      ...rows.map(r => r.join(sep)),
+      "",
+      ["TOTAL NET", ppm ? totalAll.toFixed(2) : "", "", "", ppm ? totalCmd.toFixed(2) : ""].join(sep),
+      ...(hasPrices && ppm && totalHT > 0
+        ? [["TOTAL HT", "", "", "", "", "", "", "", totalHT.toFixed(2)].join(sep)]
+        : []),
+    ];
+
+    const csv = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `floorscan_metre_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
-        <button
-          onClick={() => setAdding(v => !v)}
-          className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          {zones.length > 0 && (
+            <button
+              onClick={exportCSV}
+              title="Exporter CSV"
+              className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => setAdding(v => !v)}
+            className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Add type form */}
@@ -241,6 +310,15 @@ export default function SurfacePanel({
           )}
           {!ppm && (
             <p className="text-xs text-slate-600 mt-1">Définissez l'échelle pour voir les m²</p>
+          )}
+          {/* Export CSV shortcut */}
+          {zones.length > 0 && (
+            <button
+              onClick={exportCSV}
+              className="mt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 glass border border-white/5 rounded-lg py-1.5 transition-colors"
+            >
+              <Download className="w-3 h-3" /> Exporter CSV
+            </button>
           )}
         </div>
       )}

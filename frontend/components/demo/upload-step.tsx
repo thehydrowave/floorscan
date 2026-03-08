@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Upload, FileText, AlertCircle, ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
+import { Upload, FileText, AlertCircle, ChevronLeft, ChevronRight, BookOpen, HardDrive } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
@@ -9,9 +9,16 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const MAX_SIZE_MB = 50;
 
 interface UploadStepProps {
   onUploaded: (sessionId: string, imageB64: string) => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
 export default function UploadStep({ onUploaded }: UploadStepProps) {
@@ -22,6 +29,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [fileSize, setFileSize] = useState<string | null>(null);
 
   // Multi-page state
   const [pageCount, setPageCount] = useState(1);
@@ -42,7 +50,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
 
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        throw new Error(err.detail ?? `Server error ${r.status}`);
+        throw new Error(err.detail ?? `Erreur serveur ${r.status}`);
       }
 
       const data = await r.json();
@@ -63,8 +71,9 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
       setAwaitingPage(false);
       onUploaded(data.session_id, data.image_b64);
     } catch (e: any) {
-      setError(e.message);
-      toast({ title: dt("up_err_upload", lang), description: e.message, variant: "error" });
+      const msg = e.message ?? "Erreur inconnue";
+      setError(msg);
+      toast({ title: dt("up_err_upload", lang), description: msg, variant: "error" });
     } finally {
       setLoading(false);
     }
@@ -73,19 +82,43 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
   const processFile = useCallback(async (f: File) => {
     setError(null);
     setAwaitingPage(false);
+
+    // Type validation
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setError(dt("up_toast_errd", lang));
+      setError("Format non supporté. Veuillez importer un fichier PDF.");
       return;
     }
+
+    // Size validation
+    if (f.size > MAX_SIZE_MB * 1024 * 1024) {
+      setError(`Fichier trop volumineux (${formatBytes(f.size)}). Maximum ${MAX_SIZE_MB} Mo.`);
+      return;
+    }
+
+    // Empty file check
+    if (f.size === 0) {
+      setError("Le fichier est vide.");
+      return;
+    }
+
     setFileName(f.name);
-    const b64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve((reader.result as string).split(",")[1]);
-      reader.onerror = () => reject(new Error("File read failed"));
-      reader.readAsDataURL(f);
-    });
+    setFileSize(formatBytes(f.size));
+
+    let b64: string;
+    try {
+      b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
+        reader.readAsDataURL(f);
+      });
+    } catch (e: any) {
+      setError(e.message);
+      return;
+    }
+
     await uploadPage(b64, f.name, 0);
-  }, [uploadPage, lang]);
+  }, [uploadPage]);
 
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
@@ -153,7 +186,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
             </div>
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => { setAwaitingPage(false); setFileName(null); }}
+                onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); }}
                 className="px-4 py-2 glass border border-white/10 rounded-xl text-sm text-slate-400 hover:text-white transition-colors"
               >
                 Annuler
@@ -181,7 +214,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
               )}
             >
               <input id="file-input-demo" type="file" accept=".pdf" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); }} />
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ""; }} />
 
               {loading ? (
                 <div className="flex flex-col items-center gap-3">
@@ -189,7 +222,10 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
                     <FileText className="w-6 h-6 text-accent" />
                   </div>
                   <p className="text-slate-400 text-sm">{d("up_sending")}</p>
-                  <p className="text-slate-600 text-xs">{fileName} — {d("up_sending_hint")}</p>
+                  <p className="text-slate-600 text-xs">
+                    {fileName}
+                    {fileSize && <span className="ml-2 text-slate-700">({fileSize})</span>}
+                  </p>
                 </div>
               ) : fileName && !error ? (
                 <div className="flex flex-col items-center gap-3">
@@ -197,6 +233,11 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
                     <FileText className="w-6 h-6 text-accent-green" />
                   </div>
                   <p className="text-slate-200 font-medium">{fileName}</p>
+                  {fileSize && (
+                    <p className="flex items-center gap-1 text-xs text-slate-600">
+                      <HardDrive className="w-3 h-3" /> {fileSize}
+                    </p>
+                  )}
                   <p className="text-slate-500 text-sm">{d("up_success")}</p>
                 </div>
               ) : (
@@ -208,7 +249,10 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
                     <p className="text-slate-200 font-medium mb-1">{dragging ? d("up_drop") : d("up_drag")}</p>
                     <p className="text-slate-500 text-sm">{d("up_click")}</p>
                   </div>
-                  <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">{d("up_pdf_only")}</span>
+                  <div className="flex gap-2">
+                    <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">{d("up_pdf_only")}</span>
+                    <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">Max {MAX_SIZE_MB} Mo</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -216,7 +260,15 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
             {error && (
               <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-400">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <div className="flex-1">
+                  <p>{error}</p>
+                  {error.includes("serveur") && (
+                    <p className="text-xs text-red-400/70 mt-1">
+                      Vérifiez que le backend est démarré sur{" "}
+                      <code className="bg-red-500/10 px-1 rounded">{process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}</code>
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

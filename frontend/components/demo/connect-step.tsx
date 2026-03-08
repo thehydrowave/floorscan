@@ -9,8 +9,6 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-
 interface ConnectStepProps {
   onConnected: (config: RoboflowConfig) => void;
 }
@@ -20,25 +18,56 @@ type Status = "idle" | "testing" | "ok" | "error";
 export default function ConnectStep({ onConnected }: ConnectStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
-  const [apiKey, setApiKey] = useState("Kh56un5foPflRVreiNOM");
-  const [modelId, setModelId] = useState("cubicasa5k-2-qpmsa-1gd2e/1");
+  const [apiKey, setApiKey] = useState("");
+  const [modelId, setModelId] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [msg, setMsg] = useState("");
 
   const canTest = apiKey.trim() !== "" && modelId.trim() !== "";
 
+  /** Parse "workspace/model-slug/version" ou "model-slug/version" → { modelName, version } */
+  const parseModel = (raw: string): { modelName: string; version: number } | null => {
+    const parts = raw.trim().split("/");
+    if (parts.length < 2) return null;
+    const version = parseInt(parts[parts.length - 1], 10);
+    if (isNaN(version) || version < 1) return null;
+    const modelName = parts.slice(0, -1).join("/");
+    return { modelName, version };
+  };
+
   const handleTest = async () => {
     setStatus("testing");
-    try {
-      const r = await fetch(`${BACKEND}/`);
-      if (r.ok) {
-        setStatus("ok");
-        setMsg(dt("co_ok", lang));
-      } else throw new Error();
-    } catch {
+    const parsed = parseModel(modelId);
+    if (!parsed) {
       setStatus("error");
-      setMsg(dt("co_err", lang));
+      setMsg("Format de Model ID invalide. Attendu : workspace/model/version");
+      return;
+    }
+    try {
+      const r = await fetch("/api/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: apiKey.trim(),
+          modelName: parsed.modelName,
+          modelVersion: parsed.version,
+        }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        setStatus("ok");
+        const name = data.model?.name ?? parsed.modelName;
+        const classes = data.model?.classes?.length
+          ? ` · ${data.model.classes.length} classes`
+          : "";
+        setMsg(`Connexion OK · ${name} v${parsed.version}${classes}`);
+      } else {
+        throw new Error(data.error ?? "Erreur inconnue");
+      }
+    } catch (e: any) {
+      setStatus("error");
+      setMsg(e.message || dt("co_err", lang));
     }
   };
 
@@ -90,20 +119,23 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
             placeholder="workspace/model-slug/version"
             className="w-full bg-ink border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 outline-none focus:border-accent/50 font-mono"
           />
-          <p className="text-xs text-slate-600 mt-1.5">Format : <code className="text-slate-500">workspace/model/version</code> ex: <code className="text-slate-500">cubicasa-xmyt3-d4s04/3</code></p>
+          <p className="text-xs text-slate-600 mt-1.5">
+            Format : <code className="text-slate-500">workspace/model/version</code> ex:{" "}
+            <code className="text-slate-500">cubicasa-xmyt3-d4s04/3</code>
+          </p>
         </div>
 
         {/* Status */}
         {status !== "idle" && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
             className={cn("rounded-xl p-3.5 flex items-start gap-3 text-sm border",
-              status === "ok" && "bg-accent-green/10 border-accent-green/25 text-accent-green",
-              status === "error" && "bg-red-500/10 border-red-500/25 text-red-400",
+              status === "ok"      && "bg-accent-green/10 border-accent-green/25 text-accent-green",
+              status === "error"   && "bg-red-500/10 border-red-500/25 text-red-400",
               status === "testing" && "bg-white/5 border-white/10 text-slate-400")}>
             {status === "testing" && <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin" />}
-            {status === "ok" && <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
-            {status === "error" && <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-            <p className="font-medium">{status === "testing" ? "Test en cours…" : msg}</p>
+            {status === "ok"      && <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
+            {status === "error"   && <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+            <p className="font-medium">{status === "testing" ? "Test de la connexion Roboflow…" : msg}</p>
           </motion.div>
         )}
 
@@ -115,7 +147,9 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
 
         <div className="flex gap-3 pt-1">
           <Button variant="outline" className="flex-1" onClick={handleTest} disabled={!canTest || status === "testing"}>
-            {status === "testing" ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("co_testing")}</> : d("co_test")}
+            {status === "testing"
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("co_testing")}</>
+              : d("co_test")}
           </Button>
           <Button className="flex-1" onClick={handleContinue} disabled={!canTest}>
             {d("up_continue")} <ArrowRight className="w-4 h-4" />

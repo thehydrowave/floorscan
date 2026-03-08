@@ -267,6 +267,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       const W = 210, M = 15;
       let y = M;
 
+      // ppm est défini dans le JSX mais on en a besoin ici aussi
+      const ppmVal = result.pixels_per_meter ?? null;
+
       const hex2rgb = (hex: string): [number, number, number] => [
         parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16),
       ];
@@ -296,8 +299,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
       // Table zones métré
       if (zones.length > 0 && imageNatural.w > 0) {
-        const totals = aggregateByType(zones, imageNatural.w, imageNatural.h, ppm);
-        const ppmVal = result.pixels_per_meter ?? null;
+        const totals = aggregateByType(zones, imageNatural.w, imageNatural.h, ppmVal);
         const perims = ppmVal ? aggregatePerimeterByType(zones, imageNatural.w, imageNatural.h, ppmVal) : {};
         const activeSurfaces = surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0);
         const hasPrices = activeSurfaces.some(t => (t.pricePerM2 ?? 0) > 0);

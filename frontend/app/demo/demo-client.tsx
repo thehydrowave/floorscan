@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, BrainCircuit, PenLine } from "lucide-react";
+import { ScanLine, ArrowLeft, BrainCircuit, PenLine, History, X } from "lucide-react";
 import Stepper from "@/components/demo/stepper";
 import ConnectStep from "@/components/demo/connect-step";
 import UploadStep from "@/components/demo/upload-step";
@@ -17,6 +17,53 @@ import LangSwitcher from "@/components/ui/lang-switcher";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+
+const SESSION_STORAGE_KEY = "floorscan_ia_session_v1";
+
+interface SavedSession {
+  step: number;
+  demoMode: "ia" | "measure";
+  config: RoboflowConfig | null;
+  sessionId: string | null;
+  uploadedImageB64: string | null;
+  ppm: number | null;
+  analysisResult: AnalysisResult | null;
+  savedAt: number;
+}
+
+function saveSession(data: Omit<SavedSession, "savedAt">) {
+  try {
+    // On ne sauvegarde pas les images base64 (trop lourdes) — juste les métadonnées
+    const toSave: SavedSession = {
+      ...data,
+      uploadedImageB64: null, // trop lourd pour localStorage
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(toSave));
+  } catch {}
+}
+
+function loadSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: SavedSession = JSON.parse(raw);
+    // Session valide 2h max
+    if (Date.now() - parsed.savedAt > 2 * 60 * 60 * 1000) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+    // On ne restaure que si on a un résultat d'analyse (au moins jusqu'à l'étape résultats)
+    if (!parsed.analysisResult) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
+}
 
 export default function DemoClient() {
   const { lang } = useLang();
@@ -38,6 +85,39 @@ export default function DemoClient() {
   const [ppm, setPpm] = useState<number | null>(null);
   // Step 5
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+
+  // Restored session banner
+  const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+
+  // Check for saved session on mount
+  useEffect(() => {
+    const saved = loadSession();
+    if (saved) {
+      setRestoredSession(saved);
+      setShowRestoreBanner(true);
+    }
+  }, []);
+
+  // Auto-save session whenever key state changes
+  useEffect(() => {
+    if (demoMode === "ia" && (analysisResult || step > 5)) {
+      saveSession({ step, demoMode, config, sessionId, uploadedImageB64, ppm, analysisResult });
+    }
+  }, [step, demoMode, config, sessionId, ppm, analysisResult]);
+
+  const handleRestoreSession = () => {
+    if (!restoredSession) return;
+    setConfig(restoredSession.config);
+    setSessionId(restoredSession.sessionId);
+    setPpm(restoredSession.ppm);
+    setAnalysisResult(restoredSession.analysisResult);
+    // Restore to results step (6) since we don't have the image anymore
+    setStep(restoredSession.analysisResult ? 6 : Math.min(restoredSession.step, 5));
+    setDemoMode("ia");
+    setShowRestoreBanner(false);
+    setRestoredSession(null);
+  };
 
   const handleConnected = (cfg: RoboflowConfig) => {
     setConfig(cfg);
@@ -72,6 +152,7 @@ export default function DemoClient() {
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
+    clearSession();
   };
 
   const handleFullReset = () => {
@@ -81,6 +162,7 @@ export default function DemoClient() {
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
+    clearSession();
   };
 
   return (
@@ -137,6 +219,49 @@ export default function DemoClient() {
           )}
         </div>
       </div>
+
+      {/* Restore session banner */}
+      <AnimatePresence>
+        {showRestoreBanner && restoredSession && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-accent/10 border-b border-accent/20"
+          >
+            <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5 text-sm">
+                <History className="w-4 h-4 text-accent shrink-0" />
+                <span className="text-slate-300">
+                  Session précédente trouvée{" "}
+                  <span className="text-slate-500 text-xs">
+                    ({new Date(restoredSession.savedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })})
+                  </span>
+                  {restoredSession.analysisResult && (
+                    <span className="ml-1 text-slate-400">
+                      · {restoredSession.analysisResult.doors_count} portes, {restoredSession.analysisResult.windows_count} fenêtres
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={handleRestoreSession}
+                  className="px-3 py-1.5 bg-accent hover:bg-accent/80 text-white rounded-lg text-xs font-600 transition-colors"
+                >
+                  Reprendre
+                </button>
+                <button
+                  onClick={() => { setShowRestoreBanner(false); clearSession(); }}
+                  className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
         <AnimatePresence mode="wait">

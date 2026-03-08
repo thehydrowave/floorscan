@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2 } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -70,6 +70,44 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
     }
   };
 
+  /** Export CSV des résultats IA */
+  const handleExportCSV = () => {
+    const sf = result.surfaces ?? {};
+    const sep = ";";
+
+    const lines = [
+      "FloorScan — Résultats d'analyse IA",
+      `Date;${new Date().toLocaleDateString("fr-FR")}`,
+      `Session;${result.session_id ?? "—"}`,
+      "",
+      "=== ÉLÉMENTS DÉTECTÉS ===",
+      `Portes;${result.doors_count}`,
+      `Fenêtres;${result.windows_count}`,
+      "",
+      "=== SURFACES ===",
+      `Emprise bâtiment (m²);${sf.area_building_m2?.toFixed(2) ?? "—"}`,
+      `Périmètre bâtiment (m);${sf.perim_building_m?.toFixed(2) ?? "—"}`,
+      `Surface habitable (m²);${sf.area_hab_m2?.toFixed(2) ?? "—"}`,
+      `Périmètre intérieur (m);${sf.perim_interior_m?.toFixed(2) ?? "—"}`,
+      `Surface murs (m²);${sf.area_walls_m2?.toFixed(2) ?? "—"}`,
+      `Pixels/mètre;${result.pixels_per_meter?.toFixed(2) ?? "—"}`,
+      "",
+      "=== OUVERTURES DÉTAILLÉES ===",
+      "Type;Longueur (m)",
+      ...(result.openings?.map(o => `${o.class === "door" ? "Porte" : "Fenêtre"};${o.length_m?.toFixed(2) ?? "—"}`) ?? []),
+    ];
+
+    const csv = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV exporté ✓", variant: "success" });
+  };
+
   const sf = result.surfaces ?? {};
 
   return (
@@ -79,7 +117,10 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
           <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">{d("re_step")}</p>
           <h2 className="font-display text-2xl font-700 text-white">{d("re_title")}</h2>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={handleExportCSV} variant="outline" title="Exporter CSV">
+            <Table2 className="w-4 h-4" /> CSV
+          </Button>
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
