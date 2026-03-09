@@ -369,6 +369,12 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         cfg["pass1_tile"], cfg["pass1_over"], write_rooms=True,
         conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
     )
+    # ── DEBUG : log toutes les classes détectées par le modèle ──────────────
+    print(f"[DEBUG] legend Pass1 ({len(legend)} classes): {legend}")
+    unique_labels_in_rows = sorted(set(r["label"] for r in rows_1))
+    print(f"[DEBUG] labels uniques rows1: {unique_labels_in_rows}")
+    print(f"[DEBUG] rooms_index unique values (≠0): {list(np.unique(rooms_index[rooms_index != 0]))[:20]}")
+    # ────────────────────────────────────────────────────────────────────────
     m_doors_1 = clean_mask(m_doors_1, cfg["min_area_door_px"], cfg["clean_close_k_door"])
     m_wins_1  = clean_mask(m_wins_1,  cfg["min_area_win_px"],  cfg["clean_close_k_win"])
 
