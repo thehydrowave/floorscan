@@ -37,6 +37,14 @@ DEFAULT_CONFIG = {
     "door_area_max_px": 200000,
 }
 
+# Labels structurels à exclure des pièces détectées
+SKIP_ROOM_LABELS: set = {
+    "wall", "walls", "floor", "ceiling", "staircase", "stairs",
+    "elevator", "lift", "void", "exterior", "outdoor", "background",
+    "other", "unknown", "column", "pillar", "beam", "door", "window",
+    "doorway", "opening",
+}
+
 # Correspondances labels Roboflow (anglais) → français
 ROOM_LABELS_FR: dict = {
     "bedroom": "Chambre",
@@ -139,6 +147,13 @@ def extract_rooms(rooms_index: np.ndarray, legend: dict,
     rooms = []
     for rid_str, raw_label in legend.items():
         rid = int(rid_str)
+        lbl_lower_pre = raw_label.lower().strip()
+        # Exclure les régions structurelles (mur, sol, etc.) — on ne veut que les pièces
+        if lbl_lower_pre in SKIP_ROOM_LABELS:
+            continue
+        # Exclure tout label qui commence par "wall" (wall_interior, wall_exterior…)
+        if lbl_lower_pre.startswith("wall") or lbl_lower_pre.startswith("floor"):
+            continue
         mask = ((rooms_index == rid).astype(np.uint8) * 255)
         num, _, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
         for i in range(1, num):
@@ -150,7 +165,7 @@ def extract_rooms(rooms_index: np.ndarray, legend: dict,
             w = int(stats[i, cv2.CC_STAT_WIDTH])
             h = int(stats[i, cv2.CC_STAT_HEIGHT])
             cx, cy = float(centroids[i][0]), float(centroids[i][1])
-            lbl_lower = raw_label.lower().strip()
+            lbl_lower = lbl_lower_pre
             label_fr = ROOM_LABELS_FR.get(lbl_lower, raw_label.capitalize())
             rooms.append({
                 "id": rid,
@@ -382,10 +397,12 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     # === EMPRISE (contour extérieur) ===
+    # Inclure portes + fenêtres pour boucher les trous du périmètre mural
     cnt = None
     try:
+        walls_for_outline = cv2.bitwise_or(walls, cv2.bitwise_or(m_doors, m_windows))
         kernel_e = cv2.getStructuringElement(cv2.MORPH_RECT, (11,11))
-        closed = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel_e, iterations=3)
+        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE, kernel_e, iterations=3)
         inv = cv2.bitwise_not(closed)
         flood = np.zeros((H+2, W+2), np.uint8)
         cv2.floodFill(inv, flood, (0,0), 255)
@@ -594,11 +611,12 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
                                  interior_mask_override: np.ndarray = None) -> dict:
     H, W = img_rgb.shape[:2]
 
-    # Recompute emprise depuis walls
+    # Recompute emprise depuis walls + ouvertures pour périmètre continu
     cnt = None
     try:
+        walls_for_outline = cv2.bitwise_or(walls, cv2.bitwise_or(m_doors, m_windows))
         kernel_e = cv2.getStructuringElement(cv2.MORPH_RECT, (11,11))
-        closed = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel_e, iterations=3)
+        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE, kernel_e, iterations=3)
         inv = cv2.bitwise_not(closed)
         flood = np.zeros((H+2, W+2), np.uint8)
         cv2.floodFill(inv, flood, (0,0), 255)
