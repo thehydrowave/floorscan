@@ -37,6 +37,29 @@ DEFAULT_CONFIG = {
     "door_area_max_px": 200000,
 }
 
+# Correspondances labels Roboflow (anglais) → français
+ROOM_LABELS_FR: dict = {
+    "bedroom": "Chambre",
+    "kitchen": "Cuisine",
+    "bathroom": "Salle de bain",
+    "living room": "Séjour",
+    "living": "Séjour",
+    "dining room": "Salle à manger",
+    "hallway": "Couloir",
+    "corridor": "Couloir",
+    "office": "Bureau",
+    "study": "Bureau",
+    "wc": "WC",
+    "toilet": "WC",
+    "storage": "Rangement",
+    "closet": "Rangement",
+    "garage": "Garage",
+    "balcony": "Balcon",
+    "terrace": "Terrasse",
+    "laundry": "Buanderie",
+    "cellar": "Cave",
+}
+
 
 # ============================================================
 # STEP 1 — PDF → PNG (zoom ×3)
@@ -105,6 +128,78 @@ def clean_mask(mask, min_area, close_k):
         if stats[i, cv2.CC_STAT_AREA] >= min_area:
             out[lab == i] = 255
     return out
+
+
+def extract_rooms(rooms_index: np.ndarray, legend: dict,
+                  H: int, W: int, ppm) -> list:
+    """Extrait les régions de pièces depuis rooms_index + legend CubiCasa.
+
+    Retourne une liste de dicts Room prêts pour le JSON API.
+    """
+    rooms = []
+    for rid_str, raw_label in legend.items():
+        rid = int(rid_str)
+        mask = ((rooms_index == rid).astype(np.uint8) * 255)
+        num, _, stats, centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        for i in range(1, num):
+            area_px = int(stats[i, cv2.CC_STAT_AREA])
+            if area_px < 400:   # ignorer les petits artefacts
+                continue
+            x = int(stats[i, cv2.CC_STAT_LEFT])
+            y = int(stats[i, cv2.CC_STAT_TOP])
+            w = int(stats[i, cv2.CC_STAT_WIDTH])
+            h = int(stats[i, cv2.CC_STAT_HEIGHT])
+            cx, cy = float(centroids[i][0]), float(centroids[i][1])
+            lbl_lower = raw_label.lower().strip()
+            label_fr = ROOM_LABELS_FR.get(lbl_lower, raw_label.capitalize())
+            rooms.append({
+                "id": rid,
+                "type": lbl_lower,
+                "label_fr": label_fr,
+                "centroid_norm": {"x": round(cx / W, 4), "y": round(cy / H, 4)},
+                "bbox_norm": {
+                    "x": round(x / W, 4), "y": round(y / H, 4),
+                    "w": round(w / W, 4), "h": round(h / H, 4),
+                },
+                "area_m2": round(area_px / (ppm ** 2), 2) if ppm else None,
+                "area_px2": area_px,
+            })
+    return rooms
+
+
+def vectorize_walls(mask_walls: np.ndarray, H: int, W: int, ppm) -> list:
+    """Vectorise le masque de murs en segments de lignes via HoughLinesP.
+
+    Retourne une liste de dicts WallSegment normalisés (0-1).
+    """
+    if mask_walls is None or cv2.countNonZero(mask_walls) == 0:
+        return []
+
+    # Légère dilatation pour relier les segments discontinus
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    dilated = cv2.dilate(mask_walls, k, iterations=1)
+
+    lines = cv2.HoughLinesP(
+        dilated,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=30,
+        minLineLength=18,
+        maxLineGap=10,
+    )
+    segments = []
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = map(int, line[0])
+            length_px = float(np.hypot(x2 - x1, y2 - y1))
+            segments.append({
+                "x1_norm": round(x1 / W, 4),
+                "y1_norm": round(y1 / H, 4),
+                "x2_norm": round(x2 / W, 4),
+                "y2_norm": round(y2 / H, 4),
+                "length_m": round(length_px / ppm, 2) if ppm else None,
+            })
+    return segments
 
 
 # ============================================================
@@ -345,6 +440,10 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     palette = rng.integers(0, 256, size=(max(K, 1) + 1, 3), dtype=np.uint8)
     mask_rooms_rgb = palette[rooms_index]
 
+    # === PIÈCES & MURS VECTORISÉS ===
+    rooms_list    = extract_rooms(rooms_index, legend, H, W, ppm)
+    wall_segments = vectorize_walls(walls, H, W, ppm)
+
     return {
         "img_w": W, "img_h": H,
         "pixels_per_meter": ppm,
@@ -353,6 +452,9 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "openings": df_openings.to_dict(orient="records") if not df_openings.empty else [],
         "surfaces": surfaces,
         "stats": {"pass1": st1, "pass2": st2},
+        # Pièces et murs vectorisés
+        "rooms": rooms_list,
+        "walls": wall_segments,
         # Images encodées en base64 PNG
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,

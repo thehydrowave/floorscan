@@ -299,7 +299,39 @@ def edit_mask(req: EditMaskRequest):
         sessions[req.session_id]["interior_mask"] = result["_interior_mask"]
 
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
+    # Conserver rooms et walls (non recalculés lors de l'édition des masques)
+    resp["rooms"] = sessions[req.session_id]["analysis"].get("rooms", [])
+    resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
     return resp
+
+
+# ============================================================
+# ROUTE 6b — METTRE À JOUR LE LABEL D'UNE PIÈCE
+# ============================================================
+class UpdateRoomLabelRequest(BaseModel):
+    session_id: str
+    room_id: int
+    new_type: str
+    new_label_fr: str
+
+@app.patch("/update-room-label")
+def update_room_label(req: UpdateRoomLabelRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    analysis = s.get("analysis")
+    if analysis is None:
+        raise HTTPException(400, "Lancez d'abord /analyze")
+    updated = False
+    for room in analysis.get("rooms", []):
+        if room["id"] == req.room_id:
+            room["type"] = req.new_type
+            room["label_fr"] = req.new_label_fr
+            updated = True
+            break
+    if not updated:
+        raise HTTPException(404, f"Pièce id={req.room_id} introuvable")
+    return {"rooms": analysis["rooms"]}
 
 
 # ============================================================
@@ -398,6 +430,9 @@ def sam_segment(req: SamSegmentRequest):
     # Retourner aussi le masque SAM pour preview côté frontend
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
     resp["sam_mask_b64"] = pipeline._np_to_b64(seg_mask)
+    # Conserver rooms et walls
+    resp["rooms"] = sessions[req.session_id]["analysis"].get("rooms", [])
+    resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
     return resp
 
 

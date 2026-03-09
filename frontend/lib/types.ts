@@ -28,6 +28,26 @@ export interface CropRect {
   height: number;
 }
 
+// Segment de mur vectorisé
+export interface WallSegment {
+  x1_norm: number;
+  y1_norm: number;
+  x2_norm: number;
+  y2_norm: number;
+  length_m: number | null;
+}
+
+// Pièce détectée avec type et surface
+export interface Room {
+  id: number;
+  type: string;           // clé anglaise ("bedroom", "kitchen"…)
+  label_fr: string;       // libellé français ("Chambre", "Cuisine"…)
+  centroid_norm: { x: number; y: number };
+  bbox_norm: { x: number; y: number; w: number; h: number };
+  area_m2: number | null;
+  area_px2: number;
+}
+
 // Résultat complet de l'analyse V1
 export interface AnalysisResult {
   session_id: string;
@@ -43,6 +63,9 @@ export interface AnalysisResult {
   mask_walls_b64: string;
   mask_rooms_b64?: string;
   stats?: { pass1: any; pass2: any };
+  // Nouvelles données structurées
+  rooms?: Room[];
+  walls?: WallSegment[];
 }
 
 export interface Opening {

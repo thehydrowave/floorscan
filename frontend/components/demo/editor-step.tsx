@@ -2,9 +2,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalysisResult } from "@/lib/types";
+import { AnalysisResult, Room } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -17,6 +17,46 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior";
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select";
 type Mode = "editor" | "measure";
+
+// ── Constantes pièces ──────────────────────────────────────────────────────────
+const ROOM_TYPES: { type: string; label_fr: string }[] = [
+  { type: "bedroom",      label_fr: "Chambre" },
+  { type: "living room",  label_fr: "Séjour" },
+  { type: "kitchen",      label_fr: "Cuisine" },
+  { type: "bathroom",     label_fr: "Salle de bain" },
+  { type: "hallway",      label_fr: "Couloir" },
+  { type: "office",       label_fr: "Bureau" },
+  { type: "wc",           label_fr: "WC" },
+  { type: "dining room",  label_fr: "Salle à manger" },
+  { type: "storage",      label_fr: "Rangement" },
+  { type: "garage",       label_fr: "Garage" },
+  { type: "balcony",      label_fr: "Balcon" },
+  { type: "laundry",      label_fr: "Buanderie" },
+];
+
+const ROOM_COLORS: Record<string, string> = {
+  "bedroom":      "#818cf8",
+  "living room":  "#34d399",
+  "living":       "#34d399",
+  "kitchen":      "#fb923c",
+  "bathroom":     "#22d3ee",
+  "hallway":      "#94a3b8",
+  "corridor":     "#94a3b8",
+  "office":       "#a78bfa",
+  "study":        "#a78bfa",
+  "wc":           "#fbbf24",
+  "toilet":       "#fbbf24",
+  "dining room":  "#f472b6",
+  "storage":      "#78716c",
+  "closet":       "#78716c",
+  "garage":       "#6b7280",
+  "balcony":      "#86efac",
+  "laundry":      "#67e8f9",
+};
+
+function getRoomColor(type: string) {
+  return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8";
+}
 
 interface EditorStepProps {
   sessionId: string;
@@ -39,8 +79,18 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
   // Opening selection & highlight
   const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
-  const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
   const [showOpeningOverlay, setShowOpeningOverlay] = useState(true);
+
+  // Overlays visibilité (murs / pièces)
+  const [showWalls, setShowWalls] = useState(true);
+  const [showRooms, setShowRooms] = useState(true);
+
+  // Sélection / édition de pièce
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
+
+  // Taille d'affichage de l'image (pour les SVG overlays)
+  const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
 
   // Measure state
   const [zones, setZones] = useState<MeasureZone[]>([]);
@@ -125,6 +175,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     };
     if (img.complete) sync();
     else img.onload = sync;
+    const ro = new ResizeObserver(sync);
+    ro.observe(img);
+    return () => ro.disconnect();
   }, [currentOverlay, updateImgDisplaySize]);
 
   function scaleX(px: number) {
@@ -181,6 +234,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
+        rooms: data.rooms ?? prev.rooms,
+        walls: data.walls ?? prev.walls,
       }));
       toast({ title: dt("ed_mask_updated", lang), variant: "success" });
     } catch (e: any) {
@@ -203,7 +258,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       });
       if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur SAM");
       const data = await r.json();
-      setResult(prev => ({ ...prev, ...data }));
+      setResult(prev => ({
+        ...prev, ...data,
+        rooms: data.rooms ?? prev.rooms,
+        walls: data.walls ?? prev.walls,
+      }));
       toast({ title: "Région segmentée ✓", variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
@@ -245,6 +304,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         surfaces: data.surfaces ?? prev.surfaces,
         // If backend doesn't return fresh openings, optimistically remove from list
         openings: data.openings ?? prev.openings?.filter((_, i) => i !== idx),
+        rooms: data.rooms ?? prev.rooms,
+        walls: data.walls ?? prev.walls,
       }));
       setSelectedOpeningIdx(null);
       toast({ title: "Ouverture supprimée ✓", variant: "success" });
@@ -258,6 +319,23 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       }
     } finally { setLoading(false); }
   }, [result.openings, sessionId, onSessionExpired]);
+
+  const updateRoomLabel = async (roomId: number, newType: string, newLabelFr: string) => {
+    try {
+      const r = await fetch(`${BACKEND}/update-room-label`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, room_id: roomId, new_type: newType, new_label_fr: newLabelFr }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur");
+      const data = await r.json();
+      setResult(prev => ({ ...prev, rooms: data.rooms }));
+      setEditingRoomId(null);
+      toast({ title: "Type de pièce mis à jour", variant: "success" });
+    } catch (e: any) {
+      toast({ title: "Erreur", description: e.message, variant: "error" });
+    }
+  };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const cv = canvasRef.current!;
@@ -458,6 +536,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
   const sf = result.surfaces ?? {};
   const ppm = result.pixels_per_meter ?? null;
+  const editingRoom = editingRoomId !== null
+    ? result.rooms?.find(r => r.id === editingRoomId) ?? null
+    : null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -550,17 +631,79 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                 {showOpeningOverlay ? "Numéros ON" : "Numéros OFF"}
               </button>
+              {/* Toggles overlay murs / pièces */}
+              <div className="w-px bg-white/10 mx-1 self-stretch" />
+              <button
+                onClick={() => setShowWalls(v => !v)}
+                title={showWalls ? "Masquer les murs" : "Afficher les murs"}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                  showWalls ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                <Layers size={13} className={showWalls ? "" : "opacity-40"} />
+                Murs
+              </button>
+              <button
+                onClick={() => setShowRooms(v => !v)}
+                title={showRooms ? "Masquer les pièces" : "Afficher les pièces"}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                  showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                <LayoutGrid size={13} className={showRooms ? "" : "opacity-40"} />
+                Pièces
+              </button>
             </div>
 
             <div className="relative glass rounded-xl border border-white/10 overflow-hidden bg-white">
               {loading && (
-                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-10">
+                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-20">
                   <Loader2 className="w-8 h-8 text-accent animate-spin" />
                 </div>
               )}
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
                 className="w-full h-auto block max-h-[550px] object-contain"
                 onLoad={updateImgDisplaySize} />
+
+              {/* SVG overlay murs + pièces (zIndex:1, under openings overlay) */}
+              {imgDisplaySize.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 1 }}
+                >
+                  {showWalls && result.walls?.map((w, i) => (
+                    <line key={i}
+                      x1={w.x1_norm * imgDisplaySize.w} y1={w.y1_norm * imgDisplaySize.h}
+                      x2={w.x2_norm * imgDisplaySize.w} y2={w.y2_norm * imgDisplaySize.h}
+                      stroke="#f97316" strokeWidth={2} strokeLinecap="round" opacity={0.70}
+                    />
+                  ))}
+                  {showRooms && result.rooms?.map(room => {
+                    const rcx = room.centroid_norm.x * imgDisplaySize.w;
+                    const rcy = room.centroid_norm.y * imgDisplaySize.h;
+                    const rcolor = getRoomColor(room.type);
+                    const isRoomSelected = selectedRoomId === room.id;
+                    return (
+                      <g key={room.id}>
+                        <rect x={rcx - 40} y={rcy - 22} width={80} height={42} rx={6}
+                          fill="rgba(10,16,32,0.82)"
+                          stroke={isRoomSelected ? rcolor : "rgba(255,255,255,0.12)"}
+                          strokeWidth={isRoomSelected ? 2 : 1}
+                        />
+                        <text x={rcx} y={rcy - 5} textAnchor="middle"
+                          fill={rcolor} fontSize={10} fontWeight="600" fontFamily="system-ui,sans-serif">
+                          {room.label_fr}
+                        </text>
+                        {room.area_m2 != null && (
+                          <text x={rcx} y={rcy + 11} textAnchor="middle"
+                            fill="rgba(255,255,255,0.65)" fontSize={9} fontFamily="system-ui,sans-serif">
+                            {room.area_m2.toFixed(1)} m²
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
 
               {/* SVG overlay: shows every opening bbox + number, highlights selected */}
               {showOpeningOverlay && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
@@ -645,6 +788,54 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               </div>
             </div>
+            {/* Éditeur de type de pièce */}
+            {editingRoom && (
+              <div className="glass rounded-xl border border-emerald-500/25 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-600 text-emerald-400">Modifier le type</p>
+                  <button onClick={() => setEditingRoomId(null)} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">✕</button>
+                </div>
+                <p className="text-xs text-slate-400 mb-2">
+                  Actuel : <span style={{ color: getRoomColor(editingRoom.type) }}>{editingRoom.label_fr}</span>
+                </p>
+                <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
+                  {ROOM_TYPES.map(rt => (
+                    <button key={rt.type}
+                      onClick={() => updateRoomLabel(editingRoom.id, rt.type, rt.label_fr)}
+                      className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left",
+                        editingRoom.type === rt.type ? "bg-white/10 text-white" : "hover:bg-white/5 text-slate-400 hover:text-slate-200")}>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(rt.type) }} />
+                      {rt.label_fr}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Liste des pièces */}
+            {result.rooms && result.rooms.length > 0 && (
+              <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-600 text-slate-500">Pièces détectées</p>
+                  <button onClick={() => setShowRooms(v => !v)} className="text-slate-600 hover:text-slate-400 transition-colors">
+                    {showRooms ? <Eye size={13} /> : <EyeOff size={13} />}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                  {result.rooms.map(room => (
+                    <div key={room.id}
+                      className={cn("flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all",
+                        selectedRoomId === room.id ? "bg-white/10" : "hover:bg-white/5")}
+                      onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); }}>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(room.type) }} />
+                      <span className="flex-1 text-slate-400">{room.label_fr}</span>
+                      {room.area_m2 != null && <span className="ml-auto text-slate-500">{room.area_m2.toFixed(1)} m²</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="glass rounded-xl border border-white/10 p-4 text-xs">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
