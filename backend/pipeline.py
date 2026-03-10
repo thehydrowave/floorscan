@@ -182,6 +182,169 @@ def extract_rooms(rooms_index: np.ndarray, legend: dict,
     return rooms
 
 
+# ============================================================
+# WALL DETECTION FROM IMAGE (robuste, sans dépendre du modèle IA)
+# ============================================================
+def detect_walls_from_image(img_rgb: np.ndarray) -> np.ndarray:
+    """Détecte les murs directement depuis les pixels de l'image.
+
+    Retourne un masque binaire uint8 (0/255).
+    Fonctionne sur plans archi standard : fond blanc/clair, murs sombres.
+    """
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Seuillage OTSU : automatique, adapté à l'histogramme du plan
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Supprimer les éléments fins : texte, cotes, hachures (épaisseur < 4px)
+    k_open = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
+    walls = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
+
+    # Fermer les micro-interruptions dans les murs
+    k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, k_close, iterations=2)
+
+    return walls
+
+
+# ============================================================
+# ROOM SEGMENTATION PAR FLOOD FILL
+# ============================================================
+ROOM_COLORS_RGB = {
+    "bedroom":      (129, 140, 248),
+    "living room":  ( 52, 211, 153),
+    "kitchen":      (251, 191,  36),
+    "bathroom":     ( 34, 211, 238),
+    "dining room":  (244, 114, 182),
+    "hallway":      (148, 163, 184),
+    "office":       (253, 186,  78),
+    "room":         (180, 180, 180),
+}
+
+
+def _classify_room_by_area(area_m2) -> tuple:
+    """Classification heuristique basée sur la surface."""
+    if area_m2 is None:
+        return "room", "Pièce"
+    if area_m2 < 2.5:
+        return "bathroom", "Salle de bain"
+    if area_m2 < 5.0:
+        return "hallway", "Couloir"
+    if area_m2 < 15.0:
+        return "bedroom", "Chambre"
+    return "living room", "Séjour"
+
+
+def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
+                              m_windows: np.ndarray, building_cnt,
+                              H: int, W: int, ppm) -> list:
+    """Segmente les pièces par flood fill depuis le masque de murs.
+
+    Retourne une liste de dicts Room compatibles avec l'interface frontend.
+    """
+    # 1. Masque bâtiment
+    building = np.zeros((H, W), np.uint8)
+    if building_cnt is not None:
+        cv2.fillPoly(building, [building_cnt], 255)
+    else:
+        building[:] = 255
+
+    # 2. Combiner murs + ouvertures pour fermer les gaps (portes, fenêtres)
+    boundaries = walls.copy()
+    if m_doors is not None:
+        _, md = cv2.threshold(m_doors, 127, 255, cv2.THRESH_BINARY)
+        boundaries = cv2.bitwise_or(boundaries, md)
+    if m_windows is not None:
+        _, mw = cv2.threshold(m_windows, 127, 255, cv2.THRESH_BINARY)
+        boundaries = cv2.bitwise_or(boundaries, mw)
+
+    # 3. Dilater pour fermer les micro-gaps résiduels entre murs et ouvertures
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    boundaries_closed = cv2.dilate(boundaries, k, iterations=1)
+
+    # 4. Espace navigable = bâtiment − frontières
+    interior = cv2.subtract(building, boundaries_closed)
+
+    # 5. Nettoyer le bruit résiduel
+    k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    interior = cv2.morphologyEx(interior, cv2.MORPH_OPEN, k2, iterations=1)
+
+    # 6. Surface minimale par pièce (≥ 1 m² si ppm connu, sinon 3000 px²)
+    min_area_px = max(500, int(1.0 * ppm ** 2)) if ppm else 3000
+
+    # 7. Composantes connexes = pièces individuelles
+    num_labels, labels_map = cv2.connectedComponents(interior, connectivity=4)
+
+    rooms_raw = []
+    for i in range(1, num_labels):
+        mask_i = (labels_map == i).astype(np.uint8) * 255
+        area_px = int(cv2.countNonZero(mask_i))
+        if area_px < min_area_px:
+            continue
+        cnts_i, _ = cv2.findContours(mask_i, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts_i:
+            continue
+        cnt_i = max(cnts_i, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(cnt_i)
+        cx = float(x + w / 2)
+        cy = float(y + h / 2)
+        area_m2 = area_px / (ppm ** 2) if ppm else None
+        label, label_fr = _classify_room_by_area(area_m2)
+
+        rooms_raw.append({
+            "id": i,
+            "type": label,
+            "label_fr": label_fr,
+            "centroid_norm": {"x": round(cx / W, 4), "y": round(cy / H, 4)},
+            "bbox_norm": {
+                "x": round(x / W, 4), "y": round(y / H, 4),
+                "w": round(w / W, 4), "h": round(h / H, 4),
+            },
+            "area_m2": round(area_m2, 2) if area_m2 else None,
+            "area_px2": area_px,
+            "_polygon": cnt_i.reshape(-1, 2).tolist(),
+        })
+
+    # 8. Trier par surface décroissante
+    rooms_raw.sort(key=lambda r: r["area_px2"], reverse=True)
+
+    # 9. Labeling final sans doublons de noms
+    label_counters: dict = {}
+    rooms = []
+    for r in rooms_raw:
+        lbl = r["type"]
+        label_counters[lbl] = label_counters.get(lbl, 0) + 1
+        n = label_counters[lbl]
+        if lbl == "living room":
+            label_fr = "Séjour" if n == 1 else f"Séjour {n}"
+        elif lbl == "bedroom":
+            label_fr = "Chambre" if n == 1 else f"Chambre {n}"
+        elif lbl == "bathroom":
+            label_fr = "Salle de bain" if n == 1 else f"SDB {n}"
+        elif lbl == "hallway":
+            label_fr = "Couloir" if n == 1 else f"Couloir {n}"
+        elif lbl == "kitchen":
+            label_fr = "Cuisine" if n == 1 else f"Cuisine {n}"
+        else:
+            label_fr = f"Pièce {n}"
+        rooms.append({**r, "label_fr": label_fr})
+
+    return rooms
+
+
+def _build_rooms_color_mask(rooms: list, H: int, W: int) -> np.ndarray:
+    """Construit un masque coloré RGB depuis la liste de pièces segmentées."""
+    mask = np.zeros((H, W, 3), dtype=np.uint8)
+    for room in rooms:
+        poly = room.get("_polygon")
+        if not poly or len(poly) < 3:
+            continue
+        color = ROOM_COLORS_RGB.get(room.get("type", "room"), (180, 180, 180))
+        pts = np.array(poly, dtype=np.int32)
+        cv2.fillPoly(mask, [pts], color)
+    return mask
+
+
 def vectorize_walls(mask_walls: np.ndarray, H: int, W: int, ppm) -> list:
     """Vectorise le masque de murs en segments de lignes via HoughLinesP.
 
@@ -391,16 +554,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_doors   = cv2.bitwise_or(m_doors_1, m_doors_2)
     m_windows = cv2.bitwise_or(m_wins_1,  m_wins_2)
 
-    # === WALLS depuis rooms_index ===
-    a = rooms_index
-    walls = np.zeros((H, W), np.uint8)
-    walls[1:,:]  |= (a[1:,:]  != a[:-1,:])
-    walls[:-1,:] |= (a[:-1,:] != a[1:,:])
-    walls[:,1:]  |= (a[:,1:]  != a[:,:-1])
-    walls[:,:-1] |= (a[:,:-1] != a[:,1:])
-    walls = (walls.astype(np.uint8) * 255)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
-    walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel, iterations=1)
+    # === WALLS depuis l'image (robuste, indépendant du modèle Roboflow) ===
+    walls = detect_walls_from_image(img_rgb)
 
     # === EMPRISE (contour extérieur) ===
     # Inclure portes + fenêtres pour boucher les trous du périmètre mural
@@ -457,15 +612,12 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     overlay_openings = _build_overlay_openings(img_rgb, cnt, m_doors, m_windows)
     overlay_interior = _build_overlay_interior(img_rgb, surfaces.get("interior_mask"))
 
-    # === MASQUES ROOMS ===
-    K = int(rooms_index.max())
-    rng = np.random.default_rng(0)
-    palette = rng.integers(0, 256, size=(max(K, 1) + 1, 3), dtype=np.uint8)
-    mask_rooms_rgb = palette[rooms_index]
-
-    # === PIÈCES & MURS VECTORISÉS ===
-    rooms_list    = extract_rooms(rooms_index, legend, H, W, ppm)
+    # === PIÈCES via flood fill (robuste, indépendant du modèle) ===
+    rooms_list    = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, ppm)
     wall_segments = vectorize_walls(walls, H, W, ppm)
+
+    # === MASQUE ROOMS coloré depuis les pièces segmentées ===
+    mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
     return {
         "img_w": W, "img_h": H,
@@ -475,8 +627,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "openings": df_openings.to_dict(orient="records") if not df_openings.empty else [],
         "surfaces": surfaces,
         "stats": {"pass1": st1, "pass2": st2},
-        # Pièces et murs vectorisés
-        "rooms": rooms_list,
+        # Pièces et murs vectorisés (on retire les champs internes _*)
+        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
         "walls": wall_segments,
         # Images encodées en base64 PNG
         "overlay_openings_b64": _np_to_b64(overlay_openings),
@@ -659,18 +811,25 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
 
     surfaces_clean = {k: v for k, v in surfaces.items() if k != "interior_mask"}
 
+    # Re-segmentation des pièces depuis les masques édités
+    rooms_list = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, pixels_per_meter)
+    mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
+
     return {
         "doors_count": sum(1 for o in openings if o["class"] == "door"),
         "windows_count": sum(1 for o in openings if o["class"] == "window"),
         "openings": openings,
         "surfaces": surfaces_clean,
         "pixels_per_meter": pixels_per_meter,
+        # Pièces re-segmentées
+        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
         # FIX: overlays et masques régénérés depuis les masques édités
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,
         "mask_doors_b64":   _np_to_b64(m_doors),
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
+        "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour nouvelle édition
         "_interior_mask": surfaces.get("interior_mask"),
     }
