@@ -337,16 +337,18 @@ def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
 
 
 def _build_rooms_color_mask(rooms: list, H: int, W: int) -> np.ndarray:
-    """Construit un masque coloré RGB depuis la liste de pièces segmentées."""
-    mask = np.zeros((H, W, 3), dtype=np.uint8)
+    """Construit un masque coloré RGBA : fond transparent, pièces semi-opaques."""
+    rgb   = np.zeros((H, W, 3), dtype=np.uint8)
+    alpha = np.zeros((H, W),    dtype=np.uint8)
     for room in rooms:
         poly = room.get("_polygon")
         if not poly or len(poly) < 3:
             continue
         color = ROOM_COLORS_RGB.get(room.get("type", "room"), (180, 180, 180))
         pts = np.array(poly, dtype=np.int32)
-        cv2.fillPoly(mask, [pts], color)
-    return mask
+        cv2.fillPoly(rgb,   [pts], color)
+        cv2.fillPoly(alpha, [pts], 160)   # semi-transparent (alpha 0-255)
+    return np.dstack([rgb, alpha])
 
 
 def vectorize_walls(mask_walls: np.ndarray, H: int, W: int, ppm) -> list:

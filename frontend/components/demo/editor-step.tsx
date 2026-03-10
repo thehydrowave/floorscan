@@ -661,6 +661,16 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 className="w-full h-auto block max-h-[550px] object-contain"
                 onLoad={updateImgDisplaySize} />
 
+              {/* Masque coloré des pièces (RGBA semi-transparent) */}
+              {showRooms && result.mask_rooms_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_rooms_b64}`}
+                  alt=""
+                  className="absolute top-0 left-0 w-full h-auto block max-h-[550px] object-contain pointer-events-none"
+                  style={{ zIndex: 1 }}
+                />
+              )}
+
               {/* SVG overlay murs + pièces (zIndex:1, under openings overlay) */}
               {imgDisplaySize.w > 0 && (
                 <svg
