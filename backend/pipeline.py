@@ -249,31 +249,34 @@ def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
     else:
         building[:] = 255
 
-    # 2. Combiner murs + ouvertures pour fermer les gaps (portes, fenêtres)
+    # 2. N'utiliser QUE les murs comme frontières.
+    #    Les masques portes/fenêtres sont de grandes bbox qui incluent l'arc
+    #    de balayage et bloqueraient l'espace intérieur une fois dilatés.
     boundaries = walls.copy()
-    if m_doors is not None:
-        _, md = cv2.threshold(m_doors, 127, 255, cv2.THRESH_BINARY)
-        boundaries = cv2.bitwise_or(boundaries, md)
-    if m_windows is not None:
-        _, mw = cv2.threshold(m_windows, 127, 255, cv2.THRESH_BINARY)
-        boundaries = cv2.bitwise_or(boundaries, mw)
 
-    # 3. Dilater pour fermer les micro-gaps résiduels entre murs et ouvertures
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    # 3. Dilatation légère pour boucher les micro-interruptions dans les murs
+    #    (5x5 au lieu de 9x9 pour rester moins agressif)
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     boundaries_closed = cv2.dilate(boundaries, k, iterations=1)
 
     # 4. Espace navigable = bâtiment − frontières
     interior = cv2.subtract(building, boundaries_closed)
 
-    # 5. Nettoyer le bruit résiduel
-    k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # 5. Nettoyer le bruit résiduel (hachures, texte mal supprimé, mobilier)
+    k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
     interior = cv2.morphologyEx(interior, cv2.MORPH_OPEN, k2, iterations=1)
 
-    # 6. Surface minimale par pièce (≥ 1 m² si ppm connu, sinon 3000 px²)
-    min_area_px = max(500, int(1.0 * ppm ** 2)) if ppm else 3000
+    print(f"[ROOMS] walls_px={cv2.countNonZero(walls)}, "
+          f"interior_px={cv2.countNonZero(interior)}, "
+          f"building={'cnt' if building_cnt is not None else 'full'}, "
+          f"H={H}, W={W}, ppm={ppm}")
 
-    # 7. Composantes connexes = pièces individuelles
-    num_labels, labels_map = cv2.connectedComponents(interior, connectivity=4)
+    # 6. Surface minimale : ≥ 0.3 m² si ppm connu, sinon 500 px²
+    min_area_px = max(200, int(0.3 * ppm ** 2)) if ppm else 500
+
+    # 7. Composantes connexes = pièces individuelles (connectivity=8 : plus robuste)
+    num_labels, labels_map = cv2.connectedComponents(interior, connectivity=8)
+    print(f"[ROOMS] num_labels={num_labels}, min_area_px={min_area_px}")
 
     rooms_raw = []
     for i in range(1, num_labels):
@@ -305,6 +308,7 @@ def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
             "_polygon": cnt_i.reshape(-1, 2).tolist(),
         })
 
+    print(f"[ROOMS] kept {len(rooms_raw)} rooms after area filter")
     # 8. Trier par surface décroissante
     rooms_raw.sort(key=lambda r: r["area_px2"], reverse=True)
 
