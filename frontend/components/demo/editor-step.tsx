@@ -738,24 +738,42 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                     const rcx = room.centroid_norm.x * imgDisplaySize.w;
                     const rcy = room.centroid_norm.y * imgDisplaySize.h;
                     const rcolor = getRoomColor(room.type);
-                    const isRoomSelected = selectedRoomId === room.id;
-                    return (
-                      <g key={room.id}>
-                        <rect x={rcx - 40} y={rcy - 22} width={80} height={42} rx={6}
-                          fill="rgba(10,16,32,0.82)"
-                          stroke={isRoomSelected ? rcolor : "rgba(255,255,255,0.12)"}
-                          strokeWidth={isRoomSelected ? 2 : 1}
-                        />
-                        <text x={rcx} y={rcy - 5} textAnchor="middle"
-                          fill={rcolor} fontSize={10} fontWeight="600" fontFamily="system-ui,sans-serif">
-                          {room.label_fr}
-                        </text>
-                        {room.area_m2 != null && (
-                          <text x={rcx} y={rcy + 11} textAnchor="middle"
-                            fill="rgba(255,255,255,0.65)" fontSize={9} fontFamily="system-ui,sans-serif">
-                            {room.area_m2.toFixed(1)} m²
+                    const isSelected = selectedRoomId === room.id;
+                    // Taille du label proportionnelle à la bbox de la pièce
+                    const bboxW = room.bbox_norm.w * imgDisplaySize.w;
+                    const bboxH = room.bbox_norm.h * imgDisplaySize.h;
+                    const minDim = Math.min(bboxW, bboxH);
+                    const fs = Math.max(7, Math.min(11, minDim * 0.14));
+                    if (isSelected) {
+                      // Pièce sélectionnée : label complet avec surface
+                      const label = room.area_m2 != null
+                        ? `${room.label_fr}  ${room.area_m2.toFixed(1)} m²`
+                        : room.label_fr;
+                      const pw = Math.max(70, label.length * 5.5);
+                      return (
+                        <g key={room.id}>
+                          <rect x={rcx - pw/2} y={rcy - 13} width={pw} height={20} rx={4}
+                            fill="rgba(10,16,32,0.92)" stroke={rcolor} strokeWidth={1.5} />
+                          <text x={rcx} y={rcy + 2} textAnchor="middle"
+                            fill={rcolor} fontSize={10} fontWeight="700" fontFamily="system-ui,sans-serif">
+                            {label}
                           </text>
-                        )}
+                        </g>
+                      );
+                    }
+                    // Pièce non-sélectionnée : juste le nom en petit
+                    const shortName = room.label_fr.length > 12
+                      ? room.label_fr.slice(0, 10) + "…"
+                      : room.label_fr;
+                    const pw = Math.max(30, shortName.length * (fs * 0.6));
+                    return (
+                      <g key={room.id} opacity={0.85}>
+                        <rect x={rcx - pw/2} y={rcy - fs * 0.85} width={pw} height={fs * 1.7} rx={3}
+                          fill="rgba(10,16,32,0.70)" stroke={rcolor} strokeWidth={0.8} />
+                        <text x={rcx} y={rcy + fs * 0.35} textAnchor="middle"
+                          fill={rcolor} fontSize={fs} fontWeight="600" fontFamily="system-ui,sans-serif">
+                          {shortName}
+                        </text>
                       </g>
                     );
                   })}
