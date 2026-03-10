@@ -351,6 +351,107 @@ def _build_rooms_color_mask(rooms: list, H: int, W: int) -> np.ndarray:
     return np.dstack([rgb, alpha])
 
 
+def edit_room_mask(mask_rgba: np.ndarray,
+                   action: str, room_type: str,
+                   x0=None, y0=None, x1=None, y1=None,
+                   points=None) -> np.ndarray:
+    """Modifie le masque RGBA des pièces en appliquant un dessin ou un effacement."""
+    color = ROOM_COLORS_RGB.get(room_type, (180, 180, 180))
+    out = mask_rgba.copy()
+
+    if action in ("add_rect", "add_poly"):
+        if action == "add_rect":
+            ya, yb = sorted([int(y0), int(y1)])
+            xa, xb = sorted([int(x0), int(x1)])
+            out[ya:yb, xa:xb, :3] = color
+            out[ya:yb, xa:xb,  3] = 160
+        else:  # add_poly
+            pts = np.array(points, dtype=np.int32)
+            cv2.fillPoly(out[:, :, :3], [pts], color)
+            alpha_ch = out[:, :, 3].copy()
+            cv2.fillPoly(alpha_ch, [pts], 160)
+            out[:, :, 3] = alpha_ch
+
+    elif action in ("erase_rect", "erase_poly"):
+        if action == "erase_rect":
+            ya, yb = sorted([int(y0), int(y1)])
+            xa, xb = sorted([int(x0), int(x1)])
+            out[ya:yb, xa:xb] = 0
+        else:  # erase_poly
+            pts = np.array(points, dtype=np.int32)
+            cv2.fillPoly(out[:, :, :3], [pts], (0, 0, 0))
+            alpha_ch = out[:, :, 3].copy()
+            cv2.fillPoly(alpha_ch, [pts], 0)
+            out[:, :, 3] = alpha_ch
+
+    return out
+
+
+def rooms_from_mask_rgba(mask_rgba: np.ndarray, H: int, W: int, ppm) -> list:
+    """Re-dérive la liste de pièces depuis le masque RGBA édité.
+
+    Chaque couleur connue dans ROOM_COLORS_RGB correspond à un type de pièce.
+    Les composantes connexes de chaque couleur deviennent des pièces individuelles.
+    """
+    rooms = []
+    room_id = 1
+    label_counters: dict = {}
+
+    for room_type, color_rgb in ROOM_COLORS_RGB.items():
+        if room_type == "room":
+            continue  # couleur générique, ignorer
+        # Masque binaire pour ce type
+        color_arr = np.array(color_rgb, dtype=np.uint8)
+        match = np.all(mask_rgba[:, :, :3] == color_arr, axis=2).astype(np.uint8) * 255
+        if cv2.countNonZero(match) == 0:
+            continue
+
+        num_labels, labels_map = cv2.connectedComponents(match, connectivity=8)
+        min_area_px = max(200, int(0.3 * ppm ** 2)) if ppm else 500
+
+        for i in range(1, num_labels):
+            mask_i = (labels_map == i).astype(np.uint8) * 255
+            area_px = int(cv2.countNonZero(mask_i))
+            if area_px < min_area_px:
+                continue
+            cnts_i, _ = cv2.findContours(mask_i, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cnts_i:
+                continue
+            cnt_i = max(cnts_i, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(cnt_i)
+            cx, cy = float(x + w / 2), float(y + h / 2)
+            area_m2 = area_px / (ppm ** 2) if ppm else None
+
+            label_counters[room_type] = label_counters.get(room_type, 0) + 1
+            n = label_counters[room_type]
+            base_labels = {
+                "living room": "Séjour",  "bedroom": "Chambre",
+                "bathroom": "Salle de bain", "hallway": "Couloir",
+                "kitchen": "Cuisine", "office": "Bureau",
+                "wc": "WC", "dining room": "Salle à manger",
+                "storage": "Rangement", "garage": "Garage",
+                "balcony": "Balcon", "laundry": "Buanderie",
+            }
+            base = base_labels.get(room_type, room_type.capitalize())
+            label_fr = base if n == 1 else f"{base} {n}"
+
+            rooms.append({
+                "id": room_id,
+                "type": room_type,
+                "label_fr": label_fr,
+                "centroid_norm": {"x": round(cx / W, 4), "y": round(cy / H, 4)},
+                "bbox_norm": {"x": round(x/W, 4), "y": round(y/H, 4),
+                              "w": round(w/W, 4), "h": round(h/H, 4)},
+                "area_m2": round(area_m2, 2) if area_m2 else None,
+                "area_px2": area_px,
+                "_polygon": cnt_i.reshape(-1, 2).tolist(),
+            })
+            room_id += 1
+
+    rooms.sort(key=lambda r: r["area_px2"], reverse=True)
+    return rooms
+
+
 def vectorize_walls(mask_walls: np.ndarray, H: int, W: int, ppm) -> list:
     """Vectorise le masque de murs en segments de lignes via HoughLinesP.
 
@@ -560,8 +661,21 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_doors   = cv2.bitwise_or(m_doors_1, m_doors_2)
     m_windows = cv2.bitwise_or(m_wins_1,  m_wins_2)
 
-    # === WALLS depuis l'image (robuste, indépendant du modèle Roboflow) ===
-    walls = detect_walls_from_image(img_rgb)
+    # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
+    # Cette approche donne des murs fins et nets calqués sur les détections IA.
+    # Fallback OTSU si le modèle n'a pas détecté de pièces.
+    a = rooms_index
+    walls = np.zeros((H, W), np.uint8)
+    walls[1:,:]  |= (a[1:,:]  != a[:-1,:]).astype(np.uint8)
+    walls[:-1,:] |= (a[:-1,:] != a[1:,:]).astype(np.uint8)
+    walls[:,1:]  |= (a[:,1:]  != a[:,:-1]).astype(np.uint8)
+    walls[:,:-1] |= (a[:,:-1] != a[:,1:]).astype(np.uint8)
+    walls = (walls * 255).astype(np.uint8)
+    if cv2.countNonZero(walls) > 0:
+        kernel_w = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel_w, iterations=1)
+    else:
+        walls = detect_walls_from_image(img_rgb)
 
     # === EMPRISE (contour extérieur) ===
     # Inclure portes + fenêtres pour boucher les trous du périmètre mural
@@ -648,6 +762,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "_m_windows": m_windows.tolist(),
         "_walls": walls.tolist(),
         "_cnt": cnt.tolist() if cnt is not None else None,
+        "_mask_rooms_rgba": mask_rooms_rgb,  # numpy RGBA array pour édition
     }
 
 

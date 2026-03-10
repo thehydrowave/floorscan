@@ -177,13 +177,14 @@ def analyze(req: AnalyzeRequest):
     interior_mask = result.get("surfaces", {}).get("interior_mask")
 
     sessions[req.session_id].update({
-        "m_doors":       np.array(result["_m_doors"],   dtype=np.uint8),
-        "m_windows":     np.array(result["_m_windows"], dtype=np.uint8),
-        "walls":         np.array(result["_walls"],     dtype=np.uint8),
-        "interior_mask": interior_mask,
+        "m_doors":          np.array(result["_m_doors"],   dtype=np.uint8),
+        "m_windows":        np.array(result["_m_windows"], dtype=np.uint8),
+        "walls":            np.array(result["_walls"],     dtype=np.uint8),
+        "interior_mask":    interior_mask,
         "pixels_per_meter": result["pixels_per_meter"],
-        "cfg": cfg,
-        "analysis": result,
+        "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
+        "cfg":              cfg,
+        "analysis":         result,
     })
 
     # Nettoyer la réponse JSON
@@ -306,7 +307,68 @@ def edit_mask(req: EditMaskRequest):
 
 
 # ============================================================
-# ROUTE 6b — METTRE À JOUR LE LABEL D'UNE PIÈCE
+# ROUTE 6b — ÉDITER LE MASQUE DES PIÈCES
+# ============================================================
+class EditRoomMaskRequest(BaseModel):
+    session_id: str
+    action: str          # "add_rect"|"erase_rect"|"add_poly"|"erase_poly"|"delete_room"
+    room_type: str = "bedroom"
+    room_id: Optional[int] = None
+    x0: Optional[float] = None
+    y0: Optional[float] = None
+    x1: Optional[float] = None
+    y1: Optional[float] = None
+    points: Optional[list] = None
+
+@app.post("/edit-room-mask")
+def edit_room_mask(req: EditRoomMaskRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+
+    mask_rgba = s.get("mask_rooms_rgba")
+    if mask_rgba is None:
+        raise HTTPException(400, "Aucun masque de pièces disponible")
+
+    ppm = s.get("pixels_per_meter")
+    H, W = mask_rgba.shape[:2]
+
+    if req.action == "delete_room":
+        # Effacer le bbox de la pièce sélectionnée
+        rooms = s["analysis"].get("rooms", [])
+        room = next((r for r in rooms if r["id"] == req.room_id), None)
+        if room is None:
+            raise HTTPException(404, "Pièce introuvable")
+        bbn = room["bbox_norm"]
+        x0 = int(bbn["x"] * W); y0 = int(bbn["y"] * H)
+        x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
+        mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", req.room_type,
+                                             x0=x0, y0=y0, x1=x1, y1=y1)
+    else:
+        mask_rgba = pipeline.edit_room_mask(
+            mask_rgba, req.action, req.room_type,
+            x0=req.x0, y0=req.y0, x1=req.x1, y1=req.y1,
+            points=req.points,
+        )
+
+    # Ré-dériver la liste de pièces depuis le masque édité
+    rooms_list = pipeline.rooms_from_mask_rgba(mask_rgba, H, W, ppm)
+
+    # Sauvegarder en session
+    sessions[req.session_id]["mask_rooms_rgba"] = mask_rgba
+    sessions[req.session_id]["analysis"]["rooms"] = [
+        {k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list
+    ]
+    sessions[req.session_id]["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(mask_rgba)
+
+    return {
+        "mask_rooms_b64": pipeline._np_to_b64(mask_rgba),
+        "rooms": sessions[req.session_id]["analysis"]["rooms"],
+    }
+
+
+# ============================================================
+# ROUTE 6c — METTRE À JOUR LE LABEL D'UNE PIÈCE
 # ============================================================
 class UpdateRoomLabelRequest(BaseModel):
     session_id: str

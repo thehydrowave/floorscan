@@ -14,7 +14,7 @@ import SurfacePanel from "@/components/measure/surface-panel";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType } from "@/lib/measure-types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-type Layer = "door" | "window" | "interior";
+type Layer = "door" | "window" | "interior" | "rooms";
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select";
 type Mode = "editor" | "measure";
 
@@ -88,6 +88,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   // Sélection / édition de pièce
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
+  const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
 
   // Taille d'affichage de l'image (pour les SVG overlays)
   const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
@@ -214,7 +215,31 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     }
   }, [tool, layer]);
 
+  const sendEditRoom = async (params: any) => {
+    setLoading(true); setError(null);
+    try {
+      const r = await fetch(`${BACKEND}/edit-room-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, room_type: activeRoomType, ...params }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur édition pièce");
+      const data = await r.json();
+      setResult(prev => ({
+        ...prev,
+        mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64,
+        rooms: data.rooms ?? prev.rooms,
+      }));
+      toast({ title: "Pièce mise à jour ✓", variant: "success" });
+    } catch (e: any) {
+      if (e.message?.includes("Session introuvable")) {
+        toast({ title: "Session expirée", description: "Veuillez recommencer l'upload.", variant: "error" });
+        onSessionExpired?.();
+      } else { setError(e.message); toast({ title: "Erreur", description: e.message, variant: "error" }); }
+    } finally { setLoading(false); }
+  };
+
   const sendEdit = async (params: any) => {
+    if (layer === "rooms") { await sendEditRoom(params); return; }
     setLoading(true); setError(null);
     try {
       const r = await fetch(`${BACKEND}/edit-mask`, {
@@ -580,13 +605,35 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
           <div className="lg:col-span-3 flex flex-col gap-3">
             <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
               <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_layer_lbl")}:</span>
-              {(["door", "window", "interior"] as Layer[]).map(l => (
+              {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
                 <button key={l} onClick={() => setLayer(l)}
                   className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
-                    layer === l ? "border-accent/40 bg-accent/10 text-accent" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : `🏠 ${d("ed_living_s")}`}
+                    layer === l
+                      ? l === "rooms" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-accent/40 bg-accent/10 text-accent"
+                      : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : l === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ Pièces`}
                 </button>
               ))}
+              {/* Sélecteur type de pièce (visible seulement en mode rooms) */}
+              {layer === "rooms" && (
+                <>
+                  <div className="w-px bg-white/10 mx-1 self-stretch" />
+                  <span className="text-xs text-slate-500 self-center font-mono mr-1">Type:</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {ROOM_TYPES.slice(0, 8).map(rt => (
+                      <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
+                        title={rt.label_fr}
+                        className={cn("w-6 h-6 rounded-full border-2 transition-all shrink-0",
+                          activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-70 hover:opacity-100")}
+                        style={{ background: getRoomColor(rt.type) }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs self-center px-2 py-1 rounded-lg bg-white/5 text-slate-300">
+                    {ROOM_TYPES.find(rt => rt.type === activeRoomType)?.label_fr}
+                  </span>
+                </>
+              )}
               <div className="w-px bg-white/10 mx-1 self-stretch" />
               <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
               {([
@@ -834,12 +881,17 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
                   {result.rooms.map(room => (
                     <div key={room.id}
-                      className={cn("flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all",
+                      className={cn("flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all group",
                         selectedRoomId === room.id ? "bg-white/10" : "hover:bg-white/5")}
                       onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); }}>
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(room.type) }} />
                       <span className="flex-1 text-slate-400">{room.label_fr}</span>
-                      {room.area_m2 != null && <span className="ml-auto text-slate-500">{room.area_m2.toFixed(1)} m²</span>}
+                      {room.area_m2 != null && <span className="text-slate-500">{room.area_m2.toFixed(1)} m²</span>}
+                      <button
+                        onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500/70 hover:text-red-400 ml-1"
+                        title="Supprimer cette pièce"
+                      ><Trash2 size={11} /></button>
                     </div>
                   ))}
                 </div>
