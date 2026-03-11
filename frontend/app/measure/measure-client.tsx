@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
@@ -839,6 +839,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
+                    <button
+                      onClick={newProject}
+                      className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-2.5 py-1.5 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                    </button>
                     <Button size="sm" onClick={() => setStep(4)} disabled={zones.length === 0}>
                       {d("me_view_results")}
                     </Button>
@@ -1050,6 +1056,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                 )}
 
                 <div className="flex gap-3 justify-center flex-wrap">
+                  <button
+                    onClick={newProject}
+                    className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                  </button>
                   <Button variant="outline" onClick={() => setStep(3)}>
                     {d("me_back_survey")}
                   </Button>
@@ -1128,10 +1140,10 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             {imageB64 && (
               <button
                 onClick={newProject}
-                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-white glass border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
-                title="Nouveau projet"
+                className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 glass border border-red-500/25 hover:border-red-500/50 rounded-lg px-3 py-1.5 transition-colors"
+                title="Effacer le projet et repartir de zéro"
               >
-                <PlusCircle className="w-3.5 h-3.5" /> Nouveau
+                <RotateCcw className="w-3.5 h-3.5" /> Recommencer
               </button>
             )}
             <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
