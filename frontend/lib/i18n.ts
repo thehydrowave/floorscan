@@ -496,6 +496,18 @@ export const DEMO_T = {
   sv_restore_found:{ fr:"Projet précédent trouvé",     en:"Previous project found", es:"Proyecto anterior encontrado", de:"Vorheriges Projekt gefunden", it:"Progetto precedente trovato" },
   sv_restore_resume:{ fr:"Reprendre",                  en:"Resume",                 es:"Reanudar",                 de:"Fortsetzen",               it:"Riprendi"                 },
   sv_creating_session:{ fr:"Création de la session…",  en:"Creating session…",      es:"Creando sesión…",          de:"Sitzung erstellen…",       it:"Creazione sessione…"      },
+
+  // ── Survey — Pièces & Emprise ────────────────────────────────────────────────
+  sv_tab_metre:    { fr:"Métré",                       en:"Measurement",            es:"Medición",                 de:"Aufmaß",                   it:"Misura"                   },
+  sv_tab_rooms:    { fr:"Pièces",                      en:"Rooms",                  es:"Estancias",                de:"Räume",                    it:"Stanze"                   },
+  sv_emprise:      { fr:"Emprise au sol",              en:"Building footprint",     es:"Huella del edificio",      de:"Grundfläche",              it:"Impronta"                 },
+  sv_room_count:   { fr:"Pièces",                      en:"Rooms",                  es:"Estancias",                de:"Räume",                    it:"Stanze"                   },
+  sv_hab_area:     { fr:"Surface habitable",           en:"Living area",            es:"Superficie habitable",     de:"Wohnfläche",               it:"Superficie abitabile"     },
+  sv_emprise_area: { fr:"Emprise",                     en:"Footprint",              es:"Huella",                   de:"Grundfläche",              it:"Impronta"                 },
+  sv_room_perim:   { fr:"Périmètre total",             en:"Total perimeter",        es:"Perímetro total",          de:"Gesamtumfang",             it:"Perimetro totale"         },
+  sv_no_room:      { fr:"Aucune pièce tracée",         en:"No rooms drawn",         es:"Sin estancias trazadas",   de:"Keine Räume gezeichnet",   it:"Nessuna stanza tracciata" },
+  sv_emprise_hint: { fr:"Tracez le contour extérieur", en:"Draw the building outline", es:"Trace el contorno exterior", de:"Zeichne den Außenumriss", it:"Traccia il contorno esterno" },
+  sv_rooms_csv:    { fr:"CSV Pièces",                  en:"Rooms CSV",              es:"CSV Estancias",            de:"Räume CSV",                it:"CSV Stanze"               },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

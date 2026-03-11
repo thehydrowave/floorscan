@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid } from "lucide-react";
@@ -9,7 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
@@ -156,6 +156,21 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [zones, setZones] = useState<MeasureZone[]>([]);
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
+
+  // Room panel mode
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
+  const allTypes = useMemo(
+    () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
+    [surfaceTypes]
+  );
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms") => {
+    setPanelMode(mode);
+    if (mode === "rooms") {
+      setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
+    } else {
+      setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
+    }
+  }, [surfaceTypes]);
 
   // Undo / Redo history
   const historyRef  = useRef<MeasureZone[][]>([]);
@@ -732,7 +747,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
       // ── Plan annoté ──
       try {
-        const planB64 = await renderAnnotatedPlan(imageB64, imageMime, zones, surfaceTypes, ppm);
+        const planB64 = await renderAnnotatedPlan(imageB64, imageMime, zones, allTypes, ppm);
         if (y > 180) { doc.addPage(); y = M; }
         const imgProps = (doc as any).getImageProperties?.(`data:image/png;base64,${planB64}`) ?? { width: 1, height: 1 };
         const maxW = W - 2*M;
@@ -1001,7 +1016,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   imageMime={imageMime}
                   zones={zones}
                   activeTypeId={activeTypeId}
-                  surfaceTypes={surfaceTypes}
+                  surfaceTypes={allTypes}
                   ppm={ppm}
                   onZonesChange={setZones}
                   onHistoryPush={pushHistory}
@@ -1029,6 +1044,9 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onActiveTypeChange={setActiveTypeId}
                   customDetections={customDetections}
                   onDeleteDetection={(id) => setCustomDetections(prev => prev.filter(d => d.id !== id))}
+                  panelMode={panelMode}
+                  onPanelModeChange={handlePanelModeChange}
+                  roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
                 />
               </div>
             </div>

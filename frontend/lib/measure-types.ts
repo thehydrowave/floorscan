@@ -185,3 +185,33 @@ export function splitPolygonByLine(
   if (poly1.length < 3 || poly2.length < 3) return null;
   return [poly1, poly2];
 }
+
+// ── Room types (pièces) + Emprise au sol ─────────────────────────────────────
+
+export const ROOM_SURFACE_TYPES: SurfaceType[] = [
+  { id: "room_bedroom",  name: "Chambre",        color: "#818cf8" },
+  { id: "room_living",   name: "Séjour",         color: "#34d399" },
+  { id: "room_kitchen",  name: "Cuisine",        color: "#fb923c" },
+  { id: "room_bathroom", name: "Salle de bain",  color: "#22d3ee" },
+  { id: "room_hallway",  name: "Couloir",        color: "#94a3b8" },
+  { id: "room_office",   name: "Bureau",         color: "#a78bfa" },
+  { id: "room_wc",       name: "WC",             color: "#fbbf24" },
+  { id: "room_dining",   name: "Salle à manger", color: "#f472b6" },
+  { id: "room_storage",  name: "Rangement",      color: "#78716c" },
+  { id: "room_garage",   name: "Garage",         color: "#6b7280" },
+  { id: "room_balcony",  name: "Balcon",         color: "#86efac" },
+  { id: "room_laundry",  name: "Buanderie",      color: "#67e8f9" },
+];
+
+export const EMPRISE_TYPE: SurfaceType = {
+  id: "room_emprise", name: "Emprise au sol", color: "#60A5FA",
+};
+
+/** All room types including emprise */
+export const ALL_ROOM_TYPES: SurfaceType[] = [...ROOM_SURFACE_TYPES, EMPRISE_TYPE];
+
+/** Check if a typeId belongs to a room (or emprise) */
+export const isRoomTypeId = (id: string) => id.startsWith("room_");
+
+/** Check if a typeId is the building footprint */
+export const isEmpriseTypeId = (id: string) => id === "room_emprise";

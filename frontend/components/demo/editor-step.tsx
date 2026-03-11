@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -11,7 +11,7 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType, polygonPerimeterM } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -154,7 +154,20 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   // Overlays visibilité (murs / pièces)
   const [showWalls, setShowWalls] = useState(false);
-  const [showRooms, setShowRooms] = useState(true);
+  const [showRooms, setShowRooms] = useState(false);
+
+  // Zoom / pan state (matching Survey canvas behavior)
+  const [zoom, setZoom] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const [panCursor, setPanCursor] = useState(false);
+  const zoomContainerRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef(1);
+  const translateRef = useRef({ x: 0, y: 0 });
+  const isPanRef = useRef(false);
+  const panStartRef = useRef({ mx: 0, my: 0, tx: 0, ty: 0 });
+
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { translateRef.current = translate; }, [translate]);
 
   // Sélection / édition de pièce
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -191,6 +204,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [zones, setZones] = useState<MeasureZone[]>([]);
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
+  const allMeasureTypes = useMemo(
+    () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
+    [surfaceTypes]
+  );
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms") => {
+    setPanelMode(mode);
+    if (mode === "rooms") {
+      setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
+    } else {
+      setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
+    }
+  }, [surfaceTypes]);
   const [imageNatural, setImageNatural] = useState({ w: 0, h: 0 });
   const [exportingMeasurePdf, setExportingMeasurePdf] = useState(false);
 
@@ -252,6 +278,33 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     return () => window.removeEventListener("resize", updateImgDisplaySize);
   }, [updateImgDisplaySize]);
 
+  // ── Wheel zoom centered on cursor (same behavior as Survey canvas) ──
+  const handleWheelZoom = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const container = zoomContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cx = e.clientX - rect.left - rect.width / 2;
+    const cy = e.clientY - rect.top  - rect.height / 2;
+    const factor = e.deltaY < 0 ? 1.15 : 0.87;
+    setZoom(prevZ => {
+      const newZ  = Math.max(1, Math.min(12, prevZ * factor));
+      const ratio = newZ / prevZ;
+      setTranslate(t => ({
+        x: cx * (1 - ratio) + t.x * ratio,
+        y: cy * (1 - ratio) + t.y * ratio,
+      }));
+      return newZ;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = zoomContainerRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheelZoom, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheelZoom);
+  }, [handleWheelZoom]);
+
   // Canvas (editor mode)
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -300,9 +353,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // Ref for sendEditRoom (assigned after function is defined)
   const sendEditRoomRef = useRef<(params: any) => Promise<void>>(async () => {});
 
-  // ── Window-level mousemove/mouseup for room vertex drag ──
+  // ── Window-level mousemove/mouseup for room vertex drag + pan ──
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
+      // Pan (right-click drag)
+      if (isPanRef.current) {
+        const dx = e.clientX - panStartRef.current.mx;
+        const dy = e.clientY - panStartRef.current.my;
+        setTranslate({ x: panStartRef.current.tx + dx, y: panStartRef.current.ty + dy });
+        return;
+      }
       const dv = dragRoomVertexRef.current;
       if (!dv) return;
       const img = imgRef.current;
@@ -340,6 +400,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     };
 
     const onUp = (e: MouseEvent) => {
+      // Release pan
+      if (e.button === 2) {
+        isPanRef.current = false;
+        setPanCursor(false);
+        return;
+      }
       const dv = dragRoomVertexRef.current;
       if (e.button !== 0 || !dv) return;
       const rooms = localRoomsRef.current;
@@ -391,6 +457,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   function scaleY(py: number) {
     const img = imgRef.current!;
     return py * img.naturalHeight / img.offsetHeight;
+  }
+
+  /** Convert mouse event viewport coords → canvas-space coords (accounts for zoom) */
+  function mouseToCanvas(clientX: number, clientY: number) {
+    const cv = canvasRef.current!;
+    const rect = cv.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * (cv.width  / rect.width),
+      y: (clientY - rect.top)  * (cv.height / rect.height),
+    };
   }
 
   const drawCanvas = useCallback(() => {
@@ -665,10 +741,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const cv = canvasRef.current!;
-    const rect = cv.getBoundingClientRect();
-    const rx = scaleX(e.clientX - rect.left);
-    const ry = scaleY(e.clientY - rect.top);
+    if (e.button !== 0) return; // ignore right-click (used for pan)
+    const mc = mouseToCanvas(e.clientX, e.clientY);
+    const rx = scaleX(mc.x);
+    const ry = scaleY(mc.y);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
     // ── Visual search: search / add / remove ──
     if (tool === "visual_search") {
@@ -768,11 +844,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Visual search drag
     if (vsDrawing.current && tool === "visual_search") {
-      const cv = canvasRef.current!;
-      const rect = cv.getBoundingClientRect();
+      const mc = mouseToCanvas(e.clientX, e.clientY);
       const img = imgRef.current!;
-      const rx = scaleX(e.clientX - rect.left);
-      const ry = scaleY(e.clientY - rect.top);
+      const rx = scaleX(mc.x);
+      const ry = scaleY(mc.y);
       const pctX = (rx / img.naturalWidth) * 100;
       const pctY = (ry / img.naturalHeight) * 100;
       const sx = vsStart.current.x, sy = vsStart.current.y;
@@ -786,7 +861,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     }
     if (!drawing.current) return;
     const cv = canvasRef.current!;
-    const rect = cv.getBoundingClientRect();
+    const mc = mouseToCanvas(e.clientX, e.clientY);
     const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
@@ -797,8 +872,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     const y0 = startPt.current.y * img.offsetHeight / img.naturalHeight;
     ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([4, 2]);
     ctx.fillStyle = color + "22";
-    ctx.fillRect(x0, y0, e.clientX - rect.left - x0, e.clientY - rect.top - y0);
-    ctx.strokeRect(x0, y0, e.clientX - rect.left - x0, e.clientY - rect.top - y0);
+    ctx.fillRect(x0, y0, mc.x - x0, mc.y - y0);
+    ctx.strokeRect(x0, y0, mc.x - x0, mc.y - y0);
     ctx.setLineDash([]);
   };
 
@@ -861,6 +936,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return; // ignore right-click (used for pan)
     // Visual search: finish selection
     if (vsDrawing.current && tool === "visual_search") {
       vsDrawing.current = false;
@@ -888,11 +964,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     }
     if (!drawing.current) return;
     drawing.current = false;
-    const cv = canvasRef.current!;
-    const rect = cv.getBoundingClientRect();
-    const x1 = scaleX(e.clientX - rect.left);
-    const y1 = scaleY(e.clientY - rect.top);
-    cv.getContext("2d")!.clearRect(0, 0, cv.width, cv.height);
+    const mc = mouseToCanvas(e.clientX, e.clientY);
+    const x1 = scaleX(mc.x);
+    const y1 = scaleY(mc.y);
+    canvasRef.current!.getContext("2d")!.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
     if (Math.abs(x1 - startPt.current.x) > 5 || Math.abs(y1 - startPt.current.y) > 5) {
       await sendEdit({ action: tool, x0: startPt.current.x, y0: startPt.current.y, x1, y1 });
     }
@@ -1152,6 +1227,31 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <LayoutGrid size={12} className={showRooms ? "" : "opacity-40"} />
                 {d("ed_rooms")}
               </button>
+              {/* Zoom controls */}
+              <div className="w-px bg-white/10 mx-0.5 self-stretch" />
+              <button
+                onClick={() => setZoom(z => Math.min(12, z * 1.3))}
+                className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-500 hover:text-white transition-colors"
+                title="Zoom +"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
+                className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-500 hover:text-white transition-colors"
+                title="Zoom −"
+              >
+                <ZoomOut size={14} />
+              </button>
+              {zoom > 1.05 && (
+                <button
+                  onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
+                  className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-400 hover:text-white transition-colors"
+                  title="Reset zoom"
+                >
+                  <RotateCcw size={12} />
+                </button>
+              )}
             </div>
 
             {/* ── Row 2: Contextual tools ── */}
@@ -1339,15 +1439,34 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
             </div>
 
-            <div className={cn("glass rounded-xl border border-white/10 bg-white", isWideImage ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
+            <div
+              ref={zoomContainerRef}
+              className="glass rounded-xl border border-white/10 bg-white relative overflow-hidden"
+              style={{ height: "calc(100vh - 300px)", minHeight: 400, cursor: panCursor ? "grabbing" : "default" }}
+              onContextMenu={e => e.preventDefault()}
+              onMouseDown={e => {
+                if (e.button === 2) {
+                  isPanRef.current = true;
+                  setPanCursor(true);
+                  panStartRef.current = { mx: e.clientX, my: e.clientY, tx: translateRef.current.x, ty: translateRef.current.y };
+                }
+              }}
+            >
               {loading && (
-                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-20" style={{ position: "sticky", left: 0 }}>
+                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-30">
                   <Loader2 className="w-8 h-8 text-accent animate-spin" />
                 </div>
               )}
-              <div className="relative" style={{ display: isWideImage ? "inline-block" : "block", minWidth: "100%" }}>
+              <div style={{
+                position: "absolute",
+                top: "50%", left: "50%",
+                transform: `translate(calc(-50% + ${translate.x}px), calc(-50% + ${translate.y}px)) scale(${zoom})`,
+                transformOrigin: "center center",
+              }}>
+              <div className="relative">
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                className={cn("block", isWideImage ? "h-[min(50vh,500px)] w-auto max-w-none" : "w-full h-auto max-h-[calc(100vh-200px)] object-contain")}
+                style={{ display: "block", maxWidth: "85vw", maxHeight: "calc(100vh - 320px)" }}
+                draggable={false}
                 onLoad={updateImgDisplaySize} />
 
               {/* Masque coloré raster (fallback si pas de polygon_norm) */}
@@ -1355,7 +1474,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <img
                   src={`data:image/png;base64,${result.mask_rooms_b64}`}
                   alt=""
-                  className={cn("absolute top-0 left-0 pointer-events-none", isWideImage ? "h-[min(50vh,500px)] w-auto max-w-none" : "w-full h-auto max-h-[calc(100vh-200px)] object-contain")}
+                  className="absolute inset-0 w-full h-full pointer-events-none object-contain"
                   style={{ zIndex: 1 }}
                 />
               )}
@@ -1569,10 +1688,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
                     style={{ zIndex: 15, cursor: dragRoomVertex ? "grabbing" : "default" }}
                     onMouseDown={(e) => {
+                      if (e.button !== 0) return; // ignore right-click (used for pan)
                       // Background click: select another room or deselect
                       const rect = e.currentTarget.getBoundingClientRect();
-                      const normX = (e.clientX - rect.left) / imgDisplaySize.w;
-                      const normY = (e.clientY - rect.top) / imgDisplaySize.h;
+                      const normX = (e.clientX - rect.left) / rect.width;
+                      const normY = (e.clientY - rect.top) / rect.height;
                       for (const r of displayRooms) {
                         if (r.polygon_norm && pointInPolygon(normX, normY, r.polygon_norm)) {
                           // Shift+click: merge rooms
@@ -1862,9 +1982,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
                 style={{ cursor: tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
-              </div>{/* /inner wrapper */}
+              </div>{/* /inner relative wrapper */}
+              </div>{/* /transform wrapper */}
             </div>
-            <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
+            <p className="text-xs text-slate-600">
+              {d("ed_canvas_hint")}
+              {" · "}
+              <span className="text-slate-700">Scroll — zoom · Clic droit glisser — déplacer</span>
+              {zoom > 1.05 && <span className="text-slate-500 font-mono ml-1">×{zoom.toFixed(1)}</span>}
+            </p>
           </div>
 
           {/* Panel résultats */}
@@ -2236,7 +2362,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               imageMime="image/png"
               zones={zones}
               activeTypeId={activeTypeId}
-              surfaceTypes={surfaceTypes}
+              surfaceTypes={allMeasureTypes}
               ppm={ppm}
               onZonesChange={setZones}
               onHistoryPush={pushHistory}
@@ -2257,6 +2383,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               ppm={ppm}
               onTypesChange={setSurfaceTypes}
               onActiveTypeChange={setActiveTypeId}
+              panelMode={panelMode}
+              onPanelModeChange={handlePanelModeChange}
+              roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
             />
           </div>
         </div>

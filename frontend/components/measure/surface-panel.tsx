@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, Check, Package, Download, Search } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
+  isRoomTypeId, isEmpriseTypeId, EMPRISE_TYPE,
+  polygonAreaPx, polygonPerimeterM,
 } from "@/lib/measure-types";
+import { useLang } from "@/lib/lang-context";
+import { dt } from "@/lib/i18n";
 import type { CustomDetection } from "@/lib/types";
 
 const PRESET_COLORS = [
@@ -26,13 +30,21 @@ interface SurfacePanelProps {
   onActiveTypeChange: (id: string) => void;
   customDetections?: CustomDetection[];
   onDeleteDetection?: (id: string) => void;
+  // Room mode
+  panelMode?: "metre" | "rooms";
+  onPanelModeChange?: (mode: "metre" | "rooms") => void;
+  roomTypes?: SurfaceType[];
 }
 
 export default function SurfacePanel({
   types, zones, activeTypeId, imageW, imageH, ppm,
   onTypesChange, onActiveTypeChange,
   customDetections = [], onDeleteDetection,
+  panelMode = "metre", onPanelModeChange, roomTypes = [],
 }: SurfacePanelProps) {
+  const { lang } = useLang();
+  const d = (k: string) => dt(k as any, lang);
+
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PRESET_COLORS[5]);
@@ -141,10 +153,134 @@ export default function SurfacePanel({
     URL.revokeObjectURL(url);
   };
 
+  // ── Room mode data ──────────────────────────────────────────────────────────
+  const roomZones = useMemo(
+    () => zones.filter(z => isRoomTypeId(z.typeId) && !isEmpriseTypeId(z.typeId) && !z.isDeduction),
+    [zones]
+  );
+  const empriseZones = useMemo(
+    () => zones.filter(z => isEmpriseTypeId(z.typeId)),
+    [zones]
+  );
+
+  // Auto-numbering: group room zones by typeId and number them
+  const roomZoneLabels = useMemo(() => {
+    const countByType: Record<string, number> = {};
+    const labels: Record<string, string> = {};
+    for (const z of roomZones) {
+      countByType[z.typeId] = (countByType[z.typeId] ?? 0) + 1;
+    }
+    const currentIndex: Record<string, number> = {};
+    for (const z of roomZones) {
+      currentIndex[z.typeId] = (currentIndex[z.typeId] ?? 0) + 1;
+      const typeDef = roomTypes.find(t => t.id === z.typeId);
+      const baseName = z.name || typeDef?.name || z.typeId;
+      labels[z.id] = countByType[z.typeId] > 1
+        ? `${baseName} ${currentIndex[z.typeId]}`
+        : baseName;
+    }
+    return labels;
+  }, [roomZones, roomTypes]);
+
+  // Habitable area (rooms excluding emprise and deductions)
+  const habArea = useMemo(() => {
+    if (!ppm) return 0;
+    return roomZones.reduce((sum, z) => {
+      const aPx = polygonAreaPx(z.points, imageW, imageH);
+      return sum + aPx / ppm ** 2;
+    }, 0);
+  }, [roomZones, imageW, imageH, ppm]);
+
+  // Emprise area
+  const empriseArea = useMemo(() => {
+    if (!ppm || empriseZones.length === 0) return 0;
+    return empriseZones.reduce((sum, z) => {
+      const aPx = polygonAreaPx(z.points, imageW, imageH);
+      return sum + aPx / ppm ** 2;
+    }, 0);
+  }, [empriseZones, imageW, imageH, ppm]);
+
+  // Room total perimeter
+  const roomTotalPerim = useMemo(() => {
+    if (!ppm) return 0;
+    return roomZones.reduce((sum, z) =>
+      sum + polygonPerimeterM(z.points, imageW, imageH, ppm), 0);
+  }, [roomZones, imageW, imageH, ppm]);
+
+  /** Export CSV pièces */
+  const exportRoomsCSV = () => {
+    const sep = ";";
+    const headers = ["Pièce", "Type", "Surface (m²)", "Périmètre (m)"];
+    const rows: (string | number)[][] = roomZones.map(z => {
+      const typeDef = roomTypes.find(t => t.id === z.typeId);
+      const area = ppm ? polygonAreaPx(z.points, imageW, imageH) / ppm ** 2 : 0;
+      const perim = ppm ? polygonPerimeterM(z.points, imageW, imageH, ppm) : 0;
+      return [
+        roomZoneLabels[z.id] ?? "",
+        typeDef?.name ?? z.typeId,
+        ppm ? area.toFixed(2) : "",
+        ppm ? perim.toFixed(2) : "",
+      ];
+    });
+    // Emprise line
+    if (empriseZones.length > 0) {
+      for (const ez of empriseZones) {
+        const area = ppm ? polygonAreaPx(ez.points, imageW, imageH) / ppm ** 2 : 0;
+        const perim = ppm ? polygonPerimeterM(ez.points, imageW, imageH, ppm) : 0;
+        rows.push([d("sv_emprise"), d("sv_emprise"), ppm ? area.toFixed(2) : "", ppm ? perim.toFixed(2) : ""]);
+      }
+    }
+    // Total line
+    rows.push([]);
+    rows.push(["TOTAL", "", ppm ? (habArea + empriseArea).toFixed(2) : "", ppm ? roomTotalPerim.toFixed(2) : ""]);
+
+    const lines = [headers.join(sep), ...rows.map(r => r.join(sep))];
+    const csv = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `floorscan_rooms_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Should we show tabs? ──────────────────────────────────────────────────
+  const hasTabs = onPanelModeChange != null && roomTypes.length > 0;
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
+      {/* ── Tab switcher ── */}
+      {hasTabs && (
+        <div className="flex rounded-xl border border-white/10 overflow-hidden">
+          <button
+            onClick={() => onPanelModeChange!("metre")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
+              panelMode === "metre"
+                ? "bg-accent/20 text-accent border-r border-white/10"
+                : "text-slate-500 hover:text-slate-300 border-r border-white/10"
+            }`}
+          >
+            <Ruler className="w-3.5 h-3.5" /> {d("sv_tab_metre")}
+          </button>
+          <button
+            onClick={() => onPanelModeChange!("rooms")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
+              panelMode === "rooms"
+                ? "bg-accent/20 text-accent"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            <Home className="w-3.5 h-3.5" /> {d("sv_tab_rooms")}
+          </button>
+        </div>
+      )}
+
+      {/* ── METRE MODE ── */}
+      {panelMode === "metre" && (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
         <div className="flex items-center gap-1">
           {zones.length > 0 && (
             <button
@@ -352,6 +488,150 @@ export default function SurfacePanel({
             </button>
           )}
         </div>
+      )}
+        </>
+      )}
+
+      {/* ── ROOMS MODE ── */}
+      {panelMode === "rooms" && (
+        <>
+          {/* Emprise au sol section */}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">
+              {d("sv_emprise")}
+            </h3>
+            <button
+              onClick={() => onActiveTypeChange(EMPRISE_TYPE.id)}
+              className={`rounded-xl border px-3 py-2.5 flex items-center gap-2.5 transition-all ${
+                activeTypeId === EMPRISE_TYPE.id
+                  ? "border-blue-400/40 bg-blue-500/10"
+                  : "border-white/5 glass hover:border-white/20"
+              }`}
+            >
+              <span className="w-4 h-4 rounded-full ring-1 ring-white/20 shrink-0"
+                style={{ background: EMPRISE_TYPE.color }} />
+              <span className={`text-sm font-medium flex-1 text-left ${
+                activeTypeId === EMPRISE_TYPE.id ? "text-white" : "text-slate-300"
+              }`}>
+                {d("sv_emprise")}
+              </span>
+              {empriseZones.length > 0 && ppm ? (
+                <span className="text-xs text-slate-400 font-mono">
+                  {empriseArea.toFixed(2)} m²
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-600 italic">
+                  {d("sv_emprise_hint")}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Room type selector */}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">
+              {d("sv_tab_rooms")}
+            </h3>
+            <div className="grid grid-cols-2 gap-1.5">
+              {roomTypes.filter(t => !isEmpriseTypeId(t.id)).map(rt => {
+                const isActive = activeTypeId === rt.id;
+                return (
+                  <button key={rt.id}
+                    onClick={() => onActiveTypeChange(rt.id)}
+                    className={`rounded-lg border px-2 py-1.5 flex items-center gap-1.5 text-left transition-all ${
+                      isActive
+                        ? "border-accent/40 bg-accent/10"
+                        : "border-white/5 glass hover:border-white/20"
+                    }`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: rt.color }} />
+                    <span className={`text-[11px] font-medium truncate ${
+                      isActive ? "text-white" : "text-slate-400"
+                    }`}>
+                      {rt.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Room zones list */}
+          {roomZones.length > 0 && (
+            <div className="flex flex-col gap-1.5 mt-1">
+              {roomZones.map(z => {
+                const typeDef = roomTypes.find(t => t.id === z.typeId);
+                const area = ppm
+                  ? polygonAreaPx(z.points, imageW, imageH) / ppm ** 2
+                  : 0;
+                const perim = ppm
+                  ? polygonPerimeterM(z.points, imageW, imageH, ppm)
+                  : 0;
+                return (
+                  <div key={z.id}
+                    className="glass border border-white/5 rounded-xl px-3 py-2 flex items-center gap-2"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: typeDef?.color ?? "#6B7280" }} />
+                    <span className="text-sm text-slate-300 flex-1 truncate">
+                      {roomZoneLabels[z.id] ?? typeDef?.name ?? z.typeId}
+                    </span>
+                    {ppm ? (
+                      <span className="text-xs text-slate-400 font-mono whitespace-nowrap">
+                        {area.toFixed(2)} m² · P {perim.toFixed(1)} m
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-600">—</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* No rooms message */}
+          {roomZones.length === 0 && empriseZones.length === 0 && (
+            <p className="text-xs text-slate-600 text-center py-4">
+              {d("sv_no_room")}
+            </p>
+          )}
+
+          {/* Room totals */}
+          {(roomZones.length > 0 || empriseZones.length > 0) && (
+            <div className="mt-2 pt-3 border-t border-white/5 flex flex-col gap-1">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500">{d("sv_room_count")}</span>
+                <span className="font-mono text-sm text-white font-600">{roomZones.length}</span>
+              </div>
+              {ppm && habArea > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">{d("sv_hab_area")}</span>
+                  <span className="font-mono text-sm text-white font-600">{habArea.toFixed(2)} m²</span>
+                </div>
+              )}
+              {ppm && roomTotalPerim > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">{d("sv_room_perim")}</span>
+                  <span className="font-mono text-xs text-slate-400">{roomTotalPerim.toFixed(1)} m</span>
+                </div>
+              )}
+              {ppm && empriseArea > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-500">{d("sv_emprise_area")}</span>
+                  <span className="font-mono text-sm text-blue-400 font-600">{empriseArea.toFixed(2)} m²</span>
+                </div>
+              )}
+              {/* Room CSV export */}
+              <button
+                onClick={exportRoomsCSV}
+                className="mt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 glass border border-white/5 rounded-lg py-1.5 transition-colors"
+              >
+                <Download className="w-3 h-3" /> {d("sv_rooms_csv")}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
