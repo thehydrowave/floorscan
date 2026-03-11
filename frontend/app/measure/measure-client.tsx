@@ -252,6 +252,17 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     }
   }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step]);
 
+  // ── Warn before leaving with unsaved work ─────────────────────────────────
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (imageB64 && zones.length > 0) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [imageB64, zones]);
+
   // ── Nouveau projet ─────────────────────────────────────────────────────────
   const newProject = () => {
     if (!confirm("Effacer le projet en cours et repartir de zéro ?")) return;

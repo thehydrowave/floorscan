@@ -108,6 +108,17 @@ export default function DemoClient() {
     }
   }, [step, demoMode, config, sessionId, ppm, analysisResult]);
 
+  // Warn user before leaving with unsaved work
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (demoMode && (sessionId || analysisResult)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [demoMode, sessionId, analysisResult]);
+
   const handleRestoreSession = () => {
     if (!restoredSession) return;
     setConfig(restoredSession.config);
@@ -249,13 +260,13 @@ export default function DemoClient() {
               <div className="flex items-center gap-2.5 text-sm">
                 <History className="w-4 h-4 text-accent shrink-0" />
                 <span className="text-slate-300">
-                  Session précédente trouvée{" "}
+                  {d("restore_found")}{" "}
                   <span className="text-slate-500 text-xs">
-                    ({new Date(restoredSession.savedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })})
+                    ({new Date(restoredSession.savedAt).toLocaleTimeString(lang === "fr" ? "fr-FR" : lang === "de" ? "de-DE" : lang === "es" ? "es-ES" : lang === "it" ? "it-IT" : "en-GB", { hour: "2-digit", minute: "2-digit" })})
                   </span>
                   {restoredSession.analysisResult && (
                     <span className="ml-1 text-slate-400">
-                      · {restoredSession.analysisResult.doors_count} portes, {restoredSession.analysisResult.windows_count} fenêtres
+                      · {restoredSession.analysisResult.doors_count} {d("restore_doors")}, {restoredSession.analysisResult.windows_count} {d("restore_windows")}
                     </span>
                   )}
                 </span>
@@ -265,7 +276,7 @@ export default function DemoClient() {
                   onClick={handleRestoreSession}
                   className="px-3 py-1.5 bg-accent hover:bg-accent/80 text-white rounded-lg text-xs font-600 transition-colors"
                 >
-                  Reprendre
+                  {d("restore_resume")}
                 </button>
                 <button
                   onClick={() => { setShowRestoreBanner(false); clearSession(); }}

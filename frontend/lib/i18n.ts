@@ -419,6 +419,34 @@ export const DEMO_T = {
   up_backend_hint:{ fr:"Le backend Python doit être actif sur localhost:8000", en:"The Python backend must be running on localhost:8000", es:"El backend Python debe estar activo en localhost:8000", de:"Python-Backend muss auf localhost:8000 laufen.", it:"Il backend Python deve essere attivo su localhost:8000." },
   up_pdf_loaded:  { fr:"PDF chargé",                 en:"PDF loaded",         es:"PDF cargado",             de:"PDF geladen",             it:"PDF caricato"         },
   up_err_upload:  { fr:"Erreur upload",              en:"Upload error",       es:"Error de carga",          de:"Upload-Fehler",           it:"Errore upload"        },
+  up_img_loaded:  { fr:"Image chargée",              en:"Image loaded",       es:"Imagen cargada",          de:"Bild geladen",            it:"Immagine caricata"    },
+  up_formats:     { fr:"PDF, JPG, PNG",              en:"PDF, JPG, PNG",      es:"PDF, JPG, PNG",           de:"PDF, JPG, PNG",           it:"PDF, JPG, PNG"        },
+  up_bad_format:  { fr:"Format non supporté. Importez un PDF, JPG ou PNG.", en:"Unsupported format. Import a PDF, JPG or PNG.", es:"Formato no soportado. Importe PDF, JPG o PNG.", de:"Format nicht unterstützt. PDF, JPG oder PNG importieren.", it:"Formato non supportato. Importare PDF, JPG o PNG." },
+
+  // ── Restore session banner ────────────────────────────────────────────────
+  restore_found:  { fr:"Session précédente trouvée",  en:"Previous session found", es:"Sesión anterior encontrada", de:"Vorherige Sitzung gefunden", it:"Sessione precedente trovata" },
+  restore_resume: { fr:"Reprendre",                   en:"Resume",             es:"Reanudar",                de:"Fortsetzen",              it:"Riprendi"             },
+  restore_doors:  { fr:"portes",                      en:"doors",              es:"puertas",                 de:"Türen",                   it:"porte"                },
+  restore_windows:{ fr:"fenêtres",                    en:"windows",            es:"ventanas",                de:"Fenster",                 it:"finestre"             },
+
+  // ── Rooms recap table ─────────────────────────────────────────────────────
+  recap_title:    { fr:"Récapitulatif des pièces",    en:"Room takeoff",       es:"Resumen de habitaciones", de:"Raumübersicht",           it:"Riepilogo stanze"     },
+  recap_type:     { fr:"Type",                        en:"Type",               es:"Tipo",                    de:"Typ",                     it:"Tipo"                 },
+  recap_area:     { fr:"Surface",                     en:"Area",               es:"Superficie",              de:"Fläche",                  it:"Superficie"           },
+  recap_perim:    { fr:"Périmètre",                   en:"Perimeter",          es:"Perímetro",               de:"Umfang",                  it:"Perimetro"            },
+  recap_count:    { fr:"Qté",                         en:"Qty",                es:"Cant.",                   de:"Anz.",                    it:"Q.tà"                 },
+  recap_total:    { fr:"Total",                       en:"Total",              es:"Total",                   de:"Gesamt",                  it:"Totale"               },
+  recap_total_hab:{ fr:"Surface habitable totale",    en:"Total living area",  es:"Superficie habitable total", de:"Gesamtwohnfläche",     it:"Superficie abitabile totale" },
+  recap_csv:      { fr:"CSV Pièces",                  en:"Rooms CSV",          es:"CSV Habitaciones",        de:"Räume CSV",               it:"CSV Stanze"           },
+  recap_no_rooms: { fr:"Aucune pièce détectée",       en:"No rooms detected",  es:"Sin habitaciones",        de:"Keine Räume erkannt",     it:"Nessuna stanza"       },
+
+  // ── Print / misc ──────────────────────────────────────────────────────────
+  btn_print:      { fr:"Imprimer",                    en:"Print",              es:"Imprimir",                de:"Drucken",                 it:"Stampa"               },
+  btn_add_page:   { fr:"Ajouter une page",            en:"Add a page",         es:"Añadir página",           de:"Seite hinzufügen",        it:"Aggiungi pagina"      },
+  hint_undo:      { fr:"Annuler (Ctrl+Z)",            en:"Undo (Ctrl+Z)",      es:"Deshacer (Ctrl+Z)",       de:"Rückgängig (Strg+Z)",     it:"Annulla (Ctrl+Z)"     },
+  hint_redo:      { fr:"Rétablir (Ctrl+Y)",           en:"Redo (Ctrl+Y)",      es:"Rehacer (Ctrl+Y)",        de:"Wiederholen (Strg+Y)",    it:"Ripristina (Ctrl+Y)"  },
+  hint_vertex:    { fr:"Clic droit pour supprimer un sommet", en:"Right-click to delete a vertex", es:"Clic derecho para eliminar vértice", de:"Rechtsklick zum Löschen eines Eckpunkts", it:"Clic destro per eliminare un vertice" },
+  hint_shift:     { fr:"Shift+clic pour fusionner",   en:"Shift+click to merge", es:"Shift+clic para fusionar", de:"Shift+Klick zum Zusammenführen", it:"Shift+clic per unire" },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

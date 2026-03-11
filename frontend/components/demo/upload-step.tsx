@@ -97,9 +97,13 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }
     setError(null);
     setAwaitingPage(false);
 
+    const ext = f.name.toLowerCase().split('.').pop() ?? '';
+    const isImage = ['jpg', 'jpeg', 'png'].includes(ext);
+    const isPdf = ext === 'pdf';
+
     // Type validation
-    if (!f.name.toLowerCase().endsWith(".pdf")) {
-      setError("Format non supporté. Veuillez importer un fichier PDF.");
+    if (!isPdf && !isImage) {
+      setError(d("up_bad_format"));
       return;
     }
 
@@ -131,8 +135,34 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }
       return;
     }
 
-    await uploadPage(b64, f.name, 0);
-  }, [uploadPage]);
+    if (isImage) {
+      // Direct image upload — no multi-page
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await fetch(`${BACKEND}/upload-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_base64: b64, filename: f.name }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail ?? `Erreur serveur ${r.status}`);
+        }
+        const data = await r.json();
+        toast({ title: d("up_img_loaded"), description: `${data.width}×${data.height} px`, variant: "success" });
+        onUploaded(data.session_id, data.image_b64);
+      } catch (e: any) {
+        const msg = e.message ?? "Erreur inconnue";
+        setError(msg);
+        toast({ title: d("up_err_upload"), description: msg, variant: "error" });
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      await uploadPage(b64, f.name, 0);
+    }
+  }, [uploadPage, onUploaded, lang, d]);
 
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
@@ -227,7 +257,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }
                 dragging && "border-accent/60 bg-accent/10"
               )}
             >
-              <input id="file-input-demo" type="file" accept=".pdf" className="hidden"
+              <input id="file-input-demo" type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ""; }} />
 
               {loading ? (
@@ -264,7 +294,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }
                     <p className="text-slate-500 text-sm">{d("up_click")}</p>
                   </div>
                   <div className="flex gap-2">
-                    <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">{d("up_pdf_only")}</span>
+                    <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">{d("up_formats")}</span>
                     <span className="px-3 py-1 glass rounded-md border border-white/5 text-xs text-slate-600">Max {MAX_SIZE_MB} Mo</span>
                   </div>
                 </div>

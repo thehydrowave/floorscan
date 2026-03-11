@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2 } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -24,6 +24,16 @@ function fmt(v: number | undefined, nd = 1, suffix = "") {
   if (v === undefined || v === null) return "—";
   return v.toFixed(nd) + suffix;
 }
+
+const ROOM_COLORS: Record<string, string> = {
+  "bedroom": "#818cf8", "living room": "#34d399", "living": "#34d399",
+  "kitchen": "#fb923c", "bathroom": "#22d3ee", "hallway": "#94a3b8",
+  "corridor": "#94a3b8", "office": "#a78bfa", "study": "#a78bfa",
+  "wc": "#fbbf24", "toilet": "#fbbf24", "dining room": "#f472b6",
+  "storage": "#78716c", "closet": "#78716c", "garage": "#6b7280",
+  "balcony": "#86efac", "laundry": "#67e8f9",
+};
+function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
 
 export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsStepProps) {
   const { lang } = useLang();
@@ -97,6 +107,15 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
       ...(result.openings?.map(o => `${o.class === "door" ? "Porte" : "Fenêtre"};${o.length_m?.toFixed(2) ?? "—"}`) ?? []),
     ];
 
+    if (result.rooms && result.rooms.length > 0) {
+      lines.push("");
+      lines.push("=== PIÈCES DÉTECTÉES ===");
+      lines.push("Type;Pièce;Surface (m²);Périmètre (m)");
+      result.rooms.forEach(r => {
+        lines.push(`${r.type};${r.label_fr};${r.area_m2?.toFixed(2) ?? "—"};${r.perimeter_m?.toFixed(2) ?? "—"}`);
+      });
+    }
+
     const csv = "\uFEFF" + lines.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url  = URL.createObjectURL(blob);
@@ -108,7 +127,43 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
     toast({ title: "CSV exporté ✓", variant: "success" });
   };
 
+  /** Export CSV des pièces uniquement */
+  const handleExportRoomsCSV = () => {
+    if (!result.rooms || result.rooms.length === 0) return;
+    const lines = [
+      "FloorScan — Récapitulatif des pièces",
+      `Date;${new Date().toLocaleDateString("fr-FR")}`,
+      "",
+      "Type;Pièce;Surface (m²);Périmètre (m)",
+      ...result.rooms.map(r =>
+        `${r.type};${r.label_fr};${r.area_m2?.toFixed(2) ?? "—"};${r.perimeter_m?.toFixed(2) ?? "—"}`
+      ),
+      "",
+      `Total;;${result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2)};${result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0).toFixed(2)}`,
+    ];
+    const csv = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV exporté ✓", variant: "success" });
+  };
+
   const sf = result.surfaces ?? {};
+
+  // Group rooms by type for recap table
+  const roomsByType = (result.rooms ?? []).reduce<Record<string, typeof result.rooms>>((acc, room) => {
+    const key = room.type || "unknown";
+    if (!acc[key]) acc[key] = [];
+    acc[key]!.push(room);
+    return acc;
+  }, {});
+  const totalRooms = (result.rooms ?? []).length;
+  const totalArea = (result.rooms ?? []).reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2);
+  const totalPerim = (result.rooms ?? []).reduce((s, r) => s + (r.perimeter_m ?? 0), 0).toFixed(2);
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -120,6 +175,9 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
         <div className="flex gap-2 flex-wrap">
           <Button onClick={handleExportCSV} variant="outline" title="Exporter CSV">
             <Table2 className="w-4 h-4" /> CSV
+          </Button>
+          <Button onClick={() => window.print()} variant="outline" title={d("btn_print")}>
+            <Printer className="w-4 h-4" /> {d("btn_print")}
           </Button>
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
@@ -164,6 +222,69 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
           ))}
         </div>
       </div>
+
+      {/* Rooms Recap Table */}
+      {result.rooms && result.rooms.length > 0 && (
+        <div className="glass rounded-xl border border-white/10 p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("recap_title")}</p>
+            <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
+              <Table2 className="w-3.5 h-3.5" /> {d("recap_csv")}
+            </button>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left text-xs text-slate-500 font-600 pb-2 pr-4">{d("recap_type")}</th>
+                  <th className="text-right text-xs text-slate-500 font-600 pb-2 px-2">{d("recap_count")}</th>
+                  <th className="text-right text-xs text-slate-500 font-600 pb-2 px-2">{d("recap_area")}</th>
+                  <th className="text-right text-xs text-slate-500 font-600 pb-2 pl-2">{d("recap_perim")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(roomsByType).map(([type, rooms]) => {
+                  const groupArea = rooms!.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
+                  const groupPerim = rooms!.reduce((s, r) => s + (r.perimeter_m ?? 0), 0);
+                  const color = getRoomColor(type);
+                  return (
+                    <tr key={type} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                          <span className="text-slate-300 capitalize">{type}</span>
+                        </div>
+                        {rooms!.length > 1 && (
+                          <div className="ml-5 mt-1 space-y-0.5">
+                            {rooms!.map((r, i) => (
+                              <div key={r.id ?? i} className="text-xs text-slate-500 flex justify-between">
+                                <span>{r.label_fr}</span>
+                                <span className="font-mono">{r.area_m2?.toFixed(1) ?? "—"} m²</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-right py-2 px-2 text-slate-300 align-top">{rooms!.length}</td>
+                      <td className="text-right py-2 px-2 font-mono align-top" style={{ color }}>{groupArea.toFixed(2)} m²</td>
+                      <td className="text-right py-2 pl-2 font-mono text-slate-400 align-top">{groupPerim.toFixed(2)} m</td>
+                    </tr>
+                  );
+                })}
+                {/* Total row */}
+                <tr className="border-t border-white/10 font-600">
+                  <td className="pt-3 text-white">{d("recap_total")}</td>
+                  <td className="text-right pt-3 text-white">{totalRooms}</td>
+                  <td className="text-right pt-3 font-mono text-accent">{totalArea} m²</td>
+                  <td className="text-right pt-3 font-mono text-slate-300">{totalPerim} m</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Overlays */}
       <div className="glass rounded-xl border border-white/10 p-5">

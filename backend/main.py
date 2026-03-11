@@ -97,6 +97,42 @@ async def upload_pdf(req: UploadPdfRequest):
 
 
 # ============================================================
+# ROUTE 2b — UPLOAD IMAGE (PNG/JPG) → session
+# ============================================================
+class UploadImageRequest(BaseModel):
+    image_base64: str
+    filename: str = "plan.png"
+
+@app.post("/upload-image")
+async def upload_image(req: UploadImageRequest):
+    try:
+        img_bytes = base64.b64decode(req.image_base64)
+    except Exception:
+        raise HTTPException(400, "Base64 invalide")
+    try:
+        from PIL import Image as PILImage
+        import io as _io
+        pil_img = PILImage.open(_io.BytesIO(img_bytes)).convert("RGB")
+        img_rgb = np.array(pil_img)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur lecture image : {e}")
+
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {"img_rgb": img_rgb}
+
+    H, W = img_rgb.shape[:2]
+    b64 = pipeline._np_to_b64(img_rgb)
+
+    return {
+        "session_id": session_id,
+        "width": W, "height": H,
+        "image_b64": b64,
+        "page_count": 1,
+        "page": 0,
+    }
+
+
+# ============================================================
 # ROUTE 3 — CROP
 # ============================================================
 class CropRequest(BaseModel):

@@ -782,6 +782,26 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     } finally { setExportingPdf(false); }
   };
 
+  // ── Export CSV (mode mesure, editor) ──────────────────────────────────────
+  const exportMeasureCsv = () => {
+    const ppmVal = result.pixels_per_meter ?? null;
+    const totals = imageNatural.w > 0 ? aggregateByType(zones, imageNatural.w, imageNatural.h, ppmVal) : {};
+    const rows: string[][] = [[d("me_step_survey"), ppmVal ? "Surface (m\u00B2)" : "Surface (px\u00B2)"]];
+    surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0).forEach(t => {
+      rows.push([t.name, ppmVal ? (totals[t.id]).toFixed(4) : String(Math.round(totals[t.id]))]);
+    });
+    const totalAll = Object.values(totals).reduce((a, b) => a + b, 0);
+    rows.push(["TOTAL", ppmVal ? totalAll.toFixed(4) : String(Math.round(totalAll))]);
+    const csv = "\uFEFF" + rows.map(r => r.join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `floorscan_metre_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast({ title: "CSV export\u00E9 \u2713", variant: "success" });
+  };
+
   // ── Export PDF Devis (mode mesure, client-side jsPDF) ──────────────────────
   const exportMeasurePdf = async () => {
     setExportingMeasurePdf(true);
@@ -938,7 +958,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
           </Button>
           {onAddPage && (
             <Button variant="outline" onClick={onAddPage}>
-              <Layers className="w-4 h-4" /> Ajouter une page
+              <Layers className="w-4 h-4" /> {d("btn_add_page")}
             </Button>
           )}
           <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
@@ -1672,7 +1692,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                               >
                                 <Scissors className="w-2.5 h-2.5" /> {d("ed_split")}
                               </button>
-                              <span className="text-[9px] text-slate-600 ml-auto">{d("ed_shift_merge")}</span>
+                              <span className="text-[9px] text-slate-600 ml-auto" title={d("hint_vertex")}>{d("ed_shift_merge")} · {d("hint_vertex")}</span>
                             </div>
                           </div>
                         )}
@@ -1856,17 +1876,22 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               <div className="ml-auto flex items-center gap-1.5">
                 <button onClick={undoHistory} disabled={historyLen === 0}
                   className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title="Annuler (Ctrl+Z)">
+                  title={d("hint_undo")}>
                   <Undo2 className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={redoHistory} disabled={futureLen === 0}
                   className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title="Rétablir (Ctrl+Y)">
+                  title={d("hint_redo")}>
                   <Redo2 className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={exportMeasureCsv} disabled={zones.length === 0}
+                  className="flex items-center gap-1.5 glass border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
+                  title="CSV">
+                  <FileDown className="w-3.5 h-3.5" /> CSV
                 </button>
                 <button onClick={exportMeasurePdf} disabled={exportingMeasurePdf || zones.length === 0}
                   className="flex items-center gap-1.5 glass border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
-                  title="Exporter devis PDF">
+                  title={d("ed_quote_pdf")}>
                   {exportingMeasurePdf
                     ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     : <FileDown className="w-3.5 h-3.5" />}
