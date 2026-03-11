@@ -12,7 +12,7 @@ import fitz  # PyMuPDF
 # CONFIG (peut être surchargée depuis les paramètres API)
 # ============================================================
 DEFAULT_CONFIG = {
-    "api_key": "Kh56ukn5foPflRVreiNOM",
+    "api_key": "Kh56un5foPflRVreiNOM",
     "model_id": "cubicasa5k-2-qpmsa-1gd2e/1",
     "assumed_door_width_m": 0.90,
     "wall_thickness_m": 0.20,
