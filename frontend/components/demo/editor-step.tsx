@@ -20,19 +20,19 @@ type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" 
 type Mode = "editor" | "measure";
 
 // ── Constantes pièces ──────────────────────────────────────────────────────────
-const ROOM_TYPES: { type: string; label_fr: string }[] = [
-  { type: "bedroom",      label_fr: "Chambre" },
-  { type: "living room",  label_fr: "Séjour" },
-  { type: "kitchen",      label_fr: "Cuisine" },
-  { type: "bathroom",     label_fr: "Salle de bain" },
-  { type: "hallway",      label_fr: "Couloir" },
-  { type: "office",       label_fr: "Bureau" },
-  { type: "wc",           label_fr: "WC" },
-  { type: "dining room",  label_fr: "Salle à manger" },
-  { type: "storage",      label_fr: "Rangement" },
-  { type: "garage",       label_fr: "Garage" },
-  { type: "balcony",      label_fr: "Balcon" },
-  { type: "laundry",      label_fr: "Buanderie" },
+const ROOM_TYPES: { type: string; i18nKey: DTKey }[] = [
+  { type: "bedroom",      i18nKey: "rt_bedroom" },
+  { type: "living room",  i18nKey: "rt_living" },
+  { type: "kitchen",      i18nKey: "rt_kitchen" },
+  { type: "bathroom",     i18nKey: "rt_bathroom" },
+  { type: "hallway",      i18nKey: "rt_hallway" },
+  { type: "office",       i18nKey: "rt_office" },
+  { type: "wc",           i18nKey: "rt_wc" },
+  { type: "dining room",  i18nKey: "rt_dining" },
+  { type: "storage",      i18nKey: "rt_storage" },
+  { type: "garage",       i18nKey: "rt_garage" },
+  { type: "balcony",      i18nKey: "rt_balcony" },
+  { type: "laundry",      i18nKey: "rt_laundry" },
 ];
 
 const ROOM_COLORS: Record<string, string> = {
@@ -437,7 +437,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, room_type: activeRoomType, ...params }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur édition pièce");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err_edit"));
       const data = await r.json();
       setResult(prev => ({
         ...prev,
@@ -451,12 +451,12 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         setSelectedRoomId(null);
         setEditingRoomId(null);
       }
-      toast({ title: "Pièce mise à jour ✓", variant: "success" });
+      toast({ title: d("ed_room_updated"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("ed_session_exp"), description: d("ed_session_msg"), variant: "error" });
         onSessionExpired?.();
-      } else { setError(e.message); toast({ title: "Erreur", description: e.message, variant: "error" }); }
+      } else { setError(e.message); toast({ title: d("ed_err"), description: e.message, variant: "error" }); }
     } finally { setLoading(false); }
   };
   sendEditRoomRef.current = sendEditRoom;
@@ -469,14 +469,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur undo");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
       const data = await r.json();
       setResult(prev => ({ ...prev, mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64, rooms: data.rooms ?? prev.rooms }));
       setRoomHistoryLen(data.history_len ?? 0);
       setRoomFutureLen(data.future_len ?? 0);
-      toast({ title: "Annulé ↩", variant: "success" });
+      toast({ title: d("ed_undone"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur", description: e.message, variant: "error" });
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
     } finally { setLoading(false); }
   };
 
@@ -487,14 +487,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur redo");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
       const data = await r.json();
       setResult(prev => ({ ...prev, mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64, rooms: data.rooms ?? prev.rooms }));
       setRoomHistoryLen(data.history_len ?? 0);
       setRoomFutureLen(data.future_len ?? 0);
-      toast({ title: "Rétabli ↪", variant: "success" });
+      toast({ title: d("ed_redone"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur", description: e.message, variant: "error" });
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
     } finally { setLoading(false); }
   };
 
@@ -506,14 +506,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur DXF");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = "floorscan_export.dxf"; a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "DXF exporté ✓", variant: "success" });
+      toast({ title: d("ed_dxf_ok"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur export DXF", description: e.message, variant: "error" });
+      toast({ title: d("ed_dxf_err"), description: e.message, variant: "error" });
     } finally { setExportingDxf(false); }
   };
 
@@ -525,7 +525,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, layer, ...params }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur édition");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err_edit"));
       const data = await r.json();
       setResult(prev => ({
         ...prev,
@@ -541,14 +541,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         rooms: data.rooms ?? prev.rooms,
         walls: data.walls ?? prev.walls,
       }));
-      toast({ title: dt("ed_mask_updated", lang), variant: "success" });
+      toast({ title: d("ed_mask_updated"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("ed_session_exp"), description: d("ed_session_msg"), variant: "error" });
         onSessionExpired?.();
       } else {
         setError(e.message);
-        toast({ title: "Error", description: e.message, variant: "error" });
+        toast({ title: d("ed_err"), description: e.message, variant: "error" });
       }
     } finally { setLoading(false); }
   };
@@ -567,10 +567,10 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         rooms: data.rooms ?? prev.rooms,
         walls: data.walls ?? prev.walls,
       }));
-      toast({ title: "Région segmentée ✓", variant: "success" });
+      toast({ title: d("ed_sam_ok"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("ed_session_exp"), description: d("ed_session_msg"), variant: "error" });
         onSessionExpired?.();
       } else { setError(e.message); }
     } finally { setLoading(false); }
@@ -612,14 +612,14 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         walls: data.walls ?? prev.walls,
       }));
       setSelectedOpeningIdx(null);
-      toast({ title: "Ouverture supprimée ✓", variant: "success" });
+      toast({ title: d("ed_opening_del"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("ed_session_exp"), description: d("ed_session_msg"), variant: "error" });
         onSessionExpired?.();
       } else {
         setError(e.message);
-        toast({ title: "Erreur suppression", description: e.message, variant: "error" });
+        toast({ title: d("ed_opening_err"), description: e.message, variant: "error" });
       }
     } finally { setLoading(false); }
   }, [result.openings, sessionId, onSessionExpired]);
@@ -631,13 +631,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, room_id: roomId, new_type: newType, new_label_fr: newLabelFr }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur");
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
       const data = await r.json();
       setResult(prev => ({ ...prev, rooms: data.rooms }));
       setEditingRoomId(null);
-      toast({ title: "Type de pièce mis à jour", variant: "success" });
+      toast({ title: d("ed_room_type_ok"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur", description: e.message, variant: "error" });
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
     }
   };
 
@@ -747,7 +747,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   };
 
   const finishPoly = async () => {
-    if (pts.current.length < 3) { toast({ title: "Minimum 3 points", variant: "error" }); return; }
+    if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
     await sendEdit({ action: tool, points: pts.current });
     pts.current = [];
     canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -870,9 +870,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       doc.text("Généré par FloorScan · floorscan.app", W/2, 292, {align:"center"});
 
       doc.save(`floorscan_metre_${new Date().toISOString().slice(0,10)}.pdf`);
-      toast({ title: "Devis PDF exporté ✓", variant: "success" });
+      toast({ title: d("ed_export_ok"), variant: "success" });
     } catch (e: any) {
-      toast({ title: "Erreur export PDF", description: e.message, variant: "error" });
+      toast({ title: d("ed_export_err"), description: e.message, variant: "error" });
     } finally {
       setExportingMeasurePdf(false);
     }
@@ -922,8 +922,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
-          <Button onClick={handleExportDxf} disabled={exportingDxf || !ppm} variant="outline" title={!ppm ? "Échelle requise pour l'export DXF" : "Exporter en DXF (AutoCAD)"}>
-            {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> Export…</> : <><FileDown className="w-4 h-4" /> DXF</>}
+          <Button onClick={handleExportDxf} disabled={exportingDxf || !ppm} variant="outline" title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
+            {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("ed_exporting")}</> : <><FileDown className="w-4 h-4" /> DXF</>}
           </Button>
           <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
         </div>
@@ -942,13 +942,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                     layer === l
                       ? l === "rooms" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-accent/40 bg-accent/10 text-accent"
                       : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : l === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ Pièces`}
+                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : l === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ ${d("ed_rooms")}`}
                 </button>
               ))}
               <div className="flex-1" />
               <button
                 onClick={() => setShowOpeningOverlay(v => !v)}
-                title={showOpeningOverlay ? "Masquer les numéros" : "Afficher les numéros"}
+                title={showOpeningOverlay ? d("ed_hide_nums") : d("ed_show_nums")}
                 className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                   showOpeningOverlay ? "border-white/20 bg-white/5 text-white" : "border-white/10 text-slate-500 hover:text-slate-300")}>
                 {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -956,19 +956,19 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               </button>
               <button
                 onClick={() => setShowWalls(v => !v)}
-                title={showWalls ? "Masquer les murs" : "Afficher les murs"}
+                title={showWalls ? d("ed_hide_walls") : d("ed_show_walls")}
                 className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                   showWalls ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
                 <Layers size={12} className={showWalls ? "" : "opacity-40"} />
-                Murs
+                {d("ed_walls")}
               </button>
               <button
                 onClick={() => setShowRooms(v => !v)}
-                title={showRooms ? "Masquer les pièces" : "Afficher les pièces"}
+                title={showRooms ? d("ed_hide_rooms") : d("ed_show_rooms")}
                 className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                   showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
                 <LayoutGrid size={12} className={showRooms ? "" : "opacity-40"} />
-                Pièces
+                {d("ed_rooms")}
               </button>
             </div>
 
@@ -979,12 +979,12 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 <>
                   <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
                   {([
-                    { id: "add_rect", label: "+ Rectangle" },
-                    { id: "erase_rect", label: "− Rectangle", erase: true },
-                    { id: "add_poly", label: "+ Polygone" },
-                    { id: "erase_poly", label: "− Polygone", erase: true },
-                    { id: "sam", label: "🪄 SAM auto", special: true },
-                    { id: "select", label: "Sélectionner", select: true },
+                    { id: "add_rect", label: d("ed_add_rect") },
+                    { id: "erase_rect", label: d("ed_erase_rect"), erase: true },
+                    { id: "add_poly", label: d("ed_add_poly") },
+                    { id: "erase_poly", label: d("ed_erase_poly"), erase: true },
+                    { id: "sam", label: d("ed_sam_auto"), special: true },
+                    { id: "select", label: d("ed_select"), select: true },
                   ] as any[]).map(({ id, label, erase, special, select: sel }) => (
                     <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; if (id !== "select") setSelectedOpeningIdx(null); }}
                       className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
@@ -1014,14 +1014,34 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   <button onClick={() => { setTool("select"); pts.current = []; }}
                     className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                       tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-teal-500/20 text-teal-500/60 hover:text-teal-400")}>
-                    <MousePointer2 className="w-3 h-3" /> Sélectionner
+                    <MousePointer2 className="w-3 h-3" /> {d("ed_select")}
                   </button>
+                  {/* Room creation / erase tools */}
+                  {([
+                    { id: "add_rect", label: d("ed_add_rect") },
+                    { id: "erase_rect", label: d("ed_erase_rect"), erase: true },
+                    { id: "add_poly", label: d("ed_add_poly") },
+                    { id: "erase_poly", label: d("ed_erase_poly"), erase: true },
+                  ] as any[]).map(({ id, label, erase }) => (
+                    <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; }}
+                      className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                        tool === id
+                          ? erase ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-accent/40 bg-accent/10 text-accent"
+                          : erase ? "border-red-500/20 text-red-500/60 hover:text-red-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                      {label}
+                    </button>
+                  ))}
+                  {(tool === "add_poly" || tool === "erase_poly") && (
+                    <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
+                      {d("ed_finish_poly")}
+                    </button>
+                  )}
                   <div className="w-px bg-white/10 mx-1 self-stretch" />
-                  <span className="text-xs text-slate-500 self-center font-mono mr-1">Type:</span>
+                  <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_type")}:</span>
                   <div className="flex gap-1 flex-wrap">
                     {ROOM_TYPES.slice(0, 8).map(rt => (
                       <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
-                        title={rt.label_fr}
+                        title={d(rt.i18nKey)}
                         className={cn("w-6 h-6 rounded-full border-2 transition-all shrink-0",
                           activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-70 hover:opacity-100")}
                         style={{ background: getRoomColor(rt.type) }}
@@ -1029,27 +1049,27 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                     ))}
                   </div>
                   <span className="text-xs self-center px-2 py-1 rounded-lg bg-white/5 text-slate-300">
-                    {ROOM_TYPES.find(rt => rt.type === activeRoomType)?.label_fr}
+                    {ROOM_TYPES.find(rt => rt.type === activeRoomType)?.i18nKey ? d(ROOM_TYPES.find(rt => rt.type === activeRoomType)!.i18nKey) : ""}
                   </span>
                   {selectedRoomId !== null && (
                     <>
                       <div className="w-px bg-white/10 mx-1 self-stretch" />
-                      <button onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
+                      <button onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                         className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
                           tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/20 text-red-500/60 hover:text-red-400")}>
-                        <Scissors className="w-3 h-3" /> Découper
+                        <Scissors className="w-3 h-3" /> {d("ed_split")}
                       </button>
                     </>
                   )}
                   <div className="w-px bg-white/10 mx-1 self-stretch" />
                   <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
                     className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title="Annuler (Ctrl+Z)">
+                    title={d("ed_undo_tt")}>
                     <Undo2 className="w-3.5 h-3.5" />
                   </button>
                   <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
                     className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title="Rétablir (Ctrl+Y)">
+                    title={d("ed_redo_tt")}>
                     <Redo2 className="w-3.5 h-3.5" />
                   </button>
                 </>
@@ -1116,15 +1136,17 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                         ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
                         : null);
 
-                    // Label : nom + surface + périmètre
+                    // Label 2-line : room name (large) + measurements (small)
                     const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m²` : "";
                     const perimStr = perimM != null ? `P ${perimM.toFixed(1)} m` : "";
-                    const label = areaStr && perimStr
-                      ? `${room.label_fr}  ${areaStr} · ${perimStr}`
-                      : areaStr
-                        ? `${room.label_fr}  ${areaStr}`
-                        : room.label_fr;
-                    const pw = Math.max(60, label.length * 5.2);
+                    const measLine = areaStr && perimStr ? `${areaStr} · ${perimStr}` : areaStr;
+                    const nameFontSize = isSelected ? fs + 2 : fs + 1;
+                    const measFontSize = Math.max(6, fs - 2);
+                    const hasMeas = measLine.length > 0;
+                    const nameWidth = Math.max(50, room.label_fr.length * (nameFontSize * 0.62));
+                    const measWidth = hasMeas ? Math.max(40, measLine.length * (measFontSize * 0.6)) : 0;
+                    const pw = Math.max(nameWidth, measWidth) + 12;
+                    const ph = hasMeas ? nameFontSize + measFontSize + 8 : nameFontSize + 6;
 
                     return (
                       <g key={room.id} opacity={isSelected ? 1 : 0.85}>
@@ -1186,24 +1208,38 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                             </g>
                           );
                         })}
-                        {/* Label fond + texte */}
+                        {/* Label fond 2 lignes */}
                         <rect
-                          x={rcx - pw / 2} y={rcy - fs * 0.85}
-                          width={pw} height={fs * 1.9} rx={3}
-                          fill={isSelected ? "rgba(10,16,32,0.92)" : "rgba(10,16,32,0.75)"}
+                          x={rcx - pw / 2} y={rcy - ph / 2}
+                          width={pw} height={ph} rx={4}
+                          fill={isSelected ? "rgba(10,16,32,0.92)" : "rgba(10,16,32,0.80)"}
                           stroke={rcolor}
                           strokeWidth={isSelected ? 1.5 : 0.8}
                         />
+                        {/* Room name — large, bold, colored */}
                         <text
-                          x={rcx} y={rcy + fs * 0.4}
+                          x={rcx} y={hasMeas ? rcy - ph / 2 + nameFontSize + 2 : rcy + nameFontSize * 0.35}
                           textAnchor="middle"
                           fill={rcolor}
-                          fontSize={isSelected ? fs + 1 : fs}
-                          fontWeight={isSelected ? "700" : "600"}
+                          fontSize={nameFontSize}
+                          fontWeight="700"
                           fontFamily="system-ui,sans-serif"
                         >
-                          {label}
+                          {room.label_fr}
                         </text>
+                        {/* Measurements — small, dimmer */}
+                        {hasMeas && (
+                          <text
+                            x={rcx} y={rcy - ph / 2 + nameFontSize + measFontSize + 5}
+                            textAnchor="middle"
+                            fill="#94a3b8"
+                            fontSize={measFontSize}
+                            fontWeight="500"
+                            fontFamily="monospace"
+                          >
+                            {measLine}
+                          </text>
+                        )}
                       </g>
                     );
                   })}
@@ -1421,20 +1457,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             {layer === "rooms" && editingRoom && (
               <div className="glass rounded-xl border border-emerald-500/25 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-600 text-emerald-400">Modifier le type</p>
+                  <p className="text-xs font-600 text-emerald-400">{d("ed_change_type")}</p>
                   <button onClick={() => setEditingRoomId(null)} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">✕</button>
                 </div>
                 <p className="text-xs text-slate-400 mb-2">
-                  Actuel : <span style={{ color: getRoomColor(editingRoom.type) }}>{editingRoom.label_fr}</span>
+                  {d("ed_current")} : <span style={{ color: getRoomColor(editingRoom.type) }}>{editingRoom.label_fr}</span>
                 </p>
                 <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
                   {ROOM_TYPES.map(rt => (
                     <button key={rt.type}
-                      onClick={() => updateRoomLabel(editingRoom.id, rt.type, rt.label_fr)}
+                      onClick={() => updateRoomLabel(editingRoom.id, rt.type, d(rt.i18nKey))}
                       className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left",
                         editingRoom.type === rt.type ? "bg-white/10 text-white" : "hover:bg-white/5 text-slate-400 hover:text-slate-200")}>
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(rt.type) }} />
-                      {rt.label_fr}
+                      {d(rt.i18nKey)}
                     </button>
                   ))}
                 </div>
@@ -1444,24 +1480,24 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             {/* Actions pièce : Fusionner / Découper */}
             {selectedRoomId !== null && layer === "rooms" && (
               <div className="glass rounded-xl border border-white/10 p-4">
-                <p className="text-xs font-600 text-slate-400 mb-2">Actions sur la pièce</p>
+                <p className="text-xs font-600 text-slate-400 mb-2">{d("ed_room_actions")}</p>
                 <div className="flex flex-col gap-1.5">
                   <button
                     onClick={() => {
-                      toast({ title: "Mode Fusion", description: "Maintenez Shift et cliquez sur une pièce adjacente pour la fusionner.", variant: "default" });
+                      toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" });
                     }}
                     className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
                   >
-                    <Merge className="w-3 h-3" /> Fusionner (Shift+clic)
+                    <Merge className="w-3 h-3" /> {d("ed_merge")}
                   </button>
                   <button
-                    onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
+                    onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-colors text-xs",
                       tool === "split"
                         ? "border-red-500/40 bg-red-500/10 text-red-400"
                         : "border-red-500/30 text-red-400 hover:bg-red-500/10")}
                   >
-                    <Scissors className="w-3 h-3" /> Découper en 2
+                    <Scissors className="w-3 h-3" /> {d("ed_split2")}
                   </button>
                 </div>
               </div>
@@ -1471,7 +1507,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             {layer === "rooms" && displayRooms.length > 0 && (
               <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-600 text-slate-500">Pièces détectées</p>
+                  <p className="font-600 text-slate-500">{d("ed_rooms_det")}</p>
                   <button onClick={() => setShowRooms(v => !v)} className="text-slate-600 hover:text-slate-400 transition-colors">
                     {showRooms ? <Eye size={13} /> : <EyeOff size={13} />}
                   </button>
@@ -1496,7 +1532,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       <button
                         onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500/70 hover:text-red-400 ml-1"
-                        title="Supprimer cette pièce"
+                        title={d("ed_delete_room")}
                       ><Trash2 size={11} /></button>
                     </div>
                     );
@@ -1514,7 +1550,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   <button
                     onClick={() => setSelectedOpeningIdx(null)}
                     className="text-slate-600 hover:text-slate-400 transition-colors text-[10px]"
-                  >Désélectionner</button>
+                  >{d("ed_deselect")}</button>
                 )}
               </div>
               <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-0.5">
@@ -1576,7 +1612,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               {selectedOpeningIdx !== null && result.openings?.[selectedOpeningIdx] && (
                 <div className="mt-3 pt-3 border-t border-white/5">
                   <p className="mb-2 text-[10px] font-500 text-slate-500 uppercase tracking-wide">
-                    #{selectedOpeningIdx + 1} — Modifier le masque
+                    #{selectedOpeningIdx + 1} — {d("ed_edit_mask")}
                   </p>
                   <div className="flex flex-col gap-1.5">
                     {/* Extend */}
@@ -1585,11 +1621,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                         const o = result.openings![selectedOpeningIdx];
                         setLayer(o.class === "door" ? "door" : "window");
                         setTool("add_rect");
-                        toast({ title: "Mode Étendre actif", description: "Dessinez un rectangle sur la zone à ajouter au masque.", variant: "default" });
+                        toast({ title: d("ed_mode_extend"), description: d("ed_mode_extend_d"), variant: "default" });
                       }}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
                     >
-                      <span className="text-sm">＋</span> Étendre le masque
+                      <span className="text-sm">＋</span> {d("ed_extend_mask")}
                     </button>
                     {/* Reduce */}
                     <button
@@ -1597,11 +1633,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                         const o = result.openings![selectedOpeningIdx];
                         setLayer(o.class === "door" ? "door" : "window");
                         setTool("erase_rect");
-                        toast({ title: "Mode Réduire actif", description: "Dessinez un rectangle sur la zone à retirer du masque.", variant: "default" });
+                        toast({ title: d("ed_mode_reduce"), description: d("ed_mode_reduce_d"), variant: "default" });
                       }}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors text-xs"
                     >
-                      <span className="text-sm">－</span> Réduire le masque
+                      <span className="text-sm">－</span> {d("ed_reduce_mask")}
                     </button>
                     {/* Redraw from scratch */}
                     <button
@@ -1609,11 +1645,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                         const o = result.openings![selectedOpeningIdx];
                         setLayer(o.class === "door" ? "door" : "window");
                         setTool("add_poly");
-                        toast({ title: "Mode Polygone actif", description: "Tracez un nouveau contour précis autour de l'ouverture.", variant: "default" });
+                        toast({ title: d("ed_mode_poly"), description: d("ed_mode_poly_d"), variant: "default" });
                       }}
                       className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
                     >
-                      <PenLine className="w-3 h-3" /> Tracer au polygone
+                      <PenLine className="w-3 h-3" /> {d("ed_trace_poly")}
                     </button>
                   </div>
                 </div>
@@ -1656,7 +1692,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   {exportingMeasurePdf
                     ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     : <FileDown className="w-3.5 h-3.5" />}
-                  {exportingMeasurePdf ? "Génération…" : "Devis PDF"}
+                  {exportingMeasurePdf ? d("ed_gen_pdf") : d("ed_quote_pdf")}
                 </button>
               </div>
             </div>
