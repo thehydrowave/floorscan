@@ -672,7 +672,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: 520, cursor: dragVertex ? "move" : panCursor ? "grabbing" : "crosshair" }}
+        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragVertex ? "move" : panCursor ? "grabbing" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -692,7 +692,7 @@ export default function MeasureCanvas({
             ref={imgRef}
             src={`data:${imageMime};base64,${imageB64}`}
             alt="Plan"
-            style={{ display: "block", maxWidth: 760, maxHeight: 500 }}
+            style={{ display: "block", maxWidth: "90vw", maxHeight: "calc(100vh - 240px)" }}
             draggable={false}
             onLoad={() => {
               const img = imgRef.current;

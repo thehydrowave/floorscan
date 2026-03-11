@@ -11,7 +11,8 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType, polygonPerimeterM } from "@/lib/measure-types";
+import type { WallSegment } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior" | "rooms";
@@ -58,6 +59,70 @@ function getRoomColor(type: string) {
   return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8";
 }
 
+/** Ray-casting point-in-polygon test (normalized coords) */
+function pointInPolygon(x: number, y: number, polygon: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Shoelace formula: polygon area in pixels from normalized coords */
+function polygonAreaNorm(polygon: { x: number; y: number }[], imgW: number, imgH: number): number {
+  let a = 0;
+  for (let j = 0; j < polygon.length; j++) {
+    const k = (j + 1) % polygon.length;
+    a += polygon[j].x * imgW * polygon[k].y * imgH;
+    a -= polygon[k].x * imgW * polygon[j].y * imgH;
+  }
+  return Math.abs(a) / 2;
+}
+
+/** Snap a normalized point to the nearest wall segment if within threshold (screen px) */
+function snapToWalls(
+  normX: number, normY: number,
+  walls: WallSegment[] | undefined,
+  dispW: number, dispH: number,
+  threshold = 10
+): { x: number; y: number; snapped: boolean } {
+  if (!walls || walls.length === 0) return { x: normX, y: normY, snapped: false };
+  let bestDist = Infinity;
+  let bestX = normX, bestY = normY;
+  const px = normX * dispW, py = normY * dispH;
+  for (const w of walls) {
+    const ax = w.x1_norm * dispW, ay = w.y1_norm * dispH;
+    const bx = w.x2_norm * dispW, by = w.y2_norm * dispH;
+    const dx = bx - ax, dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) continue;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    const dist = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestX = cx / dispW;
+      bestY = cy / dispH;
+    }
+  }
+  if (bestDist <= threshold) return { x: bestX, y: bestY, snapped: true };
+  return { x: normX, y: normY, snapped: false };
+}
+
+/** Edge length in meters from two normalized points */
+function edgeLengthM(
+  p1: { x: number; y: number }, p2: { x: number; y: number },
+  natW: number, natH: number, ppm: number
+): number {
+  const dx = (p2.x - p1.x) * natW;
+  const dy = (p2.y - p1.y) * natH;
+  return Math.sqrt(dx * dx + dy * dy) / ppm;
+}
+
 interface EditorStepProps {
   sessionId: string;
   initialResult: AnalysisResult;
@@ -89,6 +154,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
+
+  // Vertex drag editing for room polygons
+  const [dragRoomVertex, setDragRoomVertex] = useState<{ roomId: number; idx: number } | null>(null);
+  const [localRooms, setLocalRooms] = useState<Room[] | null>(null);
+  const [snappedVertex, setSnappedVertex] = useState(false);
+  const dragRoomVertexRef = useRef<{ roomId: number; idx: number } | null>(null);
+  const localRoomsRef = useRef<Room[] | null>(null);
 
   // Taille d'affichage de l'image (pour les SVG overlays)
   const [imgDisplaySize, setImgDisplaySize] = useState({ w: 0, h: 0 });
@@ -181,6 +253,90 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     return () => ro.disconnect();
   }, [currentOverlay, updateImgDisplaySize]);
 
+  // ── Refs for vertex drag window handlers (avoids stale closures) ──
+  const resultRoomsRef = useRef(result.rooms);
+  const resultWallsRef = useRef(result.walls);
+  const imageNaturalRef = useRef(imageNatural);
+  const ppmRef = useRef<number | null>(result.pixels_per_meter ?? null);
+  const imgDisplaySizeRef = useRef(imgDisplaySize);
+  resultRoomsRef.current = result.rooms;
+  resultWallsRef.current = result.walls;
+  imageNaturalRef.current = imageNatural;
+  imgDisplaySizeRef.current = imgDisplaySize;
+
+  // Ref for sendEditRoom (assigned after function is defined)
+  const sendEditRoomRef = useRef<(params: any) => Promise<void>>(async () => {});
+
+  // ── Window-level mousemove/mouseup for room vertex drag ──
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const dv = dragRoomVertexRef.current;
+      if (!dv) return;
+      const img = imgRef.current;
+      if (!img) return;
+      const r = img.getBoundingClientRect();
+      const rawX = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const rawY = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+      // Snap to nearest wall segment
+      const ds = imgDisplaySizeRef.current;
+      const snap = snapToWalls(rawX, rawY, resultWallsRef.current, ds.w, ds.h);
+      const normX = snap.x, normY = snap.y;
+      setSnappedVertex(snap.snapped);
+      const { roomId, idx } = dv;
+
+      const natW = imageNaturalRef.current.w;
+      const natH = imageNaturalRef.current.h;
+      const rooms = localRoomsRef.current ?? resultRoomsRef.current ?? [];
+      const updated = rooms.map(room => {
+        if (room.id !== roomId || !room.polygon_norm) return room;
+        const newPoly = room.polygon_norm.map((p, i) => i === idx ? { x: normX, y: normY } : p);
+        const areaPx = polygonAreaNorm(newPoly, natW, natH);
+        const ppmV = ppmRef.current;
+        const areaM2 = ppmV ? areaPx / (ppmV * ppmV) : null;
+        const perimeterM = ppmV && natW > 0 ? polygonPerimeterM(newPoly, natW, natH, ppmV) : undefined;
+        const cx = newPoly.reduce((s, p) => s + p.x, 0) / newPoly.length;
+        const cy = newPoly.reduce((s, p) => s + p.y, 0) / newPoly.length;
+        return { ...room, polygon_norm: newPoly, area_m2: areaM2, perimeter_m: perimeterM, centroid_norm: { x: cx, y: cy } };
+      });
+      localRoomsRef.current = updated;
+      setLocalRooms(updated);
+    };
+
+    const onUp = (e: MouseEvent) => {
+      const dv = dragRoomVertexRef.current;
+      if (e.button !== 0 || !dv) return;
+      const { roomId } = dv;
+      const rooms = localRoomsRef.current ?? [];
+      const room = rooms.find(r => r.id === roomId);
+
+      dragRoomVertexRef.current = null;
+      setDragRoomVertex(null);
+      setSnappedVertex(false);
+
+      if (room?.polygon_norm) {
+        sendEditRoomRef.current({
+          action: "replace_polygon",
+          room_id: roomId,
+          room_type: room.type,
+          polygon_norm: room.polygon_norm,
+        }).finally(() => {
+          localRoomsRef.current = null;
+          setLocalRooms(null);
+        });
+      } else {
+        localRoomsRef.current = null;
+        setLocalRooms(null);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function scaleX(px: number) {
     const img = imgRef.current!;
     return px * img.naturalWidth / img.offsetWidth;
@@ -229,6 +385,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64,
         rooms: data.rooms ?? prev.rooms,
       }));
+      // Pour replace_polygon, garder la sélection (vertex drag continu)
+      if (params.action !== "replace_polygon") {
+        setSelectedRoomId(null);
+        setEditingRoomId(null);
+      }
       toast({ title: "Pièce mise à jour ✓", variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
@@ -237,6 +398,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       } else { setError(e.message); toast({ title: "Erreur", description: e.message, variant: "error" }); }
     } finally { setLoading(false); }
   };
+  sendEditRoomRef.current = sendEditRoom;
 
   const sendEdit = async (params: any) => {
     if (layer === "rooms") { await sendEditRoom(params); return; }
@@ -369,6 +531,28 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const ry = scaleY(e.clientY - rect.top);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
     if (tool === "select") {
+      // Mode rooms : hit-test sur les polygones de pièces
+      if (layer === "rooms") {
+        const img = imgRef.current!;
+        const normX = rx / img.naturalWidth;
+        const normY = ry / img.naturalHeight;
+        let hitRoom: Room | null = null;
+        for (const room of (result.rooms ?? [])) {
+          if (room.polygon_norm && pointInPolygon(normX, normY, room.polygon_norm)) {
+            hitRoom = room;
+            break;
+          }
+        }
+        if (hitRoom) {
+          setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
+          setEditingRoomId(hitRoom.id);
+          setActiveRoomType(hitRoom.type);
+        } else {
+          setSelectedRoomId(null);
+          setEditingRoomId(null);
+        }
+        return;
+      }
       // Find the opening that the user clicked inside, or the closest one
       let bestIdx = -1;
       let bestDist = Infinity;
@@ -561,9 +745,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
   const sf = result.surfaces ?? {};
   const ppm = result.pixels_per_meter ?? null;
+  ppmRef.current = ppm;
+  const displayRooms = localRooms ?? result.rooms ?? [];
   const editingRoom = editingRoomId !== null
-    ? result.rooms?.find(r => r.id === editingRoomId) ?? null
+    ? displayRooms.find(r => r.id === editingRoomId) ?? null
     : null;
+  const vertexEditActive = tool === "select" && layer === "rooms" && selectedRoomId !== null
+    && displayRooms.find(r => r.id === selectedRoomId)?.polygon_norm != null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -601,8 +789,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
       {/* ── MODE ÉDITEUR ── */}
       {mode === "editor" && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-          <div className="lg:col-span-3 flex flex-col gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+          <div className="flex flex-col gap-3 min-w-0">
             <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
               <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_layer_lbl")}:</span>
               {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
@@ -705,20 +893,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               )}
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                className="w-full h-auto block max-h-[550px] object-contain"
+                className="w-full h-auto block max-h-[calc(100vh-200px)] object-contain"
                 onLoad={updateImgDisplaySize} />
 
-              {/* Masque coloré des pièces (RGBA semi-transparent) */}
-              {showRooms && result.mask_rooms_b64 && (
+              {/* Masque coloré raster (fallback si pas de polygon_norm) */}
+              {showRooms && result.mask_rooms_b64 && !(result.rooms?.some(r => r.polygon_norm)) && (
                 <img
                   src={`data:image/png;base64,${result.mask_rooms_b64}`}
                   alt=""
-                  className="absolute top-0 left-0 w-full h-auto block max-h-[550px] object-contain pointer-events-none"
+                  className="absolute top-0 left-0 w-full h-auto block max-h-[calc(100vh-200px)] object-contain pointer-events-none"
                   style={{ zIndex: 1 }}
                 />
               )}
 
-              {/* SVG overlay murs + pièces (zIndex:1, under openings overlay) */}
+              {/* SVG overlay murs + pièces (polygones vectoriels) */}
               {imgDisplaySize.w > 0 && (
                 <svg
                   className="absolute top-0 left-0 pointer-events-none"
@@ -734,45 +922,116 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       stroke="#f97316" strokeWidth={2} strokeLinecap="round" opacity={0.70}
                     />
                   ))}
-                  {showRooms && result.rooms?.map(room => {
+                  {showRooms && displayRooms.map(room => {
                     const rcx = room.centroid_norm.x * imgDisplaySize.w;
                     const rcy = room.centroid_norm.y * imgDisplaySize.h;
                     const rcolor = getRoomColor(room.type);
                     const isSelected = selectedRoomId === room.id;
-                    // Taille du label proportionnelle à la bbox de la pièce
                     const bboxW = room.bbox_norm.w * imgDisplaySize.w;
                     const bboxH = room.bbox_norm.h * imgDisplaySize.h;
                     const minDim = Math.min(bboxW, bboxH);
-                    const fs = Math.max(7, Math.min(11, minDim * 0.14));
-                    if (isSelected) {
-                      // Pièce sélectionnée : label complet avec surface
-                      const label = room.area_m2 != null
-                        ? `${room.label_fr}  ${room.area_m2.toFixed(1)} m²`
+                    const fs = Math.max(7, Math.min(12, minDim * 0.14));
+
+                    // Polygon SVG points
+                    const polyPoints = room.polygon_norm
+                      ? room.polygon_norm
+                          .map(p => `${p.x * imgDisplaySize.w},${p.y * imgDisplaySize.h}`)
+                          .join(" ")
+                      : null;
+
+                    // Perimeter
+                    const perimM = room.perimeter_m != null ? room.perimeter_m
+                      : (room.polygon_norm && ppm && imageNatural.w > 0
+                        ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
+                        : null);
+
+                    // Label : nom + surface + périmètre
+                    const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m²` : "";
+                    const perimStr = perimM != null ? `P ${perimM.toFixed(1)} m` : "";
+                    const label = areaStr && perimStr
+                      ? `${room.label_fr}  ${areaStr} · ${perimStr}`
+                      : areaStr
+                        ? `${room.label_fr}  ${areaStr}`
                         : room.label_fr;
-                      const pw = Math.max(70, label.length * 5.5);
-                      return (
-                        <g key={room.id}>
-                          <rect x={rcx - pw/2} y={rcy - 13} width={pw} height={20} rx={4}
-                            fill="rgba(10,16,32,0.92)" stroke={rcolor} strokeWidth={1.5} />
-                          <text x={rcx} y={rcy + 2} textAnchor="middle"
-                            fill={rcolor} fontSize={10} fontWeight="700" fontFamily="system-ui,sans-serif">
-                            {label}
-                          </text>
-                        </g>
-                      );
-                    }
-                    // Pièce non-sélectionnée : juste le nom en petit
-                    const shortName = room.label_fr.length > 12
-                      ? room.label_fr.slice(0, 10) + "…"
-                      : room.label_fr;
-                    const pw = Math.max(30, shortName.length * (fs * 0.6));
+                    const pw = Math.max(60, label.length * 5.2);
+
                     return (
-                      <g key={room.id} opacity={0.85}>
-                        <rect x={rcx - pw/2} y={rcy - fs * 0.85} width={pw} height={fs * 1.7} rx={3}
-                          fill="rgba(10,16,32,0.70)" stroke={rcolor} strokeWidth={0.8} />
-                        <text x={rcx} y={rcy + fs * 0.35} textAnchor="middle"
-                          fill={rcolor} fontSize={fs} fontWeight="600" fontFamily="system-ui,sans-serif">
-                          {shortName}
+                      <g key={room.id} opacity={isSelected ? 1 : 0.85}>
+                        {/* Polygone rempli semi-transparent */}
+                        {polyPoints && (
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "30"}
+                            stroke={rcolor}
+                            strokeWidth={isSelected ? 2.5 : 1.2}
+                            strokeLinejoin="round"
+                          />
+                        )}
+                        {/* Surbrillance sélection */}
+                        {isSelected && polyPoints && (
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "18"}
+                            stroke={rcolor}
+                            strokeWidth={3}
+                            strokeDasharray="6 3"
+                            strokeLinejoin="round"
+                          />
+                        )}
+                        {/* Edge dimension annotations (selected room only) */}
+                        {isSelected && room.polygon_norm && ppm && imageNatural.w > 0 && room.polygon_norm.map((p, ei) => {
+                          const next = room.polygon_norm![(ei + 1) % room.polygon_norm!.length];
+                          const x1 = p.x * imgDisplaySize.w, y1 = p.y * imgDisplaySize.h;
+                          const x2 = next.x * imgDisplaySize.w, y2 = next.y * imgDisplaySize.h;
+                          const edgeLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                          if (edgeLen < 30) return null; // too short
+                          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+                          const lenM = edgeLengthM(p, next, imageNatural.w, imageNatural.h, ppm);
+                          const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+                          const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
+                          // Offset perpendicular to edge
+                          const nx = -(y2 - y1) / edgeLen * 8;
+                          const ny = (x2 - x1) / edgeLen * 8;
+                          const tx = mx + nx, ty = my + ny;
+                          const dimText = lenM.toFixed(2) + " m";
+                          const tw = dimText.length * 5.5 + 6;
+                          return (
+                            <g key={`dim-${ei}`}>
+                              <rect
+                                x={tx - tw / 2} y={ty - 6}
+                                width={tw} height={12} rx={2}
+                                fill="rgba(10,16,32,0.85)"
+                                transform={`rotate(${rot},${tx},${ty})`}
+                              />
+                              <text
+                                x={tx} y={ty + 3}
+                                textAnchor="middle"
+                                fill="#e2e8f0"
+                                fontSize={8}
+                                fontFamily="monospace"
+                                fontWeight="600"
+                                transform={`rotate(${rot},${tx},${ty})`}
+                              >{dimText}</text>
+                            </g>
+                          );
+                        })}
+                        {/* Label fond + texte */}
+                        <rect
+                          x={rcx - pw / 2} y={rcy - fs * 0.85}
+                          width={pw} height={fs * 1.9} rx={3}
+                          fill={isSelected ? "rgba(10,16,32,0.92)" : "rgba(10,16,32,0.75)"}
+                          stroke={rcolor}
+                          strokeWidth={isSelected ? 1.5 : 0.8}
+                        />
+                        <text
+                          x={rcx} y={rcy + fs * 0.4}
+                          textAnchor="middle"
+                          fill={rcolor}
+                          fontSize={isSelected ? fs + 1 : fs}
+                          fontWeight={isSelected ? "700" : "600"}
+                          fontFamily="system-ui,sans-serif"
+                        >
+                          {label}
                         </text>
                       </g>
                     );
@@ -823,7 +1082,125 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </svg>
               )}
 
-              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" style={{ cursor: tool === "select" ? "default" : "crosshair", zIndex: 10 }}
+              {/* ── Interactive vertex editing layer (above canvas when active) ── */}
+              {vertexEditActive && imgDisplaySize.w > 0 && (() => {
+                const selRoom = displayRooms.find(r => r.id === selectedRoomId);
+                if (!selRoom?.polygon_norm) return null;
+                const rcolor = getRoomColor(selRoom.type);
+                return (
+                  <svg
+                    className="absolute top-0 left-0"
+                    width={imgDisplaySize.w}
+                    height={imgDisplaySize.h}
+                    viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                    style={{ zIndex: 15, cursor: dragRoomVertex ? "grabbing" : "default" }}
+                    onMouseDown={(e) => {
+                      // Background click: select another room or deselect
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const normX = (e.clientX - rect.left) / imgDisplaySize.w;
+                      const normY = (e.clientY - rect.top) / imgDisplaySize.h;
+                      for (const r of displayRooms) {
+                        if (r.polygon_norm && pointInPolygon(normX, normY, r.polygon_norm)) {
+                          setSelectedRoomId(r.id);
+                          setEditingRoomId(r.id);
+                          setActiveRoomType(r.type);
+                          return;
+                        }
+                      }
+                      setSelectedRoomId(null);
+                      setEditingRoomId(null);
+                    }}
+                  >
+                    {/* Vertex handles */}
+                    {selRoom.polygon_norm.map((p, idx) => {
+                      const isDragging = dragRoomVertex?.roomId === selRoom.id && dragRoomVertex?.idx === idx;
+                      const isSnapped = isDragging && snappedVertex;
+                      return (
+                      <circle
+                        key={`v-${idx}`}
+                        cx={p.x * imgDisplaySize.w}
+                        cy={p.y * imgDisplaySize.h}
+                        r={isSnapped ? 7 : 6}
+                        fill={isSnapped ? "#f97316" : "white"}
+                        stroke={isSnapped ? "#ea580c" : rcolor}
+                        strokeWidth={isSnapped ? 2.5 : 2}
+                        style={{ cursor: dragRoomVertex ? "grabbing" : "grab", pointerEvents: "all" }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          dragRoomVertexRef.current = { roomId: selRoom.id, idx };
+                          setDragRoomVertex({ roomId: selRoom.id, idx });
+                          localRoomsRef.current = displayRooms;
+                          setLocalRooms(displayRooms);
+                        }}
+                        onContextMenu={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          // Delete vertex (right-click)
+                          if (selRoom.polygon_norm!.length <= 3) {
+                            sendEditRoom({ action: "delete_room", room_id: selRoom.id });
+                            return;
+                          }
+                          const newPoly = selRoom.polygon_norm!.filter((_, i) => i !== idx);
+                          sendEditRoom({
+                            action: "replace_polygon",
+                            room_id: selRoom.id,
+                            room_type: selRoom.type,
+                            polygon_norm: newPoly,
+                          });
+                        }}
+                      />
+                      );
+                    })}
+                    {/* Edge midpoints — click to insert vertex */}
+                    {!dragRoomVertex && selRoom.polygon_norm.map((p, idx) => {
+                      const next = selRoom.polygon_norm![(idx + 1) % selRoom.polygon_norm!.length];
+                      const mx = (p.x + next.x) / 2;
+                      const my = (p.y + next.y) / 2;
+                      return (
+                        <g key={`mid-${idx}`} className="opacity-0 hover:opacity-100 transition-opacity">
+                          <circle
+                            cx={mx * imgDisplaySize.w}
+                            cy={my * imgDisplaySize.h}
+                            r={5}
+                            fill="white"
+                            stroke={rcolor}
+                            strokeWidth={1.5}
+                            style={{ cursor: "copy", pointerEvents: "all" }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              // Insert vertex at midpoint and start dragging
+                              const newPoly = [...selRoom.polygon_norm!];
+                              newPoly.splice(idx + 1, 0, { x: mx, y: my });
+                              const updated = displayRooms.map(r =>
+                                r.id !== selRoom.id ? r : { ...r, polygon_norm: newPoly }
+                              );
+                              localRoomsRef.current = updated;
+                              setLocalRooms(updated);
+                              dragRoomVertexRef.current = { roomId: selRoom.id, idx: idx + 1 };
+                              setDragRoomVertex({ roomId: selRoom.id, idx: idx + 1 });
+                            }}
+                          />
+                          <text
+                            x={mx * imgDisplaySize.w}
+                            y={my * imgDisplaySize.h + 1}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fontSize={8}
+                            fill={rcolor}
+                            fontWeight="bold"
+                            style={{ pointerEvents: "none" }}
+                          >+</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                );
+              })()}
+
+              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
+                style={{ cursor: tool === "select" ? "default" : "crosshair", zIndex: 10, pointerEvents: vertexEditActive ? "none" : "auto" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
             </div>
             <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
@@ -888,7 +1265,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             )}
 
             {/* Liste des pièces */}
-            {result.rooms && result.rooms.length > 0 && (
+            {displayRooms.length > 0 && (
               <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-600 text-slate-500">Pièces détectées</p>
@@ -897,21 +1274,30 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   </button>
                 </div>
                 <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
-                  {result.rooms.map(room => (
+                  {displayRooms.map(room => {
+                    const rPerim = room.perimeter_m != null ? room.perimeter_m
+                      : (room.polygon_norm && ppm && imageNatural.w > 0
+                        ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
+                        : null);
+                    return (
                     <div key={room.id}
                       className={cn("flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all group",
                         selectedRoomId === room.id ? "bg-white/10" : "hover:bg-white/5")}
-                      onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); }}>
+                      onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); setLayer("rooms"); setActiveRoomType(room.type); }}>
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(room.type) }} />
                       <span className="flex-1 text-slate-400">{room.label_fr}</span>
-                      {room.area_m2 != null && <span className="text-slate-500">{room.area_m2.toFixed(1)} m²</span>}
+                      <span className="text-slate-500 text-right whitespace-nowrap">
+                        {room.area_m2 != null ? `${room.area_m2.toFixed(1)} m²` : ""}
+                        {rPerim != null ? ` · P ${rPerim.toFixed(1)} m` : ""}
+                      </span>
                       <button
                         onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500/70 hover:text-red-400 ml-1"
                         title="Supprimer cette pièce"
                       ><Trash2 size={11} /></button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

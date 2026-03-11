@@ -311,7 +311,7 @@ def edit_mask(req: EditMaskRequest):
 # ============================================================
 class EditRoomMaskRequest(BaseModel):
     session_id: str
-    action: str          # "add_rect"|"erase_rect"|"add_poly"|"erase_poly"|"delete_room"
+    action: str          # "add_rect"|"erase_rect"|"add_poly"|"erase_poly"|"delete_room"|"replace_polygon"
     room_type: str = "bedroom"
     room_id: Optional[int] = None
     x0: Optional[float] = None
@@ -319,6 +319,7 @@ class EditRoomMaskRequest(BaseModel):
     x1: Optional[float] = None
     y1: Optional[float] = None
     points: Optional[list] = None
+    polygon_norm: Optional[list] = None  # [{x: float, y: float}, ...] — normalized 0-1 coords
 
 @app.post("/edit-room-mask")
 def edit_room_mask(req: EditRoomMaskRequest):
@@ -344,6 +345,29 @@ def edit_room_mask(req: EditRoomMaskRequest):
         x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
         mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", req.room_type,
                                              x0=x0, y0=y0, x1=x1, y1=y1)
+    elif req.action == "replace_polygon":
+        # Remplacer le polygone d'une pièce (vertex drag editing)
+        if req.room_id is None or req.polygon_norm is None:
+            raise HTTPException(400, "room_id et polygon_norm requis")
+        rooms = s["analysis"].get("rooms", [])
+        room = next((r for r in rooms if r["id"] == req.room_id), None)
+        if room is None:
+            raise HTTPException(404, "Pièce introuvable")
+        room_type_color = room.get("type", req.room_type)
+        # Effacer l'ancien polygone
+        old_poly = room.get("polygon_norm")
+        if old_poly:
+            old_pts = [[int(p["x"] * W), int(p["y"] * H)] for p in old_poly]
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_poly", room_type_color, points=old_pts)
+        else:
+            bbn = room["bbox_norm"]
+            x0 = int(bbn["x"] * W); y0 = int(bbn["y"] * H)
+            x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", room_type_color,
+                                                 x0=x0, y0=y0, x1=x1, y1=y1)
+        # Dessiner le nouveau polygone
+        new_pts = [[int(p["x"] * W), int(p["y"] * H)] for p in req.polygon_norm]
+        mask_rgba = pipeline.edit_room_mask(mask_rgba, "add_poly", room_type_color, points=new_pts)
     else:
         mask_rgba = pipeline.edit_room_mask(
             mask_rgba, req.action, req.room_type,

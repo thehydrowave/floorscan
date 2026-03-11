@@ -306,6 +306,10 @@ def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
             "area_m2": round(area_m2, 2) if area_m2 else None,
             "area_px2": area_px,
             "_polygon": cnt_i.reshape(-1, 2).tolist(),
+            "polygon_norm": [
+                {"x": round(float(pt[0]) / W, 5), "y": round(float(pt[1]) / H, 5)}
+                for pt in cnt_i.reshape(-1, 2).tolist()
+            ],
         })
 
     print(f"[ROOMS] kept {len(rooms_raw)} rooms after area filter")
@@ -445,6 +449,10 @@ def rooms_from_mask_rgba(mask_rgba: np.ndarray, H: int, W: int, ppm) -> list:
                 "area_m2": round(area_m2, 2) if area_m2 else None,
                 "area_px2": area_px,
                 "_polygon": cnt_i.reshape(-1, 2).tolist(),
+                "polygon_norm": [
+                    {"x": round(float(pt[0]) / W, 5), "y": round(float(pt[1]) / H, 5)}
+                    for pt in cnt_i.reshape(-1, 2).tolist()
+                ],
             })
             room_id += 1
 

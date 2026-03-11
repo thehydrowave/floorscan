@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "npx", "next", "dev", "--port", "3001"],
+      "port": 3001,
+      "cwd": "frontend"
+    }
+  ]
+}

@@ -146,7 +146,7 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSes
           ref={imgRef}
           src={`data:image/png;base64,${imageB64}`}
           alt="Plan"
-          className="w-full h-auto block max-h-[500px] object-contain"
+          className="w-full h-auto block max-h-[calc(100vh-200px)] object-contain"
           draggable={false}
           onLoad={updateImgOffset}
         />

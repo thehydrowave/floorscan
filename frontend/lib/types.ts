@@ -46,6 +46,8 @@ export interface Room {
   bbox_norm: { x: number; y: number; w: number; h: number };
   area_m2: number | null;
   area_px2: number;
+  polygon_norm?: { x: number; y: number }[];
+  perimeter_m?: number;
 }
 
 // Résultat complet de l'analyse V1

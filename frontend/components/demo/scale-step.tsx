@@ -206,7 +206,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
             <div
               ref={containerRef}
               className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/20 select-none"
-              style={{ height: 440, cursor }}
+              style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor }}
               onMouseDown={handleMouseDown}
               onClick={handleClick}
               onContextMenu={e => e.preventDefault()}
@@ -222,7 +222,7 @@ export default function ScaleStep({ imageB64, onScaled }: ScaleStepProps) {
                   ref={imgRef}
                   src={`data:image/png;base64,${imageB64}`}
                   alt="Plan"
-                  style={{ display: "block", maxWidth: 800, maxHeight: 400 }}
+                  style={{ display: "block", maxWidth: "90vw", maxHeight: "calc(100vh - 240px)" }}
                   draggable={false}
                 />
               </div>

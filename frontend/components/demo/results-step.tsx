@@ -181,7 +181,7 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
           <img
             src={`data:image/png;base64,${overlayB64[activeOverlay]}`}
             alt={activeOverlay}
-            className="w-full h-auto rounded-xl border border-white/10 max-h-[600px] object-contain"
+            className="w-full h-auto rounded-xl border border-white/10 max-h-[calc(100vh-200px)] object-contain"
           />
         ) : (
           <div className="text-center py-10 text-slate-600 text-sm">{d("re_no_img")}</div>
