@@ -85,6 +85,8 @@ export default function DemoClient() {
   const [ppm, setPpm] = useState<number | null>(null);
   // Step 5
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  // Multi-page PDF
+  const [savedPdfData, setSavedPdfData] = useState<{ pdfBase64: string; fileName: string; pageCount: number } | null>(null);
 
   // Restored session banner
   const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
@@ -124,6 +126,10 @@ export default function DemoClient() {
     setStep(2);
   };
 
+  const handlePdfMetadata = (data: { pdfBase64: string; fileName: string; pageCount: number }) => {
+    setSavedPdfData(data);
+  };
+
   const handleUploaded = (sid: string, imgB64: string) => {
     setSessionId(sid);
     setUploadedImageB64(imgB64);
@@ -145,6 +151,16 @@ export default function DemoClient() {
   };
 
   const handleGoEditor = () => setStep(7);
+
+  const handleAddPage = () => {
+    // Return to upload step with PDF pre-loaded in page selector
+    setStep(2);
+    setSessionId(null);
+    setUploadedImageB64(null);
+    setPpm(null);
+    setAnalysisResult(null);
+    // savedPdfData is preserved → UploadStep auto-enters page selector
+  };
 
   const handleRestart = () => {
     setStep(2);
@@ -369,7 +385,13 @@ export default function DemoClient() {
                   transition={{ duration: 0.25 }}
                 >
                   {step === 1 && <ConnectStep onConnected={handleConnected} />}
-                  {step === 2 && <UploadStep onUploaded={handleUploaded} />}
+                  {step === 2 && (
+                    <UploadStep
+                      onUploaded={handleUploaded}
+                      onPdfMetadata={handlePdfMetadata}
+                      initialPdfData={savedPdfData ?? undefined}
+                    />
+                  )}
                   {step === 3 && sessionId && (
                     <CropStep
                       sessionId={sessionId}
@@ -404,6 +426,7 @@ export default function DemoClient() {
                       initialResult={analysisResult}
                       onRestart={handleRestart}
                       onSessionExpired={handleRestart}
+                      onAddPage={savedPdfData ? handleAddPage : undefined}
                     />
                   )}
                 </motion.div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Upload, FileText, AlertCircle, ChevronLeft, ChevronRight, BookOpen, HardDrive } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ const MAX_SIZE_MB = 50;
 
 interface UploadStepProps {
   onUploaded: (sessionId: string, imageB64: string) => void;
+  onPdfMetadata?: (data: { pdfBase64: string; fileName: string; pageCount: number }) => void;
+  initialPdfData?: { pdfBase64: string; fileName: string; pageCount: number };
 }
 
 function formatBytes(bytes: number): string {
@@ -21,7 +23,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
-export default function UploadStep({ onUploaded }: UploadStepProps) {
+export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }: UploadStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -37,6 +39,17 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
   const [awaitingPage, setAwaitingPage] = useState(false);
+
+  // Auto-enter page selector when returning from editor with saved PDF data
+  useEffect(() => {
+    if (initialPdfData && !awaitingPage) {
+      setPdfBase64(initialPdfData.pdfBase64);
+      setPendingFileName(initialPdfData.fileName);
+      setPageCount(initialPdfData.pageCount);
+      setCurrentPage(0);
+      setAwaitingPage(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadPage = useCallback(async (b64: string, fname: string, page: number) => {
     setLoading(true);
@@ -64,6 +77,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
         setPendingFileName(fname);
         setAwaitingPage(true);
         setLoading(false);
+        onPdfMetadata?.({ pdfBase64: b64, fileName: fname, pageCount: count });
         return;
       }
 
@@ -77,7 +91,7 @@ export default function UploadStep({ onUploaded }: UploadStepProps) {
     } finally {
       setLoading(false);
     }
-  }, [onUploaded, lang, awaitingPage]);
+  }, [onUploaded, onPdfMetadata, lang, awaitingPage]);
 
   const processFile = useCallback(async (f: File) => {
     setError(null);

@@ -128,9 +128,10 @@ interface EditorStepProps {
   initialResult: AnalysisResult;
   onRestart: () => void;
   onSessionExpired?: () => void;
+  onAddPage?: () => void;
 }
 
-export default function EditorStep({ sessionId, initialResult, onRestart, onSessionExpired }: EditorStepProps) {
+export default function EditorStep({ sessionId, initialResult, onRestart, onSessionExpired, onAddPage }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -943,6 +944,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
           <Button onClick={handleExportDxf} disabled={exportingDxf || !ppm} variant="outline" title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
             {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("ed_exporting")}</> : <><FileDown className="w-4 h-4" /> DXF</>}
           </Button>
+          {onAddPage && (
+            <Button variant="outline" onClick={onAddPage}>
+              <Layers className="w-4 h-4" /> Ajouter une page
+            </Button>
+          )}
           <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
         </div>
       </div>

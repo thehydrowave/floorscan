@@ -32,31 +32,48 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSes
   const [confirming, setConfirming] = useState(false);
   const drawStartRef = useRef({ px: 0, py: 0 });
 
+  // Compute actual rendered image bounds inside the element (handles object-contain letterboxing)
+  const getRenderedImageBounds = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+    const r = img.getBoundingClientRect();
+    const imgRatio = img.naturalWidth / img.naturalHeight;
+    const elemRatio = r.width / r.height;
+    let rw: number, rh: number, rx: number, ry: number;
+    if (imgRatio > elemRatio) {
+      rw = r.width; rh = r.width / imgRatio;
+      rx = r.left; ry = r.top + (r.height - rh) / 2;
+    } else {
+      rh = r.height; rw = r.height * imgRatio;
+      ry = r.top; rx = r.left + (r.width - rw) / 2;
+    }
+    return { left: rx, top: ry, width: rw, height: rh };
+  }, []);
+
   // Track image position within container (handles object-contain letterboxing)
   const updateImgOffset = useCallback(() => {
-    const img = imgRef.current;
     const container = containerRef.current;
-    if (!img || !container) return;
-    const ir = img.getBoundingClientRect();
+    if (!container) return;
+    const bounds = getRenderedImageBounds();
+    if (!bounds) return;
     const cr = container.getBoundingClientRect();
-    setImgOffset({ x: ir.left - cr.left, y: ir.top - cr.top, w: ir.width, h: ir.height });
-  }, []);
+    setImgOffset({ x: bounds.left - cr.left, y: bounds.top - cr.top, w: bounds.width, h: bounds.height });
+  }, [getRenderedImageBounds]);
 
   useEffect(() => {
     window.addEventListener("resize", updateImgOffset);
     return () => window.removeEventListener("resize", updateImgOffset);
   }, [updateImgOffset]);
 
-  // Convert clientX/Y to % of rendered image
+  // Convert clientX/Y to % of rendered image (uses actual rendered bounds, not element rect)
   const toPct = useCallback((clientX: number, clientY: number) => {
-    const img = imgRef.current;
-    if (!img) return { px: 0, py: 0 };
-    const r = img.getBoundingClientRect();
+    const bounds = getRenderedImageBounds();
+    if (!bounds) return { px: 0, py: 0 };
     return {
-      px: Math.max(0, Math.min(100, (clientX - r.left) / r.width * 100)),
-      py: Math.max(0, Math.min(100, (clientY - r.top) / r.height * 100)),
+      px: Math.max(0, Math.min(100, (clientX - bounds.left) / bounds.width * 100)),
+      py: Math.max(0, Math.min(100, (clientY - bounds.top) / bounds.height * 100)),
     };
-  }, []);
+  }, [getRenderedImageBounds]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
