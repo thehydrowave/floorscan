@@ -139,6 +139,19 @@ def calibrate(req: CalibRequest):
     return {"pixels_per_meter": ppm}
 
 
+# ── Helpers: compressed undo snapshots (PNG bytes, ~20x smaller than raw numpy) ──
+def _compress_mask(arr: np.ndarray) -> bytes:
+    """Encode RGBA numpy array → PNG bytes for memory-efficient storage."""
+    ok, buf = cv2.imencode(".png", arr)
+    return buf.tobytes() if ok else arr.tobytes()
+
+def _decompress_mask(data: bytes, shape: tuple) -> np.ndarray:
+    """Decode PNG bytes → RGBA numpy array."""
+    arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    if arr is not None:
+        return arr
+    return np.frombuffer(data, np.uint8).reshape(shape)
+
 # ============================================================
 # ROUTE 5 — ANALYSE COMPLÈTE (Roboflow + surfaces)
 # ============================================================
@@ -183,8 +196,8 @@ def analyze(req: AnalyzeRequest):
         "interior_mask":    interior_mask,
         "pixels_per_meter": result["pixels_per_meter"],
         "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
-        "mask_rooms_history": [],  # undo stack (max 20 snapshots)
-        "mask_rooms_future":  [],  # redo stack
+        "mask_rooms_history": [],  # undo stack (compressed PNG bytes, max 10)
+        "mask_rooms_future":  [],  # redo stack (compressed PNG bytes, max 10)
         "cfg":              cfg,
         "analysis":         result,
     })
@@ -338,10 +351,10 @@ def edit_room_mask(req: EditRoomMaskRequest):
     ppm = s.get("pixels_per_meter")
     H, W = mask_rgba.shape[:2]
 
-    # ── Push undo snapshot before any modification ──
+    # ── Push undo snapshot before any modification (compressed PNG) ──
     history = s.setdefault("mask_rooms_history", [])
-    history.append(mask_rgba.copy())
-    if len(history) > 20:
+    history.append(_compress_mask(mask_rgba))
+    if len(history) > 10:
         history.pop(0)
     s["mask_rooms_future"] = []  # clear redo stack on new edit
 
@@ -449,10 +462,11 @@ def undo_room_mask(req: UndoRedoRoomRequest):
     if not history:
         raise HTTPException(400, "Rien à annuler")
     future = s.setdefault("mask_rooms_future", [])
-    future.append(s["mask_rooms_rgba"].copy())
-    if len(future) > 20:
+    future.append(_compress_mask(s["mask_rooms_rgba"]))
+    if len(future) > 10:
         future.pop(0)
-    prev = history.pop()
+    prev_bytes = history.pop()
+    prev = _decompress_mask(prev_bytes, s["mask_rooms_rgba"].shape)
     s["mask_rooms_rgba"] = prev
     ppm = s.get("pixels_per_meter")
     H, W = prev.shape[:2]
@@ -477,10 +491,11 @@ def redo_room_mask(req: UndoRedoRoomRequest):
     if not future:
         raise HTTPException(400, "Rien à rétablir")
     history = s.setdefault("mask_rooms_history", [])
-    history.append(s["mask_rooms_rgba"].copy())
-    if len(history) > 20:
+    history.append(_compress_mask(s["mask_rooms_rgba"]))
+    if len(history) > 10:
         history.pop(0)
-    nxt = future.pop()
+    nxt_bytes = future.pop()
+    nxt = _decompress_mask(nxt_bytes, s["mask_rooms_rgba"].shape)
     s["mask_rooms_rgba"] = nxt
     ppm = s.get("pixels_per_meter")
     H, W = nxt.shape[:2]
