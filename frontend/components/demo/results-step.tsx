@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -18,8 +18,6 @@ interface ResultsStepProps {
   onGoEditor: () => void;
   onRestart: () => void;
 }
-
-type OverlayType = "openings" | "interior" | "mask_doors" | "mask_windows" | "mask_walls";
 
 function fmt(v: number | undefined, nd = 1, suffix = "") {
   if (v === undefined || v === null) return "—";
@@ -40,24 +38,39 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
-  const OVERLAY_TABS: { key: OverlayType; label: string }[] = [
-    { key: "openings",     label: d("re_tab_openings") },
-    { key: "interior",     label: d("re_tab_interior") },
-    { key: "mask_doors",   label: d("re_mask_doors")   },
-    { key: "mask_windows", label: d("re_mask_windows") },
-    { key: "mask_walls",   label: d("re_mask_walls")   },
-  ];
+  // ── Image overlay toggles (mutually exclusive for the base image) ──
+  const [activeImageOverlay, setActiveImageOverlay] = useState<string>("openings");
+  // ── SVG data overlays (independent toggles) ──
+  const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
+  const [showDetectionsOverlay, setShowDetectionsOverlay] = useState(false);
+  // ── Image natural dimensions for SVG viewBox ──
+  const [imgNatural, setImgNatural] = useState({ w: 1, h: 1 });
 
-  const [activeOverlay, setActiveOverlay] = useState<OverlayType>("openings");
   const [exportingPdf, setExportingPdf] = useState(false);
 
-  const overlayB64: Record<OverlayType, string | null> = {
+  const overlayB64Map: Record<string, string | null> = {
     openings: result.overlay_openings_b64,
     interior: result.overlay_interior_b64,
     mask_doors: result.mask_doors_b64,
     mask_windows: result.mask_windows_b64,
     mask_walls: result.mask_walls_b64,
   };
+
+  const toggleImageOverlay = (key: string) => {
+    setActiveImageOverlay(prev => prev === key ? "" : key);
+  };
+
+  const hasRooms = (result.rooms ?? []).length > 0;
+  const hasDetections = customDetections.length > 0;
+
+  // ── Image overlay button definitions ──
+  const imageOverlayButtons = [
+    { key: "openings",     label: d("re_tab_openings"),  color: "#D946EF", emoji: "🚪" },
+    { key: "interior",     label: d("re_tab_interior"),  color: "#34D399", emoji: "🏠" },
+    { key: "mask_doors",   label: d("re_mask_doors"),    color: "#D946EF", emoji: "🚪" },
+    { key: "mask_windows", label: d("re_mask_windows"),  color: "#22D3EE", emoji: "🪟" },
+    { key: "mask_walls",   label: d("re_mask_walls"),    color: "#60A5FA", emoji: "🧱" },
+  ].filter(o => overlayB64Map[o.key]);
 
   const handleExportPdf = async () => {
     setExportingPdf(true);
@@ -84,7 +97,6 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
   /** Export CSV des résultats IA */
   const handleExportCSV = () => {
     const sf = result.surfaces ?? {};
-    const sep = ";";
 
     const lines = [
       "FloorScan — Résultats d'analyse IA",
@@ -204,8 +216,8 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
         ))}
       </div>
 
-      {/* Custom detections KPIs (visual search) */}
-      {customDetections.length > 0 && (
+      {/* Custom detections KPIs (visual search) — only when detections exist */}
+      {hasDetections && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {customDetections.map((det) => (
             <div key={det.id} className="glass rounded-xl border border-white/10 p-4">
@@ -242,35 +254,161 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
         </div>
       </div>
 
-      {/* Overlays */}
+      {/* ══════════════════════ Overlays section ══════════════════════ */}
       <div className="glass rounded-xl border border-white/10 p-5">
-        <div className="flex gap-1 flex-wrap mb-4">
-          {OVERLAY_TABS.map(({ key, label }) => (
-            <button key={key} onClick={() => setActiveOverlay(key)}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 transition-all",
-                activeOverlay === key ? "bg-accent/20 text-accent border border-accent/30" : "text-slate-500 hover:text-slate-300 border border-transparent")}>
-              {label}
+        {/* ── Toggle buttons ── */}
+        <div className="flex gap-2 flex-wrap mb-4 items-center">
+          {/* Image-based overlays (mutually exclusive) */}
+          {imageOverlayButtons.map(({ key, label, color, emoji }) => (
+            <button
+              key={key}
+              onClick={() => toggleImageOverlay(key)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                activeImageOverlay === key
+                  ? "text-white border-white/20"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+              style={activeImageOverlay === key ? { backgroundColor: color + "20", borderColor: color + "40", color: color } : undefined}
+            >
+              <span>{emoji}</span> {label}
             </button>
           ))}
+
+          {/* Separator when data overlays exist */}
+          {(hasRooms || hasDetections) && (
+            <div className="w-px h-6 bg-white/10 mx-1" />
+          )}
+
+          {/* Rooms SVG toggle (only when rooms exist) */}
+          {hasRooms && (
+            <button
+              onClick={() => setShowRoomsOverlay(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showRoomsOverlay
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              🏷️ {d("re_overlay_rooms")}
+            </button>
+          )}
+
+          {/* VS detections SVG toggle (only when detections exist) */}
+          {hasDetections && (
+            <button
+              onClick={() => setShowDetectionsOverlay(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showDetectionsOverlay
+                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              <Search className="w-3 h-3" /> {d("re_overlay_vs")}
+            </button>
+          )}
         </div>
 
-        {overlayB64[activeOverlay] ? (
-          <img
-            src={`data:image/png;base64,${overlayB64[activeOverlay]}`}
-            alt={activeOverlay}
-            className="w-full h-auto rounded-xl border border-white/10 max-h-[calc(100vh-200px)] object-contain"
-          />
-        ) : (
-          <div className="text-center py-10 text-slate-600 text-sm">{d("re_no_img")}</div>
-        )}
+        {/* ── Image display + SVG data overlays ── */}
+        <div className="relative rounded-xl overflow-hidden border border-white/10">
+          {activeImageOverlay && overlayB64Map[activeImageOverlay] ? (
+            <img
+              src={`data:image/png;base64,${overlayB64Map[activeImageOverlay]}`}
+              alt={activeImageOverlay}
+              className="w-full h-auto block"
+              onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            />
+          ) : (
+            <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
+          )}
+
+          {/* SVG overlay layer for rooms & VS detections */}
+          {(showRoomsOverlay || showDetectionsOverlay) && activeImageOverlay && overlayB64Map[activeImageOverlay] && (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {/* Room polygons */}
+              {showRoomsOverlay && result.rooms?.map(room => {
+                const poly = room.polygon_norm;
+                if (!poly || poly.length < 3) return null;
+                const color = getRoomColor(room.type);
+                const fs = Math.max(10, Math.min(18, imgNatural.w * 0.008));
+                return (
+                  <g key={room.id}>
+                    <polygon
+                      points={poly.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ")}
+                      fill={color + "30"}
+                      stroke={color}
+                      strokeWidth={Math.max(1.5, imgNatural.w * 0.001)}
+                    />
+                    {/* Background for label */}
+                    <rect
+                      x={room.centroid_norm.x * imgNatural.w - fs * 2.5}
+                      y={room.centroid_norm.y * imgNatural.h - fs * 0.8}
+                      width={fs * 5}
+                      height={room.area_m2 ? fs * 2.2 : fs * 1.4}
+                      rx={3}
+                      fill="rgba(0,0,0,0.7)"
+                    />
+                    <text
+                      x={room.centroid_norm.x * imgNatural.w}
+                      y={room.centroid_norm.y * imgNatural.h + fs * 0.15}
+                      fontSize={fs}
+                      fill="white"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontWeight="600"
+                    >
+                      {room.label_fr}
+                    </text>
+                    {room.area_m2 != null && (
+                      <text
+                        x={room.centroid_norm.x * imgNatural.w}
+                        y={room.centroid_norm.y * imgNatural.h + fs * 1.1}
+                        fontSize={fs * 0.75}
+                        fill={color}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontWeight="500"
+                      >
+                        {room.area_m2.toFixed(1)} m²
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* VS detection rectangles */}
+              {showDetectionsOverlay && customDetections.map(det =>
+                det.matches.map((m, i) => (
+                  <rect
+                    key={`${det.id}-${i}`}
+                    x={m.x_norm * imgNatural.w}
+                    y={m.y_norm * imgNatural.h}
+                    width={m.w_norm * imgNatural.w}
+                    height={m.h_norm * imgNatural.h}
+                    fill={det.color + "25"}
+                    stroke={det.color}
+                    strokeWidth={Math.max(1.5, imgNatural.w * 0.001)}
+                    rx={2}
+                  />
+                ))
+              )}
+            </svg>
+          )}
+        </div>
       </div>
 
-      {/* Recap Table: Rooms + Custom Detections (after overlays) */}
-      {((result.rooms && result.rooms.length > 0) || customDetections.length > 0) && (
+      {/* Recap Table: Rooms + Custom Detections (after overlays) — only when data exists */}
+      {(hasRooms || hasDetections) && (
         <div className="glass rounded-xl border border-white/10 p-5 mt-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("recap_title")}</p>
-            {result.rooms && result.rooms.length > 0 && (
+            {hasRooms && (
               <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
                 <Table2 className="w-3.5 h-3.5" /> {d("recap_csv")}
               </button>
@@ -318,7 +456,7 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
                   );
                 })}
                 {/* Custom detections (visual search) */}
-                {customDetections.length > 0 && Object.keys(roomsByType).length > 0 && (
+                {hasDetections && Object.keys(roomsByType).length > 0 && (
                   <tr><td colSpan={4} className="pt-3 pb-1"><div className="border-t border-white/10" /></td></tr>
                 )}
                 {customDetections.map((det) => (

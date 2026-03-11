@@ -317,6 +317,9 @@ export const DEMO_T = {
   re_mask_windows:{ fr:"Masque Fenêtres",            en:"Window mask",        es:"Máscara Ventanas",        de:"Fenstermaske",            it:"Maschera Finestre"   },
   re_mask_walls:  { fr:"Masque Murs",                en:"Wall mask",          es:"Máscara Muros",           de:"Wandmaske",               it:"Maschera Muri"       },
   re_no_img:      { fr:"Image non disponible",       en:"Image not available",es:"Imagen no disponible",    de:"Bild nicht verfügbar",    it:"Immagine non disponibile" },
+  re_overlay_rooms:{ fr:"Pièces",                    en:"Rooms",              es:"Habitaciones",            de:"Räume",                   it:"Stanze"              },
+  re_overlay_vs:  { fr:"Détections",                 en:"Detections",         es:"Detecciones",             de:"Erkennungen",             it:"Rilevamenti"         },
+  re_no_overlay:  { fr:"Sélectionnez un masque",     en:"Select an overlay",  es:"Seleccione una capa",     de:"Overlay auswählen",       it:"Seleziona una maschera" },
 
   // ── Editor step — additional ──────────────────────────────────────────────
   ed_ia_editor:   { fr:"Éditeur IA",                 en:"AI Editor",          es:"Editor IA",               de:"KI-Editor",               it:"Editor IA"           },
