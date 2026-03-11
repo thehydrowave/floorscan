@@ -393,6 +393,11 @@ export const DEMO_T = {
   ed_quote_pdf:   { fr:"Devis PDF",                  en:"Quote PDF",          es:"Presupuesto PDF",         de:"Angebots-PDF",            it:"Preventivo PDF"      },
   ed_exporting:   { fr:"Export…",                    en:"Export…",            es:"Exportar…",               de:"Export…",                 it:"Esporta…"            },
 
+  ed_total_area:  { fr:"Surface totale",              en:"Total area",         es:"Superficie total",        de:"Gesamtfläche",            it:"Superficie totale"   },
+  ed_total_perim: { fr:"Périmètre total",             en:"Total perimeter",    es:"Perímetro total",         de:"Gesamtumfang",            it:"Perimetro totale"    },
+  ed_no_rooms:    { fr:"Aucune pièce détectée",       en:"No rooms detected",  es:"Sin habitaciones",        de:"Keine Räume erkannt",     it:"Nessuna stanza"      },
+  ed_shift_merge: { fr:"Shift+clic → fusionner",      en:"Shift+click → merge",es:"Shift+clic → fusionar",   de:"Shift+Klick → verbinden", it:"Shift+clic → fondi"  },
+
   // ── Room type labels ────────────────────────────────────────────────────
   rt_bedroom:     { fr:"Chambre",                    en:"Bedroom",            es:"Dormitorio",              de:"Schlafzimmer",            it:"Camera"              },
   rt_living:      { fr:"Séjour",                     en:"Living room",        es:"Salón",                   de:"Wohnzimmer",              it:"Soggiorno"           },

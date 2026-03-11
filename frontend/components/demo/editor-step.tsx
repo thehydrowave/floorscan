@@ -1453,91 +1453,138 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               </div>
             </div>
-            {/* ── Panneaux pièces (visible uniquement en mode rooms) ── */}
-            {layer === "rooms" && editingRoom && (
-              <div className="glass rounded-xl border border-emerald-500/25 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-600 text-emerald-400">{d("ed_change_type")}</p>
-                  <button onClick={() => setEditingRoomId(null)} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">✕</button>
-                </div>
-                <p className="text-xs text-slate-400 mb-2">
-                  {d("ed_current")} : <span style={{ color: getRoomColor(editingRoom.type) }}>{editingRoom.label_fr}</span>
-                </p>
-                <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
-                  {ROOM_TYPES.map(rt => (
-                    <button key={rt.type}
-                      onClick={() => updateRoomLabel(editingRoom.id, rt.type, d(rt.i18nKey))}
-                      className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left",
-                        editingRoom.type === rt.type ? "bg-white/10 text-white" : "hover:bg-white/5 text-slate-400 hover:text-slate-200")}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(rt.type) }} />
-                      {d(rt.i18nKey)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions pièce : Fusionner / Découper */}
-            {selectedRoomId !== null && layer === "rooms" && (
+            {/* ── Panneau pièces unifié (style surface-panel) ── */}
+            {layer === "rooms" && (
               <div className="glass rounded-xl border border-white/10 p-4">
-                <p className="text-xs font-600 text-slate-400 mb-2">{d("ed_room_actions")}</p>
-                <div className="flex flex-col gap-1.5">
-                  <button
-                    onClick={() => {
-                      toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" });
-                    }}
-                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
-                  >
-                    <Merge className="w-3 h-3" /> {d("ed_merge")}
-                  </button>
-                  <button
-                    onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                    className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-colors text-xs",
-                      tool === "split"
-                        ? "border-red-500/40 bg-red-500/10 text-red-400"
-                        : "border-red-500/30 text-red-400 hover:bg-red-500/10")}
-                  >
-                    <Scissors className="w-3 h-3" /> {d("ed_split2")}
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("ed_rooms_det")}</h3>
+                  <button onClick={() => setShowRooms(v => !v)} className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
+                    {showRooms ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-              </div>
-            )}
 
-            {/* Liste des pièces (visible uniquement en mode rooms) */}
-            {layer === "rooms" && displayRooms.length > 0 && (
-              <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-600 text-slate-500">{d("ed_rooms_det")}</p>
-                  <button onClick={() => setShowRooms(v => !v)} className="text-slate-600 hover:text-slate-400 transition-colors">
-                    {showRooms ? <Eye size={13} /> : <EyeOff size={13} />}
-                  </button>
-                </div>
-                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                {displayRooms.length === 0 && (
+                  <p className="text-xs text-slate-600">{d("ed_no_rooms")}</p>
+                )}
+
+                {/* Room cards */}
+                <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto pr-0.5">
                   {displayRooms.map(room => {
+                    const isSelected = selectedRoomId === room.id;
+                    const rcolor = getRoomColor(room.type);
                     const rPerim = room.perimeter_m != null ? room.perimeter_m
                       : (room.polygon_norm && ppm && imageNatural.w > 0
                         ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
                         : null);
                     return (
-                    <div key={room.id}
-                      className={cn("flex items-center gap-2 p-1.5 rounded-lg cursor-pointer transition-all group",
-                        selectedRoomId === room.id ? "bg-white/10" : "hover:bg-white/5")}
-                      onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); setLayer("rooms"); setActiveRoomType(room.type); }}>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getRoomColor(room.type) }} />
-                      <span className="flex-1 text-slate-400">{room.label_fr}</span>
-                      <span className="text-slate-500 text-right whitespace-nowrap">
-                        {room.area_m2 != null ? `${room.area_m2.toFixed(1)} m²` : ""}
-                        {rPerim != null ? ` · P ${rPerim.toFixed(1)} m` : ""}
-                      </span>
-                      <button
-                        onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-red-500/70 hover:text-red-400 ml-1"
-                        title={d("ed_delete_room")}
-                      ><Trash2 size={11} /></button>
-                    </div>
+                      <div key={room.id}
+                        className={cn("rounded-xl border transition-all",
+                          isSelected ? "border-emerald-500/40 bg-emerald-500/10" : "border-white/5 glass")}>
+
+                        {/* Row 1 — nom + surface + périmètre */}
+                        <div
+                          onClick={() => {
+                            setSelectedRoomId(id => id === room.id ? null : room.id);
+                            setEditingRoomId(room.id);
+                            setActiveRoomType(room.type);
+                          }}
+                          className="flex items-center gap-2.5 px-3 pt-2.5 pb-1 cursor-pointer group"
+                        >
+                          <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/20 shrink-0" style={{ background: rcolor }} />
+                          <span className={cn("text-sm font-medium flex-1 truncate", isSelected ? "text-white" : "text-slate-300")}>
+                            {room.label_fr}
+                          </span>
+                          <div className="flex flex-col items-end gap-0">
+                            <span className="text-xs text-slate-400 font-mono">
+                              {room.area_m2 != null ? `${room.area_m2.toFixed(2)} m²` : "—"}
+                            </span>
+                            {rPerim != null && (
+                              <span className="text-[10px] text-slate-600 font-mono">P {rPerim.toFixed(1)} m</span>
+                            )}
+                          </div>
+                          <button
+                            onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-600 hover:text-red-400 ml-0.5"
+                            title={d("ed_delete_room")}
+                          ><Trash2 className="w-3 h-3" /></button>
+                        </div>
+
+                        {/* Row 2 — type change + actions (when selected) */}
+                        {isSelected && (
+                          <div className="px-3 pb-2.5 pt-1 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                            {/* Type selector — color dots */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">{d("ed_type")}:</span>
+                              {ROOM_TYPES.map(rt => (
+                                <button key={rt.type}
+                                  onClick={() => updateRoomLabel(room.id, rt.type, d(rt.i18nKey))}
+                                  title={d(rt.i18nKey)}
+                                  className={cn("w-5 h-5 rounded-full border-2 transition-all shrink-0",
+                                    room.type === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
+                                  style={{ background: getRoomColor(rt.type) }}
+                                />
+                              ))}
+                            </div>
+                            {/* Actions — merge / split / delete */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button
+                                onClick={() => toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" })}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-[10px]"
+                              >
+                                <Merge className="w-2.5 h-2.5" /> {d("ed_merge")}
+                              </button>
+                              <button
+                                onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                                className={cn("flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors text-[10px]",
+                                  tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/30 text-red-400 hover:bg-red-500/10")}
+                              >
+                                <Scissors className="w-2.5 h-2.5" /> {d("ed_split")}
+                              </button>
+                              <span className="text-[9px] text-slate-600 ml-auto">{d("ed_shift_merge")}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
+
+                {/* Totals */}
+                {displayRooms.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/5 flex flex-col gap-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500">{d("ed_total_area")}</span>
+                      <span className="font-mono text-sm text-white font-600">
+                        {(() => {
+                          const total = displayRooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
+                          return total > 0 ? `${total.toFixed(2)} m²` : "—";
+                        })()}
+                      </span>
+                    </div>
+                    {ppm && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500">{d("ed_total_perim")}</span>
+                        <span className="font-mono text-xs text-slate-400">
+                          {(() => {
+                            const total = displayRooms.reduce((s, r) => {
+                              const p = r.perimeter_m != null ? r.perimeter_m
+                                : (r.polygon_norm && imageNatural.w > 0
+                                  ? polygonPerimeterM(r.polygon_norm, imageNatural.w, imageNatural.h, ppm)
+                                  : 0);
+                              return s + (p ?? 0);
+                            }, 0);
+                            return total > 0 ? `${total.toFixed(1)} m` : "—";
+                          })()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-500">{d("ed_rooms")}</span>
+                      <span className="font-mono text-xs text-emerald-400 font-600">{displayRooms.length}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

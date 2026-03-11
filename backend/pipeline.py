@@ -359,7 +359,12 @@ def edit_room_mask(mask_rgba: np.ndarray,
                    action: str, room_type: str,
                    x0=None, y0=None, x1=None, y1=None,
                    points=None) -> np.ndarray:
-    """Modifie le masque RGBA des pièces en appliquant un dessin ou un effacement."""
+    """Modifie le masque RGBA des pièces en appliquant un dessin ou un effacement.
+
+    Note: out[:, :, :3] on an RGBA array creates a non-contiguous view
+    that is incompatible with cv::Mat (OpenCV ≥4.10). We must use
+    np.ascontiguousarray() before passing to cv2.fillPoly / cv2.line.
+    """
     color = ROOM_COLORS_RGB.get(room_type, (180, 180, 180))
     out = mask_rgba.copy()
 
@@ -371,7 +376,9 @@ def edit_room_mask(mask_rgba: np.ndarray,
             out[ya:yb, xa:xb,  3] = 160
         else:  # add_poly
             pts = np.array(points, dtype=np.int32)
-            cv2.fillPoly(out[:, :, :3], [pts], color)
+            rgb = np.ascontiguousarray(out[:, :, :3])
+            cv2.fillPoly(rgb, [pts], color)
+            out[:, :, :3] = rgb
             alpha_ch = out[:, :, 3].copy()
             cv2.fillPoly(alpha_ch, [pts], 160)
             out[:, :, 3] = alpha_ch
@@ -383,7 +390,9 @@ def edit_room_mask(mask_rgba: np.ndarray,
             out[ya:yb, xa:xb] = 0
         else:  # erase_poly
             pts = np.array(points, dtype=np.int32)
-            cv2.fillPoly(out[:, :, :3], [pts], (0, 0, 0))
+            rgb = np.ascontiguousarray(out[:, :, :3])
+            cv2.fillPoly(rgb, [pts], (0, 0, 0))
+            out[:, :, :3] = rgb
             alpha_ch = out[:, :, 3].copy()
             cv2.fillPoly(alpha_ch, [pts], 0)
             out[:, :, 3] = alpha_ch
@@ -399,13 +408,15 @@ def split_room_by_line(mask_rgba: np.ndarray, cut_pts_px: list, thickness: int =
     will see two separate connected components.
     """
     out = mask_rgba.copy()
+    rgb = np.ascontiguousarray(out[:, :, :3])
+    alpha_ch = out[:, :, 3].copy()
     for i in range(len(cut_pts_px) - 1):
-        pt1 = tuple(cut_pts_px[i])
-        pt2 = tuple(cut_pts_px[i + 1])
-        cv2.line(out[:, :, :3], pt1, pt2, (0, 0, 0), thickness)
-        alpha_ch = out[:, :, 3].copy()
+        pt1 = tuple(int(v) for v in cut_pts_px[i])
+        pt2 = tuple(int(v) for v in cut_pts_px[i + 1])
+        cv2.line(rgb, pt1, pt2, (0, 0, 0), thickness)
         cv2.line(alpha_ch, pt1, pt2, 0, thickness)
-        out[:, :, 3] = alpha_ch
+    out[:, :, :3] = rgb
+    out[:, :, 3] = alpha_ch
     return out
 
 
