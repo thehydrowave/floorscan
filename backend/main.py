@@ -818,7 +818,7 @@ class VisualSearchRequest(BaseModel):
     y_pct: float
     w_pct: float
     h_pct: float
-    threshold: float = 0.75
+    threshold: float = 0.80
     max_results: int = 50
 
 def _nms_boxes(boxes, scores, overlap_thresh=0.3):

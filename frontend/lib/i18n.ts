@@ -461,6 +461,11 @@ export const DEMO_T = {
   vs_detections:  { fr:"Détections personnalisées",  en:"Custom detections",      es:"Detecciones personalizadas", de:"Benutzerdefinierte Erkennungen", it:"Rilevamenti personalizzati" },
   vs_delete:      { fr:"Supprimer",                  en:"Delete",                 es:"Eliminar",                 de:"Löschen",                  it:"Elimina"                  },
   vs_area:        { fr:"Surface totale",             en:"Total area",             es:"Superficie total",         de:"Gesamtfläche",             it:"Superficie totale"        },
+  vs_add:         { fr:"Ajouter",                    en:"Add",                    es:"Añadir",                   de:"Hinzufügen",               it:"Aggiungi"                 },
+  vs_remove:      { fr:"Retirer",                    en:"Remove",                 es:"Quitar",                   de:"Entfernen",                it:"Rimuovi"                  },
+  vs_search:      { fr:"Chercher",                   en:"Search",                 es:"Buscar",                   de:"Suchen",                   it:"Cerca"                    },
+  vs_added:       { fr:"Zone ajoutée",               en:"Zone added",             es:"Zona añadida",             de:"Zone hinzugefügt",         it:"Zona aggiunta"            },
+  vs_removed:     { fr:"Zone retirée",               en:"Zone removed",           es:"Zona eliminada",           de:"Zone entfernt",            it:"Zona rimossa"             },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

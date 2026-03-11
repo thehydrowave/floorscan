@@ -154,7 +154,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   // Overlays visibilité (murs / pièces)
   const [showWalls, setShowWalls] = useState(false);
-  const [showRooms, setShowRooms] = useState(false);
+  const [showRooms, setShowRooms] = useState(true);
 
   // Sélection / édition de pièce
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -202,6 +202,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const vsStart = useRef({ x: 0, y: 0 });
   const [vsSaveLabel, setVsSaveLabel] = useState("");
   const [vsSaveOpen, setVsSaveOpen] = useState(false);
+  const [vsEditMode, setVsEditMode] = useState<"search" | "add" | "remove">("search");
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>(initialCustomDetections ?? []);
 
   // Undo / Redo (measure mode)
@@ -669,11 +670,28 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     const rx = scaleX(e.clientX - rect.left);
     const ry = scaleY(e.clientY - rect.top);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
-    // ── Visual search: draw selection rectangle ──
+    // ── Visual search: search / add / remove ──
     if (tool === "visual_search") {
       const img = imgRef.current!;
-      const pctX = (rx / img.naturalWidth) * 100;
-      const pctY = (ry / img.naturalHeight) * 100;
+      const normX = rx / img.naturalWidth;
+      const normY = ry / img.naturalHeight;
+      const pctX = normX * 100;
+      const pctY = normY * 100;
+
+      // Remove mode: click on an existing match to delete it
+      if (vsEditMode === "remove" && vsMatches.length > 0) {
+        const hitIdx = vsMatches.findIndex(m =>
+          normX >= m.x_norm && normX <= m.x_norm + m.w_norm &&
+          normY >= m.y_norm && normY <= m.y_norm + m.h_norm
+        );
+        if (hitIdx >= 0) {
+          setVsMatches(prev => prev.filter((_, i) => i !== hitIdx));
+          toast({ title: d("vs_removed"), variant: "default" });
+        }
+        return;
+      }
+
+      // Search or Add mode: draw rectangle
       vsDrawing.current = true;
       vsStart.current = { x: pctX, y: pctY };
       setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
@@ -843,11 +861,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Visual search: finish selection and send to backend
+    // Visual search: finish selection
     if (vsDrawing.current && tool === "visual_search") {
       vsDrawing.current = false;
       if (vsCrop && vsCrop.w > 0.5 && vsCrop.h > 0.5) {
-        sendVisualSearch(vsCrop);
+        if (vsEditMode === "add") {
+          // Manually add a match at the drawn rectangle
+          const newMatch: VisualSearchMatch = {
+            x_norm: vsCrop.x / 100,
+            y_norm: vsCrop.y / 100,
+            w_norm: vsCrop.w / 100,
+            h_norm: vsCrop.h / 100,
+            score: 1.0,
+          };
+          setVsMatches(prev => [...prev, newMatch]);
+          setVsCrop(null);
+          toast({ title: d("vs_added"), variant: "success" });
+        } else {
+          // Search mode: send to backend
+          sendVisualSearch(vsCrop);
+        }
       } else {
         setVsCrop(null);
       }
@@ -1225,10 +1258,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
             </div>
 
-            {/* ── Row 3: Visual search ── */}
+            {/* ── Row 3: Visual search (visible when active or has results/detections) ── */}
+            {(tool === "visual_search" || vsMatches.length > 0 || customDetections.length > 0) && (
             <div className="glass rounded-xl border border-white/10 p-2 flex gap-2 flex-wrap items-center">
               <button
-                onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } }}
+                onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); }}
                 className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                   tool === "visual_search"
                     ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
@@ -1237,6 +1271,25 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               >
                 <Search className="w-3.5 h-3.5" /> {d("vs_tool")}
               </button>
+              {/* Sub-mode buttons: Search / Add / Remove */}
+              {tool === "visual_search" && vsMatches.length > 0 && (
+                <>
+                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
+                  {(["search", "add", "remove"] as const).map((m) => (
+                    <button key={m}
+                      onClick={() => setVsEditMode(m)}
+                      className={cn("px-2 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
+                        vsEditMode === m
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                          : "border-white/5 text-slate-500 hover:text-slate-300")}
+                    >
+                      {m === "search" && <><Search className="w-3 h-3" /> {d("vs_search")}</>}
+                      {m === "add" && <><Plus className="w-3 h-3" /> {d("vs_add")}</>}
+                      {m === "remove" && <><Trash2 className="w-3 h-3" /> {d("vs_remove")}</>}
+                    </button>
+                  ))}
+                </>
+              )}
               {tool === "visual_search" && !vsSearching && vsMatches.length === 0 && (
                 <span className="text-xs text-slate-500 italic">{d("vs_select")}</span>
               )}
@@ -1247,8 +1300,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
               {vsMatches.length > 0 && (
                 <>
+                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
                   <span className="text-xs font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
-                  <div className="w-px bg-white/10 mx-1 self-stretch" />
+                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
                   {!vsSaveOpen ? (
                     <button
                       onClick={() => setVsSaveOpen(true)}
@@ -1285,6 +1339,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </>
               )}
             </div>
+            )}
 
             <div className={cn("glass rounded-xl border border-white/10 bg-white", isWideImage ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
               {loading && (
@@ -1762,27 +1817,34 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     ))
                   )}
                   {/* Current search match results */}
-                  {vsMatches.map((m, i) => (
-                    <g key={i}>
-                      <rect
-                        x={m.x_norm * imgDisplaySize.w}
-                        y={m.y_norm * imgDisplaySize.h}
-                        width={m.w_norm * imgDisplaySize.w}
-                        height={m.h_norm * imgDisplaySize.h}
-                        fill="rgba(251, 146, 60, 0.20)"
-                        stroke="#F97316"
-                        strokeWidth={2}
-                        rx={2}
-                      />
-                      <text
-                        x={m.x_norm * imgDisplaySize.w + 3}
-                        y={m.y_norm * imgDisplaySize.h - 4}
-                        fontSize={10}
-                        fill="#F97316"
-                        fontWeight="bold"
-                      >{Math.round(m.score * 100)}%</text>
-                    </g>
-                  ))}
+                  {vsMatches.map((m, i) => {
+                    const W = imageNatural.w || 1;
+                    const H = imageNatural.h || 1;
+                    const wpx = m.w_norm * W;
+                    const hpx = m.h_norm * H;
+                    const areaLabel = ppm ? `${(wpx * hpx / (ppm * ppm)).toFixed(2)} m²` : `${Math.round(wpx * hpx)} px²`;
+                    return (
+                      <g key={i}>
+                        <rect
+                          x={m.x_norm * imgDisplaySize.w}
+                          y={m.y_norm * imgDisplaySize.h}
+                          width={m.w_norm * imgDisplaySize.w}
+                          height={m.h_norm * imgDisplaySize.h}
+                          fill="rgba(251, 146, 60, 0.20)"
+                          stroke="#F97316"
+                          strokeWidth={2}
+                          rx={2}
+                        />
+                        <text
+                          x={m.x_norm * imgDisplaySize.w + 3}
+                          y={m.y_norm * imgDisplaySize.h - 4}
+                          fontSize={9}
+                          fill="#F97316"
+                          fontWeight="bold"
+                        >{areaLabel}</text>
+                      </g>
+                    );
+                  })}
                   {/* Selection rectangle (while drawing) */}
                   {vsCrop && vsCrop.w > 0 && vsCrop.h > 0 && (
                     <rect
@@ -1880,8 +1942,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </div>
               </div>
             )}
-            {/* ── Panneau pièces unifié (style surface-panel) ── */}
-            {layer === "rooms" && (
+            {/* ── Panneau pièces unifié (toujours visible si rooms existent) ── */}
+            {displayRooms.length > 0 && (
               <div className="glass rounded-xl border border-white/10 p-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
@@ -1890,10 +1952,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     {showRooms ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-
-                {displayRooms.length === 0 && (
-                  <p className="text-xs text-slate-600">{d("ed_no_rooms")}</p>
-                )}
 
                 {/* Room cards */}
                 <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto pr-0.5">
