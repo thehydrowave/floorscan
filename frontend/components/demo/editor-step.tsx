@@ -1131,7 +1131,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       stroke="#f97316" strokeWidth={2} strokeLinecap="round" opacity={0.70}
                     />
                   ))}
-                  {showRooms && displayRooms.filter(room => selectedRoomId === null || room.id === selectedRoomId).map(room => {
+                  {showRooms && displayRooms.filter(room =>
+                    // When vertex editing, the selected room is rendered in the vertex SVG instead
+                    (vertexEditActive ? room.id !== selectedRoomId : true)
+                    && (selectedRoomId === null || room.id === selectedRoomId)
+                  ).map(room => {
                     const rcx = room.centroid_norm.x * imgDisplaySize.w;
                     const rcy = room.centroid_norm.y * imgDisplaySize.h;
                     const rcolor = getRoomColor(room.type);
@@ -1341,6 +1345,97 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       setEditingRoomId(null);
                     }}
                   >
+                    {/* ── Polygon fill + stroke (rendered here so it updates in sync with vertex drag) ── */}
+                    {(() => {
+                      const polyPoints = selRoom.polygon_norm!
+                        .map(p => `${p.x * imgDisplaySize.w},${p.y * imgDisplaySize.h}`)
+                        .join(" ");
+                      const bboxW = selRoom.bbox_norm.w * imgDisplaySize.w;
+                      const bboxH = selRoom.bbox_norm.h * imgDisplaySize.h;
+                      const minDim = Math.min(bboxW, bboxH);
+                      const fs = Math.max(7, Math.min(12, minDim * 0.14));
+                      const rcx = selRoom.centroid_norm.x * imgDisplaySize.w;
+                      const rcy = selRoom.centroid_norm.y * imgDisplaySize.h;
+
+                      const perimM = selRoom.perimeter_m != null ? selRoom.perimeter_m
+                        : (selRoom.polygon_norm && ppm && imageNatural.w > 0
+                          ? polygonPerimeterM(selRoom.polygon_norm, imageNatural.w, imageNatural.h, ppm)
+                          : null);
+                      const areaStr = selRoom.area_m2 != null ? `${selRoom.area_m2.toFixed(1)} m²` : "";
+                      const perimStr = perimM != null ? `P ${perimM.toFixed(1)} m` : "";
+                      const measLine = areaStr && perimStr ? `${areaStr} · ${perimStr}` : areaStr;
+                      const nameFontSize = fs + 2;
+                      const measFontSize = Math.max(6, fs - 2);
+                      const hasMeas = measLine.length > 0;
+                      const nameWidth = Math.max(50, selRoom.label_fr.length * (nameFontSize * 0.62));
+                      const measWidth = hasMeas ? Math.max(40, measLine.length * (measFontSize * 0.6)) : 0;
+                      const pw = Math.max(nameWidth, measWidth) + 12;
+                      const ph = hasMeas ? nameFontSize + measFontSize + 8 : nameFontSize + 6;
+
+                      return (
+                        <g>
+                          {/* Filled polygon */}
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "30"}
+                            stroke={rcolor}
+                            strokeWidth={2.5}
+                            strokeLinejoin="round"
+                          />
+                          {/* Dashed selection highlight */}
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "18"}
+                            stroke={rcolor}
+                            strokeWidth={3}
+                            strokeDasharray="6 3"
+                            strokeLinejoin="round"
+                          />
+                          {/* Edge dimension annotations */}
+                          {ppm && imageNatural.w > 0 && selRoom.polygon_norm!.map((p, ei) => {
+                            const next = selRoom.polygon_norm![(ei + 1) % selRoom.polygon_norm!.length];
+                            const x1 = p.x * imgDisplaySize.w, y1 = p.y * imgDisplaySize.h;
+                            const x2 = next.x * imgDisplaySize.w, y2 = next.y * imgDisplaySize.h;
+                            const edgeLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                            if (edgeLen < 30) return null;
+                            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+                            const lenM = edgeLengthM(p, next, imageNatural.w, imageNatural.h, ppm);
+                            const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+                            const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
+                            const nx = -(y2 - y1) / edgeLen * 8;
+                            const ny = (x2 - x1) / edgeLen * 8;
+                            const tx = mx + nx, ty = my + ny;
+                            const dimText = lenM.toFixed(2) + " m";
+                            const tw = dimText.length * 5.5 + 6;
+                            return (
+                              <g key={`dim-${ei}`}>
+                                <rect x={tx - tw / 2} y={ty - 6} width={tw} height={12} rx={2}
+                                  fill="rgba(10,16,32,0.85)"
+                                  transform={`rotate(${rot},${tx},${ty})`} />
+                                <text x={tx} y={ty + 3} textAnchor="middle" fill="#e2e8f0"
+                                  fontSize={8} fontFamily="monospace" fontWeight="600"
+                                  transform={`rotate(${rot},${tx},${ty})`}
+                                >{dimText}</text>
+                              </g>
+                            );
+                          })}
+                          {/* Label: room name + measurements */}
+                          <rect x={rcx - pw / 2} y={rcy - ph / 2} width={pw} height={ph} rx={4}
+                            fill="rgba(10,16,32,0.92)" stroke={rcolor} strokeWidth={1.5} />
+                          <text x={rcx} y={hasMeas ? rcy - ph / 2 + nameFontSize + 2 : rcy + nameFontSize * 0.35}
+                            textAnchor="middle" fill={rcolor} fontSize={nameFontSize}
+                            fontWeight="700" fontFamily="system-ui,sans-serif"
+                          >{selRoom.label_fr}</text>
+                          {hasMeas && (
+                            <text x={rcx} y={rcy - ph / 2 + nameFontSize + measFontSize + 5}
+                              textAnchor="middle" fill="#94a3b8" fontSize={measFontSize}
+                              fontWeight="500" fontFamily="monospace"
+                            >{measLine}</text>
+                          )}
+                        </g>
+                      );
+                    })()}
+
                     {/* Vertex handles — large hit targets + visible handles (like manual survey) */}
                     {selRoom.polygon_norm.map((p, idx) => {
                       const isDragging = dragRoomVertex?.roomId === selRoom.id && dragRoomVertex?.idx === idx;
