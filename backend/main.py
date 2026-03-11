@@ -145,7 +145,7 @@ def calibrate(req: CalibRequest):
 class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
-    roboflow_api_key: str
+    roboflow_api_key: str = "Kh56ukn5foPflRVreiNOM"
     model_id: str = "cubicasa5k-2-qpmsa-1gd2e/1"
     pixels_per_meter: Optional[float] = None
     conf_min_door: float = 0.05
