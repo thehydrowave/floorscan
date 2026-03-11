@@ -1258,8 +1258,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
             </div>
 
-            {/* ── Row 3: Visual search (visible when active or has results/detections) ── */}
-            {(tool === "visual_search" || vsMatches.length > 0 || customDetections.length > 0) && (
+            {/* ── Row 3: Visual search (always visible) ── */}
             <div className="glass rounded-xl border border-white/10 p-2 flex gap-2 flex-wrap items-center">
               <button
                 onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); }}
@@ -1339,7 +1338,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </>
               )}
             </div>
-            )}
 
             <div className={cn("glass rounded-xl border border-white/10 bg-white", isWideImage ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
               {loading && (
