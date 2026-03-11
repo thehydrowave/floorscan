@@ -2,9 +2,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalysisResult, Room, VisualSearchMatch } from "@/lib/types";
+import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -198,6 +198,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const [vsCrop, setVsCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const vsDrawing = useRef(false);
   const vsStart = useRef({ x: 0, y: 0 });
+  const [vsSaveLabel, setVsSaveLabel] = useState("");
+  const [vsSaveOpen, setVsSaveOpen] = useState(false);
+  const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
   // Undo / Redo (measure mode)
   const historyRef   = useRef<MeasureZone[][]>([]);
@@ -797,6 +800,46 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     } finally { setVsSearching(false); setVsCrop(null); }
   };
 
+  const DETECTION_COLORS = ["#F97316", "#8B5CF6", "#EC4899", "#14B8A6", "#EAB308", "#6366F1", "#F43F5E", "#06B6D4"];
+
+  const saveVsAsDetection = (label: string) => {
+    if (!label.trim() || vsMatches.length === 0) return;
+    const ppm = result.pixels_per_meter;
+    const W = imageNatural.w || 1;
+    const H = imageNatural.h || 1;
+
+    // Compute area for each match
+    let totalAreaPx2 = 0;
+    let totalAreaM2: number | null = ppm ? 0 : null;
+    for (const m of vsMatches) {
+      const wpx = m.w_norm * W;
+      const hpx = m.h_norm * H;
+      const areaPx = wpx * hpx;
+      totalAreaPx2 += areaPx;
+      if (ppm && totalAreaM2 !== null) {
+        totalAreaM2 += areaPx / (ppm * ppm);
+      }
+    }
+
+    const color = DETECTION_COLORS[customDetections.length % DETECTION_COLORS.length];
+    const det: CustomDetection = {
+      id: crypto.randomUUID(),
+      label: label.trim(),
+      color,
+      matches: [...vsMatches],
+      count: vsMatches.length,
+      total_area_m2: totalAreaM2 !== null ? Math.round(totalAreaM2 * 1000) / 1000 : null,
+      total_area_px2: Math.round(totalAreaPx2),
+    };
+
+    setCustomDetections(prev => [...prev, det]);
+    setVsMatches([]);
+    setVsCrop(null);
+    setVsSaveOpen(false);
+    setVsSaveLabel("");
+    toast({ title: `${d("vs_saved")} — ${det.label} (${det.count})`, variant: "success" });
+  };
+
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Visual search: finish selection and send to backend
     if (vsDrawing.current && tool === "visual_search") {
@@ -1198,8 +1241,36 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               {vsMatches.length > 0 && (
                 <>
                   <span className="text-xs font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
+                  <div className="w-px bg-white/10 mx-1 self-stretch" />
+                  {!vsSaveOpen ? (
+                    <button
+                      onClick={() => setVsSaveOpen(true)}
+                      className="px-2 py-1 rounded-lg text-xs border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 transition-colors"
+                    >
+                      <Save className="w-3 h-3" /> {d("vs_save")}
+                    </button>
+                  ) : (
+                    <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); saveVsAsDetection(vsSaveLabel); }}>
+                      <input
+                        type="text"
+                        value={vsSaveLabel}
+                        onChange={(e) => setVsSaveLabel(e.target.value)}
+                        placeholder={d("vs_save_ph")}
+                        className="px-2 py-1 rounded-lg text-xs bg-white/5 border border-white/10 text-white placeholder:text-slate-600 w-44 focus:outline-none focus:border-emerald-500/40"
+                        autoFocus
+                      />
+                      <button type="submit" disabled={!vsSaveLabel.trim()}
+                        className="px-2 py-1 rounded-lg text-xs bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-30 transition-colors">
+                        OK
+                      </button>
+                      <button type="button" onClick={() => { setVsSaveOpen(false); setVsSaveLabel(""); }}
+                        className="p-1 rounded-lg text-slate-500 hover:text-white transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </form>
+                  )}
                   <button
-                    onClick={() => { setVsMatches([]); setVsCrop(null); }}
+                    onClick={() => { setVsMatches([]); setVsCrop(null); setVsSaveOpen(false); }}
                     className="px-2 py-1 rounded-lg text-xs border border-white/10 text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
                   >
                     <X className="w-3 h-3" /> {d("vs_clear")}
@@ -1658,8 +1729,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 );
               })()}
 
-              {/* ── Visual search overlay: matches + selection rect ── */}
-              {imgDisplaySize.w > 0 && (vsMatches.length > 0 || vsCrop) && (
+              {/* ── Visual search overlay: matches + saved detections + selection rect ── */}
+              {imgDisplaySize.w > 0 && (vsMatches.length > 0 || vsCrop || customDetections.length > 0) && (
                 <svg
                   className="absolute top-0 left-0 pointer-events-none"
                   width={imgDisplaySize.w}
@@ -1667,7 +1738,23 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
                   style={{ zIndex: 12 }}
                 >
-                  {/* Match results */}
+                  {/* Saved custom detections */}
+                  {customDetections.map((det) =>
+                    det.matches.map((m, i) => (
+                      <rect
+                        key={`${det.id}-${i}`}
+                        x={m.x_norm * imgDisplaySize.w}
+                        y={m.y_norm * imgDisplaySize.h}
+                        width={m.w_norm * imgDisplaySize.w}
+                        height={m.h_norm * imgDisplaySize.h}
+                        fill={det.color + "25"}
+                        stroke={det.color}
+                        strokeWidth={2}
+                        rx={2}
+                      />
+                    ))
+                  )}
+                  {/* Current search match results */}
                   {vsMatches.map((m, i) => (
                     <g key={i}>
                       <rect
@@ -1747,6 +1834,45 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               </div>
             </div>
+            {/* ── Détections personnalisées (visual search) ── */}
+            {customDetections.length > 0 && (
+              <div className="glass rounded-xl border border-white/10 p-4">
+                <p className="text-xs font-mono text-amber-400 uppercase tracking-widest mb-3">{d("vs_detections")}</p>
+                <div className="flex flex-col gap-2">
+                  {customDetections.map((det) => (
+                    <div key={det.id} className="flex items-center justify-between group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: det.color }} />
+                        <span className="text-sm text-white truncate">{det.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-600 text-slate-300">×{det.count}</span>
+                        {det.total_area_m2 !== null && (
+                          <span className="text-xs text-slate-500">{det.total_area_m2.toFixed(2)} m²</span>
+                        )}
+                        <button
+                          onClick={() => setCustomDetections(prev => prev.filter(d => d.id !== det.id))}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-600 hover:text-red-400 transition-all"
+                          title={d("vs_delete")}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="border-t border-white/5 mt-1 pt-2 flex justify-between text-xs">
+                    <span className="text-slate-500">{d("vs_area")}</span>
+                    <span className="font-600 text-amber-400">
+                      {(() => {
+                        const total = customDetections.reduce((s, d) => s + (d.total_area_m2 ?? 0), 0);
+                        const hasScale = customDetections.some(d => d.total_area_m2 !== null);
+                        return hasScale ? `${total.toFixed(2)} m²` : "—";
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* ── Panneau pièces unifié (style surface-panel) ── */}
             {layer === "rooms" && (
               <div className="glass rounded-xl border border-white/10 p-4">

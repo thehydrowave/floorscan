@@ -109,3 +109,14 @@ export interface VisualSearchMatch {
   h_norm: number;
   score: number;
 }
+
+// Custom detection group saved from visual search
+export interface CustomDetection {
+  id: string;
+  label: string;
+  color: string;
+  matches: VisualSearchMatch[];
+  count: number;
+  total_area_m2: number | null;   // null if no scale calibration
+  total_area_px2: number;
+}

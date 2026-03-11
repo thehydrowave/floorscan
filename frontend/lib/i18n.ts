@@ -454,6 +454,13 @@ export const DEMO_T = {
   vs_found:       { fr:"trouvé(s)",                   en:"found",                  es:"encontrado(s)",            de:"gefunden",                 it:"trovato/i"              },
   vs_clear:       { fr:"Effacer",                     en:"Clear",                  es:"Borrar",                   de:"Löschen",                  it:"Cancella"               },
   vs_no_match:    { fr:"Aucune correspondance",       en:"No matches",             es:"Sin coincidencias",        de:"Keine Treffer",            it:"Nessuna corrispondenza" },
+  vs_save:        { fr:"Enregistrer",                en:"Save",                   es:"Guardar",                  de:"Speichern",                it:"Salva"                    },
+  vs_save_label:  { fr:"Nom de l'élément",           en:"Element name",           es:"Nombre del elemento",      de:"Elementname",              it:"Nome elemento"            },
+  vs_save_ph:     { fr:"ex: Douche, WC, Radiateur…", en:"e.g. Shower, WC, Radiator…", es:"ej: Ducha, WC, Radiador…", de:"z.B. Dusche, WC, Heizkörper…", it:"es: Doccia, WC, Radiatore…" },
+  vs_saved:       { fr:"Détection enregistrée",      en:"Detection saved",        es:"Detección guardada",       de:"Erkennung gespeichert",    it:"Rilevamento salvato"      },
+  vs_detections:  { fr:"Détections personnalisées",  en:"Custom detections",      es:"Detecciones personalizadas", de:"Benutzerdefinierte Erkennungen", it:"Rilevamenti personalizzati" },
+  vs_delete:      { fr:"Supprimer",                  en:"Delete",                 es:"Eliminar",                 de:"Löschen",                  it:"Elimina"                  },
+  vs_area:        { fr:"Surface totale",             en:"Total area",             es:"Superficie total",         de:"Gesamtfläche",             it:"Superficie totale"        },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;
