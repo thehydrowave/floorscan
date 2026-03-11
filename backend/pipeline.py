@@ -391,6 +391,24 @@ def edit_room_mask(mask_rgba: np.ndarray,
     return out
 
 
+def split_room_by_line(mask_rgba: np.ndarray, cut_pts_px: list, thickness: int = 5) -> np.ndarray:
+    """Split a room by erasing a thick line through the mask.
+
+    cut_pts_px: list of (x, y) pixel coordinate tuples forming the cut line.
+    The line erases both RGB and alpha channels, so rooms_from_mask_rgba
+    will see two separate connected components.
+    """
+    out = mask_rgba.copy()
+    for i in range(len(cut_pts_px) - 1):
+        pt1 = tuple(cut_pts_px[i])
+        pt2 = tuple(cut_pts_px[i + 1])
+        cv2.line(out[:, :, :3], pt1, pt2, (0, 0, 0), thickness)
+        alpha_ch = out[:, :, 3].copy()
+        cv2.line(alpha_ch, pt1, pt2, 0, thickness)
+        out[:, :, 3] = alpha_ch
+    return out
+
+
 def rooms_from_mask_rgba(mask_rgba: np.ndarray, H: int, W: int, ppm) -> list:
     """Re-dérive la liste de pièces depuis le masque RGBA édité.
 
@@ -1566,3 +1584,80 @@ def generate_measure_pdf_devis(
     _pdf_footer(c, W_a4, M, cols, date_str)
     c.save()
     return buf_out.getvalue()
+
+
+# ============================================================
+# DXF EXPORT — AutoCAD format
+# ============================================================
+def generate_dxf(rooms: list, walls: list, openings: list,
+                 img_w: int, img_h: int, ppm: float) -> bytes:
+    """Generate a DXF file with rooms, walls, and openings.
+
+    Coordinates are converted from normalized (0-1) or pixel to meters.
+    DXF Y-axis is inverted relative to image Y.
+    """
+    import ezdxf
+
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+
+    # Create layers
+    doc.layers.add("Walls",      color=7)   # white
+    doc.layers.add("Rooms",      color=3)   # green
+    doc.layers.add("Doors",      color=6)   # magenta
+    doc.layers.add("Windows",    color=4)   # cyan
+    doc.layers.add("Labels",     color=2)   # yellow
+
+    def norm_to_m(x_norm, y_norm):
+        return (x_norm * img_w / ppm, (1.0 - y_norm) * img_h / ppm)
+
+    def px_to_m(x_px, y_px):
+        return (x_px / ppm, (img_h - y_px) / ppm)
+
+    # ── Walls ──
+    if walls:
+        for w in walls:
+            p1 = norm_to_m(w.get("x1_norm", 0), w.get("y1_norm", 0))
+            p2 = norm_to_m(w.get("x2_norm", 0), w.get("y2_norm", 0))
+            msp.add_line(p1, p2, dxfattribs={"layer": "Walls"})
+
+    # ── Rooms ──
+    if rooms:
+        for room in rooms:
+            poly = room.get("polygon_norm")
+            if not poly or len(poly) < 3:
+                continue
+            points_m = [norm_to_m(p["x"], p["y"]) for p in poly]
+            points_m.append(points_m[0])  # close
+            msp.add_lwpolyline(points_m, dxfattribs={"layer": "Rooms"}, close=True)
+            # Hatch fill
+            try:
+                hatch = msp.add_hatch(color=3, dxfattribs={"layer": "Rooms"})
+                hatch.paths.add_polyline_path(
+                    [(x, y, 0) for x, y in points_m], is_closed=True
+                )
+            except Exception:
+                pass  # skip hatch if ezdxf version doesn't support it
+            # Label
+            cx, cy = norm_to_m(room["centroid_norm"]["x"], room["centroid_norm"]["y"])
+            label = room.get("label_fr", room.get("type", ""))
+            area_str = f" {room['area_m2']:.1f} m2" if room.get("area_m2") else ""
+            msp.add_mtext(f"{label}{area_str}", dxfattribs={
+                "layer": "Labels", "insert": (cx, cy), "char_height": 0.15,
+            })
+
+    # ── Openings ──
+    if openings:
+        for o in openings:
+            layer_name = "Doors" if o.get("class") == "door" else "Windows"
+            x0, y0 = px_to_m(o.get("x_px", 0), o.get("y_px", 0))
+            x1, y1 = px_to_m(
+                o.get("x_px", 0) + o.get("width_px", 0),
+                o.get("y_px", 0) + o.get("height_px", 0),
+            )
+            corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]
+            msp.add_lwpolyline(corners, dxfattribs={"layer": layer_name}, close=True)
+
+    stream = io.BytesIO()
+    doc.write(stream)
+    return stream.getvalue()

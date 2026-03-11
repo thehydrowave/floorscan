@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -16,7 +16,7 @@ import type { WallSegment } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior" | "rooms";
-type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select";
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split";
 type Mode = "editor" | "measure";
 
 // ── Constantes pièces ──────────────────────────────────────────────────────────
@@ -141,6 +141,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingDxf, setExportingDxf] = useState(false);
+  const [roomHistoryLen, setRoomHistoryLen] = useState(0);
+  const [roomFutureLen, setRoomFutureLen] = useState(0);
 
   // Opening selection & highlight
   const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
@@ -337,6 +340,24 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Keyboard: Ctrl+Z/Y for room undo/redo in editor mode ──
+  useEffect(() => {
+    if (mode !== "editor" || layer !== "rooms") return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault(); sendUndoRoom();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault(); sendRedoRoom();
+      }
+      if (e.key === "Escape" && tool === "split") {
+        pts.current = []; drawCanvas(); setTool("select");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // runs every render to capture latest sendUndoRoom/sendRedoRoom
+
   function scaleX(px: number) {
     const img = imgRef.current!;
     return px * img.naturalWidth / img.offsetWidth;
@@ -369,6 +390,27 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         ctx.fillStyle = "white"; ctx.fill();
       });
     }
+    // Split tool: draw preview points and line
+    if (tool === "split" && pts.current.length > 0) {
+      const img = imgRef.current!;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      pts.current.forEach(([px, py], i) => {
+        const sx = px * img.offsetWidth / img.naturalWidth;
+        const sy = py * img.offsetHeight / img.naturalHeight;
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      pts.current.forEach(([px, py]) => {
+        const sx = px * img.offsetWidth / img.naturalWidth;
+        const sy = py * img.offsetHeight / img.naturalHeight;
+        ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = "#ef4444"; ctx.fill();
+        ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+    }
   }, [tool, layer]);
 
   const sendEditRoom = async (params: any) => {
@@ -385,6 +427,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64,
         rooms: data.rooms ?? prev.rooms,
       }));
+      if (data.history_len != null) setRoomHistoryLen(data.history_len);
+      if (data.future_len != null) setRoomFutureLen(data.future_len);
       // Pour replace_polygon, garder la sélection (vertex drag continu)
       if (params.action !== "replace_polygon") {
         setSelectedRoomId(null);
@@ -399,6 +443,62 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     } finally { setLoading(false); }
   };
   sendEditRoomRef.current = sendEditRoom;
+
+  // ── Undo / Redo room edits ──
+  const sendUndoRoom = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/undo-room-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur undo");
+      const data = await r.json();
+      setResult(prev => ({ ...prev, mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64, rooms: data.rooms ?? prev.rooms }));
+      setRoomHistoryLen(data.history_len ?? 0);
+      setRoomFutureLen(data.future_len ?? 0);
+      toast({ title: "Annulé ↩", variant: "success" });
+    } catch (e: any) {
+      toast({ title: "Erreur", description: e.message, variant: "error" });
+    } finally { setLoading(false); }
+  };
+
+  const sendRedoRoom = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/redo-room-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur redo");
+      const data = await r.json();
+      setResult(prev => ({ ...prev, mask_rooms_b64: data.mask_rooms_b64 ?? prev.mask_rooms_b64, rooms: data.rooms ?? prev.rooms }));
+      setRoomHistoryLen(data.history_len ?? 0);
+      setRoomFutureLen(data.future_len ?? 0);
+      toast({ title: "Rétabli ↪", variant: "success" });
+    } catch (e: any) {
+      toast({ title: "Erreur", description: e.message, variant: "error" });
+    } finally { setLoading(false); }
+  };
+
+  // ── DXF export ──
+  const handleExportDxf = async () => {
+    setExportingDxf(true);
+    try {
+      const r = await fetch(`${BACKEND}/export-dxf`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur DXF");
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "floorscan_export.dxf"; a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "DXF exporté ✓", variant: "success" });
+    } catch (e: any) {
+      toast({ title: "Erreur export DXF", description: e.message, variant: "error" });
+    } finally { setExportingDxf(false); }
+  };
 
   const sendEdit = async (params: any) => {
     if (layer === "rooms") { await sendEditRoom(params); return; }
@@ -530,6 +630,19 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const rx = scaleX(e.clientX - rect.left);
     const ry = scaleY(e.clientY - rect.top);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
+    // ── Split tool: collect 2 points then submit ──
+    if (tool === "split" && layer === "rooms") {
+      pts.current.push([rx, ry]);
+      drawCanvas();
+      if (pts.current.length >= 2) {
+        const img = imgRef.current!;
+        const cutPoints = pts.current.map(([px, py]) => ({ x: px / img.naturalWidth, y: py / img.naturalHeight }));
+        pts.current = [];
+        sendEditRoom({ action: "split_room", room_id: selectedRoomId, cut_points: cutPoints });
+        setTool("select");
+      }
+      return;
+    }
     if (tool === "select") {
       // Mode rooms : hit-test sur les polygones de pièces
       if (layer === "rooms") {
@@ -542,6 +655,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             hitRoom = room;
             break;
           }
+        }
+        // ── Shift+click: merge rooms ──
+        if (hitRoom && e.shiftKey && selectedRoomId !== null && hitRoom.id !== selectedRoomId) {
+          sendEditRoom({ action: "merge_rooms", room_id: selectedRoomId, room_id_b: hitRoom.id });
+          return;
         }
         if (hitRoom) {
           setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
@@ -752,6 +870,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     : null;
   const vertexEditActive = tool === "select" && layer === "rooms" && selectedRoomId !== null
     && displayRooms.find(r => r.id === selectedRoomId)?.polygon_norm != null;
+  // Split tool needs canvas interaction even when a room is selected
+  const canvasInteractive = tool === "split" || !vertexEditActive;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -782,6 +902,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
+          </Button>
+          <Button onClick={handleExportDxf} disabled={exportingDxf || !ppm} variant="outline" title={!ppm ? "Échelle requise pour l'export DXF" : "Exporter en DXF (AutoCAD)"}>
+            {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> Export…</> : <><FileDown className="w-4 h-4" /> DXF</>}
           </Button>
           <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
         </div>
@@ -851,6 +974,29 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
                   {d("ed_finish_poly")}
                 </button>
+              )}
+              {/* Undo/Redo room edits (visible when layer=rooms) */}
+              {layer === "rooms" && (
+                <>
+                  <div className="w-px bg-white/10 mx-1 self-stretch" />
+                  <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
+                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                    title="Annuler (Ctrl+Z)">
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
+                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                    title="Rétablir (Ctrl+Y)">
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                      tool === "split"
+                        ? "border-red-500/40 bg-red-500/10 text-red-400"
+                        : "border-red-500/20 text-red-500/60 hover:text-red-400")}>
+                    <Scissors className="w-3 h-3" /> Découper
+                  </button>
+                </>
               )}
               <div className="w-px bg-white/10 mx-1 self-stretch" />
               {/* Toggle opening number overlay */}
@@ -1101,6 +1247,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       const normY = (e.clientY - rect.top) / imgDisplaySize.h;
                       for (const r of displayRooms) {
                         if (r.polygon_norm && pointInPolygon(normX, normY, r.polygon_norm)) {
+                          // Shift+click: merge rooms
+                          if (e.shiftKey && selectedRoomId !== null && r.id !== selectedRoomId) {
+                            sendEditRoom({ action: "merge_rooms", room_id: selectedRoomId, room_id_b: r.id });
+                            return;
+                          }
                           setSelectedRoomId(r.id);
                           setEditingRoomId(r.id);
                           setActiveRoomType(r.type);
@@ -1200,7 +1351,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               })()}
 
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
-                style={{ cursor: tool === "select" ? "default" : "crosshair", zIndex: 10, pointerEvents: vertexEditActive ? "none" : "auto" }}
+                style={{ cursor: tool === "select" ? "default" : tool === "split" ? "crosshair" : "crosshair", zIndex: tool === "split" ? 20 : 10, pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
             </div>
             <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
@@ -1260,6 +1411,32 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       {rt.label_fr}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions pièce : Fusionner / Découper */}
+            {selectedRoomId !== null && layer === "rooms" && (
+              <div className="glass rounded-xl border border-white/10 p-4">
+                <p className="text-xs font-600 text-slate-400 mb-2">Actions sur la pièce</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => {
+                      toast({ title: "Mode Fusion", description: "Maintenez Shift et cliquez sur une pièce adjacente pour la fusionner.", variant: "default" });
+                    }}
+                    className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
+                  >
+                    <Merge className="w-3 h-3" /> Fusionner (Shift+clic)
+                  </button>
+                  <button
+                    onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
+                    className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-colors text-xs",
+                      tool === "split"
+                        ? "border-red-500/40 bg-red-500/10 text-red-400"
+                        : "border-red-500/30 text-red-400 hover:bg-red-500/10")}
+                  >
+                    <Scissors className="w-3 h-3" /> Découper en 2
+                  </button>
                 </div>
               </div>
             )}

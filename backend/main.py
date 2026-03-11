@@ -183,6 +183,8 @@ def analyze(req: AnalyzeRequest):
         "interior_mask":    interior_mask,
         "pixels_per_meter": result["pixels_per_meter"],
         "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
+        "mask_rooms_history": [],  # undo stack (max 20 snapshots)
+        "mask_rooms_future":  [],  # redo stack
         "cfg":              cfg,
         "analysis":         result,
     })
@@ -311,15 +313,17 @@ def edit_mask(req: EditMaskRequest):
 # ============================================================
 class EditRoomMaskRequest(BaseModel):
     session_id: str
-    action: str          # "add_rect"|"erase_rect"|"add_poly"|"erase_poly"|"delete_room"|"replace_polygon"
+    action: str          # "add_rect"|"erase_rect"|"add_poly"|"erase_poly"|"delete_room"|"replace_polygon"|"merge_rooms"|"split_room"
     room_type: str = "bedroom"
     room_id: Optional[int] = None
+    room_id_b: Optional[int] = None       # second room for merge
     x0: Optional[float] = None
     y0: Optional[float] = None
     x1: Optional[float] = None
     y1: Optional[float] = None
     points: Optional[list] = None
-    polygon_norm: Optional[list] = None  # [{x: float, y: float}, ...] — normalized 0-1 coords
+    polygon_norm: Optional[list] = None   # [{x: float, y: float}, ...] — normalized 0-1 coords
+    cut_points: Optional[list] = None     # [{x, y}, {x, y}] — normalized, for split_room
 
 @app.post("/edit-room-mask")
 def edit_room_mask(req: EditRoomMaskRequest):
@@ -334,19 +338,31 @@ def edit_room_mask(req: EditRoomMaskRequest):
     ppm = s.get("pixels_per_meter")
     H, W = mask_rgba.shape[:2]
 
+    # ── Push undo snapshot before any modification ──
+    history = s.setdefault("mask_rooms_history", [])
+    history.append(mask_rgba.copy())
+    if len(history) > 20:
+        history.pop(0)
+    s["mask_rooms_future"] = []  # clear redo stack on new edit
+
     if req.action == "delete_room":
-        # Effacer le bbox de la pièce sélectionnée
         rooms = s["analysis"].get("rooms", [])
         room = next((r for r in rooms if r["id"] == req.room_id), None)
         if room is None:
             raise HTTPException(404, "Pièce introuvable")
-        bbn = room["bbox_norm"]
-        x0 = int(bbn["x"] * W); y0 = int(bbn["y"] * H)
-        x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
-        mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", req.room_type,
-                                             x0=x0, y0=y0, x1=x1, y1=y1)
+        # Effacer via polygone si disponible, sinon via bbox
+        poly = room.get("polygon_norm")
+        if poly:
+            pts = [[int(p["x"] * W), int(p["y"] * H)] for p in poly]
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_poly", room.get("type", req.room_type), points=pts)
+        else:
+            bbn = room["bbox_norm"]
+            x0 = int(bbn["x"] * W); y0 = int(bbn["y"] * H)
+            x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", req.room_type,
+                                                 x0=x0, y0=y0, x1=x1, y1=y1)
+
     elif req.action == "replace_polygon":
-        # Remplacer le polygone d'une pièce (vertex drag editing)
         if req.room_id is None or req.polygon_norm is None:
             raise HTTPException(400, "room_id et polygon_norm requis")
         rooms = s["analysis"].get("rooms", [])
@@ -354,7 +370,6 @@ def edit_room_mask(req: EditRoomMaskRequest):
         if room is None:
             raise HTTPException(404, "Pièce introuvable")
         room_type_color = room.get("type", req.room_type)
-        # Effacer l'ancien polygone
         old_poly = room.get("polygon_norm")
         if old_poly:
             old_pts = [[int(p["x"] * W), int(p["y"] * H)] for p in old_poly]
@@ -365,9 +380,36 @@ def edit_room_mask(req: EditRoomMaskRequest):
             x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
             mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", room_type_color,
                                                  x0=x0, y0=y0, x1=x1, y1=y1)
-        # Dessiner le nouveau polygone
         new_pts = [[int(p["x"] * W), int(p["y"] * H)] for p in req.polygon_norm]
         mask_rgba = pipeline.edit_room_mask(mask_rgba, "add_poly", room_type_color, points=new_pts)
+
+    elif req.action == "merge_rooms":
+        if req.room_id is None or req.room_id_b is None:
+            raise HTTPException(400, "room_id et room_id_b requis")
+        rooms = s["analysis"].get("rooms", [])
+        room_a = next((r for r in rooms if r["id"] == req.room_id), None)
+        room_b = next((r for r in rooms if r["id"] == req.room_id_b), None)
+        if not room_a or not room_b:
+            raise HTTPException(404, "Pièce introuvable")
+        # Erase room B, then repaint with room A's color
+        poly_b = room_b.get("polygon_norm")
+        if poly_b:
+            pts_b = [[int(p["x"] * W), int(p["y"] * H)] for p in poly_b]
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_poly", room_b["type"], points=pts_b)
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "add_poly", room_a["type"], points=pts_b)
+        else:
+            bbn = room_b["bbox_norm"]
+            x0 = int(bbn["x"] * W); y0 = int(bbn["y"] * H)
+            x1 = int((bbn["x"] + bbn["w"]) * W); y1 = int((bbn["y"] + bbn["h"]) * H)
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "erase_rect", room_b["type"], x0=x0, y0=y0, x1=x1, y1=y1)
+            mask_rgba = pipeline.edit_room_mask(mask_rgba, "add_rect", room_a["type"], x0=x0, y0=y0, x1=x1, y1=y1)
+
+    elif req.action == "split_room":
+        if req.room_id is None or not req.cut_points or len(req.cut_points) < 2:
+            raise HTTPException(400, "room_id et cut_points (2+ points) requis")
+        cut_pts_px = [(int(p["x"] * W), int(p["y"] * H)) for p in req.cut_points]
+        mask_rgba = pipeline.split_room_by_line(mask_rgba, cut_pts_px)
+
     else:
         mask_rgba = pipeline.edit_room_mask(
             mask_rgba, req.action, req.room_type,
@@ -379,15 +421,79 @@ def edit_room_mask(req: EditRoomMaskRequest):
     rooms_list = pipeline.rooms_from_mask_rgba(mask_rgba, H, W, ppm)
 
     # Sauvegarder en session
-    sessions[req.session_id]["mask_rooms_rgba"] = mask_rgba
-    sessions[req.session_id]["analysis"]["rooms"] = [
+    s["mask_rooms_rgba"] = mask_rgba
+    s["analysis"]["rooms"] = [
         {k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list
     ]
-    sessions[req.session_id]["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(mask_rgba)
+    s["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(mask_rgba)
 
     return {
         "mask_rooms_b64": pipeline._np_to_b64(mask_rgba),
-        "rooms": sessions[req.session_id]["analysis"]["rooms"],
+        "rooms": s["analysis"]["rooms"],
+        "history_len": len(s.get("mask_rooms_history", [])),
+        "future_len": len(s.get("mask_rooms_future", [])),
+    }
+
+
+# ── Undo / Redo room mask ──
+
+class UndoRedoRoomRequest(BaseModel):
+    session_id: str
+
+@app.post("/undo-room-mask")
+def undo_room_mask(req: UndoRedoRoomRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    history = s.get("mask_rooms_history", [])
+    if not history:
+        raise HTTPException(400, "Rien à annuler")
+    future = s.setdefault("mask_rooms_future", [])
+    future.append(s["mask_rooms_rgba"].copy())
+    if len(future) > 20:
+        future.pop(0)
+    prev = history.pop()
+    s["mask_rooms_rgba"] = prev
+    ppm = s.get("pixels_per_meter")
+    H, W = prev.shape[:2]
+    rooms_list = pipeline.rooms_from_mask_rgba(prev, H, W, ppm)
+    s["analysis"]["rooms"] = [
+        {k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list
+    ]
+    s["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(prev)
+    return {
+        "mask_rooms_b64": s["analysis"]["mask_rooms_b64"],
+        "rooms": s["analysis"]["rooms"],
+        "history_len": len(history),
+        "future_len": len(future),
+    }
+
+@app.post("/redo-room-mask")
+def redo_room_mask(req: UndoRedoRoomRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    future = s.get("mask_rooms_future", [])
+    if not future:
+        raise HTTPException(400, "Rien à rétablir")
+    history = s.setdefault("mask_rooms_history", [])
+    history.append(s["mask_rooms_rgba"].copy())
+    if len(history) > 20:
+        history.pop(0)
+    nxt = future.pop()
+    s["mask_rooms_rgba"] = nxt
+    ppm = s.get("pixels_per_meter")
+    H, W = nxt.shape[:2]
+    rooms_list = pipeline.rooms_from_mask_rgba(nxt, H, W, ppm)
+    s["analysis"]["rooms"] = [
+        {k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list
+    ]
+    s["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(nxt)
+    return {
+        "mask_rooms_b64": s["analysis"]["mask_rooms_b64"],
+        "rooms": s["analysis"]["rooms"],
+        "history_len": len(history),
+        "future_len": len(future),
     }
 
 
@@ -575,6 +681,41 @@ def export_pdf(req: ExportRequest):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=floorscan_report.pdf"}
+    )
+
+
+# ============================================================
+# ROUTE 8b — EXPORT DXF (AutoCAD)
+# ============================================================
+class ExportDxfRequest(BaseModel):
+    session_id: str
+
+@app.post("/export-dxf")
+def export_dxf(req: ExportDxfRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    a = s.get("analysis")
+    if a is None:
+        raise HTTPException(400, "Lancez d'abord /analyze")
+    ppm = a.get("pixels_per_meter")
+    if not ppm:
+        raise HTTPException(400, "Échelle (pixels_per_meter) requise pour l'export DXF")
+    img_rgb = s["img_rgb"]
+    H, W = img_rgb.shape[:2]
+    try:
+        dxf_bytes = pipeline.generate_dxf(
+            rooms=a.get("rooms", []),
+            walls=a.get("walls", []),
+            openings=a.get("openings", []),
+            img_w=W, img_h=H, ppm=ppm,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Erreur génération DXF : {e}")
+    return Response(
+        content=dxf_bytes,
+        media_type="application/dxf",
+        headers={"Content-Disposition": "attachment; filename=floorscan_export.dxf"},
     )
 
 

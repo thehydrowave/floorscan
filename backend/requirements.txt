@@ -22,4 +22,7 @@ charset-normalizer>=2,<4
 # Data
 pandas==2.2.2
 
+# DXF export
+ezdxf>=0.18.0
+
 
