@@ -329,28 +329,20 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const onUp = (e: MouseEvent) => {
       const dv = dragRoomVertexRef.current;
       if (e.button !== 0 || !dv) return;
-      const { roomId } = dv;
-      const rooms = localRoomsRef.current ?? [];
-      const room = rooms.find(r => r.id === roomId);
+      const rooms = localRoomsRef.current;
 
       dragRoomVertexRef.current = null;
       setDragRoomVertex(null);
       setSnappedVertex(false);
 
-      if (room?.polygon_norm) {
-        sendEditRoomRef.current({
-          action: "replace_polygon",
-          room_id: roomId,
-          room_type: room.type,
-          polygon_norm: room.polygon_norm,
-        }).finally(() => {
-          localRoomsRef.current = null;
-          setLocalRooms(null);
-        });
-      } else {
-        localRoomsRef.current = null;
-        setLocalRooms(null);
+      if (rooms) {
+        // Commit updated polygon directly to result (frontend-only, no backend round-trip).
+        // The backend mask pipeline (erase→redraw→findContours) can lose rooms,
+        // so we just keep the updated coordinates as-is.
+        setResult(prev => ({ ...prev, rooms }));
       }
+      localRoomsRef.current = null;
+      setLocalRooms(null);
     };
 
     window.addEventListener("mousemove", onMove);
