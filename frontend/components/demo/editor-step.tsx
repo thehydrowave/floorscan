@@ -147,16 +147,33 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
 
   // Opening selection & highlight
   const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
-  const [showOpeningOverlay, setShowOpeningOverlay] = useState(true);
+  const [showOpeningOverlay, setShowOpeningOverlay] = useState(false);
 
   // Overlays visibilité (murs / pièces)
-  const [showWalls, setShowWalls] = useState(true);
-  const [showRooms, setShowRooms] = useState(true);
+  const [showWalls, setShowWalls] = useState(false);
+  const [showRooms, setShowRooms] = useState(false);
 
   // Sélection / édition de pièce
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
+
+  // Auto-enable overlays + reset tool on layer change
+  useEffect(() => {
+    if (layer === "rooms") {
+      setShowRooms(true);
+      setTool("select");
+    } else if (layer === "door" || layer === "window") {
+      setShowOpeningOverlay(true);
+      if (tool === "split") setTool("add_rect");
+    } else if (layer === "interior") {
+      if (tool === "split" || tool === "select") setTool("add_rect");
+    }
+    if (layer !== "rooms") {
+      setSelectedRoomId(null);
+      setEditingRoomId(null);
+    }
+  }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vertex drag editing for room polygons
   const [dragRoomVertex, setDragRoomVertex] = useState<{ roomId: number; idx: number } | null>(null);
@@ -872,6 +889,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     && displayRooms.find(r => r.id === selectedRoomId)?.polygon_norm != null;
   // Split tool needs canvas interaction even when a room is selected
   const canvasInteractive = tool === "split" || !vertexEditActive;
+  // Detect panoramic/wide images (ratio > 3:1)
+  const isWideImage = imageNatural.w > 0 && imageNatural.h > 0 && (imageNatural.w / imageNatural.h) > 3;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -914,7 +933,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       {mode === "editor" && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
           <div className="flex flex-col gap-3 min-w-0">
-            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap">
+            {/* ── Row 1: Layers + Visibility toggles ── */}
+            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap items-center">
               <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_layer_lbl")}:</span>
               {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
                 <button key={l} onClick={() => setLayer(l)}
@@ -925,9 +945,77 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : l === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ Pièces`}
                 </button>
               ))}
-              {/* Sélecteur type de pièce (visible seulement en mode rooms) */}
+              <div className="flex-1" />
+              <button
+                onClick={() => setShowOpeningOverlay(v => !v)}
+                title={showOpeningOverlay ? "Masquer les numéros" : "Afficher les numéros"}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showOpeningOverlay ? "border-white/20 bg-white/5 text-white" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                N°
+              </button>
+              <button
+                onClick={() => setShowWalls(v => !v)}
+                title={showWalls ? "Masquer les murs" : "Afficher les murs"}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showWalls ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                <Layers size={12} className={showWalls ? "" : "opacity-40"} />
+                Murs
+              </button>
+              <button
+                onClick={() => setShowRooms(v => !v)}
+                title={showRooms ? "Masquer les pièces" : "Afficher les pièces"}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                <LayoutGrid size={12} className={showRooms ? "" : "opacity-40"} />
+                Pièces
+              </button>
+            </div>
+
+            {/* ── Row 2: Contextual tools ── */}
+            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap items-center">
+              {/* Mask tools — door / window / interior */}
+              {(layer === "door" || layer === "window" || layer === "interior") && (
+                <>
+                  <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
+                  {([
+                    { id: "add_rect", label: "+ Rectangle" },
+                    { id: "erase_rect", label: "− Rectangle", erase: true },
+                    { id: "add_poly", label: "+ Polygone" },
+                    { id: "erase_poly", label: "− Polygone", erase: true },
+                    { id: "sam", label: "🪄 SAM auto", special: true },
+                    { id: "select", label: "Sélectionner", select: true },
+                  ] as any[]).map(({ id, label, erase, special, select: sel }) => (
+                    <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; if (id !== "select") setSelectedOpeningIdx(null); }}
+                      className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                        tool === id
+                          ? erase   ? "border-red-500/40 bg-red-500/10 text-red-400"
+                            : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
+                            : sel    ? "border-teal-500/40 bg-teal-500/10 text-teal-400"
+                            :          "border-accent/40 bg-accent/10 text-accent"
+                          : erase   ? "border-red-500/20 text-red-500/60 hover:text-red-400"
+                            : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400"
+                            : sel    ? "border-teal-500/20 text-teal-500/60 hover:text-teal-400"
+                            :          "border-white/10 text-slate-500 hover:text-slate-300")}>
+                      {sel && <MousePointer2 className="w-3 h-3" />}
+                      {label}
+                    </button>
+                  ))}
+                  {(tool === "add_poly" || tool === "erase_poly") && (
+                    <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
+                      {d("ed_finish_poly")}
+                    </button>
+                  )}
+                </>
+              )}
+              {/* Room tools */}
               {layer === "rooms" && (
                 <>
+                  <button onClick={() => { setTool("select"); pts.current = []; }}
+                    className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                      tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-teal-500/20 text-teal-500/60 hover:text-teal-400")}>
+                    <MousePointer2 className="w-3 h-3" /> Sélectionner
+                  </button>
                   <div className="w-px bg-white/10 mx-1 self-stretch" />
                   <span className="text-xs text-slate-500 self-center font-mono mr-1">Type:</span>
                   <div className="flex gap-1 flex-wrap">
@@ -943,41 +1031,16 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                   <span className="text-xs self-center px-2 py-1 rounded-lg bg-white/5 text-slate-300">
                     {ROOM_TYPES.find(rt => rt.type === activeRoomType)?.label_fr}
                   </span>
-                </>
-              )}
-              <div className="w-px bg-white/10 mx-1 self-stretch" />
-              <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
-              {([
-                { id: "add_rect", label: "+ Rectangle" },
-                { id: "erase_rect", label: "− Rectangle", erase: true },
-                { id: "add_poly", label: "+ Polygone" },
-                { id: "erase_poly", label: "− Polygone", erase: true },
-                { id: "sam", label: "🪄 SAM auto", special: true },
-                { id: "select", label: "Sélectionner", select: true },
-              ] as any[]).map(({ id, label, erase, special, select: sel }) => (
-                <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; if (id !== "select") setSelectedOpeningIdx(null); }}
-                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                    tool === id
-                      ? erase   ? "border-red-500/40 bg-red-500/10 text-red-400"
-                        : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
-                        : sel    ? "border-teal-500/40 bg-teal-500/10 text-teal-400"
-                        :          "border-accent/40 bg-accent/10 text-accent"
-                      : erase   ? "border-red-500/20 text-red-500/60 hover:text-red-400"
-                        : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400"
-                        : sel    ? "border-teal-500/20 text-teal-500/60 hover:text-teal-400"
-                        :          "border-white/10 text-slate-500 hover:text-slate-300")}>
-                  {sel && <MousePointer2 className="w-3 h-3" />}
-                  {label}
-                </button>
-              ))}
-              {(tool === "add_poly" || tool === "erase_poly") && (
-                <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
-                  {d("ed_finish_poly")}
-                </button>
-              )}
-              {/* Undo/Redo room edits (visible when layer=rooms) */}
-              {layer === "rooms" && (
-                <>
+                  {selectedRoomId !== null && (
+                    <>
+                      <div className="w-px bg-white/10 mx-1 self-stretch" />
+                      <button onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
+                        className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                          tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/20 text-red-500/60 hover:text-red-400")}>
+                        <Scissors className="w-3 h-3" /> Découper
+                      </button>
+                    </>
+                  )}
                   <div className="w-px bg-white/10 mx-1 self-stretch" />
                   <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
                     className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
@@ -989,65 +1052,27 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                     title="Rétablir (Ctrl+Y)">
                     <Redo2 className="w-3.5 h-3.5" />
                   </button>
-                  <button onClick={() => { setTool("split"); pts.current = []; toast({ title: "Mode Découpe", description: "Cliquez 2 points pour tracer la ligne de coupe.", variant: "default" }); }}
-                    className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                      tool === "split"
-                        ? "border-red-500/40 bg-red-500/10 text-red-400"
-                        : "border-red-500/20 text-red-500/60 hover:text-red-400")}>
-                    <Scissors className="w-3 h-3" /> Découper
-                  </button>
                 </>
               )}
-              <div className="w-px bg-white/10 mx-1 self-stretch" />
-              {/* Toggle opening number overlay */}
-              <button
-                onClick={() => setShowOpeningOverlay(v => !v)}
-                title={showOpeningOverlay ? "Masquer les numéros" : "Afficher les numéros"}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showOpeningOverlay
-                    ? "border-white/20 bg-white/5 text-white"
-                    : "border-white/10 text-slate-500 hover:text-slate-300"
-                )}
-              >
-                {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                {showOpeningOverlay ? "Numéros ON" : "Numéros OFF"}
-              </button>
-              {/* Toggles overlay murs / pièces */}
-              <div className="w-px bg-white/10 mx-1 self-stretch" />
-              <button
-                onClick={() => setShowWalls(v => !v)}
-                title={showWalls ? "Masquer les murs" : "Afficher les murs"}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                  showWalls ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                <Layers size={13} className={showWalls ? "" : "opacity-40"} />
-                Murs
-              </button>
-              <button
-                onClick={() => setShowRooms(v => !v)}
-                title={showRooms ? "Masquer les pièces" : "Afficher les pièces"}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                  showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                <LayoutGrid size={13} className={showRooms ? "" : "opacity-40"} />
-                Pièces
-              </button>
             </div>
 
-            <div className="relative glass rounded-xl border border-white/10 overflow-hidden bg-white">
+            <div className={cn("glass rounded-xl border border-white/10 bg-white", isWideImage ? "overflow-x-auto overflow-y-hidden" : "overflow-hidden")}>
               {loading && (
-                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-20">
+                <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-20" style={{ position: "sticky", left: 0 }}>
                   <Loader2 className="w-8 h-8 text-accent animate-spin" />
                 </div>
               )}
+              <div className="relative" style={{ display: isWideImage ? "inline-block" : "block", minWidth: "100%" }}>
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                className="w-full h-auto block max-h-[calc(100vh-200px)] object-contain"
+                className={cn("block", isWideImage ? "h-[min(50vh,500px)] w-auto max-w-none" : "w-full h-auto max-h-[calc(100vh-200px)] object-contain")}
                 onLoad={updateImgDisplaySize} />
 
               {/* Masque coloré raster (fallback si pas de polygon_norm) */}
-              {showRooms && result.mask_rooms_b64 && !(result.rooms?.some(r => r.polygon_norm)) && (
+              {showRooms && result.mask_rooms_b64 && !(result.rooms?.some(r => r.polygon_norm)) && selectedRoomId === null && (
                 <img
                   src={`data:image/png;base64,${result.mask_rooms_b64}`}
                   alt=""
-                  className="absolute top-0 left-0 w-full h-auto block max-h-[calc(100vh-200px)] object-contain pointer-events-none"
+                  className={cn("absolute top-0 left-0 pointer-events-none", isWideImage ? "h-[min(50vh,500px)] w-auto max-w-none" : "w-full h-auto max-h-[calc(100vh-200px)] object-contain")}
                   style={{ zIndex: 1 }}
                 />
               )}
@@ -1068,7 +1093,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       stroke="#f97316" strokeWidth={2} strokeLinecap="round" opacity={0.70}
                     />
                   ))}
-                  {showRooms && displayRooms.map(room => {
+                  {showRooms && displayRooms.filter(room => selectedRoomId === null || room.id === selectedRoomId).map(room => {
                     const rcx = room.centroid_norm.x * imgDisplaySize.w;
                     const rcy = room.centroid_norm.y * imgDisplaySize.h;
                     const rcolor = getRoomColor(room.type);
@@ -1353,6 +1378,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
                 style={{ cursor: tool === "select" ? "default" : tool === "split" ? "crosshair" : "crosshair", zIndex: tool === "split" ? 20 : 10, pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
+              </div>{/* /inner wrapper */}
             </div>
             <p className="text-xs text-slate-600">{d("ed_canvas_hint")}</p>
           </div>
@@ -1391,8 +1417,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               </div>
             </div>
-            {/* Éditeur de type de pièce */}
-            {editingRoom && (
+            {/* ── Panneaux pièces (visible uniquement en mode rooms) ── */}
+            {layer === "rooms" && editingRoom && (
               <div className="glass rounded-xl border border-emerald-500/25 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs font-600 text-emerald-400">Modifier le type</p>
@@ -1441,8 +1467,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               </div>
             )}
 
-            {/* Liste des pièces */}
-            {displayRooms.length > 0 && (
+            {/* Liste des pièces (visible uniquement en mode rooms) */}
+            {layer === "rooms" && displayRooms.length > 0 && (
               <div className="glass rounded-xl border border-white/10 p-4 text-xs text-slate-600">
                 <div className="flex items-center justify-between mb-2">
                   <p className="font-600 text-slate-500">Pièces détectées</p>
@@ -1479,6 +1505,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
               </div>
             )}
 
+            {/* Ouvertures (visible uniquement en mode door/window) */}
+            {(layer === "door" || layer === "window") && (
             <div className="glass rounded-xl border border-white/10 p-4 text-xs">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
@@ -1591,6 +1619,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}
