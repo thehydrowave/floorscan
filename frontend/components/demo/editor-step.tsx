@@ -164,7 +164,6 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       setShowRooms(true);
       setTool("select");
     } else if (layer === "door" || layer === "window") {
-      setShowOpeningOverlay(true);
       if (tool === "split") setTool("add_rect");
     } else if (layer === "interior") {
       if (tool === "split" || tool === "select") setTool("add_rect");
@@ -316,7 +315,11 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         const perimeterM = ppmV && natW > 0 ? polygonPerimeterM(newPoly, natW, natH, ppmV) : undefined;
         const cx = newPoly.reduce((s, p) => s + p.x, 0) / newPoly.length;
         const cy = newPoly.reduce((s, p) => s + p.y, 0) / newPoly.length;
-        return { ...room, polygon_norm: newPoly, area_m2: areaM2, perimeter_m: perimeterM, centroid_norm: { x: cx, y: cy } };
+        // Recalculate bbox_norm for proper label sizing
+        const xs = newPoly.map(p => p.x), ys = newPoly.map(p => p.y);
+        const bx = Math.min(...xs), by = Math.min(...ys);
+        const bbox_norm = { x: bx, y: by, w: Math.max(...xs) - bx, h: Math.max(...ys) - by };
+        return { ...room, polygon_norm: newPoly, area_m2: areaM2, perimeter_m: perimeterM, centroid_norm: { x: cx, y: cy }, bbox_norm };
       });
       localRoomsRef.current = updated;
       setLocalRooms(updated);
@@ -390,9 +393,22 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
-    const color = isErase ? "#F87171" : (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE");
+    const roomColor = layer === "rooms" ? getRoomColor(activeRoomType) : null;
+    const color = isErase ? "#F87171" : (roomColor ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE"));
     if (pts.current.length > 0 && (tool === "add_poly" || tool === "erase_poly")) {
       const img = imgRef.current!;
+      // Fill the polygon shape preview with semi-transparent color
+      if (pts.current.length >= 3) {
+        ctx.beginPath();
+        pts.current.forEach(([px, py], i) => {
+          const sx = px * img.offsetWidth / img.naturalWidth;
+          const sy = py * img.offsetHeight / img.naturalHeight;
+          if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        });
+        ctx.closePath();
+        ctx.fillStyle = color + "28";
+        ctx.fill();
+      }
       ctx.beginPath();
       pts.current.forEach(([px, py], i) => {
         const sx = px * img.offsetWidth / img.naturalWidth;
@@ -403,8 +419,9 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
       pts.current.forEach(([px, py]) => {
         const sx = px * img.offsetWidth / img.naturalWidth;
         const sy = py * img.offsetHeight / img.naturalHeight;
-        ctx.beginPath(); ctx.arc(sx, sy, 4, 0, 2 * Math.PI);
+        ctx.beginPath(); ctx.arc(sx, sy, 5, 0, 2 * Math.PI);
         ctx.fillStyle = "white"; ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
       });
     }
     // Split tool: draw preview points and line
@@ -428,7 +445,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
         ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
       });
     }
-  }, [tool, layer]);
+  }, [tool, layer, activeRoomType]);
 
   const sendEditRoom = async (params: any) => {
     setLoading(true); setError(null);
@@ -722,7 +739,8 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const ctx = cv.getContext("2d")!;
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
-    const color = isErase ? "#F87171" : (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE");
+    const roomColorMv = layer === "rooms" ? getRoomColor(activeRoomType) : null;
+    const color = isErase ? "#F87171" : (roomColorMv ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE"));
     const img = imgRef.current!;
     const x0 = startPt.current.x * img.offsetWidth / img.naturalWidth;
     const y0 = startPt.current.y * img.offsetHeight / img.naturalHeight;
@@ -1323,45 +1341,57 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       setEditingRoomId(null);
                     }}
                   >
-                    {/* Vertex handles */}
+                    {/* Vertex handles — large hit targets + visible handles (like manual survey) */}
                     {selRoom.polygon_norm.map((p, idx) => {
                       const isDragging = dragRoomVertex?.roomId === selRoom.id && dragRoomVertex?.idx === idx;
                       const isSnapped = isDragging && snappedVertex;
+                      const cx = p.x * imgDisplaySize.w;
+                      const cy = p.y * imgDisplaySize.h;
                       return (
-                      <circle
-                        key={`v-${idx}`}
-                        cx={p.x * imgDisplaySize.w}
-                        cy={p.y * imgDisplaySize.h}
-                        r={isSnapped ? 7 : 6}
-                        fill={isSnapped ? "#f97316" : "white"}
-                        stroke={isSnapped ? "#ea580c" : rcolor}
-                        strokeWidth={isSnapped ? 2.5 : 2}
-                        style={{ cursor: dragRoomVertex ? "grabbing" : "grab", pointerEvents: "all" }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          dragRoomVertexRef.current = { roomId: selRoom.id, idx };
-                          setDragRoomVertex({ roomId: selRoom.id, idx });
-                          localRoomsRef.current = displayRooms;
-                          setLocalRooms(displayRooms);
-                        }}
-                        onContextMenu={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          // Delete vertex (right-click)
-                          if (selRoom.polygon_norm!.length <= 3) {
-                            sendEditRoom({ action: "delete_room", room_id: selRoom.id });
-                            return;
-                          }
-                          const newPoly = selRoom.polygon_norm!.filter((_, i) => i !== idx);
-                          sendEditRoom({
-                            action: "replace_polygon",
-                            room_id: selRoom.id,
-                            room_type: selRoom.type,
-                            polygon_norm: newPoly,
-                          });
-                        }}
-                      />
+                      <g key={`v-${idx}`} className="group/vtx">
+                        {/* Invisible large hit area for easier targeting */}
+                        <circle cx={cx} cy={cy} r={14} fill="transparent"
+                          style={{ cursor: dragRoomVertex ? "grabbing" : "grab", pointerEvents: "all" }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            dragRoomVertexRef.current = { roomId: selRoom.id, idx };
+                            setDragRoomVertex({ roomId: selRoom.id, idx });
+                            localRoomsRef.current = displayRooms;
+                            setLocalRooms(displayRooms);
+                          }}
+                          onContextMenu={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (selRoom.polygon_norm!.length <= 3) {
+                              sendEditRoom({ action: "delete_room", room_id: selRoom.id });
+                              return;
+                            }
+                            const newPoly = selRoom.polygon_norm!.filter((_, i) => i !== idx);
+                            sendEditRoom({
+                              action: "replace_polygon",
+                              room_id: selRoom.id,
+                              room_type: selRoom.type,
+                              polygon_norm: newPoly,
+                            });
+                          }}
+                        />
+                        {/* Visible handle — hover: larger + filled with zone color */}
+                        <circle cx={cx} cy={cy}
+                          r={isDragging ? 9 : isSnapped ? 8 : 7}
+                          fill={isDragging ? rcolor : isSnapped ? "#f97316" : "white"}
+                          stroke={isSnapped ? "#ea580c" : rcolor}
+                          strokeWidth={isDragging ? 3 : 2}
+                          style={{ pointerEvents: "none", transition: "r 0.1s, fill 0.1s" }}
+                          className="group-hover/vtx:fill-current"
+                        />
+                        {/* Hover glow ring */}
+                        <circle cx={cx} cy={cy} r={11}
+                          fill="none" stroke={rcolor} strokeWidth={1} opacity={0}
+                          style={{ pointerEvents: "none", transition: "opacity 0.15s" }}
+                          className="group-hover/vtx:opacity-40"
+                        />
+                      </g>
                       );
                     })}
                     {/* Edge midpoints — click to insert vertex */}
@@ -1370,19 +1400,17 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                       const mx = (p.x + next.x) / 2;
                       const my = (p.y + next.y) / 2;
                       return (
-                        <g key={`mid-${idx}`} className="opacity-0 hover:opacity-100 transition-opacity">
+                        <g key={`mid-${idx}`} className="group/mid opacity-40 hover:opacity-100 transition-opacity">
+                          {/* Larger hit area */}
                           <circle
                             cx={mx * imgDisplaySize.w}
                             cy={my * imgDisplaySize.h}
-                            r={5}
-                            fill="white"
-                            stroke={rcolor}
-                            strokeWidth={1.5}
+                            r={12}
+                            fill="transparent"
                             style={{ cursor: "copy", pointerEvents: "all" }}
                             onMouseDown={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              // Insert vertex at midpoint and start dragging
                               const newPoly = [...selRoom.polygon_norm!];
                               newPoly.splice(idx + 1, 0, { x: mx, y: my });
                               const updated = displayRooms.map(r =>
@@ -1394,12 +1422,22 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                               setDragRoomVertex({ roomId: selRoom.id, idx: idx + 1 });
                             }}
                           />
+                          {/* Visible dot */}
+                          <circle
+                            cx={mx * imgDisplaySize.w}
+                            cy={my * imgDisplaySize.h}
+                            r={6}
+                            fill="white"
+                            stroke={rcolor}
+                            strokeWidth={1.5}
+                            style={{ pointerEvents: "none" }}
+                          />
                           <text
                             x={mx * imgDisplaySize.w}
-                            y={my * imgDisplaySize.h + 1}
+                            y={my * imgDisplaySize.h + 0.5}
                             textAnchor="middle"
                             dominantBaseline="central"
-                            fontSize={8}
+                            fontSize={9}
                             fill={rcolor}
                             fontWeight="bold"
                             style={{ pointerEvents: "none" }}
