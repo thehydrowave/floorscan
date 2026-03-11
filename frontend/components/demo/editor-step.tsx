@@ -2,9 +2,9 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalysisResult, Room } from "@/lib/types";
+import { AnalysisResult, Room, VisualSearchMatch } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -16,7 +16,7 @@ import type { WallSegment } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior" | "rooms";
-type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split";
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
 type Mode = "editor" | "measure";
 
 // ── Constantes pièces ──────────────────────────────────────────────────────────
@@ -191,6 +191,13 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
   const [imageNatural, setImageNatural] = useState({ w: 0, h: 0 });
   const [exportingMeasurePdf, setExportingMeasurePdf] = useState(false);
+
+  // Visual search state
+  const [vsMatches, setVsMatches] = useState<VisualSearchMatch[]>([]);
+  const [vsSearching, setVsSearching] = useState(false);
+  const [vsCrop, setVsCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const vsDrawing = useRef(false);
+  const vsStart = useRef({ x: 0, y: 0 });
 
   // Undo / Redo (measure mode)
   const historyRef   = useRef<MeasureZone[][]>([]);
@@ -657,6 +664,16 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     const rx = scaleX(e.clientX - rect.left);
     const ry = scaleY(e.clientY - rect.top);
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
+    // ── Visual search: draw selection rectangle ──
+    if (tool === "visual_search") {
+      const img = imgRef.current!;
+      const pctX = (rx / img.naturalWidth) * 100;
+      const pctY = (ry / img.naturalHeight) * 100;
+      vsDrawing.current = true;
+      vsStart.current = { x: pctX, y: pctY };
+      setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
+      return;
+    }
     // ── Split tool: collect 2 points then submit ──
     if (tool === "split" && layer === "rooms") {
       pts.current.push([rx, ry]);
@@ -726,6 +743,24 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Visual search drag
+    if (vsDrawing.current && tool === "visual_search") {
+      const cv = canvasRef.current!;
+      const rect = cv.getBoundingClientRect();
+      const img = imgRef.current!;
+      const rx = scaleX(e.clientX - rect.left);
+      const ry = scaleY(e.clientY - rect.top);
+      const pctX = (rx / img.naturalWidth) * 100;
+      const pctY = (ry / img.naturalHeight) * 100;
+      const sx = vsStart.current.x, sy = vsStart.current.y;
+      setVsCrop({
+        x: Math.max(0, Math.min(sx, pctX)),
+        y: Math.max(0, Math.min(sy, pctY)),
+        w: Math.min(100, Math.abs(pctX - sx)),
+        h: Math.min(100, Math.abs(pctY - sy)),
+      });
+      return;
+    }
     if (!drawing.current) return;
     const cv = canvasRef.current!;
     const rect = cv.getBoundingClientRect();
@@ -744,7 +779,35 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
     ctx.setLineDash([]);
   };
 
+  const sendVisualSearch = async (crop: { x: number; y: number; w: number; h: number }) => {
+    if (crop.w < 0.5 || crop.h < 0.5) return; // too small
+    setVsSearching(true);
+    try {
+      const r = await fetch(`${BACKEND}/visual-search`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, x_pct: crop.x, y_pct: crop.y, w_pct: crop.w, h_pct: crop.h }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur");
+      const data = await r.json();
+      setVsMatches(data.matches ?? []);
+      if (data.count === 0) toast({ title: d("vs_no_match"), variant: "default" });
+      else toast({ title: `${data.count} ${d("vs_found")}`, variant: "success" });
+    } catch (e: any) {
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
+    } finally { setVsSearching(false); setVsCrop(null); }
+  };
+
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Visual search: finish selection and send to backend
+    if (vsDrawing.current && tool === "visual_search") {
+      vsDrawing.current = false;
+      if (vsCrop && vsCrop.w > 0.5 && vsCrop.h > 0.5) {
+        sendVisualSearch(vsCrop);
+      } else {
+        setVsCrop(null);
+      }
+      return;
+    }
     if (!drawing.current) return;
     drawing.current = false;
     const cv = canvasRef.current!;
@@ -919,7 +982,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const vertexEditActive = tool === "select" && layer === "rooms" && selectedRoomId !== null
     && displayRooms.find(r => r.id === selectedRoomId)?.polygon_norm != null;
   // Split tool needs canvas interaction even when a room is selected
-  const canvasInteractive = tool === "split" || !vertexEditActive;
+  const canvasInteractive = tool === "split" || tool === "visual_search" || !vertexEditActive;
   // Detect panoramic/wide images (ratio > 3:1)
   const isWideImage = imageNatural.w > 0 && imageNatural.h > 0 && (imageNatural.w / imageNatural.h) > 3;
 
@@ -1107,6 +1170,39 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                     className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
                     title={d("ed_redo_tt")}>
                     <Redo2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* ── Row 3: Visual search ── */}
+            <div className="glass rounded-xl border border-white/10 p-2 flex gap-2 flex-wrap items-center">
+              <button
+                onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } }}
+                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                  tool === "visual_search"
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                    : "border-white/10 text-slate-500 hover:text-slate-300")}
+                title={d("vs_tool")}
+              >
+                <Search className="w-3.5 h-3.5" /> {d("vs_tool")}
+              </button>
+              {tool === "visual_search" && !vsSearching && vsMatches.length === 0 && (
+                <span className="text-xs text-slate-500 italic">{d("vs_select")}</span>
+              )}
+              {vsSearching && (
+                <span className="text-xs text-amber-400 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> {d("vs_searching")}
+                </span>
+              )}
+              {vsMatches.length > 0 && (
+                <>
+                  <span className="text-xs font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
+                  <button
+                    onClick={() => { setVsMatches([]); setVsCrop(null); }}
+                    className="px-2 py-1 rounded-lg text-xs border border-white/10 text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+                  >
+                    <X className="w-3 h-3" /> {d("vs_clear")}
                   </button>
                 </>
               )}
@@ -1562,8 +1658,55 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
                 );
               })()}
 
+              {/* ── Visual search overlay: matches + selection rect ── */}
+              {imgDisplaySize.w > 0 && (vsMatches.length > 0 || vsCrop) && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 12 }}
+                >
+                  {/* Match results */}
+                  {vsMatches.map((m, i) => (
+                    <g key={i}>
+                      <rect
+                        x={m.x_norm * imgDisplaySize.w}
+                        y={m.y_norm * imgDisplaySize.h}
+                        width={m.w_norm * imgDisplaySize.w}
+                        height={m.h_norm * imgDisplaySize.h}
+                        fill="rgba(251, 146, 60, 0.20)"
+                        stroke="#F97316"
+                        strokeWidth={2}
+                        rx={2}
+                      />
+                      <text
+                        x={m.x_norm * imgDisplaySize.w + 3}
+                        y={m.y_norm * imgDisplaySize.h - 4}
+                        fontSize={10}
+                        fill="#F97316"
+                        fontWeight="bold"
+                      >{Math.round(m.score * 100)}%</text>
+                    </g>
+                  ))}
+                  {/* Selection rectangle (while drawing) */}
+                  {vsCrop && vsCrop.w > 0 && vsCrop.h > 0 && (
+                    <rect
+                      x={vsCrop.x / 100 * imgDisplaySize.w}
+                      y={vsCrop.y / 100 * imgDisplaySize.h}
+                      width={vsCrop.w / 100 * imgDisplaySize.w}
+                      height={vsCrop.h / 100 * imgDisplaySize.h}
+                      fill="rgba(34, 211, 238, 0.08)"
+                      stroke="#22D3EE"
+                      strokeWidth={2}
+                      strokeDasharray="6 3"
+                    />
+                  )}
+                </svg>
+              )}
+
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
-                style={{ cursor: tool === "select" ? "default" : tool === "split" ? "crosshair" : "crosshair", zIndex: tool === "split" ? 20 : 10, pointerEvents: canvasInteractive ? "auto" : "none" }}
+                style={{ cursor: tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
               </div>{/* /inner wrapper */}
             </div>

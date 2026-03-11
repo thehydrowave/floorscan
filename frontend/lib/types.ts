@@ -100,3 +100,12 @@ export interface ExportSummary {
   surfaces: number;
   totalArea: number;
 }
+
+// Visual search match result
+export interface VisualSearchMatch {
+  x_norm: number;
+  y_norm: number;
+  w_norm: number;
+  h_norm: number;
+  score: number;
+}

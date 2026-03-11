@@ -447,6 +447,13 @@ export const DEMO_T = {
   hint_redo:      { fr:"Rétablir (Ctrl+Y)",           en:"Redo (Ctrl+Y)",      es:"Rehacer (Ctrl+Y)",        de:"Wiederholen (Strg+Y)",    it:"Ripristina (Ctrl+Y)"  },
   hint_vertex:    { fr:"Clic droit pour supprimer un sommet", en:"Right-click to delete a vertex", es:"Clic derecho para eliminar vértice", de:"Rechtsklick zum Löschen eines Eckpunkts", it:"Clic destro per eliminare un vertice" },
   hint_shift:     { fr:"Shift+clic pour fusionner",   en:"Shift+click to merge", es:"Shift+clic para fusionar", de:"Shift+Klick zum Zusammenführen", it:"Shift+clic per unire" },
+  // ── Visual search ──────────────────────────────────────────────────────────
+  vs_tool:        { fr:"Recherche visuelle",          en:"Visual search",          es:"Búsqueda visual",          de:"Visuelle Suche",           it:"Ricerca visiva"         },
+  vs_select:      { fr:"Sélectionnez un élément",     en:"Select an element",      es:"Seleccione un elemento",   de:"Element auswählen",        it:"Seleziona un elemento"  },
+  vs_searching:   { fr:"Recherche en cours…",         en:"Searching…",             es:"Buscando…",                de:"Suche läuft…",             it:"Ricerca in corso…"      },
+  vs_found:       { fr:"trouvé(s)",                   en:"found",                  es:"encontrado(s)",            de:"gefunden",                 it:"trovato/i"              },
+  vs_clear:       { fr:"Effacer",                     en:"Clear",                  es:"Borrar",                   de:"Löschen",                  it:"Cancella"               },
+  vs_no_match:    { fr:"Aucune correspondance",       en:"No matches",             es:"Sin coincidencias",        de:"Keine Treffer",            it:"Nessuna corrispondenza" },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

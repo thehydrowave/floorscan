@@ -808,6 +808,106 @@ def export_measure_pdf(req: ExportMeasurePdfRequest):
     )
 
 
+
+# ============================================================
+# ROUTE — VISUAL SEARCH (template matching)
+# ============================================================
+class VisualSearchRequest(BaseModel):
+    session_id: str
+    x_pct: float        # region % (0-100)
+    y_pct: float
+    w_pct: float
+    h_pct: float
+    threshold: float = 0.75
+    max_results: int = 50
+
+def _nms_boxes(boxes, scores, overlap_thresh=0.3):
+    """Greedy Non-Maximum Suppression on (x, y, w, h) boxes."""
+    if len(boxes) == 0:
+        return []
+    idxs = np.argsort(scores)[::-1]
+    keep = []
+    while len(idxs) > 0:
+        i = idxs[0]
+        keep.append(i)
+        if len(idxs) == 1:
+            break
+        rest = idxs[1:]
+        xx1 = np.maximum(boxes[i][0], boxes[rest, 0])
+        yy1 = np.maximum(boxes[i][1], boxes[rest, 1])
+        xx2 = np.minimum(boxes[i][0] + boxes[i][2], boxes[rest, 0] + boxes[rest, 2])
+        yy2 = np.minimum(boxes[i][1] + boxes[i][3], boxes[rest, 1] + boxes[rest, 3])
+        w = np.maximum(0, xx2 - xx1)
+        h = np.maximum(0, yy2 - yy1)
+        inter = w * h
+        area_i = boxes[i][2] * boxes[i][3]
+        area_rest = boxes[rest, 2] * boxes[rest, 3]
+        iou = inter / (area_i + area_rest - inter + 1e-6)
+        idxs = rest[iou < overlap_thresh]
+    return keep
+
+@app.post("/visual-search")
+def visual_search(req: VisualSearchRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+
+    img_rgb = s["img_rgb"]
+    H, W = img_rgb.shape[:2]
+
+    # Convert percentage to pixel coordinates
+    x = int(W * req.x_pct / 100)
+    y = int(H * req.y_pct / 100)
+    w = int(W * req.w_pct / 100)
+    h = int(H * req.h_pct / 100)
+
+    # Clamp to image bounds
+    x = max(0, min(x, W - 1))
+    y = max(0, min(y, H - 1))
+    w = max(1, min(w, W - x))
+    h = max(1, min(h, H - y))
+
+    if w < 5 or h < 5:
+        raise HTTPException(400, "Zone trop petite (min 5px)")
+
+    template = img_rgb[y:y+h, x:x+w]
+    gray_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+    gray_tpl = cv2.cvtColor(template, cv2.COLOR_RGB2GRAY)
+
+    result_map = cv2.matchTemplate(gray_img, gray_tpl, cv2.TM_CCOEFF_NORMED)
+    locs = np.where(result_map >= req.threshold)
+
+    if len(locs[0]) == 0:
+        tpl_b64 = pipeline._np_to_b64(template)
+        return {"matches": [], "count": 0, "template_b64": tpl_b64}
+
+    # Build boxes array: (x, y, w, h) and scores
+    boxes = np.array([[locs[1][i], locs[0][i], w, h] for i in range(len(locs[0]))], dtype=np.float32)
+    scores = np.array([result_map[locs[0][i], locs[1][i]] for i in range(len(locs[0]))], dtype=np.float32)
+
+    keep = _nms_boxes(boxes, scores, overlap_thresh=0.3)
+    boxes = boxes[keep]
+    scores = scores[keep]
+
+    # Sort by score descending, limit results
+    order = np.argsort(scores)[::-1][:req.max_results]
+    boxes = boxes[order]
+    scores = scores[order]
+
+    matches = []
+    for i in range(len(boxes)):
+        bx, by, bw, bh = boxes[i]
+        matches.append({
+            "x_norm": float(bx / W),
+            "y_norm": float(by / H),
+            "w_norm": float(bw / W),
+            "h_norm": float(bh / H),
+            "score": round(float(scores[i]), 3),
+        })
+
+    tpl_b64 = pipeline._np_to_b64(template)
+    return {"matches": matches, "count": len(matches), "template_b64": tpl_b64}
+
 @app.get("/image/{session_id}/{image_type}")
 def get_image(session_id: str, image_type: str):
     s = sessions.get(session_id)
