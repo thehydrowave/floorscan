@@ -234,6 +234,8 @@ def analyze(req: AnalyzeRequest):
         "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
         "mask_rooms_history": [],  # undo stack (compressed PNG bytes, max 10)
         "mask_rooms_future":  [],  # redo stack (compressed PNG bytes, max 10)
+        "mask_edit_history":  [],  # undo stack for door/window/interior edits
+        "mask_edit_future":   [],  # redo stack for door/window/interior edits
         "cfg":              cfg,
         "analysis":         result,
     })
@@ -272,6 +274,18 @@ def edit_mask(req: EditMaskRequest):
     img_rgb = s["img_rgb"]
     H, W    = img_rgb.shape[:2]
     cfg     = s.get("cfg", pipeline.DEFAULT_CONFIG)
+
+    # ── Push undo snapshot for mask edit ──
+    snapshot = {
+        "m_doors": _compress_mask(s["m_doors"]),
+        "m_windows": _compress_mask(s["m_windows"]),
+        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+    }
+    history = s.setdefault("mask_edit_history", [])
+    history.append(snapshot)
+    if len(history) > 10:
+        history.pop(0)
+    s["mask_edit_future"] = []  # clear redo on new edit
 
     # Sélectionner le bon masque
     if req.layer == "door":
@@ -354,6 +368,8 @@ def edit_mask(req: EditMaskRequest):
     # Conserver rooms et walls (non recalculés lors de l'édition des masques)
     resp["rooms"] = sessions[req.session_id]["analysis"].get("rooms", [])
     resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
+    resp["edit_history_len"] = len(s.get("mask_edit_history", []))
+    resp["edit_future_len"] = len(s.get("mask_edit_future", []))
     return resp
 
 
@@ -548,6 +564,99 @@ def redo_room_mask(req: UndoRedoRoomRequest):
     }
 
 
+# ── Undo / Redo mask edits (door / window / interior) ──
+
+class UndoRedoMaskEditRequest(BaseModel):
+    session_id: str
+
+def _restore_masks(s, snapshot, cfg):
+    """Restore door/window/interior masks from a compressed snapshot and recompute overlays."""
+    img_rgb = s["img_rgb"]
+    H, W = img_rgb.shape[:2]
+    s["m_doors"] = _decompress_mask(snapshot["m_doors"], (H, W))
+    s["m_windows"] = _decompress_mask(snapshot["m_windows"], (H, W))
+    if snapshot["interior_mask"] is not None:
+        s["interior_mask"] = _decompress_mask(snapshot["interior_mask"], (H, W))
+    else:
+        s["interior_mask"] = None
+
+    ppm = s.get("pixels_per_meter")
+    interior_override = s.get("interior_mask")
+    result = pipeline.recompute_from_edited_masks(
+        img_rgb, s["m_doors"], s["m_windows"], s["walls"], ppm, cfg,
+        interior_mask_override=interior_override,
+    )
+    s["analysis"].update({
+        "overlay_openings_b64": result["overlay_openings_b64"],
+        "overlay_interior_b64": result.get("overlay_interior_b64"),
+        "mask_doors_b64":       result["mask_doors_b64"],
+        "mask_windows_b64":     result["mask_windows_b64"],
+        "mask_walls_b64":       result["mask_walls_b64"],
+        "doors_count":          result["doors_count"],
+        "windows_count":        result["windows_count"],
+        "surfaces":             result["surfaces"],
+        "pixels_per_meter":     result.get("pixels_per_meter"),
+    })
+    if result.get("_interior_mask") is not None:
+        s["interior_mask"] = result["_interior_mask"]
+    resp = {k: v for k, v in result.items() if not k.startswith("_")}
+    resp["rooms"] = s["analysis"].get("rooms", [])
+    resp["walls"] = s["analysis"].get("walls", [])
+    return resp
+
+@app.post("/undo-edit-mask")
+def undo_edit_mask(req: UndoRedoMaskEditRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    history = s.get("mask_edit_history", [])
+    if not history:
+        raise HTTPException(400, "Rien à annuler")
+    # Save current state to redo stack
+    current = {
+        "m_doors": _compress_mask(s["m_doors"]),
+        "m_windows": _compress_mask(s["m_windows"]),
+        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+    }
+    future = s.setdefault("mask_edit_future", [])
+    future.append(current)
+    if len(future) > 10:
+        future.pop(0)
+    # Restore previous state
+    prev = history.pop()
+    cfg = s.get("cfg", pipeline.DEFAULT_CONFIG)
+    resp = _restore_masks(s, prev, cfg)
+    resp["edit_history_len"] = len(history)
+    resp["edit_future_len"] = len(future)
+    return resp
+
+@app.post("/redo-edit-mask")
+def redo_edit_mask(req: UndoRedoMaskEditRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+    future = s.get("mask_edit_future", [])
+    if not future:
+        raise HTTPException(400, "Rien à rétablir")
+    # Save current state to undo stack
+    current = {
+        "m_doors": _compress_mask(s["m_doors"]),
+        "m_windows": _compress_mask(s["m_windows"]),
+        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+    }
+    history = s.setdefault("mask_edit_history", [])
+    history.append(current)
+    if len(history) > 10:
+        history.pop(0)
+    # Restore next state
+    nxt = future.pop()
+    cfg = s.get("cfg", pipeline.DEFAULT_CONFIG)
+    resp = _restore_masks(s, nxt, cfg)
+    resp["edit_history_len"] = len(history)
+    resp["edit_future_len"] = len(future)
+    return resp
+
+
 # ============================================================
 # ROUTE 6c — METTRE À JOUR LE LABEL D'UNE PIÈCE
 # ============================================================
@@ -615,6 +724,18 @@ def sam_segment(req: SamSegmentRequest):
     if cv2.countNonZero(seg_mask) == 0:
         raise HTTPException(422, "Aucune région détectée à ce point. Essayez un autre endroit.")
 
+    # ── Push undo snapshot for SAM edit ──
+    snapshot = {
+        "m_doors": _compress_mask(s["m_doors"]),
+        "m_windows": _compress_mask(s["m_windows"]),
+        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+    }
+    history = s.setdefault("mask_edit_history", [])
+    history.append(snapshot)
+    if len(history) > 10:
+        history.pop(0)
+    s["mask_edit_future"] = []
+
     # Appliquer au masque cible
     if req.apply_to == "door":
         target = s["m_doors"].copy()
@@ -676,6 +797,8 @@ def sam_segment(req: SamSegmentRequest):
     # Conserver rooms et walls
     resp["rooms"] = sessions[req.session_id]["analysis"].get("rooms", [])
     resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
+    resp["edit_history_len"] = len(s.get("mask_edit_history", []))
+    resp["edit_future_len"] = len(s.get("mask_edit_future", []))
     return resp
 
 

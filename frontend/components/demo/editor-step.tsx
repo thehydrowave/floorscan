@@ -152,9 +152,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [selectedOpeningIdx, setSelectedOpeningIdx] = useState<number | null>(null);
   const [showOpeningOverlay, setShowOpeningOverlay] = useState(false);
 
-  // Overlays visibilité (murs / pièces)
+  // Overlays visibilité (murs / pièces / portes / fenêtres)
   const [showWalls, setShowWalls] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
+  const [showDoors, setShowDoors] = useState(true);
+  const [showWindows, setShowWindows] = useState(true);
+
+  // Mask edit undo/redo lengths
+  const [editHistoryLen, setEditHistoryLen] = useState(0);
+  const [editFutureLen, setEditFutureLen] = useState(0);
 
   // Zoom / pan state (matching Survey canvas behavior)
   const [zoom, setZoom] = useState(1);
@@ -312,9 +318,14 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const pts = useRef<[number, number][]>([]);
   const startPt = useRef({ x: 0, y: 0 });
 
-  const currentOverlay = layer === "interior" && result.overlay_interior_b64
-    ? result.overlay_interior_b64
-    : result.overlay_openings_b64;
+  // When either door/window toggle is OFF, use raw plan + individual mask overlays
+  // When both are ON, use the pre-rendered annotated overlay (includes emprise, doors, windows)
+  const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64;
+  const currentOverlay = useRawPlan
+    ? result.plan_b64!
+    : layer === "interior" && result.overlay_interior_b64
+      ? result.overlay_interior_b64
+      : result.overlay_openings_b64;
 
   // Track natural image size for measure tool
   useEffect(() => {
@@ -432,15 +443,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Keyboard: Ctrl+Z/Y for room undo/redo in editor mode ──
+  // ── Keyboard: Ctrl+Z/Y for undo/redo in editor mode ──
   useEffect(() => {
-    if (mode !== "editor" || layer !== "rooms") return;
+    if (mode !== "editor") return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault(); sendUndoRoom();
+        e.preventDefault();
+        if (layer === "rooms") sendUndoRoom();
+        else sendUndoMask();
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
-        e.preventDefault(); sendRedoRoom();
+        e.preventDefault();
+        if (layer === "rooms") sendRedoRoom();
+        else sendRedoMask();
       }
       if (e.key === "Escape" && tool === "split") {
         pts.current = []; drawCanvas(); setTool("select");
@@ -448,7 +463,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }); // runs every render to capture latest sendUndoRoom/sendRedoRoom
+  }); // runs every render to capture latest undo/redo refs
 
   function scaleX(px: number) {
     const img = imgRef.current!;
@@ -640,6 +655,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         rooms: data.rooms ?? prev.rooms,
         walls: data.walls ?? prev.walls,
       }));
+      if (data.edit_history_len != null) setEditHistoryLen(data.edit_history_len);
+      if (data.edit_future_len != null) setEditFutureLen(data.edit_future_len);
       toast({ title: d("ed_mask_updated"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
@@ -649,6 +666,69 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         setError(e.message);
         toast({ title: d("ed_err"), description: e.message, variant: "error" });
       }
+    } finally { setLoading(false); }
+  };
+
+  // ── Undo / Redo for mask edits (door/window/interior) ──
+  const sendUndoMask = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/undo-edit-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
+      const data = await r.json();
+      setResult(prev => ({
+        ...prev,
+        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
+        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
+        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
+        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
+        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
+        doors_count: data.doors_count ?? prev.doors_count,
+        windows_count: data.windows_count ?? prev.windows_count,
+        surfaces: data.surfaces ?? prev.surfaces,
+        openings: data.openings ?? prev.openings,
+        rooms: data.rooms ?? prev.rooms,
+        walls: data.walls ?? prev.walls,
+      }));
+      setEditHistoryLen(data.edit_history_len ?? 0);
+      setEditFutureLen(data.edit_future_len ?? 0);
+      toast({ title: d("ed_undone"), variant: "success" });
+    } catch (e: any) {
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
+    } finally { setLoading(false); }
+  };
+
+  const sendRedoMask = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BACKEND}/redo-edit-mask`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? d("ed_err"));
+      const data = await r.json();
+      setResult(prev => ({
+        ...prev,
+        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
+        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
+        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
+        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
+        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
+        doors_count: data.doors_count ?? prev.doors_count,
+        windows_count: data.windows_count ?? prev.windows_count,
+        surfaces: data.surfaces ?? prev.surfaces,
+        openings: data.openings ?? prev.openings,
+        rooms: data.rooms ?? prev.rooms,
+        walls: data.walls ?? prev.walls,
+      }));
+      setEditHistoryLen(data.edit_history_len ?? 0);
+      setEditFutureLen(data.edit_future_len ?? 0);
+      toast({ title: d("ed_redone"), variant: "success" });
+    } catch (e: any) {
+      toast({ title: d("ed_err"), description: e.message, variant: "error" });
     } finally { setLoading(false); }
   };
 
@@ -666,6 +746,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         rooms: data.rooms ?? prev.rooms,
         walls: data.walls ?? prev.walls,
       }));
+      if (data.edit_history_len != null) setEditHistoryLen(data.edit_history_len);
+      if (data.edit_future_len != null) setEditFutureLen(data.edit_future_len);
       toast({ title: d("ed_sam_ok"), variant: "success" });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
@@ -1203,6 +1285,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </button>
               ))}
               <div className="flex-1" />
+              {/* ── Overlay toggles ── */}
               <button
                 onClick={() => setShowOpeningOverlay(v => !v)}
                 title={showOpeningOverlay ? d("ed_hide_nums") : d("ed_show_nums")}
@@ -1210,6 +1293,22 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   showOpeningOverlay ? "border-white/20 bg-white/5 text-white" : "border-white/10 text-slate-500 hover:text-slate-300")}>
                 {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                 N°
+              </button>
+              <button
+                onClick={() => setShowDoors(v => !v)}
+                title={showDoors ? d("ed_hide_doors") : d("ed_show_doors")}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showDoors ? "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                {showDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                🚪
+              </button>
+              <button
+                onClick={() => setShowWindows(v => !v)}
+                title={showWindows ? d("ed_hide_wins") : d("ed_show_wins")}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  showWindows ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+                {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                🪟
               </button>
               <button
                 onClick={() => setShowWalls(v => !v)}
@@ -1226,6 +1325,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
                 <LayoutGrid size={12} className={showRooms ? "" : "opacity-40"} />
                 {d("ed_rooms")}
+              </button>
+              {/* Show all / Hide all toggle */}
+              <button
+                onClick={() => {
+                  const anyVisible = showDoors || showWindows || showWalls || showRooms || showOpeningOverlay;
+                  setShowDoors(!anyVisible);
+                  setShowWindows(!anyVisible);
+                  setShowWalls(!anyVisible);
+                  setShowRooms(!anyVisible);
+                  setShowOpeningOverlay(!anyVisible);
+                }}
+                title={(showDoors || showWindows || showWalls || showRooms) ? d("ed_hide_all") : d("ed_show_all")}
+                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                  "border-white/10 text-slate-500 hover:text-slate-300")}>
+                {(showDoors || showWindows || showWalls || showRooms || showOpeningOverlay)
+                  ? <><EyeOff className="w-3 h-3" /> ∅</>
+                  : <><Eye className="w-3 h-3" /> ✦</>
+                }
               </button>
               {/* Zoom controls */}
               <div className="w-px bg-white/10 mx-0.5 self-stretch" />
@@ -1288,6 +1405,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       {d("ed_finish_poly")}
                     </button>
                   )}
+                  <div className="w-px bg-white/10 mx-1 self-stretch" />
+                  <button onClick={sendUndoMask} disabled={editHistoryLen === 0 || loading}
+                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                    title={d("ed_undo_tt")}>
+                    <Undo2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button onClick={sendRedoMask} disabled={editFutureLen === 0 || loading}
+                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                    title={d("ed_redo_tt")}>
+                    <Redo2 className="w-3.5 h-3.5" />
+                  </button>
                 </>
               )}
               {/* Room tools */}
@@ -1468,6 +1596,30 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 style={{ display: "block", maxWidth: "85vw", maxHeight: "calc(100vh - 320px)" }}
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
+
+              {/* Individual mask overlays when using raw plan (independent door/window toggles) */}
+              {useRawPlan && showDoors && result.mask_doors_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#FF00FF",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
+              {useRawPlan && showWindows && result.mask_windows_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#FFFF00",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
 
               {/* Masque coloré raster (fallback si pas de polygon_norm) */}
               {showRooms && result.mask_rooms_b64 && !(result.rooms?.some(r => r.polygon_norm)) && selectedRoomId === null && (

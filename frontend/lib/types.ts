@@ -64,10 +64,14 @@ export interface AnalysisResult {
   mask_windows_b64: string;
   mask_walls_b64: string;
   mask_rooms_b64?: string;
+  plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };
   // Nouvelles données structurées
   rooms?: Room[];
   walls?: WallSegment[];
+  // Mask edit undo/redo lengths
+  edit_history_len?: number;
+  edit_future_len?: number;
 }
 
 export interface Opening {

@@ -288,6 +288,9 @@ def segment_rooms_from_walls(walls: np.ndarray, m_doors: np.ndarray,
         if not cnts_i:
             continue
         cnt_i = max(cnts_i, key=cv2.contourArea)
+        # Simplify contour to reduce hundreds of points to clean vertices
+        epsilon = 0.002 * cv2.arcLength(cnt_i, True)
+        cnt_i = cv2.approxPolyDP(cnt_i, epsilon, True)
         x, y, w, h = cv2.boundingRect(cnt_i)
         cx = float(x + w / 2)
         cy = float(y + h / 2)
@@ -451,6 +454,9 @@ def rooms_from_mask_rgba(mask_rgba: np.ndarray, H: int, W: int, ppm) -> list:
             if not cnts_i:
                 continue
             cnt_i = max(cnts_i, key=cv2.contourArea)
+            # Simplify contour to reduce hundreds of points to clean vertices
+            epsilon = 0.002 * cv2.arcLength(cnt_i, True)
+            cnt_i = cv2.approxPolyDP(cnt_i, epsilon, True)
             x, y, w, h = cv2.boundingRect(cnt_i)
             cx, cy = float(x + w / 2), float(y + h / 2)
             area_m2 = area_px / (ppm ** 2) if ppm else None
@@ -787,6 +793,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         # Pièces et murs vectorisés (on retire les champs internes _*)
         "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
         "walls": wall_segments,
+        # Plan brut sans annotations (pour toggle overlays côté frontend)
+        "plan_b64": _np_to_b64(img_rgb),
         # Images encodées en base64 PNG
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,
@@ -981,6 +989,8 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         "pixels_per_meter": pixels_per_meter,
         # Pièces re-segmentées
         "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
+        # Plan brut sans annotations
+        "plan_b64": _np_to_b64(img_rgb),
         # FIX: overlays et masques régénérés depuis les masques édités
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,
