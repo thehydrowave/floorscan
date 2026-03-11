@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Download, Edit3, RotateCcw, Loader2, Table2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalysisResult } from "@/lib/types";
+import { AnalysisResult, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -14,6 +14,7 @@ const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface ResultsStepProps {
   result: AnalysisResult;
+  customDetections?: CustomDetection[];
   onGoEditor: () => void;
   onRestart: () => void;
 }
@@ -35,7 +36,7 @@ const ROOM_COLORS: Record<string, string> = {
 };
 function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
 
-export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsStepProps) {
+export default function ResultsStep({ result, customDetections = [], onGoEditor, onRestart }: ResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -203,6 +204,24 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
         ))}
       </div>
 
+      {/* Custom detections KPIs (visual search) */}
+      {customDetections.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {customDetections.map((det) => (
+            <div key={det.id} className="glass rounded-xl border border-white/10 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: det.color }} />
+                <p className="text-xs text-slate-500">{det.label}</p>
+              </div>
+              <p className="text-2xl font-display font-700" style={{ color: det.color }}>×{det.count}</p>
+              {det.total_area_m2 !== null && (
+                <p className="text-xs text-slate-500 mt-1">{det.total_area_m2.toFixed(2)} m²</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Surfaces détaillées */}
       <div className="glass rounded-xl border border-white/10 p-5 mb-6">
         <p className="text-xs font-mono text-accent uppercase tracking-widest mb-4">{d("re_detail_title")}</p>
@@ -246,14 +265,16 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
         )}
       </div>
 
-      {/* Rooms Recap Table (after overlays) */}
-      {result.rooms && result.rooms.length > 0 && (
+      {/* Recap Table: Rooms + Custom Detections (after overlays) */}
+      {((result.rooms && result.rooms.length > 0) || customDetections.length > 0) && (
         <div className="glass rounded-xl border border-white/10 p-5 mt-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("recap_title")}</p>
-            <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
-              <Table2 className="w-3.5 h-3.5" /> {d("recap_csv")}
-            </button>
+            {result.rooms && result.rooms.length > 0 && (
+              <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
+                <Table2 className="w-3.5 h-3.5" /> {d("recap_csv")}
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -267,6 +288,7 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
                 </tr>
               </thead>
               <tbody>
+                {/* Rooms by type */}
                 {Object.entries(roomsByType).map(([type, rooms]) => {
                   const groupArea = rooms!.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
                   const groupPerim = rooms!.reduce((s, r) => s + (r.perimeter_m ?? 0), 0);
@@ -295,10 +317,31 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
                     </tr>
                   );
                 })}
+                {/* Custom detections (visual search) */}
+                {customDetections.length > 0 && Object.keys(roomsByType).length > 0 && (
+                  <tr><td colSpan={4} className="pt-3 pb-1"><div className="border-t border-white/10" /></td></tr>
+                )}
+                {customDetections.map((det) => (
+                  <tr key={det.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: det.color }} />
+                        <span className="text-slate-300">{det.label}</span>
+                        <span className="text-[10px] text-slate-600 px-1.5 py-0.5 rounded bg-white/5 border border-white/5">🔍</span>
+                      </div>
+                    </td>
+                    <td className="text-right py-2 px-2 text-slate-300 align-top">{det.count}</td>
+                    <td className="text-right py-2 px-2 font-mono align-top" style={{ color: det.color }}>{det.total_area_m2 !== null ? `${det.total_area_m2.toFixed(2)} m²` : "—"}</td>
+                    <td className="text-right py-2 pl-2 font-mono text-slate-400 align-top">—</td>
+                  </tr>
+                ))}
+                {/* Total row */}
                 <tr className="border-t border-white/10 font-600">
                   <td className="pt-3 text-white">{d("recap_total")}</td>
-                  <td className="text-right pt-3 text-white">{totalRooms}</td>
-                  <td className="text-right pt-3 font-mono text-accent">{totalArea} m²</td>
+                  <td className="text-right pt-3 text-white">{totalRooms + customDetections.reduce((s, d) => s + d.count, 0)}</td>
+                  <td className="text-right pt-3 font-mono text-accent">
+                    {(parseFloat(totalArea) + customDetections.reduce((s, d) => s + (d.total_area_m2 ?? 0), 0)).toFixed(2)} m²
+                  </td>
                   <td className="text-right pt-3 font-mono text-slate-300">{totalPerim} m</td>
                 </tr>
               </tbody>

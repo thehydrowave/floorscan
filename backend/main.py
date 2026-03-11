@@ -846,6 +846,20 @@ def _nms_boxes(boxes, scores, overlap_thresh=0.3):
         idxs = rest[iou < overlap_thresh]
     return keep
 
+def _rotate_template(gray_tpl, angle):
+    """Rotate a grayscale template by `angle` degrees, returning the tight crop."""
+    h, w = gray_tpl.shape[:2]
+    cx, cy = w / 2, h / 2
+    M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    cos_a = abs(M[0, 0])
+    sin_a = abs(M[0, 1])
+    nw = int(h * sin_a + w * cos_a)
+    nh = int(h * cos_a + w * sin_a)
+    M[0, 2] += (nw / 2) - cx
+    M[1, 2] += (nh / 2) - cy
+    rotated = cv2.warpAffine(gray_tpl, M, (nw, nh), borderMode=cv2.BORDER_REPLICATE)
+    return rotated
+
 @app.post("/visual-search")
 def visual_search(req: VisualSearchRequest):
     s = sessions.get(req.session_id)
@@ -874,17 +888,41 @@ def visual_search(req: VisualSearchRequest):
     gray_img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     gray_tpl = cv2.cvtColor(template, cv2.COLOR_RGB2GRAY)
 
-    result_map = cv2.matchTemplate(gray_img, gray_tpl, cv2.TM_CCOEFF_NORMED)
-    locs = np.where(result_map >= req.threshold)
+    # Multi-angle search: 0°, 45°, 90°, 135°, 180°, 225°, 270°, 315°
+    angles = [0, 45, 90, 135, 180, 225, 270, 315]
+    all_boxes = []
+    all_scores = []
 
-    if len(locs[0]) == 0:
+    for angle in angles:
+        if angle == 0:
+            tpl = gray_tpl
+        else:
+            tpl = _rotate_template(gray_tpl, angle)
+
+        th, tw = tpl.shape[:2]
+        # Skip if rotated template is larger than the image
+        if tw >= W or th >= H or tw < 3 or th < 3:
+            continue
+
+        result_map = cv2.matchTemplate(gray_img, tpl, cv2.TM_CCOEFF_NORMED)
+        locs = np.where(result_map >= req.threshold)
+
+        if len(locs[0]) == 0:
+            continue
+
+        for i in range(len(locs[0])):
+            bx, by = int(locs[1][i]), int(locs[0][i])
+            all_boxes.append([bx, by, tw, th])
+            all_scores.append(float(result_map[locs[0][i], locs[1][i]]))
+
+    if len(all_boxes) == 0:
         tpl_b64 = pipeline._np_to_b64(template)
         return {"matches": [], "count": 0, "template_b64": tpl_b64}
 
-    # Build boxes array: (x, y, w, h) and scores
-    boxes = np.array([[locs[1][i], locs[0][i], w, h] for i in range(len(locs[0]))], dtype=np.float32)
-    scores = np.array([result_map[locs[0][i], locs[1][i]] for i in range(len(locs[0]))], dtype=np.float32)
+    boxes = np.array(all_boxes, dtype=np.float32)
+    scores = np.array(all_scores, dtype=np.float32)
 
+    # Global NMS across all angles
     keep = _nms_boxes(boxes, scores, overlap_thresh=0.3)
     boxes = boxes[keep]
     scores = scores[keep]

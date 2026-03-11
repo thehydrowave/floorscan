@@ -14,7 +14,7 @@ import ResultsStep from "@/components/demo/results-step";
 import EditorStep from "@/components/demo/editor-step";
 import MeasureClient from "@/app/measure/measure-client";
 import LangSwitcher from "@/components/ui/lang-switcher";
-import { RoboflowConfig, AnalysisResult } from "@/lib/types";
+import { RoboflowConfig, AnalysisResult, CustomDetection } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
@@ -87,6 +87,8 @@ export default function DemoClient() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   // Multi-page PDF
   const [savedPdfData, setSavedPdfData] = useState<{ pdfBase64: string; fileName: string; pageCount: number } | null>(null);
+  // Custom detections from visual search (persisted across editor ↔ results navigation)
+  const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
   // Restored session banner
   const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
@@ -163,8 +165,9 @@ export default function DemoClient() {
 
   const handleGoEditor = () => setStep(7);
 
-  const handleGoResults = (updatedResult: AnalysisResult) => {
+  const handleGoResults = (updatedResult: AnalysisResult, detections?: CustomDetection[]) => {
     setAnalysisResult(updatedResult);
+    if (detections) setCustomDetections(detections);
     setStep(6);
   };
 
@@ -432,6 +435,7 @@ export default function DemoClient() {
                   {step === 6 && analysisResult && (
                     <ResultsStep
                       result={analysisResult}
+                      customDetections={customDetections}
                       onGoEditor={handleGoEditor}
                       onRestart={handleRestart}
                     />
@@ -440,6 +444,7 @@ export default function DemoClient() {
                     <EditorStep
                       sessionId={sessionId}
                       initialResult={analysisResult}
+                      initialCustomDetections={customDetections}
                       onRestart={handleRestart}
                       onSessionExpired={handleRestart}
                       onAddPage={savedPdfData ? handleAddPage : undefined}

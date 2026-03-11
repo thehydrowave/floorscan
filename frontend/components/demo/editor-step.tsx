@@ -126,13 +126,14 @@ function edgeLengthM(
 interface EditorStepProps {
   sessionId: string;
   initialResult: AnalysisResult;
+  initialCustomDetections?: CustomDetection[];
   onRestart: () => void;
   onSessionExpired?: () => void;
   onAddPage?: () => void;
-  onGoResults?: (updatedResult: AnalysisResult) => void;
+  onGoResults?: (updatedResult: AnalysisResult, detections?: CustomDetection[]) => void;
 }
 
-export default function EditorStep({ sessionId, initialResult, onRestart, onSessionExpired, onAddPage, onGoResults }: EditorStepProps) {
+export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -201,7 +202,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
   const vsStart = useRef({ x: 0, y: 0 });
   const [vsSaveLabel, setVsSaveLabel] = useState("");
   const [vsSaveOpen, setVsSaveOpen] = useState(false);
-  const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
+  const [customDetections, setCustomDetections] = useState<CustomDetection[]>(initialCustomDetections ?? []);
 
   // Undo / Redo (measure mode)
   const historyRef   = useRef<MeasureZone[][]>([]);
@@ -1064,7 +1065,7 @@ export default function EditorStep({ sessionId, initialResult, onRestart, onSess
             {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("ed_exporting")}</> : <><FileDown className="w-4 h-4" /> DXF</>}
           </Button>
           {onGoResults && (
-            <Button variant="outline" onClick={() => onGoResults(result)}>
+            <Button variant="outline" onClick={() => onGoResults(result, customDetections)}>
               <LayoutGrid className="w-4 h-4" /> {d("re_title")}
             </Button>
           )}
