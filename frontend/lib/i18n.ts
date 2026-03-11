@@ -469,6 +469,33 @@ export const DEMO_T = {
   vs_search:      { fr:"Chercher",                   en:"Search",                 es:"Buscar",                   de:"Suchen",                   it:"Cerca"                    },
   vs_added:       { fr:"Zone ajoutée",               en:"Zone added",             es:"Zona añadida",             de:"Zone hinzugefügt",         it:"Zona aggiunta"            },
   vs_removed:     { fr:"Zone retirée",               en:"Zone removed",           es:"Zona eliminada",           de:"Zone entfernt",            it:"Zona rimossa"             },
+
+  // ── Survey — split tool ──────────────────────────────────────────────────────
+  sv_split_tool:  { fr:"Découper",                    en:"Split",                  es:"Cortar",                   de:"Teilen",                   it:"Taglia"                   },
+  sv_split_hint:  { fr:"Cliquez 2 points pour tracer la ligne de coupe.", en:"Click 2 points to draw the cut line.", es:"Haga clic en 2 puntos para la línea de corte.", de:"2 Punkte für die Schnittlinie klicken.", it:"Cliccate 2 punti per la linea di taglio." },
+  sv_split_ok:    { fr:"Zone découpée en 2",          en:"Zone split in 2",        es:"Zona cortada en 2",        de:"Zone in 2 geteilt",        it:"Zona tagliata in 2"       },
+  sv_split_cancel:{ fr:"Découpe annulée",             en:"Split cancelled",        es:"Corte cancelado",          de:"Teilen abgebrochen",       it:"Taglio annullato"         },
+
+  // ── Survey — DXF export ──────────────────────────────────────────────────────
+  sv_dxf_export:  { fr:"Export DXF",                  en:"DXF Export",             es:"Exportar DXF",             de:"DXF exportieren",          it:"Esporta DXF"              },
+  sv_dxf_need:    { fr:"Échelle requise pour le DXF", en:"Scale required for DXF", es:"Escala requerida para DXF", de:"Maßstab für DXF erforderlich", it:"Scala necessaria per DXF" },
+  sv_dxf_ok:      { fr:"DXF exporté",                 en:"DXF exported",           es:"DXF exportado",            de:"DXF exportiert",           it:"DXF esportato"            },
+
+  // ── Survey — KPI / recap ─────────────────────────────────────────────────────
+  sv_kpi_zones:   { fr:"Zones",                       en:"Zones",                  es:"Zonas",                    de:"Zonen",                    it:"Zone"                     },
+  sv_kpi_types:   { fr:"Types",                       en:"Types",                  es:"Tipos",                    de:"Typen",                    it:"Tipi"                     },
+  sv_kpi_total_area:{ fr:"Surface totale",             en:"Total area",             es:"Superficie total",         de:"Gesamtfläche",             it:"Superficie totale"        },
+  sv_kpi_total_ht:{ fr:"Total HT",                    en:"Total excl. tax",        es:"Total s/IVA",              de:"Gesamt netto",             it:"Totale netto"             },
+  sv_recap_title: { fr:"Récapitulatif par type",       en:"Summary by type",        es:"Resumen por tipo",         de:"Zusammenfassung nach Typ", it:"Riepilogo per tipo"       },
+  sv_recap_nb:    { fr:"Nb zones",                     en:"Nb zones",               es:"Nº zonas",                 de:"Anz. Zonen",               it:"N. zone"                  },
+  sv_recap_net:   { fr:"Surface nette",                en:"Net area",               es:"Superficie neta",          de:"Nettofläche",              it:"Superficie netta"         },
+  sv_recap_perim: { fr:"Périmètre",                    en:"Perimeter",              es:"Perímetro",                de:"Umfang",                   it:"Perimetro"                },
+  sv_recap_total: { fr:"Total",                        en:"Total",                  es:"Total",                    de:"Gesamt",                   it:"Totale"                   },
+
+  // ── Survey — session restore ─────────────────────────────────────────────────
+  sv_restore_found:{ fr:"Projet précédent trouvé",     en:"Previous project found", es:"Proyecto anterior encontrado", de:"Vorheriges Projekt gefunden", it:"Progetto precedente trovato" },
+  sv_restore_resume:{ fr:"Reprendre",                  en:"Resume",                 es:"Reanudar",                 de:"Fortsetzen",               it:"Riprendi"                 },
+  sv_creating_session:{ fr:"Création de la session…",  en:"Creating session…",      es:"Creando sesión…",          de:"Sitzung erstellen…",       it:"Creazione sessione…"      },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

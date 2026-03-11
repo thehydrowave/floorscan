@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Check, Package, Download } from "lucide-react";
+import { Plus, Trash2, Check, Package, Download, Search } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
 } from "@/lib/measure-types";
+import type { CustomDetection } from "@/lib/types";
 
 const PRESET_COLORS = [
   "#3B82F6", "#F97316", "#8B5CF6", "#6B7280", "#EC4899",
@@ -23,11 +24,14 @@ interface SurfacePanelProps {
   ppm: number | null;
   onTypesChange: (types: SurfaceType[]) => void;
   onActiveTypeChange: (id: string) => void;
+  customDetections?: CustomDetection[];
+  onDeleteDetection?: (id: string) => void;
 }
 
 export default function SurfacePanel({
   types, zones, activeTypeId, imageW, imageH, ppm,
   onTypesChange, onActiveTypeChange,
+  customDetections = [], onDeleteDetection,
 }: SurfacePanelProps) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -279,6 +283,33 @@ export default function SurfacePanel({
           );
         })}
       </div>
+
+      {/* Custom detections (from Visual Search) */}
+      {customDetections.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-white/5">
+          <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Search className="w-3 h-3" /> Détections
+          </h3>
+          <div className="flex flex-col gap-1.5">
+            {customDetections.map(det => (
+              <div key={det.id} className="glass border border-white/5 rounded-xl px-3 py-2 flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: det.color }} />
+                <span className="text-sm text-slate-300 flex-1 truncate">{det.label}</span>
+                <span className="text-xs text-slate-500 font-mono">{det.count}×</span>
+                <span className="text-xs font-mono" style={{ color: det.color }}>
+                  {det.total_area_m2 != null ? `${det.total_area_m2.toFixed(2)} m²` : `${Math.round(det.total_area_px2).toLocaleString()} px²`}
+                </span>
+                {onDeleteDetection && (
+                  <button onClick={() => onDeleteDetection(det.id)}
+                    className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Totaux */}
       {zones.length > 0 && (

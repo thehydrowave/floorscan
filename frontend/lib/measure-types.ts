@@ -101,3 +101,87 @@ export function aggregatePerimeterByType(
   }
   return result;
 }
+
+// ── Split helpers ─────────────────────────────────────────────────────────────
+
+/** Point-in-polygon test (ray-casting algorithm) */
+export function pointInPolygon(
+  point: { x: number; y: number },
+  polygon: { x: number; y: number }[]
+): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if (
+      ((yi > point.y) !== (yj > point.y)) &&
+      (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Intersection of a polygon edge (p1→p2) with an infinite line through (p3, p4).
+ *  Returns the intersection point and parameter t ∈ (0,1) on the edge, or null. */
+function edgeLineIntersection(
+  p1: { x: number; y: number }, p2: { x: number; y: number },
+  p3: { x: number; y: number }, p4: { x: number; y: number }
+): { point: { x: number; y: number }; t: number } | null {
+  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-10) return null; // parallel
+  const dx = p3.x - p1.x, dy = p3.y - p1.y;
+  const t = (dx * d2y - dy * d2x) / cross;
+  if (t <= 1e-9 || t >= 1 - 1e-9) return null; // must be strictly inside edge
+  return { point: { x: p1.x + t * d1x, y: p1.y + t * d1y }, t };
+}
+
+/** Split a polygon into 2 parts along the infinite line through lineA→lineB.
+ *  Returns [poly1, poly2] or null if the line doesn't cross the polygon in ≥ 2 edges. */
+export function splitPolygonByLine(
+  polygon: { x: number; y: number }[],
+  lineA: { x: number; y: number },
+  lineB: { x: number; y: number }
+): [{ x: number; y: number }[], { x: number; y: number }[]] | null {
+  if (polygon.length < 3) return null;
+
+  // Find intersections of the infinite line with each polygon edge
+  const hits: { point: { x: number; y: number }; edgeIndex: number; t: number }[] = [];
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length;
+    const inter = edgeLineIntersection(polygon[i], polygon[j], lineA, lineB);
+    if (inter) hits.push({ point: inter.point, edgeIndex: i, t: inter.t });
+  }
+
+  if (hits.length < 2) return null;
+
+  // Sort by edge index, then by t within same edge
+  hits.sort((a, b) => a.edgeIndex - b.edgeIndex || a.t - b.t);
+
+  // Use only first 2 intersections (handles convex & simple concave cases)
+  const usedHits = hits.slice(0, 2);
+
+  // Walk around the polygon, alternating between poly1 and poly2 at each intersection
+  const poly1: { x: number; y: number }[] = [];
+  const poly2: { x: number; y: number }[] = [];
+  let current = poly1;
+
+  for (let i = 0; i < polygon.length; i++) {
+    current.push(polygon[i]);
+    // Check if an intersection falls on edge i → (i+1)
+    const edgeHits = usedHits
+      .filter(h => h.edgeIndex === i)
+      .sort((a, b) => a.t - b.t);
+    for (const h of edgeHits) {
+      current.push(h.point);
+      current = current === poly1 ? poly2 : poly1;
+      current.push(h.point);
+    }
+  }
+
+  if (poly1.length < 3 || poly2.length < 3) return null;
+  return [poly1, poly2];
+}

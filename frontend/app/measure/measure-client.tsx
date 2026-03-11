@@ -3,18 +3,19 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
+import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 const STORAGE_KEY = "floorscan_project_v2";
@@ -191,6 +192,59 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setZones(next);
   }, []);
 
+  // Backend session (lazy — created when VS is first used)
+  const [sessionId, setSessionId]           = useState<string | null>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+  const [vsMatches, setVsMatches]               = useState<VisualSearchMatch[]>([]);
+  const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
+
+  const DETECT_COLORS = ["#F97316", "#06B6D4", "#8B5CF6", "#10B981", "#EF4444", "#F59E0B", "#EC4899"];
+  const saveDetection = useCallback((label: string, matches: VisualSearchMatch[]) => {
+    const color = DETECT_COLORS[customDetections.length % DETECT_COLORS.length];
+    const totalPx2 = matches.reduce((s, m) => {
+      const wPx = m.w_norm * (imageNatural.w || 1);
+      const hPx = m.h_norm * (imageNatural.h || 1);
+      return s + wPx * hPx;
+    }, 0);
+    const totalM2 = ppm ? totalPx2 / (ppm ** 2) : null;
+    const det: CustomDetection = {
+      id: crypto.randomUUID(),
+      label,
+      color,
+      matches,
+      count: matches.length,
+      total_area_m2: totalM2,
+      total_area_px2: totalPx2,
+    };
+    setCustomDetections(prev => [...prev, det]);
+    toast({ title: `Détection "${label}" sauvegardée (${matches.length})` });
+  }, [customDetections.length, imageNatural, ppm]);
+
+  /** Lazily create a backend session by uploading the plan image.
+   *  Returns the session_id or null on failure. */
+  const ensureSession = useCallback(async (): Promise<string | null> => {
+    if (sessionId) return sessionId;
+    if (!imageB64) return null;
+    setCreatingSession(true);
+    try {
+      const res = await fetch(`${BACKEND}/upload-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: imageB64, filename: "plan.png" }),
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setSessionId(data.session_id);
+      return data.session_id;
+    } catch {
+      toast({ title: "Erreur connexion backend" });
+      return null;
+    } finally {
+      setCreatingSession(false);
+    }
+  }, [sessionId, imageB64]);
+
   // Devis info
   const [projectName, setProjectName]     = useState("");
   const [clientName, setClientName]       = useState("");
@@ -232,6 +286,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           const migrated: Record<number, number> = { 0: 0, 1: 2, 2: 3, 3: 4 };
           setStep(migrated[s.step] ?? s.step);
         }
+        // Show restore banner if there are zones to resume
+        if (s.zones?.length > 0) setShowRestoreBanner(true);
       }
     } catch { /* silencieux */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -496,6 +552,54 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     a.click();
   };
 
+  // ── Export DXF (client-side, no backend) ──────────────────────────────────
+  const exportDxf = () => {
+    if (!ppm || !imageNatural.w) {
+      toast({ title: d("sv_dxf_need"), variant: "error" });
+      return;
+    }
+    const W = imageNatural.w;
+    const H = imageNatural.h;
+    const acad_color = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      if (r > g && r > b) return 1; // red
+      if (g > r && g > b) return 3; // green
+      if (b > r && b > g) return 5; // blue
+      if (r > 200 && g > 100 && b < 100) return 2; // yellow-ish → yellow
+      if (r > 100 && g < 100 && b > 100) return 6; // purple → magenta
+      return 7; // white
+    };
+    let dxf = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
+    dxf += "0\nSECTION\n2\nENTITIES\n";
+    for (const zone of zones) {
+      const type = surfaceTypes.find(t => t.id === zone.typeId);
+      const color = acad_color(type?.color ?? "#6B7280");
+      const pts = zone.points.map(p => ({
+        x: (p.x * W) / ppm,
+        y: ((1 - p.y) * H) / ppm, // DXF Y is inverted
+      }));
+      if (pts.length < 3) continue;
+      // LWPOLYLINE
+      dxf += `0\nLWPOLYLINE\n8\n${type?.name ?? zone.typeId}\n62\n${color}\n90\n${pts.length}\n70\n1\n`;
+      for (const p of pts) dxf += `10\n${p.x.toFixed(4)}\n20\n${p.y.toFixed(4)}\n`;
+      // TEXT label at centroid
+      const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const label = zone.name || type?.name || zone.typeId;
+      dxf += `0\nTEXT\n8\n${type?.name ?? zone.typeId}\n62\n${color}\n10\n${cx.toFixed(4)}\n20\n${cy.toFixed(4)}\n40\n0.15\n1\n${label}\n`;
+    }
+    dxf += "0\nENDSEC\n0\nEOF\n";
+    const blob = new Blob([dxf], { type: "application/dxf" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${projectName || "metrage"}.dxf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast({ title: d("sv_dxf_ok") });
+  };
+
   // ── Export PDF Devis (client-side jsPDF) ──────────────────────────────────
   const exportPdfDevis = async () => {
     if (!imageB64) return;
@@ -714,6 +818,37 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
   const content = (
     <div className={embedded ? "" : "max-w-7xl mx-auto px-6 py-10"}>
+      {/* Restore banner */}
+      <AnimatePresence>
+        {showRestoreBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.25 }}
+            className="glass border border-accent/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3 mb-5"
+          >
+            <span className="text-sm text-slate-300">
+              {d("sv_restore_found")} — {zones.length} zone{zones.length !== 1 ? "s" : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowRestoreBanner(false)}
+                className="px-3 py-1 rounded-lg text-xs font-600 bg-accent text-white hover:bg-accent/80 transition-colors"
+              >
+                {d("sv_restore_resume")}
+              </button>
+              <button
+                onClick={() => { setShowRestoreBanner(false); newProject(); }}
+                className="text-slate-500 hover:text-white transition-colors p-1"
+                title="Ignorer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence mode="wait">
         <motion.div
           key={step}
@@ -874,6 +1009,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onHistoryRedo={redoHistory}
                   canUndo={historyLen > 0}
                   canRedo={futureLen > 0}
+                  sessionId={sessionId}
+                  onEnsureSession={ensureSession}
+                  vsMatches={vsMatches}
+                  onVsMatchesChange={setVsMatches}
+                  customDetections={customDetections}
+                  onSaveDetection={saveDetection}
                 />
               </div>
               <div className="lg:w-64 shrink-0">
@@ -886,6 +1027,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   ppm={ppm}
                   onTypesChange={setSurfaceTypes}
                   onActiveTypeChange={setActiveTypeId}
+                  customDetections={customDetections}
+                  onDeleteDetection={(id) => setCustomDetections(prev => prev.filter(d => d.id !== id))}
                 />
               </div>
             </div>
@@ -898,6 +1041,16 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
             const totalHT = activeSurfaces.reduce((s, t) => s + (totals[t.id] ?? 0) * (t.pricePerM2 ?? 0), 0);
             const tvaAmount = totalHT * tvaRate / 100;
             const totalTTC = totalHT + tvaAmount;
+            // Perimeters by type (for recap table)
+            const perims = (ppm && imageNatural.w > 0)
+              ? aggregatePerimeterByType(zones, imageNatural.w, imageNatural.h, ppm)
+              : {} as Record<string, number>;
+            // Zone counts by type
+            const zoneCountByType: Record<string, number> = {};
+            for (const z of zones) {
+              if (!z.isDeduction) zoneCountByType[z.typeId] = (zoneCountByType[z.typeId] ?? 0) + 1;
+            }
+            const uniqueTypeCount = activeSurfaces.length;
 
             return (
               <div className="max-w-2xl mx-auto">
@@ -905,6 +1058,97 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   <h2 className="font-display text-2xl font-700 text-white mb-2">{d("me_summary")}</h2>
                   <p className="text-slate-400 text-sm">{zones.length} zone{zones.length > 1 ? "s" : ""} mesurée{zones.length > 1 ? "s" : ""}</p>
                 </div>
+
+                {/* ── KPI Dashboard ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                  <div className="glass border border-white/10 rounded-xl p-3 text-center">
+                    <LayoutGrid className="w-4 h-4 mx-auto mb-1 text-accent" />
+                    <div className="text-xl font-700 text-white">{zones.filter(z => !z.isDeduction).length}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wide">{d("sv_kpi_zones")}</div>
+                  </div>
+                  <div className="glass border border-white/10 rounded-xl p-3 text-center">
+                    <Layers className="w-4 h-4 mx-auto mb-1 text-brand-400" />
+                    <div className="text-xl font-700 text-white">{uniqueTypeCount}</div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wide">{d("sv_kpi_types")}</div>
+                  </div>
+                  <div className="glass border border-white/10 rounded-xl p-3 text-center">
+                    <Ruler className="w-4 h-4 mx-auto mb-1 text-emerald-400" />
+                    <div className="text-xl font-700 text-white">
+                      {ppm ? `${totalAll.toFixed(1)}` : Math.round(totalAll).toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wide">
+                      {ppm ? "m² total" : "px² total"}
+                    </div>
+                  </div>
+                  {hasPrices && ppm && (
+                    <div className="glass border border-white/10 rounded-xl p-3 text-center">
+                      <BarChart3 className="w-4 h-4 mx-auto mb-1 text-amber-400" />
+                      <div className="text-xl font-700 text-white">
+                        {totalHT.toLocaleString("fr-FR", { maximumFractionDigits: 0 })}
+                      </div>
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wide">{d("sv_kpi_total_ht")}</div>
+                    </div>
+                  )}
+                  {!(hasPrices && ppm) && (
+                    <div className="glass border border-white/10 rounded-xl p-3 text-center">
+                      <BarChart3 className="w-4 h-4 mx-auto mb-1 text-slate-600" />
+                      <div className="text-xl font-700 text-slate-600">—</div>
+                      <div className="text-[10px] text-slate-600 uppercase tracking-wide">{d("sv_kpi_total_ht")}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Recap table by type ── */}
+                {activeSurfaces.length > 0 && (
+                  <div className="glass rounded-2xl border border-white/10 overflow-hidden mb-4">
+                    <div className="px-4 py-2.5 bg-white/5 border-b border-white/5">
+                      <span className="text-xs font-600 text-slate-400 uppercase tracking-wider">{d("sv_recap_title")}</span>
+                    </div>
+                    <div className="grid gap-0 border-b border-white/5 bg-white/[0.02]"
+                      style={{ gridTemplateColumns: ppm ? "1fr 60px 90px 90px" : "1fr 60px 90px" }}>
+                      <div className="px-4 py-2 text-[10px] font-600 text-slate-500 uppercase">Type</div>
+                      <div className="px-2 py-2 text-[10px] font-600 text-slate-500 text-center uppercase">{d("sv_recap_nb")}</div>
+                      <div className="px-2 py-2 text-[10px] font-600 text-slate-500 text-right uppercase">{d("sv_recap_net")}</div>
+                      {ppm && <div className="px-2 py-2 text-[10px] font-600 text-slate-500 text-right uppercase">{d("sv_recap_perim")}</div>}
+                    </div>
+                    {activeSurfaces.map(type => (
+                      <div key={type.id}
+                        className="grid border-b border-white/5 last:border-0"
+                        style={{ gridTemplateColumns: ppm ? "1fr 60px 90px 90px" : "1fr 60px 90px" }}>
+                        <div className="flex items-center gap-2 px-4 py-2.5">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: type.color }} />
+                          <span className="text-slate-300 text-xs">{type.name}</span>
+                        </div>
+                        <div className="px-2 py-2.5 text-center font-mono text-slate-300 text-xs">
+                          {zoneCountByType[type.id] ?? 0}
+                        </div>
+                        <div className="px-2 py-2.5 text-right font-mono text-white text-xs font-600">
+                          {ppm ? `${totals[type.id].toFixed(2)} m\u00b2` : `${Math.round(totals[type.id]).toLocaleString()} px\u00b2`}
+                        </div>
+                        {ppm && (
+                          <div className="px-2 py-2.5 text-right font-mono text-slate-400 text-xs">
+                            {(perims[type.id] ?? 0).toFixed(1)} m
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <div className="grid bg-white/5"
+                      style={{ gridTemplateColumns: ppm ? "1fr 60px 90px 90px" : "1fr 60px 90px" }}>
+                      <div className="px-4 py-2.5 text-white font-600 text-xs">{d("sv_recap_total")}</div>
+                      <div className="px-2 py-2.5 text-center font-mono text-slate-400 text-xs">
+                        {zones.filter(z => !z.isDeduction).length}
+                      </div>
+                      <div className="px-2 py-2.5 text-right font-mono text-accent font-700 text-xs">
+                        {ppm ? `${totalAll.toFixed(2)} m\u00b2` : `${Math.round(totalAll).toLocaleString()} px\u00b2`}
+                      </div>
+                      {ppm && (
+                        <div className="px-2 py-2.5 text-right font-mono text-slate-400 text-xs">
+                          {Object.values(perims).reduce((a, b) => a + b, 0).toFixed(1)} m
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Project info */}
                 <div className="glass border border-white/10 rounded-2xl p-4 mb-4 grid grid-cols-2 gap-3">
@@ -1078,6 +1322,15 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   </Button>
                   <Button variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
                     <FileText className="w-4 h-4" /> CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={exportDxf}
+                    disabled={!ppm || zones.length === 0}
+                    className="flex items-center gap-1.5"
+                    title={!ppm ? d("sv_dxf_need") : d("sv_dxf_export")}
+                  >
+                    <FileBox className="w-4 h-4" /> DXF
                   </Button>
                   <Button
                     onClick={exportPdfDevis}

@@ -1,8 +1,11 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler } from "lucide-react";
-import { SurfaceType, MeasureZone } from "@/lib/measure-types";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2 } from "lucide-react";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine } from "@/lib/measure-types";
+import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
+
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface MeasureCanvasProps {
   imageB64: string;
@@ -17,9 +20,16 @@ interface MeasureCanvasProps {
   onHistoryRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  // Visual search props
+  sessionId?: string | null;
+  onEnsureSession?: () => Promise<string | null>;
+  vsMatches?: VisualSearchMatch[];
+  onVsMatchesChange?: (matches: VisualSearchMatch[]) => void;
+  customDetections?: CustomDetection[];
+  onSaveDetection?: (label: string, matches: VisualSearchMatch[]) => void;
 }
 
-type Tool = "polygon" | "rect" | "angle" | "wall";
+type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search";
 
 interface AngleMeasurement {
   id: string;
@@ -68,6 +78,7 @@ export default function MeasureCanvas({
   imageB64, imageMime = "image/png",
   zones, activeTypeId, surfaceTypes, ppm, onZonesChange,
   onHistoryPush, onHistoryUndo, onHistoryRedo, canUndo = false, canRedo = false,
+  sessionId, onEnsureSession, vsMatches = [], onVsMatchesChange, customDetections = [], onSaveDetection,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
@@ -102,6 +113,16 @@ export default function MeasureCanvas({
   // Angle tool state
   const [anglePts, setAnglePts]               = useState<{ x: number; y: number }[]>([]);
   const [angleMeasurements, setAngleMeasurements] = useState<AngleMeasurement[]>([]);
+
+  // Split tool state
+  const [splitPts, setSplitPts] = useState<{ x: number; y: number }[]>([]);
+
+  // Visual search state
+  const [vsCropStart, setVsCropStart] = useState<{ x: number; y: number } | null>(null);
+  const [vsSearching, setVsSearching] = useState(false);
+  const [vsEditMode, setVsEditMode]   = useState<"search" | "add" | "remove">("search");
+  const [showVsSave, setShowVsSave]   = useState(false);
+  const [vsSaveLabel, setVsSaveLabel] = useState("");
 
   // Stable refs for use in event handlers
   const zoomRef          = useRef(zoom);
@@ -384,7 +405,11 @@ export default function MeasureCanvas({
       const n = toNorm(e.clientX, e.clientY);
       if (n) setWallStart(n);
     }
-  }, [tool, toNorm]);
+    if (tool === "visual_search" && vsEditMode === "search" && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) setVsCropStart(n);
+    }
+  }, [tool, toNorm, vsEditMode]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
@@ -405,8 +430,59 @@ export default function MeasureCanvas({
         setAngleMeasurements(prev => [...prev, { id, a: anglePts[0], v: anglePts[1], b: pt }]);
         setAnglePts([]);
       }
+    } else if (tool === "split") {
+      if (splitPts.length === 0) {
+        setSplitPts([pt]);
+      } else {
+        const p1 = splitPts[0];
+        const p2 = pt;
+        const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        const currentZones = zonesRef.current;
+        // Priority: zone whose interior contains the midpoint of the cut line
+        let idx = currentZones.findIndex(z =>
+          pointInPolygon(mid, z.points) && splitPolygonByLine(z.points, p1, p2) !== null
+        );
+        // Fallback: first zone the line actually intersects
+        if (idx < 0) idx = currentZones.findIndex(z => splitPolygonByLine(z.points, p1, p2) !== null);
+        if (idx >= 0) {
+          const result = splitPolygonByLine(currentZones[idx].points, p1, p2);
+          if (result) {
+            onHistoryPush?.(currentZones);
+            const [polyA, polyB] = result;
+            const target = currentZones[idx];
+            const newZones = [...currentZones];
+            newZones.splice(idx, 1,
+              { ...target, id: crypto.randomUUID(), points: polyA },
+              { ...target, id: crypto.randomUUID(), points: polyB }
+            );
+            onZonesChangeRef.current(newZones);
+          }
+        }
+        setSplitPts([]);
+      }
+    } else if (tool === "visual_search" && vsEditMode === "add") {
+      // Add a manual match at click position
+      if (onVsMatchesChange) {
+        const newMatch: VisualSearchMatch = { x_norm: pt.x - 0.02, y_norm: pt.y - 0.02, w_norm: 0.04, h_norm: 0.04, score: 1 };
+        onVsMatchesChange([...vsMatches, newMatch]);
+      }
+    } else if (tool === "visual_search" && vsEditMode === "remove") {
+      // Remove match closest to click
+      if (onVsMatchesChange && vsMatches.length > 0) {
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        vsMatches.forEach((m, i) => {
+          const cx = m.x_norm + m.w_norm / 2;
+          const cy = m.y_norm + m.h_norm / 2;
+          const d = Math.hypot(cx - pt.x, cy - pt.y);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        if (bestDist < 0.05) {
+          onVsMatchesChange(vsMatches.filter((_, i) => i !== bestIdx));
+        }
+      }
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool !== "polygon") return;
@@ -452,13 +528,43 @@ export default function MeasureCanvas({
       }
       setWallStart(null);
     }
-  }, [dragVertex, tool, rectStart, wallStart, wallThicknessCm, naturalSize, ppm, toNorm, addZone]);
+    // Visual search crop → trigger search
+    if (tool === "visual_search" && vsEditMode === "search" && vsCropStart && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) {
+        const x0 = Math.min(vsCropStart.x, n.x), y0 = Math.min(vsCropStart.y, n.y);
+        const x1 = Math.max(vsCropStart.x, n.x), y1 = Math.max(vsCropStart.y, n.y);
+        const w = x1 - x0, h = y1 - y0;
+        if (w > 0.01 && h > 0.01 && onEnsureSession && onVsMatchesChange) {
+          setVsSearching(true);
+          onEnsureSession().then(sid => {
+            if (!sid) { setVsSearching(false); return; }
+            fetch(`${BACKEND}/visual-search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                session_id: sid,
+                x_pct: x0 * 100, y_pct: y0 * 100,
+                w_pct: w * 100,  h_pct: h * 100,
+                threshold: 0.80,
+              }),
+            })
+              .then(r => r.json())
+              .then(data => { onVsMatchesChange(data.matches ?? []); })
+              .catch(() => { /* silent */ })
+              .finally(() => setVsSearching(false));
+          });
+        }
+      }
+      setVsCropStart(null);
+    }
+  }, [dragVertex, tool, rectStart, wallStart, wallThicknessCm, naturalSize, ppm, toNorm, addZone, vsCropStart, vsEditMode, onEnsureSession, onVsMatchesChange]);
 
   // Sync touch refs after these callbacks are (re)created
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); }, []);
+  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
@@ -523,7 +629,7 @@ export default function MeasureCanvas({
         })()
       : null;
 
-  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null;
+  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null;
   const activeColor = getColor(activeTypeId);
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
@@ -542,6 +648,15 @@ export default function MeasureCanvas({
     ? wallStart
       ? `Relâchez pour valider le mur · épaisseur ${wallThicknessCm} ${ppm ? "cm" : "px"}`
       : `Cliquez et glissez pour tracer un mur · épaisseur : ${wallThicknessCm} ${ppm ? "cm" : "px"}`
+    : tool === "split"
+    ? splitPts.length === 0
+      ? "Cliquez le 1er point de la ligne de découpe"
+      : "Cliquez le 2e point pour découper la zone"
+    : tool === "visual_search"
+    ? vsSearching ? "Recherche en cours…"
+    : vsEditMode === "search" ? "Dessinez un rectangle autour du motif à rechercher"
+    : vsEditMode === "add" ? "Cliquez pour ajouter un résultat manuellement"
+    : "Cliquez sur un résultat pour le supprimer"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -587,6 +702,26 @@ export default function MeasureCanvas({
           >
             <Ruler className="w-3.5 h-3.5" /> Mur
           </button>
+          <button
+            onClick={() => { setTool("split"); cancelDrawing(); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "split"
+                ? "bg-red-500/20 border border-red-500/40 text-red-300"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Scissors className="w-3.5 h-3.5" /> Découper
+          </button>
+          <button
+            onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "visual_search"
+                ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-300"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" /> Recherche
+          </button>
         </div>
 
         {/* Wall thickness control — shown only when wall tool is active */}
@@ -608,6 +743,68 @@ export default function MeasureCanvas({
               <span className="text-[10px] text-slate-600 font-mono">
                 = {((wallThicknessCm / 100) * ppm).toFixed(0)} px
               </span>
+            )}
+          </div>
+        )}
+
+        {/* VS sub-toolbar */}
+        {tool === "visual_search" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 glass border border-cyan-500/20 rounded-xl p-1">
+              {(["search", "add", "remove"] as const).map(m => (
+                <button key={m} onClick={() => setVsEditMode(m)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    vsEditMode === m ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
+                  }`}>
+                  {m === "search" ? "🔍 Chercher" : m === "add" ? "＋ Ajouter" : "− Retirer"}
+                </button>
+              ))}
+            </div>
+            {vsSearching && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+            {vsMatches.length > 0 && (
+              <>
+                <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} trouvé{vsMatches.length > 1 ? "s" : ""}</span>
+                <button onClick={() => onVsMatchesChange?.([])}
+                  className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 glass border border-white/10 rounded-lg transition-colors">
+                  Effacer
+                </button>
+                <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }}
+                  className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 glass border border-cyan-500/20 rounded-lg transition-colors">
+                  <Save className="w-3 h-3" /> Sauvegarder
+                </button>
+              </>
+            )}
+            {showVsSave && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={vsSaveLabel}
+                  onChange={e => setVsSaveLabel(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && vsSaveLabel.trim()) {
+                      onSaveDetection?.(vsSaveLabel.trim(), vsMatches);
+                      onVsMatchesChange?.([]);
+                      setShowVsSave(false);
+                    }
+                    if (e.key === "Escape") setShowVsSave(false);
+                  }}
+                  placeholder="Nom de la détection…"
+                  className="w-40 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500"
+                />
+                <button
+                  disabled={!vsSaveLabel.trim()}
+                  onClick={() => {
+                    if (vsSaveLabel.trim()) {
+                      onSaveDetection?.(vsSaveLabel.trim(), vsMatches);
+                      onVsMatchesChange?.([]);
+                      setShowVsSave(false);
+                    }
+                  }}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 glass border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40"
+                >
+                  OK
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -990,6 +1187,76 @@ export default function MeasureCanvas({
               cx={toSvg(wallStart).x} cy={toSvg(wallStart).y}
               r={5} fill={activeColor} stroke="white" strokeWidth={1.5}
             />
+          )}
+
+          {/* VS match rectangles (orange) */}
+          {vsMatches.map((m, i) => {
+            const tl = toSvg({ x: m.x_norm, y: m.y_norm });
+            const br = toSvg({ x: m.x_norm + m.w_norm, y: m.y_norm + m.h_norm });
+            const w = br.x - tl.x, h = br.y - tl.y;
+            return (
+              <g key={`vs-${i}`}>
+                <rect x={tl.x} y={tl.y} width={w} height={h}
+                  fill="rgba(249,115,22,0.15)" stroke="#F97316" strokeWidth={2} rx={3}
+                  style={tool === "visual_search" && vsEditMode === "remove" ? { pointerEvents: "all", cursor: "pointer" } : undefined}
+                />
+                {ppm && naturalSize.w > 0 && (
+                  <text x={tl.x + w / 2} y={tl.y - 4} textAnchor="middle"
+                    fontSize={8} fill="#F97316" fontFamily="ui-monospace, monospace">
+                    {((m.w_norm * naturalSize.w * m.h_norm * naturalSize.h) / (ppm ** 2)).toFixed(2)} m²
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Custom detection rectangles (colored) */}
+          {customDetections.map(det =>
+            det.matches.map((m, i) => {
+              const tl = toSvg({ x: m.x_norm, y: m.y_norm });
+              const br = toSvg({ x: m.x_norm + m.w_norm, y: m.y_norm + m.h_norm });
+              return (
+                <rect key={`det-${det.id}-${i}`}
+                  x={tl.x} y={tl.y} width={br.x - tl.x} height={br.y - tl.y}
+                  fill={hexToRgba(det.color, 0.12)} stroke={det.color} strokeWidth={1.5} rx={2}
+                />
+              );
+            })
+          )}
+
+          {/* VS crop selection preview (cyan dashed) */}
+          {tool === "visual_search" && vsEditMode === "search" && vsCropStart && mouseNorm && (() => {
+            const x0 = Math.min(vsCropStart.x, mouseNorm.x), y0 = Math.min(vsCropStart.y, mouseNorm.y);
+            const x1 = Math.max(vsCropStart.x, mouseNorm.x), y1 = Math.max(vsCropStart.y, mouseNorm.y);
+            const s0 = toSvg({ x: x0, y: y0 }), s1 = toSvg({ x: x1, y: y1 });
+            return (
+              <rect x={s0.x} y={s0.y} width={s1.x - s0.x} height={s1.y - s0.y}
+                fill="rgba(6,182,212,0.1)" stroke="#06B6D4" strokeWidth={2} strokeDasharray="6 3" rx={3}
+              />
+            );
+          })()}
+
+          {/* Split tool preview line */}
+          {tool === "split" && splitPts.length === 1 && (
+            <>
+              {mouseNorm && (
+                <line
+                  x1={toSvg(splitPts[0]).x} y1={toSvg(splitPts[0]).y}
+                  x2={toSvg(mouseNorm).x} y2={toSvg(mouseNorm).y}
+                  stroke="#EF4444" strokeWidth={2} strokeDasharray="8 4"
+                />
+              )}
+              <circle
+                cx={toSvg(splitPts[0]).x} cy={toSvg(splitPts[0]).y}
+                r={5} fill="#EF4444" stroke="white" strokeWidth={1.5}
+              />
+              {mouseNorm && (
+                <circle
+                  cx={toSvg(mouseNorm).x} cy={toSvg(mouseNorm).y}
+                  r={4} fill="white" stroke="#EF4444" strokeWidth={1.5}
+                />
+              )}
+            </>
           )}
 
           {/* Polygon in progress */}
