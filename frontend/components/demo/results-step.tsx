@@ -223,9 +223,32 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
         </div>
       </div>
 
-      {/* Rooms Recap Table */}
+      {/* Overlays */}
+      <div className="glass rounded-xl border border-white/10 p-5">
+        <div className="flex gap-1 flex-wrap mb-4">
+          {OVERLAY_TABS.map(({ key, label }) => (
+            <button key={key} onClick={() => setActiveOverlay(key)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 transition-all",
+                activeOverlay === key ? "bg-accent/20 text-accent border border-accent/30" : "text-slate-500 hover:text-slate-300 border border-transparent")}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {overlayB64[activeOverlay] ? (
+          <img
+            src={`data:image/png;base64,${overlayB64[activeOverlay]}`}
+            alt={activeOverlay}
+            className="w-full h-auto rounded-xl border border-white/10 max-h-[calc(100vh-200px)] object-contain"
+          />
+        ) : (
+          <div className="text-center py-10 text-slate-600 text-sm">{d("re_no_img")}</div>
+        )}
+      </div>
+
+      {/* Rooms Recap Table (after overlays) */}
       {result.rooms && result.rooms.length > 0 && (
-        <div className="glass rounded-xl border border-white/10 p-5 mb-6">
+        <div className="glass rounded-xl border border-white/10 p-5 mt-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("recap_title")}</p>
             <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
@@ -233,7 +256,6 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
             </button>
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -273,7 +295,6 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
                     </tr>
                   );
                 })}
-                {/* Total row */}
                 <tr className="border-t border-white/10 font-600">
                   <td className="pt-3 text-white">{d("recap_total")}</td>
                   <td className="text-right pt-3 text-white">{totalRooms}</td>
@@ -285,29 +306,6 @@ export default function ResultsStep({ result, onGoEditor, onRestart }: ResultsSt
           </div>
         </div>
       )}
-
-      {/* Overlays */}
-      <div className="glass rounded-xl border border-white/10 p-5">
-        <div className="flex gap-1 flex-wrap mb-4">
-          {OVERLAY_TABS.map(({ key, label }) => (
-            <button key={key} onClick={() => setActiveOverlay(key)}
-              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 transition-all",
-                activeOverlay === key ? "bg-accent/20 text-accent border border-accent/30" : "text-slate-500 hover:text-slate-300 border border-transparent")}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {overlayB64[activeOverlay] ? (
-          <img
-            src={`data:image/png;base64,${overlayB64[activeOverlay]}`}
-            alt={activeOverlay}
-            className="w-full h-auto rounded-xl border border-white/10 max-h-[calc(100vh-200px)] object-contain"
-          />
-        ) : (
-          <div className="text-center py-10 text-slate-600 text-sm">{d("re_no_img")}</div>
-        )}
-      </div>
 
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={onRestart}>

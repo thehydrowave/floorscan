@@ -163,6 +163,11 @@ export default function DemoClient() {
 
   const handleGoEditor = () => setStep(7);
 
+  const handleGoResults = (updatedResult: AnalysisResult) => {
+    setAnalysisResult(updatedResult);
+    setStep(6);
+  };
+
   const handleAddPage = () => {
     // Return to upload step with PDF pre-loaded in page selector
     setStep(2);
@@ -438,6 +443,7 @@ export default function DemoClient() {
                       onRestart={handleRestart}
                       onSessionExpired={handleRestart}
                       onAddPage={savedPdfData ? handleAddPage : undefined}
+                      onGoResults={handleGoResults}
                     />
                   )}
                 </motion.div>
