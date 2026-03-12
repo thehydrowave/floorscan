@@ -214,3 +214,36 @@ export interface MaterialLine {
   unit: string;
   detail?: string;
 }
+
+// ── DPGF (Décomposition du Prix Global Forfaitaire) ─────────────────────────
+
+export type DpgfUnit = "m2" | "ml" | "U" | "forfait" | "ens";
+
+export interface DpgfLineItem {
+  id: string;
+  description_key: string;
+  quantity: number;
+  unit: DpgfUnit;
+  unit_price: number;
+  total_ht: number;
+}
+
+export interface DpgfLot {
+  lot_number: number;
+  title_key: string;
+  icon: string;
+  color: string;
+  items: DpgfLineItem[];
+  subtotal_ht: number;
+}
+
+export interface DpgfState {
+  lots: DpgfLot[];
+  total_ht: number;
+  tva_rate: number;
+  tva_amount: number;
+  total_ttc: number;
+  project_name: string;
+  project_address: string;
+  date: string;
+}
