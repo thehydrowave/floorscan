@@ -1,7 +1,7 @@
 # main.py — Serveur FastAPI FloorScan
 # Lancer avec : uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-import os, io, json, uuid, base64, time, threading
+import os, io, json, uuid, base64, time, threading, logging
 from pathlib import Path
 from typing import Optional
 
@@ -12,9 +12,11 @@ from PIL import Image
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 import pipeline
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FloorScan API", version="1.0.0")
 
@@ -113,6 +115,14 @@ class UploadPdfRequest(BaseModel):
     zoom: float = 3.0
     page: int = 0          # index de page (0 = première page)
 
+    @field_validator("pdf_base64")
+    @classmethod
+    def limit_size(cls, v: str) -> str:
+        max_bytes = 100 * 1024 * 1024  # 100 MB
+        if len(v) > max_bytes:
+            raise ValueError(f"PDF too large (max {max_bytes // 1024 // 1024} MB)")
+        return v
+
 @app.post("/upload-pdf")
 async def upload_pdf(req: UploadPdfRequest):
     if not req.filename.lower().endswith(".pdf"):
@@ -149,6 +159,14 @@ async def upload_pdf(req: UploadPdfRequest):
 class UploadImageRequest(BaseModel):
     image_base64: str
     filename: str = "plan.png"
+
+    @field_validator("image_base64")
+    @classmethod
+    def limit_size(cls, v: str) -> str:
+        max_bytes = 50 * 1024 * 1024  # 50 MB
+        if len(v) > max_bytes:
+            raise ValueError(f"Image too large (max {max_bytes // 1024 // 1024} MB)")
+        return v
 
 @app.post("/upload-image")
 async def upload_image(req: UploadImageRequest):
@@ -245,7 +263,8 @@ def _decompress_mask(data: bytes, shape: tuple) -> np.ndarray:
     arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
     if arr is not None:
         return arr
-    return np.frombuffer(data, np.uint8).reshape(shape)
+    logger.warning("Failed to decompress mask, returning blank")
+    return np.zeros(shape, dtype=np.uint8)
 
 # ============================================================
 # ROUTE 5 — ANALYSE COMPLÈTE (Roboflow + surfaces)
@@ -1282,13 +1301,7 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         if el["type"] == "floor_line":
             continue
         cy_norm = el["bbox_norm"]["y"] + el["bbox_norm"]["h"] / 2
-        # Trouver l'étage : au-dessus de la 1ère ligne = dernier étage, etc.
-        level = len(floor_thresholds)  # par défaut : étage le plus haut
-        for j, thresh in enumerate(floor_thresholds):
-            if cy_norm > thresh:
-                level = len(floor_thresholds) - j - 1
-                # Continuer pour trouver le seuil le plus bas au-dessus
-        # Méthode simple : compter combien de floor_lines sont au-dessus du centre
+        # Compter combien de floor_lines sont au-dessus du centre
         lines_above = sum(1 for t in floor_thresholds if t < cy_norm)
         el["floor_level"] = max(0, len(floor_thresholds) - lines_above)
 

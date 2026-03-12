@@ -56,6 +56,7 @@ export function polygonPerimeterM(
   imageH: number,
   ppm: number
 ): number {
+  if (!ppm || ppm <= 0) return 0;
   if (points.length < 2) return 0;
   let perimeter = 0;
   for (let i = 0; i < points.length; i++) {

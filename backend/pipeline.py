@@ -1,11 +1,13 @@
 # pipeline.py — Logique extraite du notebook floor_plan_module_09_02
 # Adaptée pour être appelée depuis FastAPI
 
-import os, io, json, math, time, tempfile, base64
+import os, io, json, math, time, tempfile, base64, logging
 import numpy as np
 import cv2
 from PIL import Image
 import fitz  # PyMuPDF
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -75,17 +77,23 @@ ROOM_LABELS_FR: dict = {
 def get_pdf_page_count(pdf_bytes: bytes) -> int:
     """Retourne le nombre de pages d'un PDF."""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    return len(doc)
+    try:
+        return len(doc)
+    finally:
+        doc.close()
 
 def pdf_to_image(pdf_bytes: bytes, zoom: float = 3.0, page_index: int = 0) -> np.ndarray:
     """Rendu d'une page d'un PDF en numpy RGB array."""
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    page_index = max(0, min(page_index, len(doc) - 1))
-    page = doc[page_index]
-    mat = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=mat, alpha=False)
-    img_pil = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
-    return np.array(img_pil)
+    try:
+        page_index = max(0, min(page_index, len(doc) - 1))
+        page = doc[page_index]
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img_pil = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+        return np.array(img_pil)
+    finally:
+        doc.close()
 
 
 # ============================================================
@@ -568,7 +576,8 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
 
             try:
                 res = client.infer(tile_path, model_id=model_id)
-            except Exception:
+            except Exception as e:
+                logger.warning("Tile inference failed: %s", e)
                 continue
 
             preds = res.get("predictions", []) or res.get("data", [])
@@ -596,11 +605,13 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
                     if isinstance(raw_pts[0], dict) and "x" in raw_pts[0]:
                         try:
                             pts = np.array([[float(pt["x"]), float(pt["y"])] for pt in raw_pts], dtype=np.float32)
-                        except: pass
+                        except Exception as e:
+                            logger.warning("Failed to parse dict polygon points: %s", e)
                     elif isinstance(raw_pts[0], (list, tuple)) and len(raw_pts[0]) >= 2:
                         try:
                             pts = np.array([[float(pt[0]), float(pt[1])] for pt in raw_pts], dtype=np.float32)
-                        except: pass
+                        except Exception as e:
+                            logger.warning("Failed to parse list polygon points: %s", e)
 
                     if pts is None or pts.shape[0] < 3:
                         continue
@@ -738,8 +749,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if cnts:
             cnt = max(cnts, key=cv2.contourArea)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Building outline detection failed: %s", e)
 
     # === Extraire ouvertures depuis masques ===
     _, md_binary = cv2.threshold(m_doors,   127, 255, cv2.THRESH_BINARY)
@@ -807,9 +818,9 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_b64":   _np_to_b64(walls),
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
-        "_m_doors": m_doors.tolist(),
-        "_m_windows": m_windows.tolist(),
-        "_walls": walls.tolist(),
+        "_m_doors": m_doors,
+        "_m_windows": m_windows,
+        "_walls": walls,
         "_cnt": cnt.tolist() if cnt is not None else None,
         "_mask_rooms_rgba": mask_rooms_rgb,  # numpy RGBA array pour édition
     }
@@ -920,10 +931,7 @@ def _build_overlay_interior(img_rgb, interior_mask):
 
 
 def _np_to_b64(arr: np.ndarray) -> str:
-    if arr.ndim == 2:
-        pil = Image.fromarray(arr.astype(np.uint8))
-    else:
-        pil = Image.fromarray(arr.astype(np.uint8))
+    pil = Image.fromarray(arr.astype(np.uint8))
     buf = io.BytesIO()
     pil.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -952,8 +960,8 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if cnts:
             cnt = max(cnts, key=cv2.contourArea)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Building outline detection failed: %s", e)
 
     surfaces = _compute_surfaces(img_rgb, cnt, walls, pixels_per_meter, cfg)
 
@@ -1112,9 +1120,6 @@ def sam_segment_point(img_rgb: np.ndarray, x: int, y: int,
             # Auto-bbox basée sur les contours (identique au notebook)
             auto_bb = _auto_bbox_from_click(img_rgb, x, y, pad=30)
             box = np.array(auto_bb, dtype=np.float32)
-
-            # SAM v1 nécessite set_image avant predict
-            predictor.set_image(img_rgb)
 
             masks, scores, _ = predictor.predict(
                 point_coords=point_coords,

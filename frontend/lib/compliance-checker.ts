@@ -361,21 +361,18 @@ export function runComplianceChecks(
 
   if (hasRooms && windows.length > 0) {
     const habitableRooms = rooms.filter(isHabitable);
+
+    // Pre-compute estimated image extents ONCE (outside the loops)
+    const allX = openings.map((o) => o.x_px + o.width_px);
+    const allY = openings.map((o) => o.y_px + o.height_px);
+    const estW = Math.max(...allX, 1);
+    const estH = Math.max(...allY, 1);
+
     // For each habitable room, check if at least 1 window bbox overlaps
     const roomsWithoutLight = habitableRooms.filter((room) => {
       // Use bbox overlap on normalised coordinates
       const hasWindow = windows.some((win) => {
         if (!room.bbox_norm) return false;
-        // Convert opening pixel coords to normalised using pixels_per_meter
-        // Actually, we need image dimensions. Use bbox_norm of room as reference.
-        // Approximate: check if window center falls within room bbox
-        const ppm = result.pixels_per_meter || 1;
-        // We don't have raw image size, so use a heuristic based on opening px coords
-        // For rough check: assume max px coords define image extent
-        const allX = openings.map((o) => o.x_px + o.width_px);
-        const allY = openings.map((o) => o.y_px + o.height_px);
-        const estW = Math.max(...allX, 1);
-        const estH = Math.max(...allY, 1);
 
         const wcx = (win.x_px + win.width_px / 2) / estW;
         const wcy = (win.y_px + win.height_px / 2) / estH;

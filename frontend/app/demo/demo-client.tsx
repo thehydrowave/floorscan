@@ -185,6 +185,7 @@ export default function DemoClient() {
   }, []);
 
   // Auto-save session whenever key state changes
+  // uploadedImageB64 intentionally excluded — auto-save stores null for it to avoid bloating localStorage
   useEffect(() => {
     if (demoMode === "ia" && (analysisResult || step > 5)) {
       saveSession({ step, demoMode, config, sessionId, uploadedImageB64, ppm, analysisResult });

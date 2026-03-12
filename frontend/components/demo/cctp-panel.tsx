@@ -109,8 +109,8 @@ export default function CctpPanel({
       await navigator.clipboard.writeText(buildPlainText());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
+    } catch (e) {
+      console.warn("Clipboard copy failed:", e);
     }
   }
 

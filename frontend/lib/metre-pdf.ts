@@ -52,6 +52,7 @@ function d(key: string, lang: Lang): string {
   try {
     return dt(key as DTKey, lang);
   } catch {
+    console.warn(`[i18n] Missing key: ${key}`);
     return key;
   }
 }

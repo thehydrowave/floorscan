@@ -25,7 +25,7 @@ export async function renderPdfPageToDataUrl(
       // Force inline/fake worker (disableWorker=true equivalent for legacy)
       // @ts-ignore
       pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-    } catch (_) {}
+    } catch (_) { console.warn("PDF.js worker init failed:", _); }
   }
 
   const loadingTask = pdfjsLib.getDocument({

@@ -92,7 +92,8 @@ export default function GanttPanel({
       const scale = 2; // Retina
       canvas.width = svgWidth * scale;
       canvas.height = svgHeight * scale;
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
       ctx.scale(scale, scale);
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(0, 0, svgWidth, svgHeight);
@@ -108,6 +109,7 @@ export default function GanttPanel({
         URL.revokeObjectURL(a.href);
       }, "image/png");
     };
+    img.onerror = () => { URL.revokeObjectURL(url); };
     img.src = url;
   }, [svgWidth, svgHeight]);
 

@@ -138,8 +138,8 @@ export default function DebugPanel({
       await navigator.clipboard.writeText(JSON.stringify(stripped, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
+    } catch (e) {
+      console.warn("Clipboard copy failed:", e);
     }
   }
 
