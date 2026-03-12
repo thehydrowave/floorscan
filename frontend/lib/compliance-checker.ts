@@ -54,7 +54,7 @@ function categorise(room: Room): RoomCategory {
   if (t.includes("living")) return "living";
   if (t.includes("kitchen") || t.includes("cuisine")) return "kitchen";
   if (t.includes("bedroom") || t.includes("chambre")) return "bedroom";
-  if (t.includes("bathroom") || t.includes("salle")) return "bathroom";
+  if (t.includes("bathroom") || t.includes("salle de bain") || t.includes("salle d'eau")) return "bathroom";
   if (t.includes("wc") || t.includes("toilet")) return "wc";
   if (t.includes("corridor") || t.includes("hall")) return "corridor";
   return "other";

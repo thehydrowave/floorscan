@@ -49,6 +49,9 @@ export function polygonAreaPx(
   return Math.abs(area) / 2;
 }
 
+/** Alias for polygonAreaPx — polygon area in pixels from normalized coords */
+export const polygonAreaNorm = polygonAreaPx;
+
 /** Périmètre en mètres */
 export function polygonPerimeterM(
   points: { x: number; y: number }[],

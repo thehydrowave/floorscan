@@ -11,7 +11,7 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -59,29 +59,12 @@ function getRoomColor(type: string) {
   return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8";
 }
 
-/** Ray-casting point-in-polygon test (normalized coords) */
+/** Ray-casting point-in-polygon test (normalized coords) — thin wrapper around shared impl */
 function pointInPolygon(x: number, y: number, polygon: { x: number; y: number }[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y;
-    const xj = polygon[j].x, yj = polygon[j].y;
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
+  return pointInPolygonObj({ x, y }, polygon);
 }
 
-/** Shoelace formula: polygon area in pixels from normalized coords */
-function polygonAreaNorm(polygon: { x: number; y: number }[], imgW: number, imgH: number): number {
-  let a = 0;
-  for (let j = 0; j < polygon.length; j++) {
-    const k = (j + 1) % polygon.length;
-    a += polygon[j].x * imgW * polygon[k].y * imgH;
-    a -= polygon[k].x * imgW * polygon[j].y * imgH;
-  }
-  return Math.abs(a) / 2;
-}
+/* polygonAreaNorm is now imported from @/lib/measure-types */
 
 /** Snap a normalized point to the nearest wall segment if within threshold (screen px) */
 function snapToWalls(

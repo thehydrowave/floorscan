@@ -56,7 +56,7 @@ export default function MaterialsPanel({ result, customDetections = [] }: Materi
       if (t.includes("living")) prises += 5;
       else if (t.includes("kitchen") || t.includes("cuisine")) prises += 6;
       else if (t.includes("bedroom") || t.includes("chambre")) prises += 3;
-      else if (t.includes("bathroom") || t.includes("salle")) prises += 2;
+      else if (t.includes("bathroom") || t.includes("salle de bain") || t.includes("salle d'eau")) prises += 2;
       else if (t.includes("wc") || t.includes("toilet")) prises += 1;
       else prises += 1;
     });

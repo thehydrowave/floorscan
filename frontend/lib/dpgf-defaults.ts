@@ -18,9 +18,8 @@ import type {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-let _idCounter = 0;
 function uid(): string {
-  return `dpgf_${++_idCounter}_${Date.now().toString(36)}`;
+  return `dpgf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
 function round2(n: number): number {
@@ -78,7 +77,7 @@ function categorise(room: Room): RoomCategory {
   if (t.includes("living")) return "living";
   if (t.includes("kitchen") || t.includes("cuisine")) return "kitchen";
   if (t.includes("bedroom") || t.includes("chambre")) return "bedroom";
-  if (t.includes("bathroom") || t.includes("salle")) return "bathroom";
+  if (t.includes("bathroom") || t.includes("salle de bain") || t.includes("salle d'eau")) return "bathroom";
   if (t.includes("wc") || t.includes("toilet")) return "wc";
   if (t.includes("corridor") || t.includes("hall")) return "corridor";
   return "other";
@@ -133,9 +132,6 @@ export function buildDefaultDpgf(
   customDetections: CustomDetection[],
   params: { ceilingHeight: number }
 ): DpgfState {
-  // Reset id counter for deterministic IDs within a single call
-  _idCounter = 0;
-
   const { ceilingHeight } = params;
   const rooms = result.rooms ?? [];
   const hasRooms = rooms.length > 0;
