@@ -462,12 +462,28 @@ export default function DemoClient() {
         </div>
       </div>
 
-      {/* Facade WIP banner — shown only when facade mode is active */}
+      {/* WIP banners — shown when WIP modes are active */}
       {demoMode === "facade" && (
         <div className="bg-amber-500/10 border-b border-amber-500/20">
           <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="text-amber-300/90">{d("fa_mock_warn")}</span>
+          </div>
+        </div>
+      )}
+      {demoMode === "diff" && (
+        <div className="bg-teal-500/10 border-b border-teal-500/20">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm">
+            <AlertTriangle className="w-4 h-4 text-teal-400 shrink-0" />
+            <span className="text-teal-300/90">{d("di_mock_warn")}</span>
+          </div>
+        </div>
+      )}
+      {demoMode === "cartouche" && (
+        <div className="bg-violet-500/10 border-b border-violet-500/20">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm">
+            <AlertTriangle className="w-4 h-4 text-violet-400 shrink-0" />
+            <span className="text-violet-300/90">{d("ca_mock_warn")}</span>
           </div>
         </div>
       )}
@@ -611,15 +627,20 @@ export default function DemoClient() {
                   </div>
                 </button>
 
-                {/* Card — Comparateur de plans */}
+                {/* Card — Comparateur de plans (WIP) */}
                 <button
                   onClick={() => setDemoMode("diff")}
                   className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-teal-500/40 hover:bg-teal-500/5 transition-all duration-300 overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
                   <div className="relative">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
-                      <GitCompare className="w-7 h-7 text-white" />
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow">
+                        <GitCompare className="w-7 h-7 text-white" />
+                      </div>
+                      <span className="text-[10px] bg-teal-500/20 border border-teal-500/30 rounded px-1.5 py-0.5 font-semibold text-teal-400 leading-none uppercase tracking-wider">
+                        {d("fa_wip")}
+                      </span>
                     </div>
                     <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_di_title")}</h2>
                     <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_di_desc")}</p>
@@ -634,15 +655,20 @@ export default function DemoClient() {
                   </div>
                 </button>
 
-                {/* Card — Extraction Cartouche */}
+                {/* Card — Extraction Cartouche (WIP) */}
                 <button
                   onClick={() => setDemoMode("cartouche")}
                   className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all duration-300 overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
                   <div className="relative">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
-                      <FileSearch className="w-7 h-7 text-white" />
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow">
+                        <FileSearch className="w-7 h-7 text-white" />
+                      </div>
+                      <span className="text-[10px] bg-violet-500/20 border border-violet-500/30 rounded px-1.5 py-0.5 font-semibold text-violet-400 leading-none uppercase tracking-wider">
+                        {d("fa_wip")}
+                      </span>
                     </div>
                     <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_ca_title")}</h2>
                     <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_ca_desc")}</p>

@@ -582,6 +582,7 @@ export const DEMO_T = {
   di_added:        { fr:"Ajouté",                                        en:"Added",                                  es:"Añadido",                                 de:"Hinzugefügt",                         it:"Aggiunto"                               },
   di_removed:      { fr:"Supprimé",                                      en:"Removed",                                es:"Eliminado",                               de:"Entfernt",                            it:"Rimosso"                                },
   di_export_png:   { fr:"Exporter le diff (PNG)",                        en:"Export diff (PNG)",                      es:"Exportar diff (PNG)",                     de:"Diff exportieren (PNG)",              it:"Esporta diff (PNG)"                     },
+  di_mock_warn:    { fr:"Résultats simulés (alignement ORB en cours de calibration)", en:"Mock results (ORB alignment being calibrated)", es:"Resultados simulados (alineación ORB en calibración)", de:"Simulierte Ergebnisse (ORB-Ausrichtung wird kalibriert)", it:"Risultati simulati (allineamento ORB in calibrazione)" },
 
   // ── Cartouche module ────────────────────────────────────────────────────────
   sel_ca_title:    { fr:"Extraction Cartouche",                          en:"Legend Extraction",                      es:"Extracción Carátula",                     de:"Plankopf-Extraktion",                 it:"Estrazione Cartiglio"                   },
@@ -602,6 +603,7 @@ export const DEMO_T = {
   ca_copy:         { fr:"Copier tout",                                   en:"Copy all",                               es:"Copiar todo",                             de:"Alles kopieren",                      it:"Copia tutto"                            },
   ca_export_json:  { fr:"Exporter JSON",                                 en:"Export JSON",                            es:"Exportar JSON",                           de:"JSON exportieren",                    it:"Esporta JSON"                           },
   ca_raw_text:     { fr:"Texte brut OCR",                                en:"Raw OCR text",                           es:"Texto OCR bruto",                         de:"OCR-Rohtext",                         it:"Testo OCR grezzo"                       },
+  ca_mock_warn:    { fr:"Résultats simulés (OCR pytesseract en cours d'intégration)", en:"Mock results (pytesseract OCR being integrated)", es:"Resultados simulados (OCR pytesseract en integración)", de:"Simulierte Ergebnisse (pytesseract-OCR wird integriert)", it:"Risultati simulati (OCR pytesseract in integrazione)" },
 
   // ── Materials estimation ────────────────────────────────────────────────────
   mat_title:       { fr:"Estimation des matériaux",                      en:"Materials Estimate",                     es:"Estimación de materiales",                de:"Materialschätzung",                   it:"Stima dei materiali"                    },
