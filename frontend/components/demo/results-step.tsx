@@ -16,6 +16,7 @@ import CctpPanel from "@/components/demo/cctp-panel";
 import GanttPanel from "@/components/demo/gantt-panel";
 import CompliancePanel from "@/components/demo/compliance-panel";
 import DebugPanel from "@/components/demo/debug-panel";
+import View3dPanel from "@/components/demo/view-3d-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -494,6 +495,9 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
           </div>
         </div>
       )}
+
+      {/* ── 3D Floor Plan View ── */}
+      <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
 
       {/* ── Materials estimation panel ── */}
       <div className="mt-8">

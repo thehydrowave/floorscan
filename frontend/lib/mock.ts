@@ -181,12 +181,67 @@ export function makeMockAnalysisResult(sessionId: string, overlayB64: string): A
     { class: "window" as const, x_px: 475, y_px: 52, width_px: 120, height_px: 16, length_px: 100, area_px2: 1920, length_m: 1.35, width_m: 0.12, height_m: 1.20 },
   ];
 
+  // ── Mock rooms matching the canvas layout (W=900, H=640, ppm=75.5) ──
+  const rooms = [
+    {
+      id: 0, type: "living room", label_fr: "Séjour",
+      centroid_norm: { x: 0.244, y: 0.266 },
+      bbox_norm: { x: 0.072, y: 0.102, w: 0.345, h: 0.328 },
+      area_m2: 25.8, area_px2: 64500, perimeter_m: 20.6,
+      polygon_norm: [
+        { x: 0.072, y: 0.102 }, { x: 0.417, y: 0.102 },
+        { x: 0.417, y: 0.430 }, { x: 0.072, y: 0.430 },
+      ],
+    },
+    {
+      id: 1, type: "bedroom", label_fr: "Chambre",
+      centroid_norm: { x: 0.244, y: 0.625 },
+      bbox_norm: { x: 0.072, y: 0.445, w: 0.345, h: 0.360 },
+      area_m2: 22.4, area_px2: 56000, perimeter_m: 19.2,
+      polygon_norm: [
+        { x: 0.072, y: 0.445 }, { x: 0.417, y: 0.445 },
+        { x: 0.417, y: 0.805 }, { x: 0.072, y: 0.805 },
+      ],
+    },
+    {
+      id: 2, type: "kitchen", label_fr: "Cuisine",
+      centroid_norm: { x: 0.644, y: 0.203 },
+      bbox_norm: { x: 0.428, y: 0.102, w: 0.433, h: 0.203 },
+      area_m2: 14.8, area_px2: 37000, perimeter_m: 15.8,
+      polygon_norm: [
+        { x: 0.428, y: 0.102 }, { x: 0.861, y: 0.102 },
+        { x: 0.861, y: 0.305 }, { x: 0.428, y: 0.305 },
+      ],
+    },
+    {
+      id: 3, type: "bathroom", label_fr: "Salle de bain",
+      centroid_norm: { x: 0.644, y: 0.492 },
+      bbox_norm: { x: 0.428, y: 0.320, w: 0.433, h: 0.344 },
+      area_m2: 15.2, area_px2: 38000, perimeter_m: 16.4,
+      polygon_norm: [
+        { x: 0.428, y: 0.320 }, { x: 0.861, y: 0.320 },
+        { x: 0.861, y: 0.664 }, { x: 0.428, y: 0.664 },
+      ],
+    },
+    {
+      id: 4, type: "hallway", label_fr: "Couloir",
+      centroid_norm: { x: 0.644, y: 0.793 },
+      bbox_norm: { x: 0.428, y: 0.680, w: 0.433, h: 0.226 },
+      area_m2: 6.0, area_px2: 15000, perimeter_m: 11.8,
+      polygon_norm: [
+        { x: 0.428, y: 0.680 }, { x: 0.861, y: 0.680 },
+        { x: 0.861, y: 0.906 }, { x: 0.428, y: 0.906 },
+      ],
+    },
+  ];
+
   return {
     session_id: sessionId,
     doors_count: 3,
     windows_count: 3,
     pixels_per_meter: 75.5,
     openings,
+    rooms,
     surfaces: {
       area_building_m2: 98.4,
       area_walls_m2: 14.2,

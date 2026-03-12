@@ -830,6 +830,18 @@ export const DEMO_T = {
   debug_openings:    { fr:"Détail ouvertures",                                en:"Openings detail",                        es:"Detalle aberturas",                       de:"Öffnungsdetail",                      it:"Dettaglio aperture"                     },
   debug_masks:       { fr:"Masques disponibles",                              en:"Available masks",                        es:"Máscaras disponibles",                    de:"Verfügbare Masken",                   it:"Maschere disponibili"                   },
   debug_custom:      { fr:"Détections custom",                                en:"Custom detections",                      es:"Detecciones custom",                      de:"Custom-Erkennungen",                  it:"Rilevamenti custom"                     },
+
+  // ── 3D Viewer ─────────────────────────────────────────────────────────────
+  v3d_title:         { fr:"Vue 3D du plan",                                    en:"3D Floor Plan View",                     es:"Vista 3D del plano",                      de:"3D-Grundrissansicht",                 it:"Vista 3D della pianta"                  },
+  v3d_subtitle:      { fr:"Maquette interactive des pièces",                   en:"Interactive room model",                 es:"Maqueta interactiva de habitaciones",     de:"Interaktives Raummodell",             it:"Modello interattivo delle stanze"       },
+  v3d_no_rooms:      { fr:"Aucune pièce détectée pour la vue 3D",             en:"No rooms detected for 3D view",          es:"No se detectaron habitaciones para 3D",   de:"Keine Räume für 3D erkannt",          it:"Nessuna stanza rilevata per il 3D"      },
+  v3d_no_scale:      { fr:"Échelle requise pour la vue 3D",                   en:"Scale required for 3D view",             es:"Escala requerida para la vista 3D",       de:"Maßstab für 3D erforderlich",         it:"Scala necessaria per la vista 3D"       },
+  v3d_height:        { fr:"Hauteur plafond",                                   en:"Ceiling height",                         es:"Altura techo",                            de:"Deckenhöhe",                          it:"Altezza soffitto"                       },
+  v3d_wireframe:     { fr:"Fil de fer",                                        en:"Wireframe",                              es:"Alambre",                                 de:"Drahtgitter",                         it:"Wireframe"                              },
+  v3d_reset_cam:     { fr:"Réinitialiser vue",                                en:"Reset view",                             es:"Restablecer vista",                       de:"Ansicht zurücksetzen",                it:"Reimposta vista"                        },
+  v3d_auto_rotate:   { fr:"Rotation auto",                                     en:"Auto-rotate",                            es:"Rotación automática",                     de:"Auto-Rotation",                       it:"Rotazione automatica"                   },
+  v3d_rooms_count:   { fr:"{n} pièces",                                        en:"{n} rooms",                              es:"{n} habitaciones",                        de:"{n} Räume",                           it:"{n} stanze"                             },
+  v3d_loading:       { fr:"Chargement 3D…",                                    en:"Loading 3D…",                            es:"Cargando 3D…",                            de:"3D wird geladen…",                    it:"Caricamento 3D…"                        },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;
