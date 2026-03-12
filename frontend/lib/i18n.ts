@@ -215,7 +215,7 @@ export const DEMO_T = {
   ed_walls_s:     { fr:"Murs",                  en:"Walls",               es:"Muros",               de:"Wände",              it:"Muri"                },
   ed_openings_det:{ fr:"Éléments détectés",     en:"Detected elements",   es:"Elementos detectados",de:"Erkannte Elemente",  it:"Elementi rilevati"   },
   ed_no_elem:     { fr:"Aucun élément",         en:"No elements",         es:"Sin elementos",       de:"Keine Elemente",     it:"Nessun elemento"     },
-  ed_export:      { fr:"Exporter le rapport",   en:"Export report",       en2:"Export report",      de:"Bericht exportieren",it:"Esporta il rapporto" },
+  ed_export:      { fr:"Exporter le rapport",   en:"Export report",       es:"Exportar informe",    de:"Bericht exportieren",it:"Esporta il rapporto" },
   ed_added:       { fr:"Élément ajouté",        en:"Element added",       es:"Elemento añadido",    de:"Element hinzugefügt",it:"Elemento aggiunto"   },
   ed_removed:     { fr:"Élément supprimé",      en:"Element removed",     es:"Elemento eliminado",  de:"Element entfernt",   it:"Elemento rimosso"    },
   ed_saved:       { fr:"Correction enregistrée.", en:"Correction saved.",  es:"Corrección guardada.", de:"Korrektur gespeichert.", it:"Correzione salvata." },

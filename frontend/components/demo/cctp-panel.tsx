@@ -83,7 +83,7 @@ export default function CctpPanel({
 
     for (const lot of cctpLots) {
       const dpgfLot = dpgf.lots.find((l) => l.lot_number === lot.lot_number);
-      lines.push(`LOT ${lot.lot_number} — ${d(dpgfLot?.title_key as DTKey ?? ("dpgf_lot" + lot.lot_number) as DTKey)}`);
+      lines.push(`LOT ${lot.lot_number} — ${d((dpgfLot?.title_key ?? ("dpgf_lot" + lot.lot_number)) as DTKey)}`);
       lines.push("-".repeat(50));
       lines.push(d(lot.intro_key as DTKey));
       lines.push("");

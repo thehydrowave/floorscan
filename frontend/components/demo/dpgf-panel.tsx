@@ -97,7 +97,7 @@ export default function DpgfPanel({
     }
 
     base.total_ht = base.lots.reduce((s, l) => s + l.subtotal_ht, 0);
-    base.tva_rate = tvaRate;
+    base.tva_rate = Math.round(tvaRate * 1000) / 10; // store as percentage (e.g. 10, 5.5, 20)
     base.tva_amount = Math.round(base.total_ht * tvaRate * 100) / 100;
     base.total_ttc = base.total_ht + base.tva_amount;
     base.project_name = projectName;

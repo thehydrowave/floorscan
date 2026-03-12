@@ -104,7 +104,11 @@ def crop_image(img: np.ndarray, x0: int, y0: int, x1: int, y1: int) -> np.ndarra
 # STEP 3 — CALIBRATION (optionnel, sinon auto depuis portes)
 # ============================================================
 def compute_scale(x1: float, y1: float, x2: float, y2: float, real_m: float) -> float:
+    if real_m <= 0:
+        raise ValueError("real_m must be > 0")
     dist_px = math.hypot(x2 - x1, y2 - y1)
+    if dist_px < 1e-6:
+        raise ValueError("Points are too close together")
     return dist_px / real_m
 
 

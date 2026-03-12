@@ -1,7 +1,7 @@
 # main.py — Serveur FastAPI FloorScan
 # Lancer avec : uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-import os, io, json, uuid, base64
+import os, io, json, uuid, base64, time, threading
 from pathlib import Path
 from typing import Optional
 
@@ -18,10 +18,15 @@ import pipeline
 
 app = FastAPI(title="FloorScan API", version="1.0.0")
 
-# CORS : autorise le frontend (à adapter en prod)
+# CORS : restrict to known frontend origins (fallback to * for local dev)
+ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:3001,https://floorscan.vercel.app,https://*.vercel.app"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,9 +36,50 @@ app.add_middleware(
 # STORE EN MÉMOIRE (remplacer par Redis/DB en prod)
 # sessions[session_id] = { img_rgb, m_doors, m_windows, walls,
 #                           interior_mask, pixels_per_meter,
-#                           analysis_result }
+#                           analysis_result, _last_access }
 # ============================================================
 sessions: dict = {}
+
+# ── Session expiration & per-session locks ────────────────────
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL", "3600"))  # 1h default
+SESSION_MAX_COUNT = int(os.environ.get("SESSION_MAX", "50"))
+
+_session_locks: dict[str, threading.Lock] = {}
+_global_lock = threading.Lock()
+
+
+def _get_session_lock(session_id: str) -> threading.Lock:
+    """Get or create a per-session lock (thread-safe)."""
+    with _global_lock:
+        if session_id not in _session_locks:
+            _session_locks[session_id] = threading.Lock()
+        return _session_locks[session_id]
+
+
+def _touch_session(session_id: str):
+    """Update last access timestamp for a session."""
+    if session_id in sessions:
+        sessions[session_id]["_last_access"] = time.time()
+
+
+def _cleanup_expired_sessions():
+    """Remove expired sessions (called on new session creation)."""
+    now = time.time()
+    expired = [
+        sid for sid, s in sessions.items()
+        if now - s.get("_last_access", 0) > SESSION_TTL_SECONDS
+    ]
+    for sid in expired:
+        sessions.pop(sid, None)
+        _session_locks.pop(sid, None)
+    # If still over limit, remove oldest sessions
+    if len(sessions) > SESSION_MAX_COUNT:
+        sorted_sessions = sorted(
+            sessions.items(), key=lambda kv: kv[1].get("_last_access", 0)
+        )
+        for sid, _ in sorted_sessions[: len(sessions) - SESSION_MAX_COUNT]:
+            sessions.pop(sid, None)
+            _session_locks.pop(sid, None)
 
 
 # ============================================================
@@ -55,7 +101,7 @@ def b64_to_np_rgb(b64: str) -> np.ndarray:
 # ============================================================
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "FloorScan API"}
+    return {"status": "ok", "service": "FloorScan API", "active_sessions": len(sessions)}
 
 
 # ============================================================
@@ -81,8 +127,9 @@ async def upload_pdf(req: UploadPdfRequest):
     except Exception as e:
         raise HTTPException(500, f"Erreur rendu PDF : {e}")
 
+    _cleanup_expired_sessions()
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {"img_rgb": img_rgb}
+    sessions[session_id] = {"img_rgb": img_rgb, "_last_access": time.time()}
 
     H, W = img_rgb.shape[:2]
     b64 = pipeline._np_to_b64(img_rgb)
@@ -117,8 +164,9 @@ async def upload_image(req: UploadImageRequest):
     except Exception as e:
         raise HTTPException(500, f"Erreur lecture image : {e}")
 
+    _cleanup_expired_sessions()
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {"img_rgb": img_rgb}
+    sessions[session_id] = {"img_rgb": img_rgb, "_last_access": time.time()}
 
     H, W = img_rgb.shape[:2]
     b64 = pipeline._np_to_b64(img_rgb)
@@ -145,11 +193,14 @@ def crop(req: CropRequest):
     if s is None:
         raise HTTPException(404, "Session introuvable")
 
-    cropped = pipeline.crop_image(s["img_rgb"], req.x0, req.y0, req.x1, req.y1)
-    if cropped.size == 0:
-        raise HTTPException(400, "Zone de crop invalide")
+    with _get_session_lock(req.session_id):
+        cropped = pipeline.crop_image(s["img_rgb"], req.x0, req.y0, req.x1, req.y1)
+        if cropped.size == 0:
+            raise HTTPException(400, "Zone de crop invalide")
 
-    sessions[req.session_id]["img_rgb"] = cropped
+        sessions[req.session_id]["img_rgb"] = cropped
+        _touch_session(req.session_id)
+
     H, W = cropped.shape[:2]
     b64 = pipeline._np_to_b64(cropped)
 
@@ -169,8 +220,16 @@ def calibrate(req: CalibRequest):
     if s is None:
         raise HTTPException(404, "Session introuvable")
 
-    ppm = pipeline.compute_scale(req.x1, req.y1, req.x2, req.y2, req.real_m)
-    sessions[req.session_id]["pixels_per_meter"] = ppm
+    if req.real_m <= 0:
+        raise HTTPException(400, "La distance réelle doit être > 0")
+    dist_px = ((req.x2 - req.x1) ** 2 + (req.y2 - req.y1) ** 2) ** 0.5
+    if dist_px < 1:
+        raise HTTPException(400, "Les deux points sont trop proches")
+
+    with _get_session_lock(req.session_id):
+        ppm = pipeline.compute_scale(req.x1, req.y1, req.x2, req.y2, req.real_m)
+        sessions[req.session_id]["pixels_per_meter"] = ppm
+        _touch_session(req.session_id)
 
     return {"pixels_per_meter": ppm}
 
@@ -225,20 +284,22 @@ def analyze(req: AnalyzeRequest):
     # Stocker les masques bruts + masque intérieur pour édition
     interior_mask = result.get("surfaces", {}).get("interior_mask")
 
-    sessions[req.session_id].update({
-        "m_doors":          np.array(result["_m_doors"],   dtype=np.uint8),
-        "m_windows":        np.array(result["_m_windows"], dtype=np.uint8),
-        "walls":            np.array(result["_walls"],     dtype=np.uint8),
-        "interior_mask":    interior_mask,
-        "pixels_per_meter": result["pixels_per_meter"],
-        "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
-        "mask_rooms_history": [],  # undo stack (compressed PNG bytes, max 10)
-        "mask_rooms_future":  [],  # redo stack (compressed PNG bytes, max 10)
-        "mask_edit_history":  [],  # undo stack for door/window/interior edits
-        "mask_edit_future":   [],  # redo stack for door/window/interior edits
-        "cfg":              cfg,
-        "analysis":         result,
-    })
+    with _get_session_lock(req.session_id):
+        sessions[req.session_id].update({
+            "m_doors":          np.array(result["_m_doors"],   dtype=np.uint8),
+            "m_windows":        np.array(result["_m_windows"], dtype=np.uint8),
+            "walls":            np.array(result["_walls"],     dtype=np.uint8),
+            "interior_mask":    interior_mask,
+            "pixels_per_meter": result["pixels_per_meter"],
+            "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
+            "mask_rooms_history": [],  # undo stack (compressed PNG bytes, max 10)
+            "mask_rooms_future":  [],  # redo stack (compressed PNG bytes, max 10)
+            "mask_edit_history":  [],  # undo stack for door/window/interior edits
+            "mask_edit_future":   [],  # redo stack for door/window/interior edits
+            "cfg":              cfg,
+            "analysis":         result,
+        })
+        _touch_session(req.session_id)
 
     # Nettoyer la réponse JSON
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
@@ -370,6 +431,7 @@ def edit_mask(req: EditMaskRequest):
     resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
     resp["edit_history_len"] = len(s.get("mask_edit_history", []))
     resp["edit_future_len"] = len(s.get("mask_edit_future", []))
+    _touch_session(req.session_id)
     return resp
 
 
@@ -491,6 +553,7 @@ def edit_room_mask(req: EditRoomMaskRequest):
         {k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list
     ]
     s["analysis"]["mask_rooms_b64"] = pipeline._np_to_b64(mask_rgba)
+    _touch_session(req.session_id)
 
     return {
         "mask_rooms_b64": pipeline._np_to_b64(mask_rgba),
@@ -799,6 +862,7 @@ def sam_segment(req: SamSegmentRequest):
     resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
     resp["edit_history_len"] = len(s.get("mask_edit_history", []))
     resp["edit_future_len"] = len(s.get("mask_edit_future", []))
+    _touch_session(req.session_id)
     return resp
 
 
