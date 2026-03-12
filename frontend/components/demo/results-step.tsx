@@ -13,6 +13,7 @@ import MaterialsPanel from "@/components/demo/materials-panel";
 import DpgfPanel from "@/components/demo/dpgf-panel";
 import CctpPanel from "@/components/demo/cctp-panel";
 import GanttPanel from "@/components/demo/gantt-panel";
+import CompliancePanel from "@/components/demo/compliance-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -505,6 +506,9 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
 
       {/* ── Gantt planning panel ── */}
       <GanttPanel result={result} customDetections={customDetections} />
+
+      {/* ── Compliance check panel ── */}
+      <CompliancePanel result={result} />
 
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={onRestart}>
