@@ -1098,3 +1098,189 @@ def get_image(session_id: str, image_type: str):
 
     img_data = base64.b64decode(b64)
     return Response(content=img_data, media_type="image/png")
+
+
+# ============================================================
+# ROUTE — ANALYSE DE FAÇADE (elevation drawings)
+# Utilise le modèle Roboflow "elevation-24mp4/1" (door, window, building, roof, floor)
+# ============================================================
+FACADE_MODEL_ID = "elevation-24mp4/1"
+
+# Mapping classes Roboflow → types façade internes
+FACADE_CLASS_MAP = {
+    "door":     "door",
+    "window":   "window",
+    "building": "other",      # contour global → on le garde comme "other"
+    "roof":     "roof",
+    "floor":    "floor_line",
+}
+
+FACADE_LABELS_FR = {
+    "door":       "Porte",
+    "window":     "Fenêtre",
+    "roof":       "Toiture",
+    "floor_line": "Ligne d'étage",
+    "other":      "Bâtiment",
+}
+
+class AnalyzeFacadeRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    session_id: str
+    roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
+    pixels_per_meter: Optional[float] = None
+    confidence: float = 0.25
+
+@app.post("/analyze-facade")
+def analyze_facade(req: AnalyzeFacadeRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+
+    img_rgb = s["img_rgb"]
+    H, W = img_rgb.shape[:2]
+    ppm = req.pixels_per_meter or s.get("pixels_per_meter")
+
+    # ── Appel Roboflow inference ──
+    from inference_sdk import InferenceHTTPClient
+    client = InferenceHTTPClient(
+        api_url="https://serverless.roboflow.com",
+        api_key=req.roboflow_api_key,
+    )
+
+    # Encode image for inference
+    img_pil = Image.fromarray(img_rgb).convert("RGB")
+    buf = io.BytesIO()
+    img_pil.save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+    img_b64_for_infer = base64.b64encode(buf.read()).decode()
+
+    try:
+        resp = client.infer(img_b64_for_infer, model_id=FACADE_MODEL_ID)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur inférence façade : {e}")
+
+    predictions = resp.get("predictions", [])
+
+    # ── Convertir les détections en FacadeElement ──
+    elements = []
+    for i, pred in enumerate(predictions):
+        cls_name = pred.get("class", "").lower()
+        if cls_name not in FACADE_CLASS_MAP:
+            continue
+        if pred.get("confidence", 0) < req.confidence:
+            continue
+
+        facade_type = FACADE_CLASS_MAP[cls_name]
+
+        # Roboflow retourne x_center, y_center, width, height en pixels
+        cx = pred["x"]
+        cy = pred["y"]
+        pw = pred["width"]
+        ph = pred["height"]
+
+        # Convertir en bbox normalisée (top-left x, y, w, h)
+        x_norm = (cx - pw / 2) / W
+        y_norm = (cy - ph / 2) / H
+        w_norm = pw / W
+        h_norm = ph / H
+
+        # Clamp
+        x_norm = max(0, min(1, x_norm))
+        y_norm = max(0, min(1, y_norm))
+        w_norm = min(w_norm, 1 - x_norm)
+        h_norm = min(h_norm, 1 - y_norm)
+
+        # Calcul surface
+        area_m2 = None
+        if ppm and ppm > 0:
+            area_px2 = pw * ph
+            area_m2 = area_px2 / (ppm * ppm)
+
+        elements.append({
+            "id": i,
+            "type": facade_type,
+            "label_fr": FACADE_LABELS_FR.get(facade_type, cls_name),
+            "bbox_norm": {"x": round(x_norm, 5), "y": round(y_norm, 5),
+                          "w": round(w_norm, 5), "h": round(h_norm, 5)},
+            "area_m2": round(area_m2, 3) if area_m2 is not None else None,
+            "confidence": round(pred.get("confidence", 0), 3),
+        })
+
+    # ── Assigner les floor_level par position Y (haut = étage le plus haut) ──
+    floor_lines = sorted(
+        [e for e in elements if e["type"] == "floor_line"],
+        key=lambda e: e["bbox_norm"]["y"]
+    )
+    # Créer des seuils d'étage à partir des floor_lines
+    floor_thresholds = [fl["bbox_norm"]["y"] + fl["bbox_norm"]["h"] / 2 for fl in floor_lines]
+
+    for el in elements:
+        if el["type"] == "floor_line":
+            continue
+        cy_norm = el["bbox_norm"]["y"] + el["bbox_norm"]["h"] / 2
+        # Trouver l'étage : au-dessus de la 1ère ligne = dernier étage, etc.
+        level = len(floor_thresholds)  # par défaut : étage le plus haut
+        for j, thresh in enumerate(floor_thresholds):
+            if cy_norm > thresh:
+                level = len(floor_thresholds) - j - 1
+                # Continuer pour trouver le seuil le plus bas au-dessus
+        # Méthode simple : compter combien de floor_lines sont au-dessus du centre
+        lines_above = sum(1 for t in floor_thresholds if t < cy_norm)
+        el["floor_level"] = max(0, len(floor_thresholds) - lines_above)
+
+    # ── Comptages ──
+    windows = [e for e in elements if e["type"] == "window"]
+    doors   = [e for e in elements if e["type"] == "door"]
+    balconies = [e for e in elements if e["type"] == "balcony"]
+    floors_count = max(1, len(floor_lines) + 1)
+
+    # ── Surfaces ──
+    openings = [e for e in elements if e["type"] in ("window", "door", "balcony")]
+    openings_area_m2 = sum(e["area_m2"] for e in openings if e["area_m2"]) if ppm else None
+    facade_area_m2 = (W * H) / (ppm * ppm) if ppm else None
+    ratio_openings = (openings_area_m2 / facade_area_m2) if (facade_area_m2 and openings_area_m2) else None
+
+    # ── Image brute en b64 ──
+    plan_b64 = pipeline._np_to_b64(img_rgb)
+
+    # ── Overlay annoté ──
+    overlay = img_rgb.copy()
+    TYPE_COLORS_BGR = {
+        "window":     (250, 164, 96),   # bleu clair
+        "door":       (180, 114, 244),  # rose
+        "roof":       (250, 139, 167),  # violet
+        "floor_line": (60, 146, 251),   # orange
+        "other":      (36, 187, 251),   # jaune
+    }
+    for el in elements:
+        bx = el["bbox_norm"]
+        x1 = int(bx["x"] * W)
+        y1 = int(bx["y"] * H)
+        x2 = int((bx["x"] + bx["w"]) * W)
+        y2 = int((bx["y"] + bx["h"]) * H)
+        color = TYPE_COLORS_BGR.get(el["type"], (180, 180, 180))
+        thickness = 2
+        if el["type"] == "floor_line":
+            cv2.line(overlay, (x1, (y1 + y2) // 2), (x2, (y1 + y2) // 2), color, 2, cv2.LINE_AA)
+        else:
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
+            label = el["label_fr"]
+            cv2.putText(overlay, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+    overlay_b64 = pipeline._np_to_b64(overlay)
+
+    return {
+        "session_id": req.session_id,
+        "windows_count": len(windows),
+        "doors_count": len(doors),
+        "balconies_count": len(balconies),
+        "floors_count": floors_count,
+        "elements": elements,
+        "facade_area_m2": round(facade_area_m2, 2) if facade_area_m2 else None,
+        "openings_area_m2": round(openings_area_m2, 2) if openings_area_m2 else None,
+        "ratio_openings": round(ratio_openings, 4) if ratio_openings else None,
+        "pixels_per_meter": ppm,
+        "overlay_b64": overlay_b64,
+        "plan_b64": plan_b64,
+        "is_mock": False,
+    }

@@ -124,3 +124,44 @@ export interface CustomDetection {
   total_area_m2: number | null;   // null if no scale calibration
   total_area_px2: number;
 }
+
+// ── Facade analysis types ────────────────────────────────────────────────────
+
+export type FacadeElementType = "window" | "door" | "balcony" | "floor_line" | "roof" | "column" | "other";
+
+// Élément détecté sur une façade
+export interface FacadeElement {
+  id: number;
+  type: FacadeElementType;
+  label_fr: string;
+  bbox_norm: { x: number; y: number; w: number; h: number };
+  polygon_norm?: { x: number; y: number }[];
+  area_m2: number | null;
+  floor_level?: number;       // étage (0 = RDC, 1, 2, ...)
+  confidence?: number;
+}
+
+// Résultat d'analyse de façade
+export interface FacadeAnalysisResult {
+  session_id: string;
+  // Comptages
+  windows_count: number;
+  doors_count: number;
+  balconies_count: number;
+  floors_count: number;
+  // Éléments détectés
+  elements: FacadeElement[];
+  // Surfaces
+  facade_area_m2: number | null;
+  openings_area_m2: number | null;  // surface totale ouvertures
+  ratio_openings: number | null;    // % ouvertures / façade
+  pixels_per_meter: number | null;
+  // Images
+  overlay_b64: string;              // façade annotée
+  plan_b64: string;                 // image brute
+  mask_windows_b64?: string;
+  mask_doors_b64?: string;
+  mask_balconies_b64?: string;
+  // WIP: mock data flag
+  is_mock?: boolean;
+}

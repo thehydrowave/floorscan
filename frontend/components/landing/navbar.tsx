@@ -122,6 +122,12 @@ export default function Navbar() {
           <Button variant="outline" size="sm" asChild className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent">
             <Link href="/measure">Métré ✦</Link>
           </Button>
+          <Button variant="outline" size="sm" asChild className="border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-400">
+            <Link href="/facade" className="flex items-center gap-1.5">
+              {t("nav_facade", lang)}
+              <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1 py-0.5 font-semibold leading-none">WIP</span>
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/demo">{t("nav_try", lang)}</Link>
           </Button>
@@ -177,6 +183,11 @@ export default function Navbar() {
           <Link href="/measure" onClick={() => setMenuOpen(false)}
             className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60">
             Métré
+          </Link>
+          <Link href="/facade" onClick={() => setMenuOpen(false)}
+            className="px-4 py-2.5 text-sm text-amber-400 hover:text-amber-300 rounded-lg hover:bg-slate-800/60 flex items-center gap-2">
+            {t("nav_facade", lang)}
+            <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1 py-0.5 font-semibold leading-none">WIP</span>
           </Link>
           <Button className="mt-2" asChild>
             <Link href="/demo">{t("nav_try", lang)} →</Link>
