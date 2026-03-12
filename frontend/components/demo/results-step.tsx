@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import MaterialsPanel from "@/components/demo/materials-panel";
+import MetrePanel from "@/components/demo/metre-panel";
 import DpgfPanel from "@/components/demo/dpgf-panel";
 import CctpPanel from "@/components/demo/cctp-panel";
 import GanttPanel from "@/components/demo/gantt-panel";
@@ -497,6 +498,9 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
       <div className="mt-8">
         <MaterialsPanel result={result} customDetections={customDetections} />
       </div>
+
+      {/* ── Métré détaillé par pièce ── */}
+      <MetrePanel result={result} />
 
       {/* ── DPGF estimatif panel ── */}
       <DpgfPanel result={result} customDetections={customDetections} />
