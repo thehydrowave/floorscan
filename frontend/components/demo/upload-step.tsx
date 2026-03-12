@@ -15,6 +15,8 @@ interface UploadStepProps {
   onUploaded: (sessionId: string, imageB64: string) => void;
   onPdfMetadata?: (data: { pdfBase64: string; fileName: string; pageCount: number }) => void;
   initialPdfData?: { pdfBase64: string; fileName: string; pageCount: number };
+  titleOverride?: string;
+  subtitleOverride?: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -23,7 +25,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
-export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }: UploadStepProps) {
+export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData, titleOverride, subtitleOverride }: UploadStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -178,8 +180,8 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData }
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto">
       <div className="text-center mb-8">
-        <h2 className="font-display text-2xl font-700 text-white mb-2">{d("up_title")}</h2>
-        <p className="text-slate-400 text-sm">{d("up_sub")}</p>
+        <h2 className="font-display text-2xl font-700 text-white mb-2">{titleOverride ?? d("up_title")}</h2>
+        <p className="text-slate-400 text-sm">{subtitleOverride ?? d("up_sub")}</p>
       </div>
 
       <AnimatePresence mode="wait">

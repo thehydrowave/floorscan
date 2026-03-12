@@ -165,3 +165,52 @@ export interface FacadeAnalysisResult {
   // WIP: mock data flag
   is_mock?: boolean;
 }
+
+// ── Plan Diff types ──────────────────────────────────────────────────────────
+
+export interface DiffResult {
+  session_id_v1: string;
+  session_id_v2: string;
+  aligned_v1_b64: string;
+  aligned_v2_b64: string;
+  diff_overlay_b64: string;     // rouge=supprimé, vert=ajouté
+  diff_stats: {
+    changed_pixels_pct: number;
+    added_area_pct: number;
+    removed_area_pct: number;
+  };
+}
+
+// ── Cartouche / Legend extraction types ───────────────────────────────────────
+
+export interface CartoucheField {
+  key: string;           // "project_name" | "architect" | "scale" | "date" | "plan_number" | "revision"
+  label_fr: string;
+  value: string;
+  confidence: number;
+}
+
+export interface CartoucheResult {
+  session_id: string;
+  cartouche_bbox_norm: { x: number; y: number; w: number; h: number } | null;
+  cartouche_b64: string | null;
+  fields: CartoucheField[];
+  raw_text: string;
+  plan_b64: string;
+}
+
+// ── Materials estimation types ───────────────────────────────────────────────
+
+export interface MaterialEstimateParams {
+  ceiling_height_m: number;
+  waste_pct: number;
+  paint_coverage_m2_per_l: number;
+  paint_pot_size_l: number;
+}
+
+export interface MaterialLine {
+  material: string;
+  quantity: number;
+  unit: string;
+  detail?: string;
+}

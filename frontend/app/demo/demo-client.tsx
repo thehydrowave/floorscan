@@ -7,6 +7,7 @@ import {
   ScanLine, ArrowLeft, BrainCircuit, PenLine, Building2,
   History, X, AlertTriangle, Check,
   KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare,
+  GitCompare, FileSearch, Loader2,
 } from "lucide-react";
 import Stepper from "@/components/demo/stepper";
 import ConnectStep from "@/components/demo/connect-step";
@@ -19,9 +20,11 @@ import EditorStep from "@/components/demo/editor-step";
 import FacadeAnalyzeStep from "@/components/facade/facade-analyze-step";
 import FacadeResultsStep from "@/components/facade/facade-results-step";
 import FacadeEditorStep from "@/components/facade/facade-editor-step";
+import DiffViewStep from "@/components/diff/diff-view-step";
+import CartoucheResultStep from "@/components/cartouche/cartouche-result-step";
 import MeasureClient from "@/app/measure/measure-client";
 import LangSwitcher from "@/components/ui/lang-switcher";
-import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult } from "@/lib/types";
+import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, DiffResult, CartoucheResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -132,7 +135,7 @@ export default function DemoClient() {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const [step, setStep] = useState(1);
-  const [demoMode, setDemoMode] = useState<null | "ia" | "measure" | "facade">(null);
+  const [demoMode, setDemoMode] = useState<null | "ia" | "measure" | "facade" | "diff" | "cartouche">(null);
 
   const STEP_TITLES = [
     d("st_connect"), d("st_upload"), d("st_crop"),
@@ -155,6 +158,18 @@ export default function DemoClient() {
 
   // ── Facade-specific state ──
   const [facadeResult, setFacadeResult] = useState<FacadeAnalysisResult | null>(null);
+
+  // ── Diff-specific state ──
+  const [v1SessionId, setV1SessionId] = useState<string | null>(null);
+  const [v1ImageB64, setV1ImageB64] = useState<string | null>(null);
+  const [v2SessionId, setV2SessionId] = useState<string | null>(null);
+  const [v2ImageB64, setV2ImageB64] = useState<string | null>(null);
+  const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+
+  // ── Cartouche-specific state ──
+  const [cartoucheResult, setCartoucheResult] = useState<CartoucheResult | null>(null);
+  const [cartoucheLoading, setCartoucheLoading] = useState(false);
 
   // Restored session banner
   const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
@@ -248,12 +263,16 @@ export default function DemoClient() {
   };
 
   const handleRestart = () => {
-    setStep(2);
+    setStep(1);
     setSessionId(null);
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
     setFacadeResult(null);
+    setV1SessionId(null); setV1ImageB64(null);
+    setV2SessionId(null); setV2ImageB64(null);
+    setDiffResult(null); setDiffLoading(false);
+    setCartoucheResult(null); setCartoucheLoading(false);
     clearSession();
   };
 
@@ -265,6 +284,10 @@ export default function DemoClient() {
     setPpm(null);
     setAnalysisResult(null);
     setFacadeResult(null);
+    setV1SessionId(null); setV1ImageB64(null);
+    setV2SessionId(null); setV2ImageB64(null);
+    setDiffResult(null); setDiffLoading(false);
+    setCartoucheResult(null); setCartoucheLoading(false);
     clearSession();
   };
 
@@ -279,6 +302,82 @@ export default function DemoClient() {
   const handleFacadeGoResults = (updatedResult: FacadeAnalysisResult) => {
     setFacadeResult(updatedResult);
     setStep(6);
+  };
+
+  // ── Diff handlers ──
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
+  const handleDiffV1Uploaded = (sid: string, imgB64: string) => {
+    setV1SessionId(sid);
+    setV1ImageB64(imgB64);
+    setStep(2);
+  };
+
+  const handleDiffV2Uploaded = async (sid: string, imgB64: string) => {
+    setV2SessionId(sid);
+    setV2ImageB64(imgB64);
+    setDiffLoading(true);
+    setStep(3);
+    // Auto-call backend diff
+    try {
+      const res = await fetch(`${BACKEND}/diff-plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id_v1: v1SessionId, session_id_v2: sid }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: DiffResult = await res.json();
+      setDiffResult(data);
+    } catch {
+      // Mock fallback: just show images side by side without diff
+      setDiffResult({
+        session_id_v1: v1SessionId!,
+        session_id_v2: sid,
+        aligned_v1_b64: v1ImageB64!,
+        aligned_v2_b64: imgB64,
+        diff_overlay_b64: v1ImageB64!,
+        diff_stats: { changed_pixels_pct: 0, added_area_pct: 0, removed_area_pct: 0 },
+      });
+    } finally {
+      setDiffLoading(false);
+    }
+  };
+
+  // ── Cartouche handlers ──
+  const handleCartoucheUploaded = async (sid: string, imgB64: string) => {
+    setSessionId(sid);
+    setUploadedImageB64(imgB64);
+    setCartoucheLoading(true);
+    setStep(2);
+    try {
+      const res = await fetch(`${BACKEND}/extract-cartouche`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: CartoucheResult = await res.json();
+      setCartoucheResult(data);
+    } catch {
+      // Mock fallback with empty fields
+      setCartoucheResult({
+        session_id: sid,
+        cartouche_bbox_norm: null,
+        cartouche_b64: null,
+        fields: [
+          { key: "project_name", label_fr: "Nom du projet", value: "", confidence: 0 },
+          { key: "architect", label_fr: "Architecte", value: "", confidence: 0 },
+          { key: "scale", label_fr: "Échelle", value: "", confidence: 0 },
+          { key: "date", label_fr: "Date", value: "", confidence: 0 },
+          { key: "plan_number", label_fr: "N° de plan", value: "", confidence: 0 },
+          { key: "revision", label_fr: "Révision", value: "", confidence: 0 },
+        ],
+        raw_text: "(Backend non disponible)",
+        plan_b64: imgB64,
+      });
+    } finally {
+      setCartoucheLoading(false);
+    }
   };
 
   return (
@@ -326,6 +425,24 @@ export default function DemoClient() {
               >
                 <Building2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{d("sel_fa_title")}</span>
+              </button>
+              <button
+                onClick={() => setDemoMode("diff")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  demoMode === "diff" ? "bg-teal-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <GitCompare className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{d("sel_di_title")}</span>
+              </button>
+              <button
+                onClick={() => setDemoMode("cartouche")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  demoMode === "cartouche" ? "bg-violet-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <FileSearch className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{d("sel_ca_title")}</span>
               </button>
             </div>
           )}
@@ -419,7 +536,7 @@ export default function DemoClient() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 {/* Card — Analyse IA */}
                 <button
                   onClick={() => setDemoMode("ia")}
@@ -489,6 +606,52 @@ export default function DemoClient() {
                       ))}
                     </div>
                     <div className="flex items-center gap-2 text-amber-400 text-sm font-medium group-hover:gap-3 transition-all">
+                      {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
+                    </div>
+                  </div>
+                </button>
+
+                {/* Card — Comparateur de plans */}
+                <button
+                  onClick={() => setDemoMode("diff")}
+                  className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-teal-500/40 hover:bg-teal-500/5 transition-all duration-300 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
+                  <div className="relative">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
+                      <GitCompare className="w-7 h-7 text-white" />
+                    </div>
+                    <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_di_title")}</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_di_desc")}</p>
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {["PDF, JPG, PNG", d("di_side"), d("di_overlay"), d("di_diff"), "Export PNG"].map(tag => (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-teal-400 text-sm font-medium group-hover:gap-3 transition-all">
+                      {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
+                    </div>
+                  </div>
+                </button>
+
+                {/* Card — Extraction Cartouche */}
+                <button
+                  onClick={() => setDemoMode("cartouche")}
+                  className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-violet-500/40 hover:bg-violet-500/5 transition-all duration-300 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
+                  <div className="relative">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center mb-6 shadow-glow-sm group-hover:shadow-glow transition-shadow">
+                      <FileSearch className="w-7 h-7 text-white" />
+                    </div>
+                    <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_ca_title")}</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_ca_desc")}</p>
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {["PDF, JPG, PNG", "OCR", d("ca_fields"), "JSON", d("ca_copy")].map(tag => (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-violet-400 text-sm font-medium group-hover:gap-3 transition-all">
                       {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
                     </div>
                   </div>
@@ -577,6 +740,142 @@ export default function DemoClient() {
                       onSessionExpired={handleRestart}
                       onAddPage={savedPdfData ? handleAddPage : undefined}
                       onGoResults={handleGoResults}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* ── Diff flow ── */}
+          {demoMode === "diff" && (
+            <motion.div
+              key="diff"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Inline 3-step stepper */}
+              <div className="flex items-center justify-center gap-4 mb-10">
+                {[
+                  { icon: Upload, label: d("di_st_upload_v1"), stepMin: 1 },
+                  { icon: Upload, label: d("di_st_upload_v2"), stepMin: 2 },
+                  { icon: GitCompare, label: d("di_st_compare"), stepMin: 3 },
+                ].map((s, i) => {
+                  const sNum = i + 1;
+                  const isActive = step === sNum;
+                  const isDone = step > sNum;
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 transition-all",
+                          isActive && "bg-teal-500 text-white shadow-md",
+                          isDone && "bg-teal-500/20 text-teal-400",
+                          !isActive && !isDone && "bg-white/5 text-slate-500",
+                        )}>
+                          {isDone ? <Check className="w-3.5 h-3.5" /> : <s.icon className="w-3.5 h-3.5" />}
+                        </div>
+                        <span className={cn("text-xs font-medium hidden sm:block", isActive ? "text-white" : isDone ? "text-teal-400" : "text-slate-600")}>
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < 2 && <div className={cn("w-12 h-px -mt-5", isDone ? "bg-teal-500/40" : "bg-white/5")} />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div key={step} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.25 }}>
+                  {step === 1 && (
+                    <UploadStep
+                      titleOverride={d("di_upload_v1_title")}
+                      subtitleOverride={d("di_upload_v1_sub")}
+                      onUploaded={handleDiffV1Uploaded}
+                    />
+                  )}
+                  {step === 2 && (
+                    <UploadStep
+                      titleOverride={d("di_upload_v2_title")}
+                      subtitleOverride={d("di_upload_v2_sub")}
+                      onUploaded={handleDiffV2Uploaded}
+                    />
+                  )}
+                  {step === 3 && diffLoading && (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                      <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+                      <p className="text-slate-400 text-sm">{d("di_analyzing")}</p>
+                    </div>
+                  )}
+                  {step === 3 && !diffLoading && diffResult && v1ImageB64 && v2ImageB64 && (
+                    <DiffViewStep
+                      result={diffResult}
+                      v1ImageB64={v1ImageB64}
+                      v2ImageB64={v2ImageB64}
+                      onRestart={handleRestart}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* ── Cartouche flow ── */}
+          {demoMode === "cartouche" && (
+            <motion.div
+              key="cartouche"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* Inline 2-step stepper */}
+              <div className="flex items-center justify-center gap-4 mb-10">
+                {[
+                  { icon: Upload, label: d("ca_st_upload"), stepMin: 1 },
+                  { icon: FileSearch, label: d("ca_st_results"), stepMin: 2 },
+                ].map((s, i) => {
+                  const sNum = i + 1;
+                  const isActive = step === sNum;
+                  const isDone = step > sNum;
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 transition-all",
+                          isActive && "bg-violet-500 text-white shadow-md",
+                          isDone && "bg-violet-500/20 text-violet-400",
+                          !isActive && !isDone && "bg-white/5 text-slate-500",
+                        )}>
+                          {isDone ? <Check className="w-3.5 h-3.5" /> : <s.icon className="w-3.5 h-3.5" />}
+                        </div>
+                        <span className={cn("text-xs font-medium hidden sm:block", isActive ? "text-white" : isDone ? "text-violet-400" : "text-slate-600")}>
+                          {s.label}
+                        </span>
+                      </div>
+                      {i < 1 && <div className={cn("w-12 h-px -mt-5", isDone ? "bg-violet-500/40" : "bg-white/5")} />}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div key={step} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.25 }}>
+                  {step === 1 && (
+                    <UploadStep onUploaded={handleCartoucheUploaded} />
+                  )}
+                  {step === 2 && cartoucheLoading && (
+                    <div className="flex flex-col items-center justify-center py-20 gap-4">
+                      <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+                      <p className="text-slate-400 text-sm">{d("ca_analyzing")}</p>
+                    </div>
+                  )}
+                  {step === 2 && !cartoucheLoading && cartoucheResult && (
+                    <CartoucheResultStep
+                      result={cartoucheResult}
+                      onRestart={handleRestart}
                     />
                   )}
                 </motion.div>

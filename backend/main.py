@@ -1284,3 +1284,36 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         "plan_b64": plan_b64,
         "is_mock": False,
     }
+
+
+# ── Plan diff ─────────────────────────────────────────────────────────────────
+
+class DiffPlansRequest(BaseModel):
+    session_id_v1: str
+    session_id_v2: str
+
+@app.post("/diff-plans")
+def diff_plans(req: DiffPlansRequest):
+    s1 = sessions.get(req.session_id_v1)
+    s2 = sessions.get(req.session_id_v2)
+    if s1 is None or s2 is None:
+        raise HTTPException(status_code=404, detail="Session(s) introuvable(s)")
+    result = pipeline.compute_plan_diff(s1["img_rgb"], s2["img_rgb"])
+    result["session_id_v1"] = req.session_id_v1
+    result["session_id_v2"] = req.session_id_v2
+    return result
+
+
+# ── Cartouche extraction ──────────────────────────────────────────────────────
+
+class CartoucheRequest(BaseModel):
+    session_id: str
+
+@app.post("/extract-cartouche")
+def extract_cartouche_endpoint(req: CartoucheRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session introuvable")
+    result = pipeline.extract_cartouche(s["img_rgb"])
+    result["session_id"] = req.session_id
+    return result

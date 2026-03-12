@@ -25,4 +25,7 @@ pandas==2.2.2
 # DXF export
 ezdxf>=0.18.0
 
+# OCR (cartouche extraction)
+pytesseract>=0.3.10
+
 

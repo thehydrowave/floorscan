@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import MaterialsPanel from "@/components/demo/materials-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -487,6 +488,11 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
           </div>
         </div>
       )}
+
+      {/* ── Materials estimation panel ── */}
+      <div className="mt-8">
+        <MaterialsPanel result={result} customDetections={customDetections} />
+      </div>
 
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={onRestart}>

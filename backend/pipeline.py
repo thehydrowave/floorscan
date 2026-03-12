@@ -1682,3 +1682,189 @@ def generate_dxf(rooms: list, walls: list, openings: list,
     stream = io.BytesIO()
     doc.write(stream)
     return stream.getvalue()
+
+
+# ── Plan diff ─────────────────────────────────────────────────────────────────
+
+def compute_plan_diff(img1_rgb: np.ndarray, img2_rgb: np.ndarray) -> dict:
+    """Align two plan images and compute colour-coded diff overlay."""
+    h1, w1 = img1_rgb.shape[:2]
+
+    # Resize V2 to match V1 dimensions
+    img2_resized = cv2.resize(img2_rgb, (w1, h1), interpolation=cv2.INTER_AREA)
+
+    # ORB feature matching for alignment (patent-free)
+    gray1 = cv2.cvtColor(img1_rgb, cv2.COLOR_RGB2GRAY)
+    gray2 = cv2.cvtColor(img2_resized, cv2.COLOR_RGB2GRAY)
+
+    try:
+        orb = cv2.ORB_create(5000)
+        kp1, des1 = orb.detectAndCompute(gray1, None)
+        kp2, des2 = orb.detectAndCompute(gray2, None)
+
+        if des1 is not None and des2 is not None and len(kp1) >= 4 and len(kp2) >= 4:
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            matches = sorted(bf.match(des1, des2), key=lambda m: m.distance)[:50]
+
+            if len(matches) >= 4:
+                pts1 = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+                pts2 = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+                H, _ = cv2.findHomography(pts2, pts1, cv2.RANSAC, 5.0)
+                if H is not None:
+                    img2_resized = cv2.warpPerspective(img2_resized, H, (w1, h1),
+                                                        borderMode=cv2.BORDER_REPLICATE)
+    except Exception:
+        pass  # fallback: use simple resize
+
+    aligned_v2 = img2_resized
+
+    # Pixel diff
+    g1 = cv2.cvtColor(img1_rgb, cv2.COLOR_RGB2GRAY).astype(np.int16)
+    g2 = cv2.cvtColor(aligned_v2, cv2.COLOR_RGB2GRAY).astype(np.int16)
+
+    diff_abs = np.abs(g1 - g2).astype(np.uint8)
+    _, diff_mask = cv2.threshold(diff_abs, 30, 255, cv2.THRESH_BINARY)
+
+    # Colour overlay
+    overlay = img1_rgb.copy()
+    added = (g2 < g1 - 30)      # darker in V2 => new element drawn
+    removed = (g1 < g2 - 30)    # lighter in V2 => element erased
+
+    overlay[added]   = [0, 200, 0]    # green
+    overlay[removed] = [200, 0, 0]    # red
+
+    total_px = float(h1 * w1)
+    return {
+        "aligned_v1_b64": _np_to_b64(img1_rgb),
+        "aligned_v2_b64": _np_to_b64(aligned_v2),
+        "diff_overlay_b64": _np_to_b64(overlay),
+        "diff_stats": {
+            "changed_pixels_pct": round(float(np.count_nonzero(diff_mask)) / total_px * 100, 2),
+            "added_area_pct":     round(float(np.count_nonzero(added))     / total_px * 100, 2),
+            "removed_area_pct":   round(float(np.count_nonzero(removed))   / total_px * 100, 2),
+        },
+    }
+
+
+# ── Cartouche / legend extraction ─────────────────────────────────────────────
+
+def extract_cartouche(img_rgb: np.ndarray) -> dict:
+    """Detect cartouche zone in bottom-right and run OCR."""
+    import re
+    try:
+        import pytesseract
+    except ImportError:
+        # Return empty result if pytesseract not installed
+        return {
+            "cartouche_bbox_norm": None,
+            "cartouche_b64": None,
+            "fields": [],
+            "raw_text": "(pytesseract non installé)",
+            "plan_b64": _np_to_b64(img_rgb),
+        }
+
+    H, W = img_rgb.shape[:2]
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Search bottom-right 45% x 35%
+    roi_x = int(W * 0.55)
+    roi_y = int(H * 0.65)
+    roi = gray[roi_y:, roi_x:]
+
+    # Find largest rectangle in that zone
+    blurred = cv2.GaussianBlur(roi, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    dilated = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    best_box = None
+    best_area = 0
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = w * h
+        if area > best_area and w > 80 and h > 40:
+            best_area = area
+            best_box = (x + roi_x, y + roi_y, w, h)
+
+    if best_box is None:
+        best_box = (roi_x, roi_y, W - roi_x, H - roi_y)
+
+    bx, by, bw, bh = best_box
+    cartouche_crop = img_rgb[by:by + bh, bx:bx + bw]
+
+    # OCR
+    try:
+        ocr_text = pytesseract.image_to_string(cartouche_crop, lang="fra+eng")
+    except Exception:
+        try:
+            ocr_text = pytesseract.image_to_string(cartouche_crop)
+        except Exception as e:
+            ocr_text = f"(OCR error: {e})"
+
+    # Parse fields heuristically
+    fields = _parse_cartouche_fields(ocr_text)
+
+    bbox_norm = {
+        "x": round(bx / W, 4),
+        "y": round(by / H, 4),
+        "w": round(bw / W, 4),
+        "h": round(bh / H, 4),
+    }
+
+    plan_annotated = img_rgb.copy()
+    cv2.rectangle(plan_annotated, (bx, by), (bx + bw, by + bh), (138, 43, 226), 3)
+
+    return {
+        "cartouche_bbox_norm": bbox_norm,
+        "cartouche_b64": _np_to_b64(cartouche_crop),
+        "fields": fields,
+        "raw_text": ocr_text,
+        "plan_b64": _np_to_b64(plan_annotated),
+    }
+
+
+def _parse_cartouche_fields(text: str) -> list:
+    """Heuristic extraction of standard architectural legend fields."""
+    import re
+    lines = text.strip().split("\n")
+
+    patterns = [
+        ("project_name", "Nom du projet", [
+            r"(?:projet|project|affaire|opération)\s*[:;]?\s*(.+)",
+            r"^([A-Z][A-Z\s]{5,})$",
+        ]),
+        ("architect", "Architecte", [
+            r"(?:architecte?|architect|maître d'œuvre|maitre d'oeuvre)\s*[:;]?\s*(.+)",
+        ]),
+        ("scale", "Échelle", [
+            r"(?:échelle|echelle|scale|ech\.?)\s*[:;]?\s*(1\s*[:/]\s*\d+)",
+            r"(1\s*[:/]\s*\d+)",
+        ]),
+        ("date", "Date", [
+            r"(?:date)\s*[:;]?\s*(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})",
+            r"(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})",
+        ]),
+        ("plan_number", "N° de plan", [
+            r"(?:plan|n°|numéro|numero|indice)\s*[:;]?\s*([A-Z0-9][\w\-]+)",
+        ]),
+        ("revision", "Révision", [
+            r"(?:rév|rev|indice|version|ind\.?)\s*[:;]?\s*([A-Z0-9]+)",
+        ]),
+    ]
+
+    result = []
+    for key, label, pats in patterns:
+        value = ""
+        conf = 0.0
+        for pat in pats:
+            for line in lines:
+                m = re.search(pat, line, re.IGNORECASE)
+                if m:
+                    value = m.group(1).strip()
+                    conf = 0.7
+                    break
+            if value:
+                break
+        result.append({"key": key, "label_fr": label, "value": value, "confidence": conf})
+
+    return result
