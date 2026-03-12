@@ -3,7 +3,11 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, BrainCircuit, PenLine, History, X } from "lucide-react";
+import {
+  ScanLine, ArrowLeft, BrainCircuit, PenLine, Building2,
+  History, X, AlertTriangle, Check,
+  KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare,
+} from "lucide-react";
 import Stepper from "@/components/demo/stepper";
 import ConnectStep from "@/components/demo/connect-step";
 import UploadStep from "@/components/demo/upload-step";
@@ -12,17 +16,21 @@ import ScaleStep from "@/components/demo/scale-step";
 import AnalyzeStep from "@/components/demo/analyze-step";
 import ResultsStep from "@/components/demo/results-step";
 import EditorStep from "@/components/demo/editor-step";
+import FacadeAnalyzeStep from "@/components/facade/facade-analyze-step";
+import FacadeResultsStep from "@/components/facade/facade-results-step";
+import FacadeEditorStep from "@/components/facade/facade-editor-step";
 import MeasureClient from "@/app/measure/measure-client";
 import LangSwitcher from "@/components/ui/lang-switcher";
-import { RoboflowConfig, AnalysisResult, CustomDetection } from "@/lib/types";
+import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 
 const SESSION_STORAGE_KEY = "floorscan_ia_session_v1";
 
 interface SavedSession {
   step: number;
-  demoMode: "ia" | "measure";
+  demoMode: "ia" | "measure" | "facade";
   config: RoboflowConfig | null;
   sessionId: string | null;
   uploadedImageB64: string | null;
@@ -65,11 +73,66 @@ function clearSession() {
   try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch {}
 }
 
+/* ── Facade stepper (inline, 7 steps) ── */
+const FACADE_STEP_ICONS = [KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare];
+const FACADE_STEP_KEYS: DTKey[] = [
+  "fa_st_connect", "fa_st_upload", "fa_st_crop",
+  "fa_st_scale", "fa_st_analyze", "fa_st_results", "fa_st_editor",
+];
+
+function FacadeStepper({ currentStep, lang }: { currentStep: number; lang: string }) {
+  const d = (key: DTKey) => dt(key, lang as "fr" | "en" | "es" | "de" | "it");
+  return (
+    <div className="flex items-center w-full max-w-3xl mx-auto">
+      {FACADE_STEP_ICONS.map((Icon, index) => {
+        const stepNum = index + 1;
+        const isActive = stepNum === currentStep;
+        const isDone = stepNum < currentStep;
+        const isLast = index === FACADE_STEP_ICONS.length - 1;
+        return (
+          <div key={index} className="flex items-center flex-1">
+            <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+              <div
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",
+                  isActive && "step-active text-white",
+                  isDone && "step-done text-accent-green",
+                  !isActive && !isDone && "step-inactive text-slate-500"
+                )}
+              >
+                {isDone ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
+              </div>
+              <span
+                className={cn(
+                  "text-xs font-medium transition-colors hidden sm:block",
+                  isActive && "text-white",
+                  isDone && "text-accent-green",
+                  !isActive && !isDone && "text-slate-600"
+                )}
+              >
+                {d(FACADE_STEP_KEYS[index])}
+              </span>
+            </div>
+            {!isLast && (
+              <div
+                className={cn(
+                  "flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",
+                  isDone ? "bg-accent-green/40" : "bg-white/5"
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DemoClient() {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const [step, setStep] = useState(1);
-  const [demoMode, setDemoMode] = useState<null | "ia" | "measure">(null);
+  const [demoMode, setDemoMode] = useState<null | "ia" | "measure" | "facade">(null);
 
   const STEP_TITLES = [
     d("st_connect"), d("st_upload"), d("st_crop"),
@@ -89,6 +152,9 @@ export default function DemoClient() {
   const [savedPdfData, setSavedPdfData] = useState<{ pdfBase64: string; fileName: string; pageCount: number } | null>(null);
   // Custom detections from visual search (persisted across editor ↔ results navigation)
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
+
+  // ── Facade-specific state ──
+  const [facadeResult, setFacadeResult] = useState<FacadeAnalysisResult | null>(null);
 
   // Restored session banner
   const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
@@ -113,13 +179,13 @@ export default function DemoClient() {
   // Warn user before leaving with unsaved work
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (demoMode && (sessionId || analysisResult)) {
+      if (demoMode && (sessionId || analysisResult || facadeResult)) {
         e.preventDefault();
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [demoMode, sessionId, analysisResult]);
+  }, [demoMode, sessionId, analysisResult, facadeResult]);
 
   const handleRestoreSession = () => {
     if (!restoredSession) return;
@@ -187,6 +253,7 @@ export default function DemoClient() {
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
+    setFacadeResult(null);
     clearSession();
   };
 
@@ -197,7 +264,21 @@ export default function DemoClient() {
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
+    setFacadeResult(null);
     clearSession();
+  };
+
+  // ── Facade-specific handlers ──
+  const handleFacadeAnalyzed = (result: FacadeAnalysisResult) => {
+    setFacadeResult(result);
+    setStep(6);
+  };
+
+  const handleFacadeGoEditor = () => setStep(7);
+
+  const handleFacadeGoResults = (updatedResult: FacadeAnalysisResult) => {
+    setFacadeResult(updatedResult);
+    setStep(6);
   };
 
   return (
@@ -237,6 +318,15 @@ export default function DemoClient() {
                 <PenLine className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{d("sel_met_title")}</span>
               </button>
+              <button
+                onClick={() => setDemoMode("facade")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  demoMode === "facade" ? "bg-amber-600 text-white shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{d("sel_fa_title")}</span>
+              </button>
             </div>
           )}
 
@@ -254,6 +344,16 @@ export default function DemoClient() {
           )}
         </div>
       </div>
+
+      {/* Facade WIP banner — shown only when facade mode is active */}
+      {demoMode === "facade" && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-amber-300/90">{d("fa_mock_warn")}</span>
+          </div>
+        </div>
+      )}
 
       {/* Restore session banner */}
       <AnimatePresence>
@@ -319,7 +419,7 @@ export default function DemoClient() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 {/* Card — Analyse IA */}
                 <button
                   onClick={() => setDemoMode("ia")}
@@ -361,6 +461,34 @@ export default function DemoClient() {
                       ))}
                     </div>
                     <div className="flex items-center gap-2 text-brand-400 text-sm font-medium group-hover:gap-3 transition-all">
+                      {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
+                    </div>
+                  </div>
+                </button>
+
+                {/* Card — Analyse Façade (WIP) */}
+                <button
+                  onClick={() => setDemoMode("facade")}
+                  className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all duration-300 overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
+                  <div className="relative">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow">
+                        <Building2 className="w-7 h-7 text-white" />
+                      </div>
+                      <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1.5 py-0.5 font-semibold text-amber-400 leading-none uppercase tracking-wider">
+                        {d("fa_wip")}
+                      </span>
+                    </div>
+                    <h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_fa_title")}</h2>
+                    <p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_fa_desc")}</p>
+                    <div className="flex flex-wrap gap-2 mb-6">
+                      {[d("fa_windows"), d("fa_doors"), d("fa_balconies"), d("fa_floors"), "Export CSV"].map(tag => (
+                        <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-amber-400 text-sm font-medium group-hover:gap-3 transition-all">
                       {d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180" />
                     </div>
                   </div>
@@ -449,6 +577,71 @@ export default function DemoClient() {
                       onSessionExpired={handleRestart}
                       onAddPage={savedPdfData ? handleAddPage : undefined}
                       onGoResults={handleGoResults}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* ── Analyse Façade flow ── */}
+          {demoMode === "facade" && (
+            <motion.div
+              key="facade"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="mb-10">
+                <FacadeStepper currentStep={step} lang={lang} />
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={step}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  {step === 1 && <ConnectStep onConnected={handleConnected} />}
+                  {step === 2 && (
+                    <UploadStep onUploaded={handleUploaded} />
+                  )}
+                  {step === 3 && sessionId && (
+                    <CropStep
+                      sessionId={sessionId}
+                      imageB64={uploadedImageB64!}
+                      onCropped={handleCropped}
+                      onSkip={handleCropped}
+                      onSessionExpired={handleRestart}
+                    />
+                  )}
+                  {step === 4 && (
+                    <ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} />
+                  )}
+                  {step === 5 && sessionId && uploadedImageB64 && config && (
+                    <FacadeAnalyzeStep
+                      sessionId={sessionId}
+                      imageB64={uploadedImageB64}
+                      apiKey={config.apiKey}
+                      ppm={ppm}
+                      onAnalyzed={handleFacadeAnalyzed}
+                    />
+                  )}
+                  {step === 6 && facadeResult && (
+                    <FacadeResultsStep
+                      result={facadeResult}
+                      onGoEditor={handleFacadeGoEditor}
+                      onRestart={handleRestart}
+                    />
+                  )}
+                  {step === 7 && facadeResult && (
+                    <FacadeEditorStep
+                      result={facadeResult}
+                      onGoResults={handleFacadeGoResults}
+                      onRestart={handleRestart}
                     />
                   )}
                 </motion.div>

@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ArrowRight, Building2, AlertTriangle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLang } from "@/lib/lang-context";
 import { t } from "@/lib/i18n";
@@ -77,31 +77,6 @@ export default function HeroSection() {
           <Button size="xl" variant="outline" asChild>
             <Link href="#how-it-works">{t("hero_cta2", lang)}</Link>
           </Button>
-        </motion.div>
-
-        {/* Facade WIP card */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
-          className="mb-8"
-        >
-          <Link
-            href="/facade"
-            className="group inline-flex items-center gap-3 glass border border-amber-500/20 rounded-2xl px-6 py-3 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
-            <div className="text-left">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-display font-700 text-white">Analyse de Façade</span>
-                <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1.5 py-0.5 font-semibold text-amber-400 leading-none">WIP</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">Fenêtres, portes, balcons sur plans d'élévation</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform ml-2" />
-          </Link>
         </motion.div>
 
         {/* Stats */}
