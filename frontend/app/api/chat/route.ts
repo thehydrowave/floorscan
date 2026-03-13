@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createOpenAI } from "@ai-sdk/openai";
+import { createGroq } from "@ai-sdk/groq";
 import { streamText } from "ai";
 
 // ─── Build context string from AnalysisResult ───────────────────────────────
@@ -107,11 +107,11 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Use provided key or env var
-  const key = apiKey || process.env.OPENAI_API_KEY;
+  // Use provided key or env var (GROQ_API_KEY)
+  const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) {
     return new Response(
-      JSON.stringify({ error: "No OpenAI API key configured. Set OPENAI_API_KEY in Vercel env vars or provide one in settings." }),
+      JSON.stringify({ error: "No Groq API key configured. Set GROQ_API_KEY in Vercel env vars or provide one in settings." }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = streamText({
-      model: createOpenAI({ apiKey: key })("gpt-4o-mini"),
+      model: createGroq({ apiKey: key })("llama-3.3-70b-versatile"),
       system: fullSystem,
       messages,
     });
