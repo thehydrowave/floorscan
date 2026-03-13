@@ -14,7 +14,9 @@ const MAX_SIZE_MB = 50;
 interface UploadStepProps {
   onUploaded: (sessionId: string, imageB64: string) => void;
   onPdfMetadata?: (data: { pdfBase64: string; fileName: string; pageCount: number }) => void;
+  onPageSelected?: (pageIdx: number) => void;
   initialPdfData?: { pdfBase64: string; fileName: string; pageCount: number };
+  analyzedPages?: number[];
   titleOverride?: string;
   subtitleOverride?: string;
 }
@@ -25,7 +27,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
-export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData, titleOverride, subtitleOverride }: UploadStepProps) {
+export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, initialPdfData, analyzedPages, titleOverride, subtitleOverride }: UploadStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -168,6 +170,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData, 
 
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
+    onPageSelected?.(currentPage);
     await uploadPage(pdfBase64, pendingFileName, currentPage);
   };
 
@@ -209,13 +212,16 @@ export default function UploadStep({ onUploaded, onPdfMetadata, initialPdfData, 
                     key={i}
                     onClick={() => setCurrentPage(i)}
                     className={cn(
-                      "w-9 h-9 rounded-lg text-sm font-mono font-600 transition-all",
+                      "w-9 h-9 rounded-lg text-sm font-mono font-600 transition-all relative",
                       currentPage === i
                         ? "bg-accent text-white"
                         : "glass border border-white/10 text-slate-400 hover:text-white"
                     )}
                   >
                     {i + 1}
+                    {analyzedPages?.includes(i) && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-[7px] text-white font-bold">✓</span>
+                    )}
                   </button>
                 ))}
                 {pageCount > 20 && (

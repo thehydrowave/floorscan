@@ -153,6 +153,9 @@ export default function DemoClient() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   // Multi-page PDF
   const [savedPdfData, setSavedPdfData] = useState<{ pdfBase64: string; fileName: string; pageCount: number } | null>(null);
+  // Per-page results storage for multi-page analysis
+  const [pageResults, setPageResults] = useState<Map<number, { ppm: number | null; analysisResult: AnalysisResult; customDetections: CustomDetection[] }>>(new Map());
+  const [currentPageIdx, setCurrentPageIdx] = useState<number>(0);
   // Custom detections from visual search (persisted across editor ↔ results navigation)
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
@@ -242,6 +245,14 @@ export default function DemoClient() {
 
   const handleAnalyzed = (result: AnalysisResult) => {
     setAnalysisResult(result);
+    // Also save into pageResults for multi-page navigation
+    if (savedPdfData) {
+      setPageResults(prev => {
+        const next = new Map(prev);
+        next.set(currentPageIdx, { ppm, analysisResult: result, customDetections: [] });
+        return next;
+      });
+    }
     setStep(6);
   };
 
@@ -254,13 +265,42 @@ export default function DemoClient() {
   };
 
   const handleAddPage = () => {
+    // Save current page results before switching
+    if (analysisResult) {
+      setPageResults(prev => {
+        const next = new Map(prev);
+        next.set(currentPageIdx, { ppm, analysisResult, customDetections });
+        return next;
+      });
+    }
     // Return to upload step with PDF pre-loaded in page selector
     setStep(2);
     setSessionId(null);
     setUploadedImageB64(null);
     setPpm(null);
     setAnalysisResult(null);
+    setCustomDetections([]);
     // savedPdfData is preserved → UploadStep auto-enters page selector
+  };
+
+  /** Switch to a previously-analyzed page */
+  const handleSwitchPage = (pageIdx: number) => {
+    // Save current page results
+    if (analysisResult) {
+      setPageResults(prev => {
+        const next = new Map(prev);
+        next.set(currentPageIdx, { ppm, analysisResult, customDetections });
+        return next;
+      });
+    }
+    // Load target page results
+    const target = pageResults.get(pageIdx);
+    if (target) {
+      setCurrentPageIdx(pageIdx);
+      setPpm(target.ppm);
+      setAnalysisResult(target.analysisResult);
+      setCustomDetections(target.customDetections);
+    }
   };
 
   const handleRestart = () => {
@@ -726,7 +766,9 @@ export default function DemoClient() {
                     <UploadStep
                       onUploaded={handleUploaded}
                       onPdfMetadata={handlePdfMetadata}
+                      onPageSelected={setCurrentPageIdx}
                       initialPdfData={savedPdfData ?? undefined}
+                      analyzedPages={[...pageResults.keys()]}
                     />
                   )}
                   {step === 3 && sessionId && (
@@ -757,6 +799,11 @@ export default function DemoClient() {
                       onDetectionsChange={setCustomDetections}
                       onGoEditor={handleGoEditor}
                       onRestart={handleRestart}
+                      pageCount={savedPdfData ? savedPdfData.pageCount : undefined}
+                      currentPage={savedPdfData ? currentPageIdx : undefined}
+                      onSwitchPage={savedPdfData && pageResults.size > 1 ? handleSwitchPage : undefined}
+                      analyzedPages={savedPdfData ? [...pageResults.keys()] : undefined}
+                      onAddPage={savedPdfData ? handleAddPage : undefined}
                     />
                   )}
                   {step === 7 && analysisResult && sessionId && (

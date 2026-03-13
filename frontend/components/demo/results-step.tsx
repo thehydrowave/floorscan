@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -22,6 +22,10 @@ import ScenarioPanel from "@/components/demo/scenario-panel";
 import PatternPanel from "@/components/demo/pattern-panel";
 import ToolkitPanel from "@/components/demo/toolkit-panel";
 import LotsPanel from "@/components/demo/lots-panel";
+import DashboardPanel from "@/components/demo/dashboard-panel";
+import MeasureTool from "@/components/demo/measure-tool";
+import RapportDialog from "@/components/demo/rapport-dialog";
+import OcrPanel from "@/components/demo/ocr-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -31,6 +35,12 @@ interface ResultsStepProps {
   onDetectionsChange?: (dets: CustomDetection[]) => void;
   onGoEditor: () => void;
   onRestart: () => void;
+  // Multi-page support
+  pageCount?: number;
+  currentPage?: number;
+  onSwitchPage?: (page: number) => void;
+  analyzedPages?: number[];
+  onAddPage?: () => void;
 }
 
 function fmt(v: number | undefined, nd = 1, suffix = "") {
@@ -48,7 +58,7 @@ const ROOM_COLORS: Record<string, string> = {
 };
 function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
 
-export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart }: ResultsStepProps) {
+export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart, pageCount, currentPage, onSwitchPage, analyzedPages, onAddPage }: ResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -61,6 +71,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [imgNatural, setImgNatural] = useState({ w: 1, h: 1 });
 
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [measureActive, setMeasureActive] = useState(false);
+  const [rapportOpen, setRapportOpen] = useState(false);
 
   const overlayB64Map: Record<string, string | null> = {
     openings: result.overlay_openings_b64,
@@ -206,6 +218,16 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <Button onClick={() => window.print()} variant="outline" title={d("btn_print")}>
             <Printer className="w-4 h-4" /> {d("btn_print")}
           </Button>
+          <Button
+            onClick={() => setMeasureActive(v => !v)}
+            variant={measureActive ? "default" : "outline"}
+            title={d("meas_btn" as DTKey)}
+          >
+            <Ruler className="w-4 h-4" /> {d("meas_btn" as DTKey)}
+          </Button>
+          <Button onClick={() => setRapportOpen(true)} variant="outline" title={d("rap_btn" as DTKey)}>
+            <FileDown className="w-4 h-4" /> {d("rap_btn" as DTKey)}
+          </Button>
           <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
             {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
@@ -214,6 +236,42 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           </Button>
         </div>
       </div>
+
+      {/* Multi-page tab bar */}
+      {pageCount != null && pageCount > 1 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {Array.from({ length: pageCount }, (_, i) => {
+            const isAnalyzed = analyzedPages?.includes(i);
+            const isCurrent = currentPage === i;
+            return (
+              <button
+                key={i}
+                onClick={() => isAnalyzed && onSwitchPage?.(i)}
+                disabled={!isAnalyzed}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                  isCurrent
+                    ? "bg-sky-500/20 text-sky-400 border-sky-500/40"
+                    : isAnalyzed
+                    ? "bg-white/5 text-slate-300 border-white/10 hover:bg-white/10 cursor-pointer"
+                    : "bg-white/[0.02] text-slate-600 border-white/5 cursor-not-allowed",
+                )}
+              >
+                {d("mp_page" as DTKey)} {i + 1}
+                {isAnalyzed && !isCurrent && <span className="text-emerald-400 text-[10px]">✓</span>}
+              </button>
+            );
+          })}
+          {onAddPage && (
+            <button
+              onClick={onAddPage}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-400 border border-sky-500/20 hover:bg-sky-500/10 transition-colors"
+            >
+              {d("mp_add_page" as DTKey)}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -336,6 +394,16 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             />
           ) : (
             <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
+          )}
+
+          {/* Measure tool overlay */}
+          {activeImageOverlay && overlayB64Map[activeImageOverlay] && (
+            <MeasureTool
+              ppm={result.pixels_per_meter ?? null}
+              active={measureActive}
+              imgW={imgNatural.w}
+              imgH={imgNatural.h}
+            />
           )}
 
           {/* SVG overlay layer for rooms & VS detections */}
@@ -502,6 +570,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         </div>
       )}
 
+      {/* ── Dashboard KPIs ── */}
+      <DashboardPanel result={result} customDetections={customDetections} />
+
       {/* ── 3D Floor Plan View ── */}
       <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
 
@@ -544,6 +615,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       {/* ── BTP Toolkit panel ── */}
       <ToolkitPanel result={result} />
 
+      {/* ── OCR text detection panel (Beta) ── */}
+      <OcrPanel result={result} />
+
       {/* ── Debug technique panel ── */}
       <DebugPanel result={result} customDetections={customDetections} />
 
@@ -552,6 +626,15 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <RotateCcw className="w-4 h-4" /> {d("re_restart")}
         </Button>
       </div>
+
+      {/* ── Rapport Pro dialog ── */}
+      {rapportOpen && (
+        <RapportDialog
+          result={result}
+          customDetections={customDetections}
+          onClose={() => setRapportOpen(false)}
+        />
+      )}
 
       {/* ── AI Chat floating panel ── */}
       <ChatPanel result={result} />
