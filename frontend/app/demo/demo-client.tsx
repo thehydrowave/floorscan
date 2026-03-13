@@ -754,6 +754,7 @@ export default function DemoClient() {
                     <ResultsStep
                       result={analysisResult}
                       customDetections={customDetections}
+                      onDetectionsChange={setCustomDetections}
                       onGoEditor={handleGoEditor}
                       onRestart={handleRestart}
                     />

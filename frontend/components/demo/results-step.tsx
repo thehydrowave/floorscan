@@ -19,12 +19,14 @@ import DebugPanel from "@/components/demo/debug-panel";
 import View3dPanel from "@/components/demo/view-3d-panel";
 import ChatPanel from "@/components/demo/chat-panel";
 import ScenarioPanel from "@/components/demo/scenario-panel";
+import PatternPanel from "@/components/demo/pattern-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface ResultsStepProps {
   result: AnalysisResult;
   customDetections?: CustomDetection[];
+  onDetectionsChange?: (dets: CustomDetection[]) => void;
   onGoEditor: () => void;
   onRestart: () => void;
 }
@@ -44,7 +46,7 @@ const ROOM_COLORS: Record<string, string> = {
 };
 function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
 
-export default function ResultsStep({ result, customDetections = [], onGoEditor, onRestart }: ResultsStepProps) {
+export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart }: ResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -505,6 +507,16 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
       <div className="mt-8">
         <MaterialsPanel result={result} customDetections={customDetections} />
       </div>
+
+      {/* ── Pattern detection panel ── */}
+      {onDetectionsChange && result.overlay_openings_b64 && (
+        <PatternPanel
+          result={result}
+          overlayB64={result.plan_b64 || result.overlay_openings_b64}
+          customDetections={customDetections}
+          onDetectionsChange={onDetectionsChange}
+        />
+      )}
 
       {/* ── Métré détaillé par pièce ── */}
       <MetrePanel result={result} />
