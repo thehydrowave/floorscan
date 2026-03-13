@@ -11,10 +11,15 @@ import type { Room, Opening } from "@/lib/types";
 const WALL_THICKNESS = 0.15;
 const WALL_COLOR = "#d1d5db";
 const DOOR_COLOR = "#92400e";
+const DOOR_FRAME_COLOR = "#78350f";
 const WINDOW_COLOR = "#7dd3fc";
+const WINDOW_FRAME_COLOR = "#e5e7eb";
 const FLOOR_OPACITY = 0.55;
 const FLOOR_HOVER_OPACITY = 0.85;
 const SLAB_DEPTH = 0.04;
+const FRAME_THICK = 0.04;
+const DOOR_PANEL_THICK = 0.04;
+const DOOR_OPEN_ANGLE = Math.PI / 6; // 30°
 
 const ROOM_COLORS: Record<string, string> = {
   "bedroom": "#818cf8", "living room": "#34d399", "living": "#34d399",
@@ -74,7 +79,6 @@ function computeSceneBounds(
 // ── Wall deduplication ────────────────────────────────────────────────────────
 
 function wallKey(ax: number, az: number, bx: number, bz: number): string {
-  // Round to 3 decimals and sort endpoints for dedup
   const r = (n: number) => Math.round(n * 100) / 100;
   const a = `${r(ax)},${r(az)}`;
   const b = `${r(bx)},${r(bz)}`;
@@ -136,57 +140,86 @@ function extractWalls(
   return walls;
 }
 
-// ── Find closest wall for an opening ──────────────────────────────────────────
+// ── Opening-to-wall mapping ──────────────────────────────────────────────────
 
-function findClosestWall(
-  ox: number,
-  oz: number,
-  walls: WallEdge[]
-): WallEdge | null {
-  let best: WallEdge | null = null;
-  let bestDist = 2.0; // max 2m threshold
+interface WallOpeningInfo {
+  opening: Opening;
+  t: number;           // position along wall (0-1)
+  widthM: number;      // opening width in meters
+  heightM: number;     // opening height in meters
+  sillM: number;       // sill height from floor
+  isDoor: boolean;
+}
 
-  for (const w of walls) {
-    // Project point onto the wall segment
-    const dx = w.x2 - w.x1;
-    const dz = w.z2 - w.z1;
-    const lenSq = dx * dx + dz * dz;
-    if (lenSq < 0.001) continue;
+function mapOpeningsToWalls(
+  openings: Opening[],
+  walls: WallEdge[],
+  ppm: number,
+  bounds: SceneBounds,
+): Map<number, WallOpeningInfo[]> {
+  const result = new Map<number, WallOpeningInfo[]>();
 
-    let t = ((ox - w.x1) * dx + (oz - w.z1) * dz) / lenSq;
-    t = Math.max(0, Math.min(1, t));
+  for (const opening of openings) {
+    const ox = (opening.x_px / ppm) - bounds.centerX;
+    const oz = (opening.y_px / ppm) - bounds.centerZ;
 
-    const px = w.x1 + t * dx;
-    const pz = w.z1 + t * dz;
-    const dist = Math.sqrt((ox - px) ** 2 + (oz - pz) ** 2);
+    let bestWallIdx = -1;
+    let bestDist = 2.0;
+    let bestT = 0;
 
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = w;
+    for (let wi = 0; wi < walls.length; wi++) {
+      const w = walls[wi];
+      const dx = w.x2 - w.x1;
+      const dz = w.z2 - w.z1;
+      const lenSq = dx * dx + dz * dz;
+      if (lenSq < 0.001) continue;
+
+      let t = ((ox - w.x1) * dx + (oz - w.z1) * dz) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+
+      const px = w.x1 + t * dx;
+      const pz = w.z1 + t * dz;
+      const dist = Math.sqrt((ox - px) ** 2 + (oz - pz) ** 2);
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestWallIdx = wi;
+        bestT = t;
+      }
     }
+
+    if (bestWallIdx === -1) continue;
+
+    const isDoor = opening.class === "door";
+    const widthM = opening.length_m
+      ?? (Math.max(opening.width_px, opening.height_px) / ppm);
+    const heightM = opening.height_m ?? (isDoor ? 2.1 : 1.2);
+    const sillM = isDoor ? 0 : 0.9;
+
+    // Cap opening width to 90% of wall length
+    const cappedWidth = Math.min(widthM, walls[bestWallIdx].length * 0.9);
+
+    if (!result.has(bestWallIdx)) result.set(bestWallIdx, []);
+    result.get(bestWallIdx)!.push({
+      opening,
+      t: bestT,
+      widthM: cappedWidth,
+      heightM,
+      sillM,
+      isDoor,
+    });
   }
-  return best;
+
+  return result;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function RoomFloor({
-  room,
-  imgW,
-  imgH,
-  ppm,
-  bounds,
-  wireframe,
-  hovered,
-  onHover,
+  room, imgW, imgH, ppm, bounds, wireframe, hovered, onHover,
 }: {
-  room: Room;
-  imgW: number;
-  imgH: number;
-  ppm: number;
-  bounds: SceneBounds;
-  wireframe: boolean;
-  hovered: boolean;
+  room: Room; imgW: number; imgH: number; ppm: number;
+  bounds: SceneBounds; wireframe: boolean; hovered: boolean;
   onHover: (id: number | null) => void;
 }) {
   const color = getRoomColor(room.type);
@@ -202,136 +235,252 @@ function RoomFloor({
 
     const shape = new THREE.Shape();
     const first = pts[0];
-    const fx = (first.x * imgW) / ppm - bounds.centerX;
-    const fz = (first.y * imgH) / ppm - bounds.centerZ;
-    shape.moveTo(fx, fz);
+    shape.moveTo((first.x * imgW) / ppm - bounds.centerX, (first.y * imgH) / ppm - bounds.centerZ);
 
     for (let i = 1; i < pts.length; i++) {
-      const px = (pts[i].x * imgW) / ppm - bounds.centerX;
-      const pz = (pts[i].y * imgH) / ppm - bounds.centerZ;
-      shape.lineTo(px, pz);
+      shape.lineTo((pts[i].x * imgW) / ppm - bounds.centerX, (pts[i].y * imgH) / ppm - bounds.centerZ);
     }
     shape.closePath();
 
-    const geo = new THREE.ExtrudeGeometry(shape, {
-      depth: SLAB_DEPTH,
-      bevelEnabled: false,
-    });
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: SLAB_DEPTH, bevelEnabled: false });
     geo.rotateX(-Math.PI / 2);
     return geo;
   }, [room, imgW, imgH, ppm, bounds]);
 
   return (
     <mesh
-      ref={meshRef}
-      geometry={geometry}
-      receiveShadow
+      ref={meshRef} geometry={geometry} receiveShadow
       onPointerEnter={(e: any) => { e.stopPropagation(); onHover(room.id); }}
       onPointerLeave={() => onHover(null)}
     >
       <meshStandardMaterial
-        color={color}
-        transparent
-        opacity={hovered ? FLOOR_HOVER_OPACITY : FLOOR_OPACITY}
-        emissive={color}
-        emissiveIntensity={hovered ? 0.35 : 0.05}
-        wireframe={wireframe}
-        side={THREE.DoubleSide}
+        color={color} transparent opacity={hovered ? FLOOR_HOVER_OPACITY : FLOOR_OPACITY}
+        emissive={color} emissiveIntensity={hovered ? 0.35 : 0.05}
+        wireframe={wireframe} side={THREE.DoubleSide}
       />
     </mesh>
   );
 }
 
-function WallMesh({
-  wall,
-  height,
-  wireframe,
+// ── Wall with holes cut for openings ─────────────────────────────────────────
+
+function WallWithOpenings({
+  wall, wallOpenings, height, wireframe,
 }: {
   wall: WallEdge;
+  wallOpenings: WallOpeningInfo[];
   height: number;
   wireframe: boolean;
 }) {
+  const geometry = useMemo(() => {
+    // Wall face in local 2D: x along wall, y upward
+    const shape = new THREE.Shape();
+    shape.moveTo(-wall.length / 2, 0);
+    shape.lineTo(wall.length / 2, 0);
+    shape.lineTo(wall.length / 2, height);
+    shape.lineTo(-wall.length / 2, height);
+    shape.closePath();
+
+    // Cut holes for each opening
+    for (const op of wallOpenings) {
+      const centerX = (op.t - 0.5) * wall.length;
+      const halfW = op.widthM / 2;
+
+      // Clamp to wall bounds with small margins
+      const left = Math.max(-wall.length / 2 + 0.02, centerX - halfW);
+      const right = Math.min(wall.length / 2 - 0.02, centerX + halfW);
+      const bottom = Math.max(0, op.sillM);
+      const top = Math.min(height - 0.01, op.sillM + op.heightM);
+
+      if (right <= left || top <= bottom) continue;
+
+      const hole = new THREE.Path();
+      hole.moveTo(left, bottom);
+      hole.lineTo(right, bottom);
+      hole.lineTo(right, top);
+      hole.lineTo(left, top);
+      hole.closePath();
+      shape.holes.push(hole);
+    }
+
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: WALL_THICKNESS,
+      bevelEnabled: false,
+    });
+    // Center on depth axis
+    geo.translate(0, 0, -WALL_THICKNESS / 2);
+    return geo;
+  }, [wall, wallOpenings, height]);
+
   return (
     <mesh
-      position={[wall.cx, height / 2, wall.cz]}
+      position={[wall.cx, 0, wall.cz]}
       rotation={[0, -wall.angle, 0]}
-      castShadow
-      receiveShadow
+      geometry={geometry}
+      castShadow receiveShadow
     >
-      <boxGeometry args={[wall.length, height, WALL_THICKNESS]} />
       <meshStandardMaterial
-        color={WALL_COLOR}
-        roughness={0.85}
-        metalness={0.02}
-        wireframe={wireframe}
+        color={WALL_COLOR} roughness={0.85} metalness={0.02} wireframe={wireframe}
       />
     </mesh>
   );
 }
 
-function OpeningMesh({
-  opening,
-  imgW,
-  imgH,
-  ppm,
-  bounds,
-  walls,
+// ── 3D Door ──────────────────────────────────────────────────────────────────
+
+function DoorMesh3D({
+  wall, info, wireframe,
 }: {
-  opening: Opening;
-  imgW: number;
-  imgH: number;
-  ppm: number;
-  bounds: SceneBounds;
-  walls: WallEdge[];
+  wall: WallEdge;
+  info: WallOpeningInfo;
+  wireframe: boolean;
 }) {
-  const ox = (opening.x_px / ppm) - bounds.centerX;
-  const oz = (opening.y_px / ppm) - bounds.centerZ;
-  const closest = findClosestWall(ox, oz, walls);
-  if (!closest) return null;
+  const centerX = (info.t - 0.5) * wall.length;
+  const halfW = info.widthM / 2;
+  const h = info.heightM;
+  const w = info.widthM;
 
-  const isDoor = opening.class === "door";
-  const w = opening.width_m ?? opening.length_m ?? (isDoor ? 0.9 : 1.2);
-  const h = opening.height_m ?? (isDoor ? 2.1 : 1.2);
-  const sill = isDoor ? 0 : 0.9;
-  const color = isDoor ? DOOR_COLOR : WINDOW_COLOR;
-  const opacity = isDoor ? 0.85 : 0.4;
-
-  // Offset slightly from wall face
-  const normalX = Math.sin(closest.angle) * (WALL_THICKNESS * 0.6);
-  const normalZ = -Math.cos(closest.angle) * (WALL_THICKNESS * 0.6);
+  // Arc geometry for door swing (created imperatively)
+  const arcGeo = useMemo(
+    () => new THREE.CircleGeometry(w, 16, 0, DOOR_OPEN_ANGLE + 0.05),
+    [w]
+  );
 
   return (
-    <mesh
-      position={[ox + normalX, sill + h / 2, oz + normalZ]}
-      rotation={[0, -closest.angle, 0]}
-    >
-      <planeGeometry args={[w, h]} />
-      <meshStandardMaterial
-        color={color}
-        transparent
-        opacity={opacity}
-        side={THREE.DoubleSide}
-        emissive={color}
-        emissiveIntensity={isDoor ? 0.1 : 0.2}
-      />
-    </mesh>
+    <group position={[wall.cx, 0, wall.cz]} rotation={[0, -wall.angle, 0]}>
+      {/* Frame — top */}
+      <mesh position={[centerX, h, 0]}>
+        <boxGeometry args={[w + FRAME_THICK * 2, FRAME_THICK, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={DOOR_FRAME_COLOR} roughness={0.7} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — left */}
+      <mesh position={[centerX - halfW - FRAME_THICK / 2, h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={DOOR_FRAME_COLOR} roughness={0.7} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — right */}
+      <mesh position={[centerX + halfW + FRAME_THICK / 2, h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={DOOR_FRAME_COLOR} roughness={0.7} wireframe={wireframe} />
+      </mesh>
+
+      {/* Door panel — hinged on left, partially open */}
+      <group position={[centerX - halfW, 0, WALL_THICKNESS / 2]}>
+        <group rotation={[0, DOOR_OPEN_ANGLE, 0]}>
+          <mesh position={[w / 2, h / 2, DOOR_PANEL_THICK / 2]}>
+            <boxGeometry args={[w - 0.02, h - 0.02, DOOR_PANEL_THICK]} />
+            <meshStandardMaterial
+              color={DOOR_COLOR} roughness={0.6} wireframe={wireframe}
+            />
+          </mesh>
+          {/* Handle */}
+          <mesh position={[w * 0.85, h * 0.45, DOOR_PANEL_THICK + 0.02]}>
+            <cylinderGeometry args={[0.015, 0.015, 0.1, 8]} />
+            <meshStandardMaterial color="#d4af37" metalness={0.8} roughness={0.2} />
+          </mesh>
+          <mesh position={[w * 0.85, h * 0.45, DOOR_PANEL_THICK + 0.07]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.015, 0.015, 0.06, 8]} />
+            <meshStandardMaterial color="#d4af37" metalness={0.8} roughness={0.2} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* Swing arc on floor */}
+      <mesh
+        position={[centerX - halfW, 0.005, WALL_THICKNESS / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        geometry={arcGeo}
+      >
+        <meshBasicMaterial color={DOOR_COLOR} transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Threshold */}
+      <mesh position={[centerX, 0.01, 0]}>
+        <boxGeometry args={[w, 0.02, WALL_THICKNESS + 0.04]} />
+        <meshStandardMaterial color="#78716c" roughness={0.8} wireframe={wireframe} />
+      </mesh>
+    </group>
   );
 }
+
+// ── 3D Window ────────────────────────────────────────────────────────────────
+
+function WindowMesh3D({
+  wall, info, wireframe,
+}: {
+  wall: WallEdge;
+  info: WallOpeningInfo;
+  wireframe: boolean;
+}) {
+  const centerX = (info.t - 0.5) * wall.length;
+  const halfW = info.widthM / 2;
+  const h = info.heightM;
+  const w = info.widthM;
+  const sill = info.sillM;
+
+  return (
+    <group position={[wall.cx, 0, wall.cz]} rotation={[0, -wall.angle, 0]}>
+      {/* Frame — top */}
+      <mesh position={[centerX, sill + h, 0]}>
+        <boxGeometry args={[w + FRAME_THICK * 2, FRAME_THICK, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — bottom (sill) */}
+      <mesh position={[centerX, sill, 0]}>
+        <boxGeometry args={[w + FRAME_THICK * 2, FRAME_THICK, WALL_THICKNESS + 0.04]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — left */}
+      <mesh position={[centerX - halfW - FRAME_THICK / 2, sill + h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — right */}
+      <mesh position={[centerX + halfW + FRAME_THICK / 2, sill + h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+
+      {/* Central divider — vertical */}
+      <mesh position={[centerX, sill + h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK * 0.6, h - FRAME_THICK, WALL_THICKNESS * 0.6]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Central divider — horizontal */}
+      <mesh position={[centerX, sill + h / 2, 0]}>
+        <boxGeometry args={[w - FRAME_THICK, FRAME_THICK * 0.6, WALL_THICKNESS * 0.6]} />
+        <meshStandardMaterial color={WINDOW_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+
+      {/* Glass pane */}
+      <mesh position={[centerX, sill + h / 2, 0]}>
+        <boxGeometry args={[w - FRAME_THICK, h - FRAME_THICK, 0.008]} />
+        <meshStandardMaterial
+          color={WINDOW_COLOR}
+          transparent opacity={0.25}
+          roughness={0.05} metalness={0.1}
+          side={THREE.DoubleSide}
+          emissive={WINDOW_COLOR}
+          emissiveIntensity={0.15}
+        />
+      </mesh>
+
+      {/* External sill ledge */}
+      <mesh position={[centerX, sill - FRAME_THICK / 2, -WALL_THICKNESS / 2 - 0.03]}>
+        <boxGeometry args={[w + 0.06, 0.025, 0.08]} />
+        <meshStandardMaterial color="#9ca3af" roughness={0.6} wireframe={wireframe} />
+      </mesh>
+    </group>
+  );
+}
+
+// ── Room label ────────────────────────────────────────────────────────────────
 
 function RoomLabel({
-  room,
-  imgW,
-  imgH,
-  ppm,
-  bounds,
-  ceilingHeight,
+  room, imgW, imgH, ppm, bounds, ceilingHeight,
 }: {
-  room: Room;
-  imgW: number;
-  imgH: number;
-  ppm: number;
-  bounds: SceneBounds;
-  ceilingHeight: number;
+  room: Room; imgW: number; imgH: number; ppm: number;
+  bounds: SceneBounds; ceilingHeight: number;
 }) {
   const cx = (room.centroid_norm.x * imgW) / ppm - bounds.centerX;
   const cz = (room.centroid_norm.y * imgH) / ppm - bounds.centerZ;
@@ -341,26 +490,17 @@ function RoomLabel({
   return (
     <group position={[cx, ceilingHeight + 0.4, cz]}>
       <Text
-        fontSize={0.3}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.025}
-        outlineColor="#000000"
-        font={undefined}
+        fontSize={0.3} color="white" anchorX="center" anchorY="middle"
+        outlineWidth={0.025} outlineColor="#000000" font={undefined}
       >
         {label}
       </Text>
       {areaStr && (
         <Text
           position={[0, -0.35, 0]}
-          fontSize={0.22}
-          color={getRoomColor(room.type)}
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.02}
-          outlineColor="#000000"
-          font={undefined}
+          fontSize={0.22} color={getRoomColor(room.type)}
+          anchorX="center" anchorY="middle"
+          outlineWidth={0.02} outlineColor="#000000" font={undefined}
         >
           {areaStr}
         </Text>
@@ -380,16 +520,13 @@ function AnimatedGroup({ children }: { children: React.ReactNode }) {
       const next = Math.min(1, progress + delta * 1.8);
       setProgress(next);
       if (groupRef.current) {
-        // Smooth ease-out cubic
         const t = 1 - Math.pow(1 - next, 3);
         groupRef.current.position.y = (1 - t) * -0.5;
         groupRef.current.scale.setScalar(0.5 + t * 0.5);
         groupRef.current.children.forEach((c: THREE.Object3D) => {
           if ((c as THREE.Mesh).material) {
             const mat = (c as THREE.Mesh).material as THREE.MeshStandardMaterial;
-            if (mat.opacity !== undefined) {
-              mat.needsUpdate = true;
-            }
+            if (mat.opacity !== undefined) mat.needsUpdate = true;
           }
         });
       }
@@ -402,23 +539,15 @@ function AnimatedGroup({ children }: { children: React.ReactNode }) {
 // ── Camera controller ─────────────────────────────────────────────────────────
 
 function CameraRig({
-  bounds,
-  ceilingHeight,
-  resetSignal,
-  autoRotate,
-  onInteract,
+  bounds, ceilingHeight, resetSignal, autoRotate, onInteract,
 }: {
-  bounds: SceneBounds;
-  ceilingHeight: number;
-  resetSignal: number;
-  autoRotate: boolean;
-  onInteract: () => void;
+  bounds: SceneBounds; ceilingHeight: number; resetSignal: number;
+  autoRotate: boolean; onInteract: () => void;
 }) {
   const controlsRef = useRef<any>(null);
   const { camera } = useThree();
   const camDist = bounds.maxDim * 1.2 + 2;
 
-  // Reset camera on signal change
   useEffect(() => {
     if (controlsRef.current) {
       camera.position.set(camDist * 0.7, camDist * 0.55, camDist * 0.7);
@@ -430,16 +559,12 @@ function CameraRig({
   return (
     <OrbitControls
       ref={controlsRef}
-      autoRotate={autoRotate}
-      autoRotateSpeed={1.2}
-      enableDamping
-      dampingFactor={0.06}
+      autoRotate={autoRotate} autoRotateSpeed={1.2}
+      enableDamping dampingFactor={0.06}
       target={[0, ceilingHeight * 0.3, 0]}
       maxPolarAngle={Math.PI * 0.48}
-      minDistance={2}
-      maxDistance={camDist * 3}
-      onStart={onInteract}
-      makeDefault
+      minDistance={2} maxDistance={camDist * 3}
+      onStart={onInteract} makeDefault
     />
   );
 }
@@ -458,14 +583,7 @@ interface FloorSceneProps {
 }
 
 export default function FloorScene({
-  rooms,
-  openings,
-  ppm,
-  imgW,
-  imgH,
-  ceilingHeight,
-  wireframe,
-  resetSignal,
+  rooms, openings, ppm, imgW, imgH, ceilingHeight, wireframe, resetSignal,
 }: FloorSceneProps) {
   const [hoveredRoom, setHoveredRoom] = useState<number | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -480,6 +598,12 @@ export default function FloorScene({
     [rooms, imgW, imgH, ppm, bounds]
   );
 
+  // Map openings to walls for hole-cutting & 3D rendering
+  const wallOpeningsMap = useMemo(
+    () => mapOpeningsToWalls(openings, walls, ppm, bounds),
+    [openings, walls, ppm, bounds]
+  );
+
   const camDist = bounds.maxDim * 1.2 + 2;
 
   return (
@@ -492,16 +616,12 @@ export default function FloorScene({
       <PerspectiveCamera
         makeDefault
         position={[camDist * 0.7, camDist * 0.55, camDist * 0.7]}
-        fov={50}
-        near={0.1}
-        far={200}
+        fov={50} near={0.1} far={200}
       />
 
       <CameraRig
-        bounds={bounds}
-        ceilingHeight={ceilingHeight}
-        resetSignal={resetSignal}
-        autoRotate={autoRotate}
+        bounds={bounds} ceilingHeight={ceilingHeight}
+        resetSignal={resetSignal} autoRotate={autoRotate}
         onInteract={() => setAutoRotate(false)}
       />
 
@@ -509,19 +629,13 @@ export default function FloorScene({
       <ambientLight intensity={0.5} />
       <directionalLight
         position={[bounds.maxDim, bounds.maxDim * 1.8, bounds.maxDim * 0.8]}
-        intensity={0.7}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        intensity={0.7} castShadow
+        shadow-mapSize-width={1024} shadow-mapSize-height={1024}
         shadow-camera-far={50}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
+        shadow-camera-left={-20} shadow-camera-right={20}
+        shadow-camera-top={20} shadow-camera-bottom={-20}
       />
       <hemisphereLight args={["#b4d4ff", "#2d2d3d", 0.35]} />
-
-      {/* Environment for subtle reflections */}
       <Environment preset="city" />
 
       <AnimatedGroup>
@@ -529,50 +643,46 @@ export default function FloorScene({
         {rooms.map((room) => (
           <RoomFloor
             key={`floor-${room.id}`}
-            room={room}
-            imgW={imgW}
-            imgH={imgH}
-            ppm={ppm}
-            bounds={bounds}
-            wireframe={wireframe}
-            hovered={hoveredRoom === room.id}
-            onHover={setHoveredRoom}
+            room={room} imgW={imgW} imgH={imgH} ppm={ppm}
+            bounds={bounds} wireframe={wireframe}
+            hovered={hoveredRoom === room.id} onHover={setHoveredRoom}
           />
         ))}
 
-        {/* Walls */}
+        {/* Walls with opening holes cut */}
         {walls.map((wall, i) => (
-          <WallMesh
+          <WallWithOpenings
             key={`wall-${i}`}
             wall={wall}
+            wallOpenings={wallOpeningsMap.get(i) ?? []}
             height={ceilingHeight}
             wireframe={wireframe}
           />
         ))}
 
-        {/* Openings */}
-        {openings.map((opening, i) => (
-          <OpeningMesh
-            key={`opening-${i}`}
-            opening={opening}
-            imgW={imgW}
-            imgH={imgH}
-            ppm={ppm}
-            bounds={bounds}
-            walls={walls}
-          />
-        ))}
+        {/* 3D Doors & Windows */}
+        {walls.map((wall, wi) =>
+          (wallOpeningsMap.get(wi) ?? []).map((op, oi) =>
+            op.isDoor ? (
+              <DoorMesh3D
+                key={`door-${wi}-${oi}`}
+                wall={wall} info={op} wireframe={wireframe}
+              />
+            ) : (
+              <WindowMesh3D
+                key={`win-${wi}-${oi}`}
+                wall={wall} info={op} wireframe={wireframe}
+              />
+            )
+          )
+        )}
 
         {/* Room labels */}
         {rooms.map((room) => (
           <RoomLabel
             key={`label-${room.id}`}
-            room={room}
-            imgW={imgW}
-            imgH={imgH}
-            ppm={ppm}
-            bounds={bounds}
-            ceilingHeight={ceilingHeight}
+            room={room} imgW={imgW} imgH={imgH} ppm={ppm}
+            bounds={bounds} ceilingHeight={ceilingHeight}
           />
         ))}
       </AnimatedGroup>
@@ -592,13 +702,9 @@ export default function FloorScene({
         position={[0, -0.015, 0]}
       />
 
-      {/* Contact shadows for premium look */}
       <ContactShadows
         position={[0, -0.01, 0]}
-        opacity={0.25}
-        scale={bounds.maxDim * 2}
-        blur={2}
-        far={5}
+        opacity={0.25} scale={bounds.maxDim * 2} blur={2} far={5}
       />
     </Canvas>
   );
