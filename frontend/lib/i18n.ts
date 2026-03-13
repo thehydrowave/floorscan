@@ -90,7 +90,7 @@ export const T = {
   case4_statl:     { fr:"rapports portefeuille", en:"portfolio reports", es:"informes de cartera", de:"Portfolio-Berichte", it:"report portafoglio" },
 
   // ── Footer ────────────────────────────────────────────────────────────────
-  footer_built:    { fr:"Développé avec Next.js · IA propriétaire FloorScan", en:"Built with Next.js · Powered by FloorScan AI", es:"Desarrollado con Next.js · Impulsado por FloorScan IA", de:"Entwickelt mit Next.js · Betrieben von FloorScan KI", it:"Sviluppato con Next.js · Alimentato da FloorScan IA" },
+  footer_built:    { fr:"Site créé par Marco · Développé avec Next.js · IA propriétaire FloorScan", en:"Site created by Marco · Built with Next.js · Powered by FloorScan AI", es:"Sitio creado por Marco · Desarrollado con Next.js · Impulsado por FloorScan IA", de:"Website erstellt von Marco · Entwickelt mit Next.js · Betrieben von FloorScan KI", it:"Sito creato da Marco · Sviluppato con Next.js · Alimentato da FloorScan IA" },
 } as const;
 
 export type TKey = keyof typeof T;
