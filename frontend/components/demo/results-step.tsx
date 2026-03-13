@@ -20,6 +20,7 @@ import View3dPanel from "@/components/demo/view-3d-panel";
 import ChatPanel from "@/components/demo/chat-panel";
 import ScenarioPanel from "@/components/demo/scenario-panel";
 import PatternPanel from "@/components/demo/pattern-panel";
+import ToolkitPanel from "@/components/demo/toolkit-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -535,6 +536,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
       {/* ── Compliance check panel ── */}
       <CompliancePanel result={result} />
+
+      {/* ── BTP Toolkit panel ── */}
+      <ToolkitPanel result={result} />
 
       {/* ── Debug technique panel ── */}
       <DebugPanel result={result} customDetections={customDetections} />
