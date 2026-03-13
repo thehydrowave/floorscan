@@ -18,6 +18,7 @@ import CompliancePanel from "@/components/demo/compliance-panel";
 import DebugPanel from "@/components/demo/debug-panel";
 import View3dPanel from "@/components/demo/view-3d-panel";
 import ChatPanel from "@/components/demo/chat-panel";
+import ScenarioPanel from "@/components/demo/scenario-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -510,6 +511,9 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
 
       {/* ── DPGF estimatif panel ── */}
       <DpgfPanel result={result} customDetections={customDetections} />
+
+      {/* ── Scenario Comparator ── */}
+      <ScenarioPanel result={result} customDetections={customDetections} />
 
       {/* ── CCTP panel ── */}
       <CctpPanel result={result} customDetections={customDetections} />
