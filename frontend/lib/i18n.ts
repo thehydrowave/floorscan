@@ -842,6 +842,17 @@ export const DEMO_T = {
   v3d_auto_rotate:   { fr:"Rotation auto",                                     en:"Auto-rotate",                            es:"Rotación automática",                     de:"Auto-Rotation",                       it:"Rotazione automatica"                   },
   v3d_rooms_count:   { fr:"{n} pièces",                                        en:"{n} rooms",                              es:"{n} habitaciones",                        de:"{n} Räume",                           it:"{n} stanze"                             },
   v3d_loading:       { fr:"Chargement 3D…",                                    en:"Loading 3D…",                            es:"Cargando 3D…",                            de:"3D wird geladen…",                    it:"Caricamento 3D…"                        },
+
+  // ── Chat IA ───────────────────────────────────────────────────────────────
+  chat_title:        { fr:"Assistant IA",                                        en:"AI Assistant",                           es:"Asistente IA",                            de:"KI-Assistent",                        it:"Assistente IA"                          },
+  chat_subtitle:     { fr:"Posez vos questions sur le plan",                     en:"Ask questions about the plan",           es:"Haz preguntas sobre el plano",            de:"Fragen zum Grundriss stellen",        it:"Fai domande sulla pianta"               },
+  chat_placeholder:  { fr:"Posez une question sur le plan…",                     en:"Ask a question about the plan…",         es:"Haz una pregunta sobre el plano…",        de:"Stellen Sie eine Frage zum Plan…",    it:"Fai una domanda sulla pianta…"           },
+  chat_welcome:      { fr:"Bonjour ! Je connais votre plan.",                    en:"Hello! I know your plan.",               es:"¡Hola! Conozco tu plano.",                de:"Hallo! Ich kenne Ihren Plan.",        it:"Ciao! Conosco la tua pianta."           },
+  chat_welcome_sub:  { fr:"Surfaces, coûts, conformité — demandez-moi tout",    en:"Areas, costs, compliance — ask me anything", es:"Superficies, costes, cumplimiento — pregúntame", de:"Flächen, Kosten, Konformität — fragen Sie", it:"Superfici, costi, conformità — chiedimi tutto" },
+  chat_clear:        { fr:"Effacer la conversation",                             en:"Clear conversation",                     es:"Borrar conversación",                     de:"Gespräch löschen",                    it:"Cancella conversazione"                 },
+  chat_api_key:      { fr:"Clé API OpenAI (optionnel)",                          en:"OpenAI API Key (optional)",              es:"Clave API OpenAI (opcional)",              de:"OpenAI API-Schlüssel (optional)",      it:"Chiave API OpenAI (opzionale)"          },
+  chat_api_hint:     { fr:"Laissez vide pour utiliser la clé serveur",           en:"Leave empty to use server key",          es:"Dejar vacío para usar la clave del servidor", de:"Leer lassen für Server-Schlüssel", it:"Lascia vuoto per usare la chiave server" },
+  chat_no_key:       { fr:"Clé API manquante. Configurez-la dans les paramètres.", en:"API key missing. Configure in settings.", es:"Falta la clave API. Configúrela en ajustes.", de:"API-Schlüssel fehlt. In Einstellungen konfigurieren.", it:"Chiave API mancante. Configurala nelle impostazioni." },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

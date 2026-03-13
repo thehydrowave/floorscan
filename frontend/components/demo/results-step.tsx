@@ -17,6 +17,7 @@ import GanttPanel from "@/components/demo/gantt-panel";
 import CompliancePanel from "@/components/demo/compliance-panel";
 import DebugPanel from "@/components/demo/debug-panel";
 import View3dPanel from "@/components/demo/view-3d-panel";
+import ChatPanel from "@/components/demo/chat-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -527,6 +528,9 @@ export default function ResultsStep({ result, customDetections = [], onGoEditor,
           <RotateCcw className="w-4 h-4" /> {d("re_restart")}
         </Button>
       </div>
+
+      {/* ── AI Chat floating panel ── */}
+      <ChatPanel result={result} />
     </motion.div>
   );
 }
