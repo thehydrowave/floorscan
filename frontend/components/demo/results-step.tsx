@@ -21,6 +21,7 @@ import ChatPanel from "@/components/demo/chat-panel";
 import ScenarioPanel from "@/components/demo/scenario-panel";
 import PatternPanel from "@/components/demo/pattern-panel";
 import ToolkitPanel from "@/components/demo/toolkit-panel";
+import LotsPanel from "@/components/demo/lots-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -536,6 +537,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
       {/* ── Compliance check panel ── */}
       <CompliancePanel result={result} />
+
+      {/* ── Lots / Copropriété panel ── */}
+      <LotsPanel result={result} />
 
       {/* ── BTP Toolkit panel ── */}
       <ToolkitPanel result={result} />
