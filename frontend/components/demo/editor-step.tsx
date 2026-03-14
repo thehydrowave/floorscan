@@ -199,6 +199,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
   const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
+  const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
@@ -1221,389 +1222,282 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <p className="text-xs font-mono text-accent uppercase tracking-widest mb-1">{d("ed_step_label")}</p>
-          <h2 className="font-display text-2xl font-700 text-white">
-            {mode === "editor" ? d("re_editor") : d("sel_met_title")}
-          </h2>
+      {/* ── Compact Header ── */}
+      <div className="flex items-center gap-2 h-11 mb-1.5">
+        <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5">
+          <button onClick={() => setMode("editor")}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              mode === "editor" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}>
+            <Layers className="w-3.5 h-3.5" /> {d("ed_ia_editor")}
+          </button>
+          <button onClick={() => setMode("measure")}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              mode === "measure" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}>
+            <PenLine className="w-3.5 h-3.5" /> {d("me_step_survey")}
+          </button>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {/* Mode toggle */}
-          <div className="flex glass border border-white/10 rounded-xl p-1 gap-1">
-            <button
-              onClick={() => setMode("editor")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "editor" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
-            >
-              <Layers className="w-3.5 h-3.5" /> {d("ed_ia_editor")}
-            </button>
-            <button
-              onClick={() => setMode("measure")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${mode === "measure" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}
-            >
-              <PenLine className="w-3.5 h-3.5" /> {d("me_step_survey")}
-            </button>
+        {error && (
+          <div className="flex items-center gap-1.5 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-2.5 py-1">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> <span className="truncate max-w-[200px]">{error}</span>
           </div>
-
-          <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
-            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
+            {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline ml-1">{d("re_pdf")}</span>
           </Button>
-          <Button onClick={handleExportDxf} disabled={exportingDxf || !ppm} variant="outline" title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
-            {exportingDxf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("ed_exporting")}</> : <><FileDown className="w-4 h-4" /> DXF</>}
+          <Button size="sm" variant="outline" onClick={handleExportDxf} disabled={exportingDxf || !ppm} title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
+            {exportingDxf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline ml-1">DXF</span>
           </Button>
           {onGoResults && (
-            <Button variant="outline" onClick={() => onGoResults(result, customDetections)}>
-              <LayoutGrid className="w-4 h-4" /> {d("re_title")}
+            <Button size="sm" variant="outline" onClick={() => onGoResults(result, customDetections)}>
+              <LayoutGrid className="w-3.5 h-3.5" />
             </Button>
           )}
           {onAddPage && (
-            <Button variant="outline" onClick={onAddPage}>
-              <Layers className="w-4 h-4" /> {d("btn_add_page")}
+            <Button size="sm" variant="outline" onClick={onAddPage}>
+              <Plus className="w-3.5 h-3.5" />
             </Button>
           )}
-          <Button variant="ghost" onClick={onRestart}><RotateCcw className="w-4 h-4" /> {d("ed_restart")}</Button>
+          <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
         </div>
       </div>
 
       {/* ── MODE ÉDITEUR ── */}
       {mode === "editor" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-          <div className="flex flex-col gap-3 min-w-0">
-            {/* ── Row 1: Layers + Visibility toggles ── */}
-            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap items-center">
-              <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_layer_lbl")}:</span>
-              {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
-                <button key={l} onClick={() => setLayer(l)}
-                  className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all",
-                    layer === l
-                      ? l === "rooms" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-accent/40 bg-accent/10 text-accent"
-                      : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                  {l === "door" ? `🚪 ${d("ed_doors")}` : l === "window" ? `🪟 ${d("ed_windows")}` : l === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ ${d("ed_rooms")}`}
-                </button>
-              ))}
-              <div className="flex-1" />
-              {/* ── Overlay toggles ── */}
-              <button
-                onClick={() => setShowOpeningOverlay(v => !v)}
-                title={showOpeningOverlay ? d("ed_hide_nums") : d("ed_show_nums")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showOpeningOverlay ? "border-white/20 bg-white/5 text-white" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {showOpeningOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                N°
+        <div className="flex gap-1.5" style={{ height: "calc(100vh - 7rem)" }}>
+
+          {/* ══ LEFT VERTICAL TOOLBAR ══ */}
+          <div className="w-11 shrink-0 flex flex-col items-center gap-0.5 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
+            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">LAYER</span>
+            {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
+              <button key={l} onClick={() => setLayer(l)}
+                title={l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : d("ed_rooms")}
+                className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all",
+                  layer === l
+                    ? l === "rooms" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40" : "bg-accent/20 text-accent ring-1 ring-accent/40"
+                    : "text-slate-500 hover:text-white hover:bg-white/5"
+                )}>
+                {l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : "🏘️"}
               </button>
-              <button
-                onClick={() => setShowDoors(v => !v)}
-                title={showDoors ? d("ed_hide_doors") : d("ed_show_doors")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showDoors ? "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {showDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                🚪
+            ))}
+            <div className="w-6 border-t border-white/10 my-1" />
+            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">TOOL</span>
+            <button onClick={() => { setTool("select"); pts.current = []; }}
+              title={d("ed_select")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "select" ? "bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <MousePointer2 className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setTool("add_rect"); pts.current = []; }}
+              title={d("ed_add_rect")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "add_rect" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <Plus className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setTool("erase_rect"); pts.current = []; }}
+              title={d("ed_erase_rect")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "erase_rect" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setTool("add_poly"); pts.current = []; }}
+              title={d("ed_add_poly")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "add_poly" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <PenLine className="w-4 h-4" />
+            </button>
+            <button onClick={() => { setTool("erase_poly"); pts.current = []; }}
+              title={d("ed_erase_poly")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "erase_poly" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <X className="w-4 h-4" />
+            </button>
+            {(layer === "door" || layer === "window" || layer === "interior") && (
+              <button onClick={() => setTool("sam")}
+                title={d("ed_sam_auto")}
+                className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all text-xs font-bold",
+                  tool === "sam" ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                ✨
               </button>
-              <button
-                onClick={() => setShowWindows(v => !v)}
-                title={showWindows ? d("ed_hide_wins") : d("ed_show_wins")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showWindows ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                🪟
+            )}
+            {layer === "rooms" && selectedRoomId !== null && (
+              <button onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                title={d("ed_split")}
+                className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                  tool === "split" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                <Scissors className="w-4 h-4" />
               </button>
-              <button
-                onClick={() => setShowWalls(v => !v)}
-                title={showWalls ? d("ed_hide_walls") : d("ed_show_walls")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showWalls ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                <Layers size={12} className={showWalls ? "" : "opacity-40"} />
-                {d("ed_walls")}
+            )}
+            <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); }}
+              title={d("vs_tool")}
+              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                tool === "visual_search" ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <Search className="w-4 h-4" />
+            </button>
+            {(tool === "add_poly" || tool === "erase_poly") && (
+              <button onClick={finishPoly}
+                title={d("ed_finish_poly")}
+                className="w-8 h-8 rounded-lg flex items-center justify-center bg-accent-green/20 text-accent-green ring-1 ring-accent-green/40 text-xs font-bold animate-pulse">
+                ✓
               </button>
-              <button
-                onClick={() => setShowRooms(v => !v)}
-                title={showRooms ? d("ed_hide_rooms") : d("ed_show_rooms")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  showRooms ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                <LayoutGrid size={12} className={showRooms ? "" : "opacity-40"} />
-                {d("ed_rooms")}
-              </button>
-              {/* Show all / Hide all toggle */}
-              <button
-                onClick={() => {
-                  const anyVisible = showDoors || showWindows || showWalls || showRooms || showOpeningOverlay;
-                  setShowDoors(!anyVisible);
-                  setShowWindows(!anyVisible);
-                  setShowWalls(!anyVisible);
-                  setShowRooms(!anyVisible);
-                  setShowOpeningOverlay(!anyVisible);
-                }}
-                title={(showDoors || showWindows || showWalls || showRooms) ? d("ed_hide_all") : d("ed_show_all")}
-                className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                  "border-white/10 text-slate-500 hover:text-slate-300")}>
-                {(showDoors || showWindows || showWalls || showRooms || showOpeningOverlay)
-                  ? <><EyeOff className="w-3 h-3" /> ∅</>
-                  : <><Eye className="w-3 h-3" /> ✦</>
-                }
-              </button>
-              {/* Zoom controls */}
-              <div className="w-px bg-white/10 mx-0.5 self-stretch" />
-              <button
-                onClick={() => setZoom(z => Math.min(12, z * 1.3))}
-                className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-500 hover:text-white transition-colors"
-                title="Zoom +"
-              >
-                <ZoomIn size={14} />
-              </button>
-              <button
-                onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
-                className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-500 hover:text-white transition-colors"
-                title="Zoom −"
-              >
-                <ZoomOut size={14} />
-              </button>
-              {zoom > 1.05 && (
-                <button
-                  onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
-                  className="p-1.5 rounded-lg text-xs border border-white/10 text-slate-400 hover:text-white transition-colors"
-                  title="Reset zoom"
-                >
-                  <RotateCcw size={12} />
-                </button>
-              )}
-              {/* Snap intelligent toggles */}
+            )}
+            <div className="w-6 border-t border-white/10 my-1" />
+            {layer === "rooms" ? (
+              <>
+                <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /></button>
+                <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /></button>
+              </>
+            ) : (
+              <>
+                <button onClick={sendUndoMask} disabled={editHistoryLen === 0 || loading}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /></button>
+                <button onClick={sendRedoMask} disabled={editFutureLen === 0 || loading}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /></button>
+              </>
+            )}
+            <div className="flex-1" />
+            <button onClick={() => setZoom(z => Math.min(12, z * 1.3))}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+              title="Zoom +"><ZoomIn className="w-4 h-4" /></button>
+            <button onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+              title="Zoom \u2212"><ZoomOut className="w-4 h-4" /></button>
+            {zoom > 1.05 && (
+              <button onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                title="Reset"><RotateCcw className="w-3 h-3" /></button>
+            )}
+          </div>
+
+          {/* ══ CENTER: PLAN ══ */}
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
+            {/* Floating context bar */}
+            <div className="flex items-center gap-2 px-1 h-7 shrink-0">
+              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-600 border",
+                layer === "rooms" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-accent/30 bg-accent/10 text-accent")}>
+                {layer === "door" ? `🚪 ${d("ed_doors")}` : layer === "window" ? `🪟 ${d("ed_windows")}` : layer === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ ${d("ed_rooms")}`}
+              </span>
+              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-600 border",
+                tool.startsWith("erase") ? "border-red-500/30 bg-red-500/10 text-red-400"
+                : tool === "sam" ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
+                : tool === "visual_search" ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                : tool === "select" ? "border-teal-500/30 bg-teal-500/10 text-teal-400"
+                : "border-white/10 bg-white/5 text-slate-400")}>
+                {tool === "select" ? d("ed_select") : tool === "add_rect" ? d("ed_add_rect") : tool === "erase_rect" ? d("ed_erase_rect")
+                : tool === "add_poly" ? d("ed_add_poly") : tool === "erase_poly" ? d("ed_erase_poly") : tool === "sam" ? d("ed_sam_auto")
+                : tool === "split" ? d("ed_split") : tool === "visual_search" ? d("vs_tool") : tool}
+              </span>
               {layer === "rooms" && (
-                <>
-                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
-                  <button
-                    onClick={() => {
-                      const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid;
-                      const next = !allOn;
-                      setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next }));
-                    }}
+                <div className="flex gap-0.5 items-center">
+                  {ROOM_TYPES.slice(0, 8).map(rt => (
+                    <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
+                      title={d(rt.i18nKey)}
+                      className={cn("w-5 h-5 rounded-full border-2 transition-all shrink-0",
+                        activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
+                      style={{ background: getRoomColor(rt.type) }} />
+                  ))}
+                </div>
+              )}
+              {layer === "rooms" && (
+                <div className="flex gap-0.5 items-center ml-1">
+                  <button onClick={() => { const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid; const next = !allOn; setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next })); }}
                     title={d("snap_label")}
-                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                      snapConfig.enableWall ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
-                  >
+                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
+                      snapConfig.enableWall ? "bg-cyan-500/20 text-cyan-400" : "text-slate-600 hover:text-slate-400")}>
                     <Magnet size={12} />
-                    {d("snap_label")}
                   </button>
-                  <button
-                    onClick={() => setSnapConfig(c => ({ ...c, enableGrid: !c.enableGrid }))}
+                  <button onClick={() => setSnapConfig(c => ({ ...c, enableGrid: !c.enableGrid }))}
                     title={d("snap_grid")}
-                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                      snapConfig.enableGrid ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
-                  >
+                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
+                      snapConfig.enableGrid ? "bg-green-500/20 text-green-400" : "text-slate-600 hover:text-slate-400")}>
                     <GridIcon size={12} />
                   </button>
-                  <button
-                    onClick={() => setSnapConfig(c => ({ ...c, enableAlignment: !c.enableAlignment }))}
+                  <button onClick={() => setSnapConfig(c => ({ ...c, enableAlignment: !c.enableAlignment }))}
                     title={d("snap_align")}
-                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                      snapConfig.enableAlignment ? "border-purple-500/40 bg-purple-500/10 text-purple-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
-                  >
+                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
+                      snapConfig.enableAlignment ? "bg-purple-500/20 text-purple-400" : "text-slate-600 hover:text-slate-400")}>
                     <AlignVerticalSpaceAround size={12} />
                   </button>
-                </>
+                </div>
               )}
-            </div>
-
-            {/* ── Row 2: Contextual tools ── */}
-            <div className="glass rounded-xl border border-white/10 p-3 flex gap-2 flex-wrap items-center">
-              {/* Mask tools — door / window / interior */}
-              {(layer === "door" || layer === "window" || layer === "interior") && (
-                <>
-                  <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_tool_lbl")}:</span>
-                  {([
-                    { id: "add_rect", label: d("ed_add_rect") },
-                    { id: "erase_rect", label: d("ed_erase_rect"), erase: true },
-                    { id: "add_poly", label: d("ed_add_poly") },
-                    { id: "erase_poly", label: d("ed_erase_poly"), erase: true },
-                    { id: "sam", label: d("ed_sam_auto"), special: true },
-                    { id: "select", label: d("ed_select"), select: true },
-                  ] as any[]).map(({ id, label, erase, special, select: sel }) => (
-                    <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; if (id !== "select") setSelectedOpeningIdx(null); }}
-                      className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                        tool === id
-                          ? erase   ? "border-red-500/40 bg-red-500/10 text-red-400"
-                            : special ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
-                            : sel    ? "border-teal-500/40 bg-teal-500/10 text-teal-400"
-                            :          "border-accent/40 bg-accent/10 text-accent"
-                          : erase   ? "border-red-500/20 text-red-500/60 hover:text-red-400"
-                            : special ? "border-orange-500/20 text-orange-500/60 hover:text-orange-400"
-                            : sel    ? "border-teal-500/20 text-teal-500/60 hover:text-teal-400"
-                            :          "border-white/10 text-slate-500 hover:text-slate-300")}>
-                      {sel && <MousePointer2 className="w-3 h-3" />}
-                      {label}
-                    </button>
-                  ))}
-                  {(tool === "add_poly" || tool === "erase_poly") && (
-                    <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
-                      {d("ed_finish_poly")}
-                    </button>
-                  )}
-                  <div className="w-px bg-white/10 mx-1 self-stretch" />
-                  <button onClick={sendUndoMask} disabled={editHistoryLen === 0 || loading}
-                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title={d("ed_undo_tt")}>
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={sendRedoMask} disabled={editFutureLen === 0 || loading}
-                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title={d("ed_redo_tt")}>
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                </>
-              )}
-              {/* Room tools */}
-              {layer === "rooms" && (
-                <>
-                  <button onClick={() => { setTool("select"); pts.current = []; }}
-                    className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                      tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-teal-500/20 text-teal-500/60 hover:text-teal-400")}>
-                    <MousePointer2 className="w-3 h-3" /> {d("ed_select")}
-                  </button>
-                  {/* Room creation / erase tools */}
-                  {([
-                    { id: "add_rect", label: d("ed_add_rect") },
-                    { id: "erase_rect", label: d("ed_erase_rect"), erase: true },
-                    { id: "add_poly", label: d("ed_add_poly") },
-                    { id: "erase_poly", label: d("ed_erase_poly"), erase: true },
-                  ] as any[]).map(({ id, label, erase }) => (
-                    <button key={id} onClick={() => { setTool(id as EditorTool); pts.current = []; }}
-                      className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                        tool === id
-                          ? erase ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-accent/40 bg-accent/10 text-accent"
-                          : erase ? "border-red-500/20 text-red-500/60 hover:text-red-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-                      {label}
-                    </button>
-                  ))}
-                  {(tool === "add_poly" || tool === "erase_poly") && (
-                    <button onClick={finishPoly} className="px-3 py-1.5 rounded-lg text-xs font-600 border border-accent-green/40 bg-accent-green/10 text-accent-green">
-                      {d("ed_finish_poly")}
-                    </button>
-                  )}
-                  <div className="w-px bg-white/10 mx-1 self-stretch" />
-                  <span className="text-xs text-slate-500 self-center font-mono mr-1">{d("ed_type")}:</span>
-                  <div className="flex gap-1 flex-wrap">
-                    {ROOM_TYPES.slice(0, 8).map(rt => (
-                      <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
-                        title={d(rt.i18nKey)}
-                        className={cn("w-6 h-6 rounded-full border-2 transition-all shrink-0",
-                          activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-70 hover:opacity-100")}
-                        style={{ background: getRoomColor(rt.type) }}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs self-center px-2 py-1 rounded-lg bg-white/5 text-slate-300">
-                    {ROOM_TYPES.find(rt => rt.type === activeRoomType)?.i18nKey ? d(ROOM_TYPES.find(rt => rt.type === activeRoomType)!.i18nKey) : ""}
-                  </span>
-                  {selectedRoomId !== null && (
+              <div className="flex gap-0.5 items-center ml-1">
+                <button onClick={() => setShowDoors(v => !v)}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[10px] transition-all",
+                    showDoors ? "bg-fuchsia-500/20 text-fuchsia-400" : "text-slate-600 hover:text-slate-400")}>
+                  🚪
+                </button>
+                <button onClick={() => setShowWindows(v => !v)}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[10px] transition-all",
+                    showWindows ? "bg-yellow-500/20 text-yellow-400" : "text-slate-600 hover:text-slate-400")}>
+                  🪟
+                </button>
+                <button onClick={() => setShowWalls(v => !v)}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
+                    showWalls ? "bg-orange-500/20 text-orange-400" : "text-slate-600 hover:text-slate-400")}>
+                  <Layers size={10} />
+                </button>
+                <button onClick={() => setShowRooms(v => !v)}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
+                    showRooms ? "bg-emerald-500/20 text-emerald-400" : "text-slate-600 hover:text-slate-400")}>
+                  <LayoutGrid size={10} />
+                </button>
+                <button onClick={() => setShowOpeningOverlay(v => !v)}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold transition-all",
+                    showOpeningOverlay ? "bg-white/10 text-white" : "text-slate-600 hover:text-slate-400")}>
+                  N\u00b0
+                </button>
+              </div>
+              {tool === "visual_search" && (
+                <div className="flex items-center gap-1.5 ml-1">
+                  {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
+                  {!vsSearching && vsMatches.length === 0 && <span className="text-[10px] text-slate-500 italic">{d("vs_select")}</span>}
+                  {vsMatches.length > 0 && (
                     <>
-                      <div className="w-px bg-white/10 mx-1 self-stretch" />
-                      <button onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                        className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
-                          tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/20 text-red-500/60 hover:text-red-400")}>
-                        <Scissors className="w-3 h-3" /> {d("ed_split")}
-                      </button>
+                      {(["search", "add", "remove"] as const).map((m) => (
+                        <button key={m} onClick={() => setVsEditMode(m)}
+                          className={cn("px-1.5 py-0.5 rounded text-[10px] font-500 border transition-all",
+                            vsEditMode === m ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                          {m === "search" ? d("vs_search") : m === "add" ? d("vs_add") : d("vs_remove")}
+                        </button>
+                      ))}
+                      <span className="text-[10px] font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
+                      {!vsSaveOpen ? (
+                        <button onClick={() => setVsSaveOpen(true)}
+                          className="px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-0.5">
+                          <Save className="w-3 h-3" /> {d("vs_save")}
+                        </button>
+                      ) : (
+                        <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); saveVsAsDetection(vsSaveLabel); }}>
+                          <input type="text" value={vsSaveLabel} onChange={(e) => setVsSaveLabel(e.target.value)}
+                            placeholder={d("vs_save_ph")}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-white placeholder:text-slate-600 w-28 focus:outline-none focus:border-emerald-500/40" autoFocus />
+                          <button type="submit" disabled={!vsSaveLabel.trim()} className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 disabled:opacity-30">OK</button>
+                          <button type="button" onClick={() => { setVsSaveOpen(false); setVsSaveLabel(""); }} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
+                        </form>
+                      )}
+                      <button onClick={() => { setVsMatches([]); setVsCrop(null); setVsSaveOpen(false); }}
+                        className="text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
                     </>
                   )}
-                  <div className="w-px bg-white/10 mx-1 self-stretch" />
-                  <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
-                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title={d("ed_undo_tt")}>
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
-                    className="p-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                    title={d("ed_redo_tt")}>
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                </>
+                </div>
               )}
-            </div>
-
-            {/* ── Row 3: Visual search (always visible) ── */}
-            <div className="glass rounded-xl border border-white/10 p-2 flex gap-2 flex-wrap items-center">
-              <button
-                onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); }}
-                className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                  tool === "visual_search"
-                    ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
-                    : "border-white/10 text-slate-500 hover:text-slate-300")}
-                title={d("vs_tool")}
-              >
-                <Search className="w-3.5 h-3.5" /> {d("vs_tool")}
-              </button>
-              {/* Sub-mode buttons: Search / Add / Remove */}
-              {tool === "visual_search" && vsMatches.length > 0 && (
-                <>
-                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
-                  {(["search", "add", "remove"] as const).map((m) => (
-                    <button key={m}
-                      onClick={() => setVsEditMode(m)}
-                      className={cn("px-2 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
-                        vsEditMode === m
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                          : "border-white/5 text-slate-500 hover:text-slate-300")}
-                    >
-                      {m === "search" && <><Search className="w-3 h-3" /> {d("vs_search")}</>}
-                      {m === "add" && <><Plus className="w-3 h-3" /> {d("vs_add")}</>}
-                      {m === "remove" && <><Trash2 className="w-3 h-3" /> {d("vs_remove")}</>}
-                    </button>
-                  ))}
-                </>
-              )}
-              {tool === "visual_search" && !vsSearching && vsMatches.length === 0 && (
-                <span className="text-xs text-slate-500 italic">{d("vs_select")}</span>
-              )}
-              {vsSearching && (
-                <span className="text-xs text-amber-400 flex items-center gap-1.5">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> {d("vs_searching")}
-                </span>
-              )}
-              {vsMatches.length > 0 && (
-                <>
-                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
-                  <span className="text-xs font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
-                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
-                  {!vsSaveOpen ? (
-                    <button
-                      onClick={() => setVsSaveOpen(true)}
-                      className="px-2 py-1 rounded-lg text-xs border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 transition-colors"
-                    >
-                      <Save className="w-3 h-3" /> {d("vs_save")}
-                    </button>
-                  ) : (
-                    <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); saveVsAsDetection(vsSaveLabel); }}>
-                      <input
-                        type="text"
-                        value={vsSaveLabel}
-                        onChange={(e) => setVsSaveLabel(e.target.value)}
-                        placeholder={d("vs_save_ph")}
-                        className="px-2 py-1 rounded-lg text-xs bg-white/5 border border-white/10 text-white placeholder:text-slate-600 w-44 focus:outline-none focus:border-emerald-500/40"
-                        autoFocus
-                      />
-                      <button type="submit" disabled={!vsSaveLabel.trim()}
-                        className="px-2 py-1 rounded-lg text-xs bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-30 transition-colors">
-                        OK
-                      </button>
-                      <button type="button" onClick={() => { setVsSaveOpen(false); setVsSaveLabel(""); }}
-                        className="p-1 rounded-lg text-slate-500 hover:text-white transition-colors">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </form>
-                  )}
-                  <button
-                    onClick={() => { setVsMatches([]); setVsCrop(null); setVsSaveOpen(false); }}
-                    className="px-2 py-1 rounded-lg text-xs border border-white/10 text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
-                  >
-                    <X className="w-3 h-3" /> {d("vs_clear")}
-                  </button>
-                </>
-              )}
+              <div className="flex-1" />
+              {zoom > 1.05 && <span className="text-[9px] text-slate-500 font-mono">\u00d7{zoom.toFixed(1)}</span>}
             </div>
 
             <div
               ref={zoomContainerRef}
-              className="glass rounded-xl border border-white/10 bg-white relative overflow-hidden"
-              style={{ height: "calc(100vh - 300px)", minHeight: 400, cursor: panCursor ? "grabbing" : "default" }}
+              className="flex-1 glass rounded-xl border border-white/10 bg-white relative overflow-hidden"
+              style={{ cursor: panCursor ? "grabbing" : "default" }}
               onContextMenu={e => e.preventDefault()}
               onMouseDown={e => {
                 if (e.button === 2) {
@@ -1626,7 +1520,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               }}>
               <div className="relative">
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                style={{ display: "block", maxWidth: "85vw", maxHeight: "calc(100vh - 320px)" }}
+                style={{ display: "block", maxWidth: "calc(100vw - 380px)", maxHeight: "calc(100vh - 12rem)" }}
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
 
@@ -2264,327 +2158,241 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <span className="text-slate-700">Scroll — zoom · Clic droit glisser — déplacer</span>
               {zoom > 1.05 && <span className="text-slate-500 font-mono ml-1">×{zoom.toFixed(1)}</span>}
             </p>
+
+            <p className="text-[10px] text-slate-600 px-1">
+              {d("ed_canvas_hint")} · Scroll — zoom · Clic droit — déplacer
+            </p>
           </div>
 
-          {/* Panel résultats */}
-          <div className="flex flex-col gap-4">
-            {error && (
-              <div className="glass rounded-xl border border-red-500/25 p-3 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-red-300">{error}</p>
-              </div>
-            )}
-            <div className="glass rounded-xl border border-white/10 p-4">
-              <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">{d("ed_ia_results")}</p>
-              <div className="flex flex-col gap-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">🚪 {d("ed_doors")}</span>
-                  <span className="font-700 text-purple-400">{result.doors_count}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">🪟 {d("ed_windows")}</span>
-                  <span className="font-700 text-cyan-400">{result.windows_count}</span>
-                </div>
-                <div className="border-t border-white/5 my-1" />
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{d("ed_living_s")}</span>
-                  <span className="font-700 text-emerald-400">{sf.area_hab_m2 ? sf.area_hab_m2.toFixed(1) + " m²" : "—"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{d("ed_footprint")}</span>
-                  <span className="font-700 text-blue-400">{sf.area_building_m2 ? sf.area_building_m2.toFixed(1) + " m²" : "—"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">{d("ed_walls_s")}</span>
-                  <span className="font-700 text-slate-300">{sf.area_walls_m2 ? sf.area_walls_m2.toFixed(1) + " m²" : "—"}</span>
-                </div>
-              </div>
+          {/* \u2550\u2550 RIGHT SIDEBAR \u2550\u2550 */}
+          <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
+            <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
+              {([
+                { id: "results" as const, label: d("ed_ia_results") },
+                { id: "rooms" as const, label: d("ed_rooms") },
+                { id: "visibility" as const, label: d("ed_openings_det") },
+              ]).map(tab => (
+                <button key={tab.id} onClick={() => setSidebarTab(tab.id)}
+                  className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] font-600 transition-colors text-center truncate",
+                    sidebarTab === tab.id ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+                  {tab.label}
+                </button>
+              ))}
             </div>
-            {/* ── Détections personnalisées (visual search) ── */}
-            {customDetections.length > 0 && (
-              <div className="glass rounded-xl border border-white/10 p-4">
-                <p className="text-xs font-mono text-amber-400 uppercase tracking-widest mb-3">{d("vs_detections")}</p>
-                <div className="flex flex-col gap-2">
-                  {customDetections.map((det) => (
-                    <div key={det.id} className="flex items-center justify-between group">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: det.color }} />
-                        <span className="text-sm text-white truncate">{det.label}</span>
+
+            <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-0.5">
+              {/* RESULTS TAB */}
+              {sidebarTab === "results" && (
+                <>
+                  <div className="glass rounded-xl border border-white/10 p-4">
+                    <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">{d("ed_ia_results")}</p>
+                    <div className="flex flex-col gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">🚪 {d("ed_doors")}</span>
+                        <span className="font-700 text-purple-400">{result.doors_count}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-600 text-slate-300">×{det.count}</span>
-                        {det.total_area_m2 !== null && (
-                          <span className="text-xs text-slate-500">{det.total_area_m2.toFixed(2)} m²</span>
-                        )}
-                        <button
-                          onClick={() => setCustomDetections(prev => prev.filter(d => d.id !== det.id))}
-                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-600 hover:text-red-400 transition-all"
-                          title={d("vs_delete")}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">🪟 {d("ed_windows")}</span>
+                        <span className="font-700 text-cyan-400">{result.windows_count}</span>
+                      </div>
+                      <div className="border-t border-white/5 my-1" />
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{d("ed_living_s")}</span>
+                        <span className="font-700 text-emerald-400">{sf.area_hab_m2 ? sf.area_hab_m2.toFixed(1) + " m\u00b2" : "\u2014"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{d("ed_footprint")}</span>
+                        <span className="font-700 text-blue-400">{sf.area_building_m2 ? sf.area_building_m2.toFixed(1) + " m\u00b2" : "\u2014"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">{d("ed_walls_s")}</span>
+                        <span className="font-700 text-slate-300">{sf.area_walls_m2 ? sf.area_walls_m2.toFixed(1) + " m\u00b2" : "\u2014"}</span>
                       </div>
                     </div>
-                  ))}
-                  <div className="border-t border-white/5 mt-1 pt-2 flex justify-between text-xs">
-                    <span className="text-slate-500">{d("vs_area")}</span>
-                    <span className="font-600 text-amber-400">
-                      {(() => {
-                        const total = customDetections.reduce((s, d) => s + (d.total_area_m2 ?? 0), 0);
-                        const hasScale = customDetections.some(d => d.total_area_m2 !== null);
-                        return hasScale ? `${total.toFixed(2)} m²` : "—";
-                      })()}
-                    </span>
                   </div>
-                </div>
-              </div>
-            )}
-            {/* ── Panneau pièces unifié (toujours visible si rooms existent) ── */}
-            {displayRooms.length > 0 && (
-              <div className="glass rounded-xl border border-white/10 p-4">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("ed_rooms_det")}</h3>
-                  <button onClick={() => setShowRooms(v => !v)} className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
-                    {showRooms ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-
-                {/* Room cards */}
-                <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto pr-0.5">
-                  {displayRooms.map(room => {
-                    const isSelected = selectedRoomId === room.id;
-                    const rcolor = getRoomColor(room.type);
-                    const rPerim = room.perimeter_m != null ? room.perimeter_m
-                      : (room.polygon_norm && ppm && imageNatural.w > 0
-                        ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
-                        : null);
-                    return (
-                      <div key={room.id}
-                        className={cn("rounded-xl border transition-all",
-                          isSelected ? "border-emerald-500/40 bg-emerald-500/10" : "border-white/5 glass")}>
-
-                        {/* Row 1 — nom + surface + périmètre */}
-                        <div
-                          onClick={() => {
-                            setSelectedRoomId(id => id === room.id ? null : room.id);
-                            setEditingRoomId(room.id);
-                            setActiveRoomType(room.type);
-                          }}
-                          className="flex items-center gap-2.5 px-3 pt-2.5 pb-1 cursor-pointer group"
-                        >
-                          <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/20 shrink-0" style={{ background: rcolor }} />
-                          <span className={cn("text-sm font-medium flex-1 truncate", isSelected ? "text-white" : "text-slate-300")}>
-                            {room.label_fr}
+                  {customDetections.length > 0 && (
+                    <div className="glass rounded-xl border border-white/10 p-4">
+                      <p className="text-xs font-mono text-amber-400 uppercase tracking-widest mb-3">{d("vs_detections")}</p>
+                      <div className="flex flex-col gap-2">
+                        {customDetections.map((det) => (
+                          <div key={det.id} className="flex items-center justify-between group">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: det.color }} />
+                              <span className="text-sm text-white truncate">{det.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-600 text-slate-300">\u00d7{det.count}</span>
+                              {det.total_area_m2 !== null && (
+                                <span className="text-xs text-slate-500">{det.total_area_m2.toFixed(2)} m\u00b2</span>
+                              )}
+                              <button onClick={() => setCustomDetections(prev => prev.filter(d => d.id !== det.id))}
+                                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-600 hover:text-red-400 transition-all"
+                                title={d("vs_delete")}><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="border-t border-white/5 mt-1 pt-2 flex justify-between text-xs">
+                          <span className="text-slate-500">{d("vs_area")}</span>
+                          <span className="font-600 text-amber-400">
+                            {(() => {
+                              const total = customDetections.reduce((s, d) => s + (d.total_area_m2 ?? 0), 0);
+                              const hasScale = customDetections.some(d => d.total_area_m2 !== null);
+                              return hasScale ? `${total.toFixed(2)} m\u00b2` : "\u2014";
+                            })()}
                           </span>
-                          <div className="flex flex-col items-end gap-0">
-                            <span className="text-xs text-slate-400 font-mono">
-                              {room.area_m2 != null ? `${room.area_m2.toFixed(2)} m²` : "—"}
-                            </span>
-                            {rPerim != null && (
-                              <span className="text-[10px] text-slate-600 font-mono">P {rPerim.toFixed(1)} m</span>
-                            )}
-                          </div>
-                          <button
-                            onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-600 hover:text-red-400 ml-0.5"
-                            title={d("ed_delete_room")}
-                          ><Trash2 className="w-3 h-3" /></button>
                         </div>
-
-                        {/* Row 2 — type change + actions (when selected) */}
-                        {isSelected && (
-                          <div className="px-3 pb-2.5 pt-1 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                            {/* Type selector — color dots */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">{d("ed_type")}:</span>
-                              {ROOM_TYPES.map(rt => (
-                                <button key={rt.type}
-                                  onClick={() => updateRoomLabel(room.id, rt.type, d(rt.i18nKey))}
-                                  title={d(rt.i18nKey)}
-                                  className={cn("w-5 h-5 rounded-full border-2 transition-all shrink-0",
-                                    room.type === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
-                                  style={{ background: getRoomColor(rt.type) }}
-                                />
-                              ))}
-                            </div>
-                            {/* Actions — merge / split / delete */}
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button
-                                onClick={() => toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" })}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-[10px]"
-                              >
-                                <Merge className="w-2.5 h-2.5" /> {d("ed_merge")}
-                              </button>
-                              <button
-                                onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                                className={cn("flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors text-[10px]",
-                                  tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/30 text-red-400 hover:bg-red-500/10")}
-                              >
-                                <Scissors className="w-2.5 h-2.5" /> {d("ed_split")}
-                              </button>
-                              <span className="text-[9px] text-slate-600 ml-auto" title={d("hint_vertex")}>{d("ed_shift_merge")} · {d("hint_vertex")}</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/* Totals */}
-                {displayRooms.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/5 flex flex-col gap-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-500">{d("ed_total_area")}</span>
-                      <span className="font-mono text-sm text-white font-600">
-                        {(() => {
-                          const total = displayRooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
-                          return total > 0 ? `${total.toFixed(2)} m²` : "—";
-                        })()}
-                      </span>
                     </div>
-                    {ppm && (
+                  )}
+                </>
+              )}
+
+              {/* ROOMS TAB */}
+              {sidebarTab === "rooms" && displayRooms.length > 0 && (
+                <div className="glass rounded-xl border border-white/10 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("ed_rooms_det")}</h3>
+                    <button onClick={() => setShowRooms(v => !v)} className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
+                      {showRooms ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto pr-0.5">
+                    {displayRooms.map(room => {
+                      const isSelected = selectedRoomId === room.id;
+                      const rcolor = getRoomColor(room.type);
+                      const rPerim = room.perimeter_m != null ? room.perimeter_m
+                        : (room.polygon_norm && ppm && imageNatural.w > 0
+                          ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
+                          : null);
+                      return (
+                        <div key={room.id}
+                          className={cn("rounded-xl border transition-all",
+                            isSelected ? "border-emerald-500/40 bg-emerald-500/10" : "border-white/5 glass")}>
+                          <div onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); setActiveRoomType(room.type); }}
+                            className="flex items-center gap-2.5 px-3 pt-2.5 pb-1 cursor-pointer group">
+                            <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/20 shrink-0" style={{ background: rcolor }} />
+                            <span className={cn("text-sm font-medium flex-1 truncate", isSelected ? "text-white" : "text-slate-300")}>{room.label_fr}</span>
+                            <div className="flex flex-col items-end gap-0">
+                              <span className="text-xs text-slate-400 font-mono">{room.area_m2 != null ? `${room.area_m2.toFixed(2)} m\u00b2` : "\u2014"}</span>
+                              {rPerim != null && (<span className="text-[10px] text-slate-600 font-mono">P {rPerim.toFixed(1)} m</span>)}
+                            </div>
+                            <button onClick={e => { e.stopPropagation(); sendEditRoom({ action: "delete_room", room_id: room.id }); }}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-600 hover:text-red-400 ml-0.5"
+                              title={d("ed_delete_room")}><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                          {isSelected && (
+                            <div className="px-3 pb-2.5 pt-1 flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">{d("ed_type")}:</span>
+                                {ROOM_TYPES.map(rt => (
+                                  <button key={rt.type} onClick={() => updateRoomLabel(room.id, rt.type, d(rt.i18nKey))}
+                                    title={d(rt.i18nKey)}
+                                    className={cn("w-5 h-5 rounded-full border-2 transition-all shrink-0",
+                                      room.type === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
+                                    style={{ background: getRoomColor(rt.type) }} />
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <button onClick={() => toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" })}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-[10px]">
+                                  <Merge className="w-2.5 h-2.5" /> {d("ed_merge")}
+                                </button>
+                                <button onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                                  className={cn("flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors text-[10px]",
+                                    tool === "split" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-red-500/30 text-red-400 hover:bg-red-500/10")}>
+                                  <Scissors className="w-2.5 h-2.5" /> {d("ed_split")}
+                                </button>
+                                <span className="text-[9px] text-slate-600 ml-auto">{d("ed_shift_merge")}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {displayRooms.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-white/5 flex flex-col gap-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-xs text-slate-500">{d("ed_total_perim")}</span>
-                        <span className="font-mono text-xs text-slate-400">
-                          {(() => {
-                            const total = displayRooms.reduce((s, r) => {
-                              const p = r.perimeter_m != null ? r.perimeter_m
-                                : (r.polygon_norm && imageNatural.w > 0
-                                  ? polygonPerimeterM(r.polygon_norm, imageNatural.w, imageNatural.h, ppm)
-                                  : 0);
-                              return s + (p ?? 0);
-                            }, 0);
-                            return total > 0 ? `${total.toFixed(1)} m` : "—";
-                          })()}
+                        <span className="text-xs text-slate-500">{d("ed_total_area")}</span>
+                        <span className="font-mono text-sm text-white font-600">
+                          {(() => { const total = displayRooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0); return total > 0 ? `${total.toFixed(2)} m\u00b2` : "\u2014"; })()}
                         </span>
                       </div>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-500">{d("ed_rooms")}</span>
-                      <span className="font-mono text-xs text-emerald-400 font-600">{displayRooms.length}</span>
+                      {ppm && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-slate-500">{d("ed_total_perim")}</span>
+                          <span className="font-mono text-xs text-slate-400">
+                            {(() => { const total = displayRooms.reduce((s, r) => { const p = r.perimeter_m != null ? r.perimeter_m : (r.polygon_norm && imageNatural.w > 0 ? polygonPerimeterM(r.polygon_norm, imageNatural.w, imageNatural.h, ppm) : 0); return s + (p ?? 0); }, 0); return total > 0 ? `${total.toFixed(1)} m` : "\u2014"; })()}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500">{d("ed_rooms")}</span>
+                        <span className="font-mono text-xs text-emerald-400 font-600">{displayRooms.length}</span>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
 
-            {/* Ouvertures (visible uniquement en mode door/window) */}
-            {(layer === "door" || layer === "window") && (
-            <div className="glass rounded-xl border border-white/10 p-4 text-xs">
-              <div className="flex items-center justify-between mb-2">
-                <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
-                {selectedOpeningIdx !== null && (
-                  <button
-                    onClick={() => setSelectedOpeningIdx(null)}
-                    className="text-slate-600 hover:text-slate-400 transition-colors text-[10px]"
-                  >{d("ed_deselect")}</button>
-                )}
-              </div>
-              <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-0.5">
-                {result.openings?.map((o, i) => {
-                  const isSelected = selectedOpeningIdx === i;
-                  const color = o.class === "door" ? "purple" : "cyan";
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        setSelectedOpeningIdx(prev => prev === i ? null : i);
-                        setTool("select");
-                      }}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all border",
-                        isSelected
-                          ? color === "purple"
-                            ? "bg-purple-500/15 border-purple-500/40 text-white"
-                            : "bg-cyan-500/15 border-cyan-500/40 text-white"
-                          : "border-transparent text-slate-500 hover:bg-white/5 hover:text-slate-300"
-                      )}
-                    >
-                      {/* Numbered badge */}
-                      <span className={cn(
-                        "w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0",
-                        isSelected
-                          ? color === "purple" ? "bg-purple-500/30 text-purple-300" : "bg-cyan-500/30 text-cyan-300"
-                          : color === "purple" ? "bg-purple-500/15 text-purple-500" : "bg-cyan-500/15 text-cyan-500"
-                      )}>
-                        {i + 1}
-                      </span>
-                      {/* Label */}
-                      <span className="flex-1 truncate">
-                        {o.class === "door" ? d("door_lbl") : d("win_lbl")}
-                      </span>
-                      {/* Length */}
-                      {o.length_m && (
-                        <span className="text-slate-600 font-mono">{o.length_m.toFixed(2)}m</span>
-                      )}
-                      {/* Delete button — visible only when selected */}
-                      {isSelected && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteOpening(i); }}
-                          className="ml-0.5 p-0.5 rounded text-red-500 hover:text-red-300 hover:bg-red-500/15 transition-colors shrink-0"
-                          title="Supprimer cette ouverture"
-                          disabled={loading}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {(!result.openings || result.openings.length === 0) && (
-                  <p className="text-slate-600">{d("ed_no_elem")}</p>
-                )}
-              </div>
-              {/* Actions when selection active */}
-              {selectedOpeningIdx !== null && result.openings?.[selectedOpeningIdx] && (
-                <div className="mt-3 pt-3 border-t border-white/5">
-                  <p className="mb-2 text-[10px] font-500 text-slate-500 uppercase tracking-wide">
-                    #{selectedOpeningIdx + 1} — {d("ed_edit_mask")}
-                  </p>
-                  <div className="flex flex-col gap-1.5">
-                    {/* Extend */}
-                    <button
-                      onClick={() => {
-                        const o = result.openings![selectedOpeningIdx];
-                        setLayer(o.class === "door" ? "door" : "window");
-                        setTool("add_rect");
-                        toast({ title: d("ed_mode_extend"), description: d("ed_mode_extend_d"), variant: "default" });
-                      }}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs"
-                    >
-                      <span className="text-sm">＋</span> {d("ed_extend_mask")}
-                    </button>
-                    {/* Reduce */}
-                    <button
-                      onClick={() => {
-                        const o = result.openings![selectedOpeningIdx];
-                        setLayer(o.class === "door" ? "door" : "window");
-                        setTool("erase_rect");
-                        toast({ title: d("ed_mode_reduce"), description: d("ed_mode_reduce_d"), variant: "default" });
-                      }}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors text-xs"
-                    >
-                      <span className="text-sm">－</span> {d("ed_reduce_mask")}
-                    </button>
-                    {/* Redraw from scratch */}
-                    <button
-                      onClick={() => {
-                        const o = result.openings![selectedOpeningIdx];
-                        setLayer(o.class === "door" ? "door" : "window");
-                        setTool("add_poly");
-                        toast({ title: d("ed_mode_poly"), description: d("ed_mode_poly_d"), variant: "default" });
-                      }}
-                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-xs"
-                    >
-                      <PenLine className="w-3 h-3" /> {d("ed_trace_poly")}
-                    </button>
+              {/* OPENINGS TAB */}
+              {sidebarTab === "visibility" && (layer === "door" || layer === "window") && (
+                <div className="glass rounded-xl border border-white/10 p-4 text-xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
+                    {selectedOpeningIdx !== null && (
+                      <button onClick={() => setSelectedOpeningIdx(null)}
+                        className="text-slate-600 hover:text-slate-400 transition-colors text-[10px]">{d("ed_deselect")}</button>
+                    )}
                   </div>
+                  <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-0.5">
+                    {result.openings?.map((o, i) => {
+                      const isSelected = selectedOpeningIdx === i;
+                      const color = o.class === "door" ? "purple" : "cyan";
+                      return (
+                        <div key={i} onClick={() => { setSelectedOpeningIdx(prev => prev === i ? null : i); setTool("select"); }}
+                          className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all border",
+                            isSelected
+                              ? color === "purple" ? "bg-purple-500/15 border-purple-500/40 text-white" : "bg-cyan-500/15 border-cyan-500/40 text-white"
+                              : "border-transparent text-slate-500 hover:bg-white/5 hover:text-slate-300")}>
+                          <span className={cn("w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0",
+                            isSelected
+                              ? color === "purple" ? "bg-purple-500/30 text-purple-300" : "bg-cyan-500/30 text-cyan-300"
+                              : color === "purple" ? "bg-purple-500/15 text-purple-500" : "bg-cyan-500/15 text-cyan-500")}>{i + 1}</span>
+                          <span className="flex-1 truncate">{o.class === "door" ? d("door_lbl") : d("win_lbl")}</span>
+                          {o.length_m && (<span className="text-slate-600 font-mono">{o.length_m.toFixed(2)}m</span>)}
+                          {isSelected && (
+                            <button onClick={(e) => { e.stopPropagation(); deleteOpening(i); }}
+                              className="ml-0.5 p-0.5 rounded text-red-500 hover:text-red-300 hover:bg-red-500/15 transition-colors shrink-0"
+                              disabled={loading}><Trash2 className="w-3 h-3" /></button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {(!result.openings || result.openings.length === 0) && (<p className="text-slate-600">{d("ed_no_elem")}</p>)}
+                  </div>
+                  {selectedOpeningIdx !== null && result.openings?.[selectedOpeningIdx] && (
+                    <div className="mt-3 pt-3 border-t border-white/5">
+                      <p className="mb-2 text-[10px] font-500 text-slate-500 uppercase tracking-wide">#{selectedOpeningIdx + 1} \u2014 {d("ed_edit_mask")}</p>
+                      <div className="flex flex-col gap-1.5">
+                        <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("add_rect"); toast({ title: d("ed_mode_extend"), description: d("ed_mode_extend_d"), variant: "default" }); }}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs">
+                          <span className="text-sm">\uff0b</span> {d("ed_extend_mask")}
+                        </button>
+                        <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("erase_rect"); toast({ title: d("ed_mode_reduce"), description: d("ed_mode_reduce_d"), variant: "default" }); }}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors text-xs">
+                          <span className="text-sm">\uff0d</span> {d("ed_reduce_mask")}
+                        </button>
+                        <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("add_poly"); toast({ title: d("ed_mode_poly"), description: d("ed_mode_poly_d"), variant: "default" }); }}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-xs">
+                          <PenLine className="w-3 h-3" /> {d("ed_trace_poly")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            )}
           </div>
         </div>
       )}
