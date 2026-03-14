@@ -51,11 +51,22 @@ export interface Room {
 }
 
 // Résultat complet de l'analyse V1
+// Scale calibration info (from backend cross-check)
+export interface ScaleInfo {
+  ppm: number | null;
+  confidence: number;
+  method: string;
+  sources: { ppm: number; confidence: number; source: string; detail: string }[];
+  agreement: boolean;
+  agreements?: { a: string; b: string; ratio: number; agree: boolean }[];
+}
+
 export interface AnalysisResult {
   session_id: string;
   doors_count: number;
   windows_count: number;
   pixels_per_meter: number | null;
+  scale_info?: ScaleInfo;
   openings: Opening[];
   surfaces: Surfaces;
   overlay_openings_b64: string;

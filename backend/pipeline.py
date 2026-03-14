@@ -121,6 +121,359 @@ def compute_scale(x1: float, y1: float, x2: float, y2: float, real_m: float) -> 
 
 
 # ============================================================
+# AUTO-CALIBRATION CROSS-CHECK (multi-source PPM consensus)
+# ============================================================
+
+def _ppm_from_doors(df_openings, cfg) -> dict | None:
+    """Estimate PPM from detected door widths (existing method)."""
+    if df_openings is None or df_openings.empty:
+        return None
+    doors = df_openings[df_openings["class"] == "door"]
+    if len(doors) < 1:
+        return None
+    doors_f = doors[
+        (doors["length_px"] >= cfg["door_len_px_min"]) &
+        (doors["length_px"] <= cfg["door_len_px_max"])
+    ]
+    use = doors_f if len(doors_f) >= cfg["min_doors_for_scale"] else doors
+    n_used = len(use)
+    median_px = float(np.median(use["length_px"].values))
+    std_px = float(np.std(use["length_px"].values)) if n_used > 1 else median_px * 0.3
+    ppm = median_px / cfg["assumed_door_width_m"]
+    # Confidence: more doors + lower std → higher confidence
+    cv = std_px / median_px if median_px > 0 else 1.0  # coefficient of variation
+    conf = min(0.85, 0.4 + 0.1 * min(n_used, 5) - cv * 0.3)
+    conf = max(0.15, conf)
+    return {"ppm": ppm, "confidence": round(conf, 2), "source": "doors",
+            "detail": f"{n_used} doors, median={median_px:.1f}px, CV={cv:.2f}"}
+
+
+def _ppm_from_dimension_lines(img_gray: np.ndarray, cfg) -> dict | None:
+    """Detect dimension annotations (cotes cotées) via OCR + line proximity.
+
+    Finds decimal numbers like '3.50' or '5,20' near horizontal/vertical lines
+    and computes PPM = line_length_px / value_meters.
+    """
+    import re
+    try:
+        import pytesseract
+    except ImportError:
+        return None
+
+    H, W = img_gray.shape[:2]
+
+    # Run OCR with bounding box data
+    try:
+        ocr_data = pytesseract.image_to_data(
+            img_gray, lang="fra+eng", output_type=pytesseract.Output.DICT,
+            config="--psm 11"  # sparse text: find as much text as possible
+        )
+    except Exception:
+        try:
+            ocr_data = pytesseract.image_to_data(
+                img_gray, output_type=pytesseract.Output.DICT,
+                config="--psm 11"
+            )
+        except Exception as e:
+            logger.warning("Dimension line OCR failed: %s", e)
+            return None
+
+    # Pattern: decimal numbers likely to be dimensions (0.50 → 15.00 range)
+    dim_pattern = re.compile(r"^(\d{1,2})[.,](\d{2})$")
+
+    # Collect dimension candidates: (value_m, cx, cy, text_w, text_h)
+    dim_candidates = []
+    n_words = len(ocr_data.get("text", []))
+    for i in range(n_words):
+        text = str(ocr_data["text"][i]).strip()
+        conf_val = int(ocr_data["conf"][i]) if ocr_data["conf"][i] != "-1" else 0
+        if conf_val < 40:
+            continue
+        m = dim_pattern.match(text)
+        if not m:
+            continue
+        value_m = float(f"{m.group(1)}.{m.group(2)}")
+        if value_m < 0.30 or value_m > 25.0:  # Plausible architectural range
+            continue
+        bx = int(ocr_data["left"][i])
+        by = int(ocr_data["top"][i])
+        bw = int(ocr_data["width"][i])
+        bh = int(ocr_data["height"][i])
+        cx = bx + bw / 2
+        cy = by + bh / 2
+        dim_candidates.append({
+            "value_m": value_m, "cx": cx, "cy": cy,
+            "bw": bw, "bh": bh, "text": text, "conf": conf_val,
+        })
+
+    if not dim_candidates:
+        return None
+
+    # Detect lines using Hough transform (looking for dimension/cote lines)
+    blurred = cv2.GaussianBlur(img_gray, (3, 3), 0)
+    edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50,
+                            minLineLength=max(30, min(W, H) * 0.02),
+                            maxLineGap=10)
+    if lines is None or len(lines) == 0:
+        return None
+
+    # Filter for near-horizontal or near-vertical lines
+    hv_lines = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        dx, dy = abs(x2 - x1), abs(y2 - y1)
+        length = math.hypot(dx, dy)
+        if length < 20:
+            continue
+        angle = math.degrees(math.atan2(dy, dx))
+        if angle < 8 or angle > 82:  # Near-horizontal or near-vertical
+            hv_lines.append({
+                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                "length": length,
+                "mx": (x1 + x2) / 2, "my": (y1 + y2) / 2,
+                "horizontal": angle < 8,
+            })
+
+    if not hv_lines:
+        return None
+
+    # Match each dimension text to the nearest line
+    ppm_estimates = []
+    search_radius = max(60, min(W, H) * 0.05)  # Search within 5% of image size
+
+    for dim in dim_candidates:
+        best_line = None
+        best_dist = search_radius
+        for ln in hv_lines:
+            # Distance from text center to line midpoint
+            dist = math.hypot(dim["cx"] - ln["mx"], dim["cy"] - ln["my"])
+            # Also check if text is near the line itself (perpendicular distance)
+            perp_dist = _point_to_segment_dist(dim["cx"], dim["cy"],
+                                               ln["x1"], ln["y1"], ln["x2"], ln["y2"])
+            effective_dist = min(dist, perp_dist * 1.5)
+            if effective_dist < best_dist:
+                best_dist = effective_dist
+                best_line = ln
+
+        if best_line is not None:
+            ppm_est = best_line["length"] / dim["value_m"]
+            # Sanity check: PPM should be reasonable (5 to 500 px/m for typical plans)
+            if 5 < ppm_est < 500:
+                ppm_estimates.append({
+                    "ppm": ppm_est,
+                    "text": dim["text"],
+                    "value_m": dim["value_m"],
+                    "line_px": best_line["length"],
+                    "dist_to_line": best_dist,
+                })
+
+    if not ppm_estimates:
+        return None
+
+    # Use median of estimates (robust to outliers)
+    ppms = [e["ppm"] for e in ppm_estimates]
+    median_ppm = float(np.median(ppms))
+
+    # Filter outliers (keep within 30% of median)
+    inliers = [p for p in ppms if abs(p - median_ppm) / median_ppm < 0.30]
+    if len(inliers) < 1:
+        inliers = ppms
+
+    final_ppm = float(np.median(inliers))
+    std_ppm = float(np.std(inliers)) if len(inliers) > 1 else final_ppm * 0.2
+    cv = std_ppm / final_ppm if final_ppm > 0 else 1.0
+
+    # Confidence: more matching pairs + lower variance → higher
+    conf = min(0.92, 0.45 + 0.12 * min(len(inliers), 5) - cv * 0.2)
+    conf = max(0.20, conf)
+
+    return {"ppm": final_ppm, "confidence": round(conf, 2), "source": "dimension_lines",
+            "detail": f"{len(inliers)}/{len(ppm_estimates)} cotes, median={final_ppm:.1f}px/m, CV={cv:.2f}"}
+
+
+def _ppm_from_cartouche_scale(img_rgb: np.ndarray) -> dict | None:
+    """Try to extract scale from cartouche (e.g. 1:100) and estimate PPM.
+
+    Without known DPI this is imprecise, but we can estimate DPI from image size:
+    - A4 landscape = 297mm wide → at 150 DPI = 1754px, at 200 DPI = 2339px
+    - A3 landscape = 420mm wide → at 150 DPI = 2480px, at 200 DPI = 3307px
+    """
+    import re
+    try:
+        import pytesseract
+    except ImportError:
+        return None
+
+    H, W = img_rgb.shape[:2]
+
+    # Extract cartouche text
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Search bottom-right 45% x 35% for cartouche
+    roi_x = int(W * 0.55)
+    roi_y = int(H * 0.65)
+    roi = gray[roi_y:, roi_x:]
+
+    try:
+        ocr_text = pytesseract.image_to_string(roi, lang="fra+eng")
+    except Exception:
+        try:
+            ocr_text = pytesseract.image_to_string(roi)
+        except Exception:
+            return None
+
+    # Find scale pattern
+    scale_match = re.search(r"(?:échelle|echelle|scale|ech\.?)\s*[:;]?\s*1\s*[:/]\s*(\d+)", ocr_text, re.IGNORECASE)
+    if not scale_match:
+        scale_match = re.search(r"1\s*[:/]\s*(\d+)", ocr_text)
+    if not scale_match:
+        return None
+
+    denominator = int(scale_match.group(1))
+    if denominator < 10 or denominator > 1000:
+        return None
+
+    # Estimate DPI from image dimensions
+    # Common architectural paper sizes (landscape): A4=297mm, A3=420mm, A2=594mm, A1=841mm, A0=1189mm
+    paper_widths_mm = [297, 420, 594, 841, 1189]
+    common_dpis = [72, 96, 150, 200, 300]
+
+    best_dpi = 150  # default assumption
+    best_score = 999
+
+    for pw_mm in paper_widths_mm:
+        for dpi in common_dpis:
+            expected_px = pw_mm / 25.4 * dpi
+            # How well does this match actual width?
+            ratio = W / expected_px
+            if 0.85 < ratio < 1.15:  # Within 15% match
+                score = abs(ratio - 1.0)
+                if score < best_score:
+                    best_score = score
+                    best_dpi = dpi
+
+    # PPM = DPI / (25.4mm * scale_denominator) * 1000mm/m
+    # = DPI / (0.0254 * scale_denominator)
+    ppm = best_dpi / (0.0254 * denominator)
+
+    # Low confidence because DPI is estimated
+    conf = 0.35 if best_score < 0.10 else 0.25  # Slightly higher if paper size matched well
+
+    return {"ppm": ppm, "confidence": round(conf, 2), "source": "cartouche_scale",
+            "detail": f"1:{denominator}, est.DPI={best_dpi}, paper_match={best_score:.2f}"}
+
+
+def _point_to_segment_dist(px, py, x1, y1, x2, y2) -> float:
+    """Perpendicular distance from point to line segment."""
+    dx, dy = x2 - x1, y2 - y1
+    lenSq = dx * dx + dy * dy
+    if lenSq == 0:
+        return math.hypot(px - x1, py - y1)
+    t = max(0, min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq))
+    cx = x1 + t * dx
+    cy = y1 + t * dy
+    return math.hypot(px - cx, py - cy)
+
+
+def auto_calibrate_crosscheck(
+    img_rgb: np.ndarray,
+    df_openings,
+    cfg: dict,
+) -> dict:
+    """Multi-source PPM estimation with cross-validation.
+
+    Tries three sources:
+      1. Dimension lines (cotes cotées) — highest potential reliability
+      2. Door widths — existing method
+      3. Cartouche scale notation — lowest reliability (DPI unknown)
+
+    Returns dict with:
+      - ppm: best estimate (float or None)
+      - confidence: 0.0-1.0
+      - method: winning method name
+      - sources: list of all individual estimates
+      - agreement: whether sources agree
+    """
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Gather estimates from all sources
+    sources = []
+
+    est_dims = _ppm_from_dimension_lines(gray, cfg)
+    if est_dims:
+        sources.append(est_dims)
+
+    est_doors = _ppm_from_doors(df_openings, cfg)
+    if est_doors:
+        sources.append(est_doors)
+
+    est_cartouche = _ppm_from_cartouche_scale(img_rgb)
+    if est_cartouche:
+        sources.append(est_cartouche)
+
+    if not sources:
+        return {"ppm": None, "confidence": 0.0, "method": "none",
+                "sources": [], "agreement": False}
+
+    # Single source — use it directly
+    if len(sources) == 1:
+        s = sources[0]
+        return {"ppm": s["ppm"], "confidence": s["confidence"], "method": s["source"],
+                "sources": sources, "agreement": False}
+
+    # Multiple sources — cross-check
+    # Check pairwise agreement (within 20%)
+    agreements = []
+    for i in range(len(sources)):
+        for j in range(i + 1, len(sources)):
+            ratio = sources[i]["ppm"] / sources[j]["ppm"] if sources[j]["ppm"] > 0 else 99
+            agree = 0.80 < ratio < 1.20
+            agreements.append({
+                "a": sources[i]["source"], "b": sources[j]["source"],
+                "ratio": round(ratio, 3), "agree": agree,
+            })
+
+    any_agreement = any(a["agree"] for a in agreements)
+
+    if any_agreement:
+        # Find the agreeing pair with highest combined confidence
+        best_pair = None
+        best_conf = 0
+        for ag in agreements:
+            if not ag["agree"]:
+                continue
+            src_a = next(s for s in sources if s["source"] == ag["a"])
+            src_b = next(s for s in sources if s["source"] == ag["b"])
+            combined_conf = (src_a["confidence"] + src_b["confidence"]) / 2 + 0.10  # bonus
+            if combined_conf > best_conf:
+                best_conf = combined_conf
+                best_pair = (src_a, src_b)
+
+        if best_pair:
+            # Weighted average of agreeing sources
+            w_a = best_pair[0]["confidence"]
+            w_b = best_pair[1]["confidence"]
+            w_total = w_a + w_b
+            ppm = (best_pair[0]["ppm"] * w_a + best_pair[1]["ppm"] * w_b) / w_total
+            conf = min(0.95, best_conf)
+            method = f"consensus({best_pair[0]['source']}+{best_pair[1]['source']})"
+            return {"ppm": ppm, "confidence": round(conf, 2), "method": method,
+                    "sources": sources, "agreement": True,
+                    "agreements": agreements}
+
+    # No agreement — use highest confidence source
+    sources_sorted = sorted(sources, key=lambda s: s["confidence"], reverse=True)
+    best = sources_sorted[0]
+    # Reduce confidence since no cross-validation
+    reduced_conf = max(0.15, best["confidence"] - 0.10)
+    return {"ppm": best["ppm"], "confidence": round(reduced_conf, 2),
+            "method": best["source"],
+            "sources": sources, "agreement": False,
+            "agreements": agreements}
+
+
+# ============================================================
 # PIPELINE UTILS
 # ============================================================
 def clamp_box(x1, y1, x2, y2, WW, HH):
@@ -767,16 +1120,17 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     import pandas as pd
     df_openings = pd.DataFrame(openings)
 
-    # === AUTO pixels_per_meter si pas fourni manuellement ===
+    # === AUTO pixels_per_meter — cross-check multi-sources ===
     ppm = pixels_per_meter
-    if ppm is None and not df_openings.empty:
-        doors = df_openings[df_openings["class"] == "door"]
-        if len(doors) >= 1:
-            doors_f = doors[(doors["length_px"] >= cfg["door_len_px_min"]) &
-                            (doors["length_px"] <= cfg["door_len_px_max"])]
-            use = doors_f if len(doors_f) >= cfg["min_doors_for_scale"] else doors
-            median_door_px = float(np.median(use["length_px"].values))
-            ppm = median_door_px / cfg["assumed_door_width_m"]
+    scale_info = None
+    if ppm is None:
+        scale_info = auto_calibrate_crosscheck(img_rgb, df_openings, cfg)
+        ppm = scale_info.get("ppm")
+        logger.info("Auto-calibration: method=%s, ppm=%s, confidence=%s",
+                     scale_info.get("method"), ppm, scale_info.get("confidence"))
+    else:
+        scale_info = {"ppm": ppm, "confidence": 1.0, "method": "manual",
+                      "sources": [], "agreement": True}
 
     if ppm is not None and not df_openings.empty:
         df_openings["length_m"] = df_openings["length_px"] / ppm
@@ -800,6 +1154,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     return {
         "img_w": W, "img_h": H,
         "pixels_per_meter": ppm,
+        "scale_info": scale_info,
         "doors_count": int((df_openings["class"] == "door").sum()) if not df_openings.empty else 0,
         "windows_count": int((df_openings["class"] == "window").sum()) if not df_openings.empty else 0,
         "openings": df_openings.to_dict(orient="records") if not df_openings.empty else [],

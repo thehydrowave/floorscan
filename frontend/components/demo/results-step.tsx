@@ -316,11 +316,24 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             { label: d("re_walls_area"), value: fmt(sf.area_walls_m2, 2, " m²"),    color: "#D946EF" },
             { label: d("re_living"),     value: fmt(sf.area_hab_m2, 2, " m²"),      color: "#34D399" },
             { label: d("re_perim_int"),  value: fmt(sf.perim_interior_m, 2, " m"),  color: "#34D399" },
-            { label: d("re_scale"),      value: result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "—", color: "#94a3b8" },
-          ].map(({ label, value, color }) => (
+            { label: d("re_scale"),      value: result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "—", color: "#94a3b8",
+              badge: result.scale_info ? { conf: result.scale_info.confidence, method: result.scale_info.method, agreement: result.scale_info.agreement } : undefined },
+          ].map(({ label, value, color, badge }: any) => (
             <div key={label} className="flex justify-between items-center py-2 border-b border-white/5">
               <span className="text-slate-400">{label}</span>
-              <span className="font-mono font-600" style={{ color }}>{value}</span>
+              <span className="flex items-center gap-2">
+                <span className="font-mono font-600" style={{ color }}>{value}</span>
+                {badge && (
+                  <span title={`${badge.method}${badge.agreement ? " ✓" : ""}`}
+                    className={cn("text-[9px] px-1.5 py-0.5 rounded font-semibold",
+                      badge.conf >= 0.7 ? "bg-emerald-500/20 text-emerald-400"
+                      : badge.conf >= 0.4 ? "bg-amber-500/20 text-amber-400"
+                      : "bg-red-500/20 text-red-400"
+                    )}>
+                    {badge.agreement ? "✓ " : ""}{Math.round(badge.conf * 100)}%
+                  </span>
+                )}
+              </span>
             </div>
           ))}
         </div>
