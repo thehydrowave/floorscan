@@ -26,6 +26,7 @@ import DashboardPanel from "@/components/demo/dashboard-panel";
 import MeasureTool from "@/components/demo/measure-tool";
 import RapportDialog from "@/components/demo/rapport-dialog";
 import OcrPanel from "@/components/demo/ocr-panel";
+import HousingPanel from "@/components/demo/housing-panel";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -621,6 +622,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
       {/* ── Compliance check panel ── */}
       <CompliancePanel result={result} />
+
+      {/* ── Housing Detection panel ── */}
+      <HousingPanel result={result} />
 
       {/* ── Lots / Copropriété panel ── */}
       <LotsPanel result={result} />
