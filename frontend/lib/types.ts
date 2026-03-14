@@ -247,3 +247,34 @@ export interface DpgfState {
   project_address: string;
   date: string;
 }
+
+// ── Devis (Formal Quote) ────────────────────────────────────────────────────
+
+export interface DevisCompanyInfo {
+  name: string;
+  address: string;
+  siret: string;
+  rcs: string;
+  phone: string;
+  email: string;
+  rge: string;
+  assurance: string;
+}
+
+export interface DevisClientInfo {
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+}
+
+export interface DevisOptions {
+  quote_number: string;
+  validity_days: number;
+  payment_terms: string;
+  execution_delay: string;
+  company: DevisCompanyInfo;
+  client: DevisClientInfo;
+  notes: string;
+  date: string;
+}

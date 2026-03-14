@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, Grid3X3 as GridIcon, AlignVerticalSpaceAround } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -13,6 +13,7 @@ import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
+import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 type Layer = "door" | "window" | "interior" | "rooms";
@@ -183,6 +184,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [dragRoomVertex, setDragRoomVertex] = useState<{ roomId: number; idx: number } | null>(null);
   const [localRooms, setLocalRooms] = useState<Room[] | null>(null);
   const [snappedVertex, setSnappedVertex] = useState(false);
+  const [snapConfig, setSnapConfig] = useState<SnapConfig>(DEFAULT_SNAP_CONFIG);
+  const [snapResult, setSnapResult] = useState<SnapResult | null>(null);
+  const snapConfigRef = useRef<SnapConfig>(DEFAULT_SNAP_CONFIG);
+  useEffect(() => { snapConfigRef.current = snapConfig; }, [snapConfig]);
   const dragRoomVertexRef = useRef<{ roomId: number; idx: number } | null>(null);
   const localRoomsRef = useRef<Room[] | null>(null);
 
@@ -364,11 +369,20 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       const r = img.getBoundingClientRect();
       const rawX = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
       const rawY = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-      // Snap to nearest wall segment
+      // Snap intelligent (multi-criteria: vertex, wall, midpoint, alignment, grid)
       const ds = imgDisplaySizeRef.current;
-      const snap = snapToWalls(rawX, rawY, resultWallsRef.current, ds.w, ds.h);
+      const dv2 = dragRoomVertexRef.current!;
+      const snap = snapIntelligent(rawX, rawY, snapConfigRef.current, {
+        walls: resultWallsRef.current,
+        rooms: localRoomsRef.current ?? resultRoomsRef.current,
+        currentRoomId: dv2.roomId,
+        currentVertexIdx: dv2.idx,
+        dispW: ds.w,
+        dispH: ds.h,
+      });
       const normX = snap.x, normY = snap.y;
       setSnappedVertex(snap.snapped);
+      setSnapResult(snap);
       const { roomId, idx } = dv;
 
       const natW = imageNaturalRef.current.w;
@@ -407,6 +421,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       dragRoomVertexRef.current = null;
       setDragRoomVertex(null);
       setSnappedVertex(false);
+      setSnapResult(null);
 
       if (rooms) {
         // Commit updated polygon directly to result (frontend-only, no backend round-trip).
@@ -1352,6 +1367,41 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <RotateCcw size={12} />
                 </button>
               )}
+              {/* Snap intelligent toggles */}
+              {layer === "rooms" && (
+                <>
+                  <div className="w-px bg-white/10 mx-0.5 self-stretch" />
+                  <button
+                    onClick={() => {
+                      const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid;
+                      const next = !allOn;
+                      setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next }));
+                    }}
+                    title={d("snap_label")}
+                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                      snapConfig.enableWall ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
+                  >
+                    <Magnet size={12} />
+                    {d("snap_label")}
+                  </button>
+                  <button
+                    onClick={() => setSnapConfig(c => ({ ...c, enableGrid: !c.enableGrid }))}
+                    title={d("snap_grid")}
+                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                      snapConfig.enableGrid ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
+                  >
+                    <GridIcon size={12} />
+                  </button>
+                  <button
+                    onClick={() => setSnapConfig(c => ({ ...c, enableAlignment: !c.enableAlignment }))}
+                    title={d("snap_align")}
+                    className={cn("px-2 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1",
+                      snapConfig.enableAlignment ? "border-purple-500/40 bg-purple-500/10 text-purple-400" : "border-white/10 text-slate-500 hover:text-slate-300")}
+                  >
+                    <AlignVerticalSpaceAround size={12} />
+                  </button>
+                </>
+              )}
             </div>
 
             {/* ── Row 2: Contextual tools ── */}
@@ -1942,6 +1992,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       const isSnapped = isDragging && snappedVertex;
                       const cx = p.x * imgDisplaySize.w;
                       const cy = p.y * imgDisplaySize.h;
+                      // Snap-type-aware colors
+                      const snapFill = isDragging && snapResult?.snapType === "vertex" ? "#22d3ee"
+                        : isDragging && snapResult?.snapType === "grid" ? "#10b981"
+                        : isDragging && snapResult?.snapType === "midpoint" ? "#f59e0b"
+                        : isDragging && (snapResult?.snapType === "align_h" || snapResult?.snapType === "align_v") ? "#a78bfa"
+                        : isSnapped ? "#f97316"
+                        : null;
+                      const snapStroke = isDragging && snapResult?.snapType === "vertex" ? "#0891b2"
+                        : isDragging && snapResult?.snapType === "grid" ? "#059669"
+                        : isDragging && snapResult?.snapType === "midpoint" ? "#d97706"
+                        : isDragging && (snapResult?.snapType === "align_h" || snapResult?.snapType === "align_v") ? "#7c3aed"
+                        : isSnapped ? "#ea580c"
+                        : null;
                       return (
                       <g key={`v-${idx}`} className="group/vtx">
                         {/* Invisible large hit area for easier targeting */}
@@ -1971,11 +2034,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             });
                           }}
                         />
-                        {/* Visible handle — hover: larger + filled with zone color */}
+                        {/* Visible handle — color-coded by snap type */}
                         <circle cx={cx} cy={cy}
                           r={isDragging ? 9 : isSnapped ? 8 : 7}
-                          fill={isDragging ? rcolor : isSnapped ? "#f97316" : "white"}
-                          stroke={isSnapped ? "#ea580c" : rcolor}
+                          fill={snapFill ?? (isDragging ? rcolor : "white")}
+                          stroke={snapStroke ?? rcolor}
                           strokeWidth={isDragging ? 3 : 2}
                           style={{ pointerEvents: "none", transition: "r 0.1s, fill 0.1s" }}
                           className="group-hover/vtx:fill-current"
@@ -2043,6 +2106,81 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   </svg>
                 );
               })()}
+
+              {/* ── Snap guide lines overlay ── */}
+              {snapResult && snapResult.guides.length > 0 && imgDisplaySize.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 16 }}
+                >
+                  {snapResult.guides.map((guide, i) => (
+                    guide.type === "point" ? (
+                      <g key={`guide-${i}`}>
+                        <circle
+                          cx={guide.x1 * imgDisplaySize.w}
+                          cy={guide.y1 * imgDisplaySize.h}
+                          r={12} fill="none"
+                          stroke={guide.color} strokeWidth={2}
+                          strokeDasharray="3 2" opacity={0.7}
+                        />
+                        <circle
+                          cx={guide.x1 * imgDisplaySize.w}
+                          cy={guide.y1 * imgDisplaySize.h}
+                          r={4} fill={guide.color} opacity={0.5}
+                        />
+                      </g>
+                    ) : (
+                      <line key={`guide-${i}`}
+                        x1={guide.x1 * imgDisplaySize.w}
+                        y1={guide.y1 * imgDisplaySize.h}
+                        x2={guide.x2 * imgDisplaySize.w}
+                        y2={guide.y2 * imgDisplaySize.h}
+                        stroke={guide.color}
+                        strokeWidth={1}
+                        strokeDasharray={guide.type === "horizontal" || guide.type === "vertical" ? "4 3" : "none"}
+                        opacity={0.7}
+                      />
+                    )
+                  ))}
+                  {snapResult.snapLabel && (
+                    <text
+                      x={snapResult.x * imgDisplaySize.w + 16}
+                      y={snapResult.y * imgDisplaySize.h - 10}
+                      fill={snapResult.guides[0]?.color ?? "#22d3ee"}
+                      fontSize={9}
+                      fontFamily="system-ui, sans-serif"
+                      fontWeight="600"
+                    >
+                      {snapResult.snapLabel}
+                    </text>
+                  )}
+                </svg>
+              )}
+
+              {/* ── Grid overlay (when grid snap is enabled and editing rooms) ── */}
+              {snapConfig.enableGrid && layer === "rooms" && editingRoomId != null && imgDisplaySize.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 1 }}
+                >
+                  <defs>
+                    <pattern id="snap-grid-pattern"
+                      width={snapConfig.gridSpacingNorm * imgDisplaySize.w}
+                      height={snapConfig.gridSpacingNorm * imgDisplaySize.h}
+                      patternUnits="userSpaceOnUse"
+                    >
+                      <circle cx={1} cy={1} r={0.8} fill="rgba(16,185,129,0.18)" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#snap-grid-pattern)" />
+                </svg>
+              )}
 
               {/* ── Visual search overlay: matches + saved detections + selection rect ── */}
               {imgDisplaySize.w > 0 && (vsMatches.length > 0 || vsCrop || customDetections.length > 0) && (

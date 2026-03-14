@@ -18,6 +18,7 @@ import {
   Zap,
   Droplets,
   Minus,
+  FileSignature,
 } from "lucide-react";
 import {
   AnalysisResult,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/types";
 import { buildDefaultDpgf } from "@/lib/dpgf-defaults";
 import { downloadDpgfPdf } from "@/lib/dpgf-pdf";
+import DevisDialog from "./devis-dialog";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
@@ -79,6 +81,7 @@ export default function DpgfPanel({
   const [ceilingHeight, setCeilingHeight] = useState(2.5);
   const [projectName, setProjectName] = useState("");
   const [projectAddress, setProjectAddress] = useState("");
+  const [devisOpen, setDevisOpen] = useState(false);
 
   // ── DPGF computation ────────────────────────────────────────────────────────
   const dpgf = useMemo<DpgfState>(() => {
@@ -426,6 +429,14 @@ export default function DpgfPanel({
               </button>
               <button
                 type="button"
+                onClick={() => setDevisOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold transition-colors"
+              >
+                <FileSignature className="w-3.5 h-3.5" />
+                {d("devis_generate" as DTKey)}
+              </button>
+              <button
+                type="button"
                 onClick={exportCsv}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg text-xs font-semibold border border-white/10 transition-colors"
               >
@@ -433,6 +444,9 @@ export default function DpgfPanel({
                 {d("dpgf_export_csv" as DTKey)}
               </button>
             </div>
+
+            {/* Devis dialog */}
+            {devisOpen && <DevisDialog dpgf={dpgf} onClose={() => setDevisOpen(false)} />}
 
             {/* ── Total bar ───────────────────────────────────────────────── */}
             <div className="bg-ink/80 backdrop-blur border-t border-white/10 px-5 py-4 flex flex-wrap items-center justify-between gap-4">
