@@ -1291,130 +1291,122 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       {mode === "editor" && (
         <div className="flex gap-1.5" style={{ height: "calc(100vh - 7rem)" }}>
 
-          {/* ══ LEFT VERTICAL TOOLBAR ══ */}
-          <div className="w-11 shrink-0 flex flex-col items-center gap-0.5 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
+{/* ══ LEFT VERTICAL TOOLBAR ══ */}
+          <div className="w-14 shrink-0 flex flex-col items-center gap-1 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
             <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">LAYER</span>
             {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
               <button key={l} onClick={() => setLayer(l)}
                 title={l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : d("ed_rooms")}
-                className={cn("w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-all",
+                className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-sm transition-all",
                   layer === l
                     ? l === "rooms" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40" : "bg-accent/20 text-accent ring-1 ring-accent/40"
                     : "text-slate-500 hover:text-white hover:bg-white/5"
                 )}>
-                {l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : "🏘️"}
+                <span>{l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : "🏘️"}</span>
+                <span className="text-[7px] leading-none">{l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : d("ed_rooms")}</span>
               </button>
             ))}
-            <div className="w-6 border-t border-white/10 my-1" />
-            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">TOOL</span>
+            <div className="w-8 border-t border-white/10 my-1" />
+            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">EDITOR</span>
             {/* Select */}
             <button onClick={() => { setTool("select"); pts.current = []; setModifyPanelOpen(false); }}
               title={d("ed_select")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+              className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg transition-all",
                 tool === "select" ? "bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
               <MousePointer2 className="w-4 h-4" />
+              <span className="text-[7px] leading-none">{d("ed_select")}</span>
             </button>
-            {/* Modify — opens floating panel with all tools + labels */}
-            <div className="relative">
-              <button onClick={() => setModifyPanelOpen(v => !v)}
-                title={d("ed_modify")}
-                className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                  modifyPanelOpen || (tool !== "select" && tool !== "visual_search")
-                    ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-                <PenLine className="w-4 h-4" />
-              </button>
-              {modifyPanelOpen && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setModifyPanelOpen(false)} />
-                  <div className="absolute left-10 top-0 z-40 glass border border-white/10 rounded-xl p-1.5 flex flex-col gap-0.5 min-w-[180px] shadow-xl">
-                    <span className="text-[8px] text-slate-600 font-mono uppercase tracking-wider px-2 mb-0.5">{d("ed_tools_panel")}</span>
-                    <button onClick={() => { setTool("add_rect"); pts.current = []; setModifyPanelOpen(false); }}
-                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                        tool === "add_rect" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                      <Plus className="w-3.5 h-3.5" /> {d("ed_add_rect")}
-                    </button>
-                    <button onClick={() => { setTool("erase_rect"); pts.current = []; setModifyPanelOpen(false); }}
-                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                        tool === "erase_rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                      <Trash2 className="w-3.5 h-3.5" /> {d("ed_erase_rect")}
-                    </button>
-                    <button onClick={() => { setTool("add_poly"); pts.current = []; setModifyPanelOpen(false); }}
-                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                        tool === "add_poly" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                      <PenLine className="w-3.5 h-3.5" /> {d("ed_add_poly")}
-                    </button>
-                    <button onClick={() => { setTool("erase_poly"); pts.current = []; setModifyPanelOpen(false); }}
-                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                        tool === "erase_poly" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                      <X className="w-3.5 h-3.5" /> {d("ed_erase_poly")}
-                    </button>
-                    {(layer === "door" || layer === "window" || layer === "interior") && (
-                      <button onClick={() => { setTool("sam"); setModifyPanelOpen(false); }}
-                        className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                          tool === "sam" ? "bg-orange-500/20 text-orange-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                        <span className="w-3.5 text-center">✨</span> {d("ed_sam_auto")}
-                      </button>
-                    )}
-                    {layer === "rooms" && selectedRoomId !== null && (
-                      <button onClick={() => { setTool("split"); pts.current = []; setModifyPanelOpen(false); toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                        className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                          tool === "split" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                        <Scissors className="w-3.5 h-3.5" /> {d("ed_split")}
-                      </button>
-                    )}
-                    <div className="w-full border-t border-white/10 my-0.5" />
-                    <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); setModifyPanelOpen(false); }}
-                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
-                        tool === "visual_search" ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                      <Search className="w-3.5 h-3.5" /> {d("vs_tool")}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            {/* Modify — opens overlay panel */}
+            <button onClick={() => setModifyPanelOpen(v => !v)}
+              title={d("ed_modify")}
+              className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg transition-all",
+                modifyPanelOpen || (tool !== "select" && tool !== "visual_search")
+                  ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <PenLine className="w-4 h-4" />
+              <span className="text-[7px] leading-none">{d("ed_modify")}</span>
+            </button>
             {/* Finish polygon (contextual) */}
             {(tool === "add_poly" || tool === "erase_poly") && (
               <button onClick={finishPoly}
                 title={d("ed_finish_poly")}
-                className="w-8 h-8 rounded-lg flex items-center justify-center bg-accent-green/20 text-accent-green ring-1 ring-accent-green/40 text-xs font-bold animate-pulse">
-                ✓
+                className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg bg-accent-green/20 text-accent-green ring-1 ring-accent-green/40 text-[7px] font-bold animate-pulse">
+                <span className="text-sm">✓</span>
+                <span className="leading-none">OK</span>
               </button>
             )}
-            <div className="w-6 border-t border-white/10 my-1" />
+            <div className="w-8 border-t border-white/10 my-1" />
+            {/* Undo/Redo */}
             {layer === "rooms" ? (
               <>
                 <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /></button>
+                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Undo</span></button>
                 <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /></button>
+                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Redo</span></button>
               </>
             ) : (
               <>
                 <button onClick={sendUndoMask} disabled={editHistoryLen === 0 || loading}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /></button>
+                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Undo</span></button>
                 <button onClick={sendRedoMask} disabled={editFutureLen === 0 || loading}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /></button>
+                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Redo</span></button>
               </>
             )}
-            <div className="flex-1" />
-            <button onClick={() => setZoom(z => Math.min(12, z * 1.3))}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-              title="Zoom +"><ZoomIn className="w-4 h-4" /></button>
-            <button onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-              title="Zoom \u2212"><ZoomOut className="w-4 h-4" /></button>
-            {zoom > 1.05 && (
-              <button onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-                title="Reset"><RotateCcw className="w-3 h-3" /></button>
-            )}
           </div>
+          {/* Modify panel — fixed overlay */}
+          {modifyPanelOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setModifyPanelOpen(false)} />
+              <div className="fixed left-20 top-1/3 z-40 glass border border-white/10 rounded-xl p-2 flex flex-col gap-0.5 min-w-[200px] shadow-2xl">
+                <span className="text-[9px] text-slate-600 font-mono uppercase tracking-wider px-2 mb-1">{d("ed_tools_panel")}</span>
+                <button onClick={() => { setTool("add_rect"); pts.current = []; setModifyPanelOpen(false); }}
+                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                    tool === "add_rect" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                  <Plus className="w-4 h-4" /> {d("ed_add_rect")}
+                </button>
+                <button onClick={() => { setTool("erase_rect"); pts.current = []; setModifyPanelOpen(false); }}
+                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                    tool === "erase_rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                  <Trash2 className="w-4 h-4" /> {d("ed_erase_rect")}
+                </button>
+                <button onClick={() => { setTool("add_poly"); pts.current = []; setModifyPanelOpen(false); }}
+                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                    tool === "add_poly" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                  <PenLine className="w-4 h-4" /> {d("ed_add_poly")}
+                </button>
+                <button onClick={() => { setTool("erase_poly"); pts.current = []; setModifyPanelOpen(false); }}
+                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                    tool === "erase_poly" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                  <X className="w-4 h-4" /> {d("ed_erase_poly")}
+                </button>
+                {(layer === "door" || layer === "window" || layer === "interior") && (
+                  <button onClick={() => { setTool("sam"); setModifyPanelOpen(false); }}
+                    className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                      tool === "sam" ? "bg-orange-500/20 text-orange-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                    <span className="w-4 text-center">✨</span> {d("ed_sam_auto")}
+                  </button>
+                )}
+                {layer === "rooms" && selectedRoomId !== null && (
+                  <button onClick={() => { setTool("split"); pts.current = []; setModifyPanelOpen(false); toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                    className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                      tool === "split" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                    <Scissors className="w-4 h-4" /> {d("ed_split")}
+                  </button>
+                )}
+                <div className="w-full border-t border-white/10 my-0.5" />
+                <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); setModifyPanelOpen(false); }}
+                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
+                    tool === "visual_search" ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                  <Search className="w-4 h-4" /> {d("vs_tool")}
+                </button>
+              </div>
+            </>
+          )}
 
-          {/* ══ CENTER: PLAN ══ */}
+{/* ══ CENTER: PLAN ══ */}
           <div className="flex-1 flex flex-col gap-1 min-w-0">
             {/* Floating context bar */}
             <div className="flex items-center gap-2 px-1 h-7 shrink-0">
@@ -1507,6 +1499,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <Loader2 className="w-8 h-8 text-accent animate-spin" />
                 </div>
               )}
+              {/* Floating zoom controls — top-right */}
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+                <button onClick={() => setZoom(z => Math.min(12, z * 1.3))}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Zoom +"><ZoomIn className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Zoom −"><ZoomOut className="w-3.5 h-3.5" /></button>
+                {zoom > 1.05 && (
+                  <>
+                    <div className="w-px h-5 bg-white/10" />
+                    <button onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
+                      className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                      title="Reset"><RotateCcw className="w-3 h-3" /></button>
+                    <span className="text-[9px] text-slate-500 font-mono">{zoom.toFixed(1)}x</span>
+                  </>
+                )}
+              </div>
               <div style={{
                 position: "absolute",
                 top: "50%", left: "50%",
