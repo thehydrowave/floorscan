@@ -1183,6 +1183,16 @@ export const DEMO_T = {
   hsg_to_housing:         { fr:"Deplacer vers un logement",            en:"Move to housing",                   es:"Mover a vivienda",                    de:"Zur Wohnung verschieben",            it:"Sposta in alloggio"                   },
   hsg_habitability_detail:{ fr:"Detail habitabilite",                  en:"Habitability detail",               es:"Detalle habitabilidad",               de:"Bewohnbarkeitsdetail",               it:"Dettaglio abitabilita"                },
   hsg_csv_exported:       { fr:"CSV logements exporte",                en:"Housing CSV exported",              es:"CSV viviendas exportado",             de:"Wohnungs-CSV exportiert",            it:"CSV alloggi esportato"                },
+
+  // Editor UX v2
+  ed_export_btn:          { fr:"Exporter",                             en:"Export",                            es:"Exportar",                            de:"Exportieren",                        it:"Esportare"                            },
+  ed_save_btn:            { fr:"Sauvegarder",                          en:"Save",                              es:"Guardar",                             de:"Speichern",                          it:"Salvare"                              },
+  ed_modify:              { fr:"Modifier",                             en:"Modify",                            es:"Modificar",                           de:"Bearbeiten",                         it:"Modificare"                           },
+  ed_visibility:          { fr:"Visibilite",                           en:"Visibility",                        es:"Visibilidad",                         de:"Sichtbarkeit",                       it:"Visibilita"                           },
+  ed_add_page:            { fr:"Ajouter une page",                     en:"Add page",                          es:"Agregar pagina",                      de:"Seite hinzufugen",                   it:"Aggiungi pagina"                      },
+  ed_go_results:          { fr:"Voir resultats",                       en:"View results",                      es:"Ver resultados",                      de:"Ergebnisse anzeigen",                it:"Vedi risultati"                       },
+  ed_erase:               { fr:"Effacer",                              en:"Erase",                             es:"Borrar",                              de:"Loschen",                            it:"Cancellare"                           },
+  ed_tools_panel:          { fr:"Outils",                               en:"Tools",                             es:"Herramientas",                        de:"Werkzeuge",                          it:"Strumenti"                            },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

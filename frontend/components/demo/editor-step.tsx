@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, Grid3X3 as GridIcon, AlignVerticalSpaceAround } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -200,6 +200,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
   const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [modifyPanelOpen, setModifyPanelOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
@@ -1243,24 +1245,44 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         )}
         <div className="flex-1" />
         <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
-            {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline ml-1">{d("re_pdf")}</span>
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExportDxf} disabled={exportingDxf || !ppm} title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
-            {exportingDxf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline ml-1">DXF</span>
-          </Button>
+          {/* Save button */}
           {onGoResults && (
             <Button size="sm" variant="outline" onClick={() => onGoResults(result, customDetections)}>
-              <LayoutGrid className="w-3.5 h-3.5" />
+              <Save className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline ml-1">{d("ed_save_btn")}</span>
             </Button>
           )}
-          {onAddPage && (
-            <Button size="sm" variant="outline" onClick={onAddPage}>
-              <Plus className="w-3.5 h-3.5" />
+          {/* Export dropdown */}
+          <div className="relative">
+            <Button size="sm" variant="outline" onClick={() => setExportOpen(v => !v)}>
+              <Download className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline ml-1">{d("ed_export_btn")}</span>
+              <ChevronDown className={cn("w-3 h-3 ml-0.5 transition-transform", exportOpen && "rotate-180")} />
             </Button>
-          )}
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 glass border border-white/10 rounded-lg p-1 flex flex-col gap-0.5 min-w-[170px] shadow-xl">
+                  <button onClick={() => { handleExportPdf(); setExportOpen(false); }} disabled={exportingPdf}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left">
+                    {exportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} PDF
+                  </button>
+                  <button onClick={() => { handleExportDxf(); setExportOpen(false); }} disabled={exportingDxf || !ppm}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left"
+                    title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
+                    <FileDown className="w-3.5 h-3.5" /> DXF
+                  </button>
+                  {onAddPage && (
+                    <button onClick={() => { onAddPage(); setExportOpen(false); }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors w-full text-left">
+                      <Plus className="w-3.5 h-3.5" /> {d("ed_add_page")}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+          {/* Restart */}
           <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
         </div>
       </div>
@@ -1285,58 +1307,72 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             ))}
             <div className="w-6 border-t border-white/10 my-1" />
             <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">TOOL</span>
-            <button onClick={() => { setTool("select"); pts.current = []; }}
+            {/* Select */}
+            <button onClick={() => { setTool("select"); pts.current = []; setModifyPanelOpen(false); }}
               title={d("ed_select")}
               className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
                 tool === "select" ? "bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
               <MousePointer2 className="w-4 h-4" />
             </button>
-            <button onClick={() => { setTool("add_rect"); pts.current = []; }}
-              title={d("ed_add_rect")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                tool === "add_rect" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <Plus className="w-4 h-4" />
-            </button>
-            <button onClick={() => { setTool("erase_rect"); pts.current = []; }}
-              title={d("ed_erase_rect")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                tool === "erase_rect" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <button onClick={() => { setTool("add_poly"); pts.current = []; }}
-              title={d("ed_add_poly")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                tool === "add_poly" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <PenLine className="w-4 h-4" />
-            </button>
-            <button onClick={() => { setTool("erase_poly"); pts.current = []; }}
-              title={d("ed_erase_poly")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                tool === "erase_poly" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <X className="w-4 h-4" />
-            </button>
-            {(layer === "door" || layer === "window" || layer === "interior") && (
-              <button onClick={() => setTool("sam")}
-                title={d("ed_sam_auto")}
-                className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all text-xs font-bold",
-                  tool === "sam" ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-                ✨
-              </button>
-            )}
-            {layer === "rooms" && selectedRoomId !== null && (
-              <button onClick={() => { setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                title={d("ed_split")}
+            {/* Modify — opens floating panel with all tools + labels */}
+            <div className="relative">
+              <button onClick={() => setModifyPanelOpen(v => !v)}
+                title={d("ed_modify")}
                 className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                  tool === "split" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-                <Scissors className="w-4 h-4" />
+                  modifyPanelOpen || (tool !== "select" && tool !== "visual_search")
+                    ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                <PenLine className="w-4 h-4" />
               </button>
-            )}
-            <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); }}
-              title={d("vs_tool")}
-              className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-all",
-                tool === "visual_search" ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <Search className="w-4 h-4" />
-            </button>
+              {modifyPanelOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setModifyPanelOpen(false)} />
+                  <div className="absolute left-10 top-0 z-40 glass border border-white/10 rounded-xl p-1.5 flex flex-col gap-0.5 min-w-[180px] shadow-xl">
+                    <span className="text-[8px] text-slate-600 font-mono uppercase tracking-wider px-2 mb-0.5">{d("ed_tools_panel")}</span>
+                    <button onClick={() => { setTool("add_rect"); pts.current = []; setModifyPanelOpen(false); }}
+                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                        tool === "add_rect" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                      <Plus className="w-3.5 h-3.5" /> {d("ed_add_rect")}
+                    </button>
+                    <button onClick={() => { setTool("erase_rect"); pts.current = []; setModifyPanelOpen(false); }}
+                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                        tool === "erase_rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                      <Trash2 className="w-3.5 h-3.5" /> {d("ed_erase_rect")}
+                    </button>
+                    <button onClick={() => { setTool("add_poly"); pts.current = []; setModifyPanelOpen(false); }}
+                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                        tool === "add_poly" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                      <PenLine className="w-3.5 h-3.5" /> {d("ed_add_poly")}
+                    </button>
+                    <button onClick={() => { setTool("erase_poly"); pts.current = []; setModifyPanelOpen(false); }}
+                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                        tool === "erase_poly" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                      <X className="w-3.5 h-3.5" /> {d("ed_erase_poly")}
+                    </button>
+                    {(layer === "door" || layer === "window" || layer === "interior") && (
+                      <button onClick={() => { setTool("sam"); setModifyPanelOpen(false); }}
+                        className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                          tool === "sam" ? "bg-orange-500/20 text-orange-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                        <span className="w-3.5 text-center">✨</span> {d("ed_sam_auto")}
+                      </button>
+                    )}
+                    {layer === "rooms" && selectedRoomId !== null && (
+                      <button onClick={() => { setTool("split"); pts.current = []; setModifyPanelOpen(false); toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                        className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                          tool === "split" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                        <Scissors className="w-3.5 h-3.5" /> {d("ed_split")}
+                      </button>
+                    )}
+                    <div className="w-full border-t border-white/10 my-0.5" />
+                    <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); setModifyPanelOpen(false); }}
+                      className={cn("flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs transition-all w-full text-left",
+                        tool === "visual_search" ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                      <Search className="w-3.5 h-3.5" /> {d("vs_tool")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            {/* Finish polygon (contextual) */}
             {(tool === "add_poly" || tool === "erase_poly") && (
               <button onClick={finishPoly}
                 title={d("ed_finish_poly")}
@@ -1408,54 +1444,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </div>
               )}
               {layer === "rooms" && (
-                <div className="flex gap-0.5 items-center ml-1">
-                  <button onClick={() => { const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid; const next = !allOn; setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next })); }}
-                    title={d("snap_label")}
-                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
-                      snapConfig.enableWall ? "bg-cyan-500/20 text-cyan-400" : "text-slate-600 hover:text-slate-400")}>
-                    <Magnet size={12} />
-                  </button>
-                  <button onClick={() => setSnapConfig(c => ({ ...c, enableGrid: !c.enableGrid }))}
-                    title={d("snap_grid")}
-                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
-                      snapConfig.enableGrid ? "bg-green-500/20 text-green-400" : "text-slate-600 hover:text-slate-400")}>
-                    <GridIcon size={12} />
-                  </button>
-                  <button onClick={() => setSnapConfig(c => ({ ...c, enableAlignment: !c.enableAlignment }))}
-                    title={d("snap_align")}
-                    className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
-                      snapConfig.enableAlignment ? "bg-purple-500/20 text-purple-400" : "text-slate-600 hover:text-slate-400")}>
-                    <AlignVerticalSpaceAround size={12} />
-                  </button>
-                </div>
+                <button onClick={() => { const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid && snapConfig.enableAlignment; const next = !allOn; setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next })); }}
+                  title={d("snap_label")}
+                  className={cn("flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-500 border transition-all",
+                    snapConfig.enableWall ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400" : "border-white/10 text-slate-600 hover:text-slate-400")}>
+                  <Magnet size={12} /> {d("snap_label")}
+                </button>
               )}
-              <div className="flex gap-0.5 items-center ml-1">
-                <button onClick={() => setShowDoors(v => !v)}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[10px] transition-all",
-                    showDoors ? "bg-fuchsia-500/20 text-fuchsia-400" : "text-slate-600 hover:text-slate-400")}>
-                  🚪
-                </button>
-                <button onClick={() => setShowWindows(v => !v)}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[10px] transition-all",
-                    showWindows ? "bg-yellow-500/20 text-yellow-400" : "text-slate-600 hover:text-slate-400")}>
-                  🪟
-                </button>
-                <button onClick={() => setShowWalls(v => !v)}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
-                    showWalls ? "bg-orange-500/20 text-orange-400" : "text-slate-600 hover:text-slate-400")}>
-                  <Layers size={10} />
-                </button>
-                <button onClick={() => setShowRooms(v => !v)}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-all",
-                    showRooms ? "bg-emerald-500/20 text-emerald-400" : "text-slate-600 hover:text-slate-400")}>
-                  <LayoutGrid size={10} />
-                </button>
-                <button onClick={() => setShowOpeningOverlay(v => !v)}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold transition-all",
-                    showOpeningOverlay ? "bg-white/10 text-white" : "text-slate-600 hover:text-slate-400")}>
-                  N\u00b0
-                </button>
-              </div>
               {tool === "visual_search" && (
                 <div className="flex items-center gap-1.5 ml-1">
                   {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
@@ -1491,7 +1486,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </div>
               )}
               <div className="flex-1" />
-              {zoom > 1.05 && <span className="text-[9px] text-slate-500 font-mono">\u00d7{zoom.toFixed(1)}</span>}
+
             </div>
 
             <div
@@ -2159,13 +2154,39 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {zoom > 1.05 && <span className="text-slate-500 font-mono ml-1">×{zoom.toFixed(1)}</span>}
             </p>
 
-            <p className="text-[10px] text-slate-600 px-1">
-              {d("ed_canvas_hint")} · Scroll — zoom · Clic droit — déplacer
-            </p>
           </div>
 
           {/* \u2550\u2550 RIGHT SIDEBAR \u2550\u2550 */}
           <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
+            {/* Visibility toggles */}
+            <div className="flex items-center gap-1 px-1 shrink-0">
+              <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5">{d("ed_visibility")}</span>
+              <button onClick={() => setShowDoors(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showDoors ? "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                🚪 {showDoors ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowWindows(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showWindows ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                🪟 {showWindows ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowWalls(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showWalls ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                <Layers size={10} /> {showWalls ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowRooms(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showRooms ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                <LayoutGrid size={10} /> {showRooms ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowOpeningOverlay(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all",
+                  showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                N°
+              </button>
+            </div>
             <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
               {([
                 { id: "results" as const, label: d("ed_ia_results") },
