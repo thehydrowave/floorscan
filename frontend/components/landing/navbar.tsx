@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { LANGUAGES, t } from "@/lib/i18n";
+import ThemeSwitcher from "@/components/ui/theme-switcher";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -78,6 +79,8 @@ export default function Navbar() {
 
         {/* Right side: lang + CTAs */}
         <div className="hidden md:flex items-center gap-3">
+          {/* Theme toggle */}
+          <ThemeSwitcher />
           {/* Language selector */}
           <div ref={langRef} className="relative">
             <button
@@ -156,8 +159,9 @@ export default function Navbar() {
               {t(link.labelKey, lang)}
             </Link>
           ))}
-          {/* Mobile lang selector */}
-          <div className="border-t border-slate-700/50 pt-2 mt-1 flex flex-wrap gap-2">
+          {/* Mobile theme + lang selector */}
+          <div className="border-t border-slate-700/50 pt-2 mt-1 flex flex-wrap gap-2 items-center">
+            <ThemeSwitcher />
             {LANGUAGES.map((l) => (
               <button
                 key={l.code}

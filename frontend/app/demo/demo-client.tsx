@@ -24,6 +24,7 @@ import DiffViewStep from "@/components/diff/diff-view-step";
 import CartoucheResultStep from "@/components/cartouche/cartouche-result-step";
 import MeasureClient from "@/app/measure/measure-client";
 import LangSwitcher from "@/components/ui/lang-switcher";
+import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, DiffResult, CartoucheResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
@@ -435,7 +436,10 @@ export default function DemoClient() {
             </span>
           </Link>
 
-          <LangSwitcher />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <LangSwitcher />
+          </div>
 
           {/* Mode switcher — only shown once a mode is chosen */}
           {demoMode !== null && (

@@ -11,6 +11,7 @@ import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
 import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
+import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -1398,6 +1399,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
           </div>
 
           <div className="flex items-center gap-2">
+            <ThemeSwitcher />
             <LangSwitcher />
             {/* Import .floorscan */}
             <button
