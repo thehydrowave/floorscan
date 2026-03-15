@@ -1385,14 +1385,13 @@ def _mask_to_rgba(mask: np.ndarray, color: tuple, alpha: int = 100) -> np.ndarra
 
 
 def _split_walls_by_ai_thickness(m_walls_ai: np.ndarray):
-    """Sépare le masque murs IA en béton / cloisons selon l'épaisseur des composantes.
+    """Sépare le masque murs IA en béton / cloisons via distance transform.
 
-    Principe :
-      - Pour chaque composante connexe, épaisseur = 2 * aire / périmètre
-        (approximation robuste pour murs obliques ou axis-alignés)
-      - Seuil = max_épaisseur / 2
-      - épaisseur >= seuil  → béton (mur porteur)
-      - épaisseur <  seuil  → cloison (mur intérieur fin)
+    Principe (pixel par pixel, insensible à la connexité) :
+      - distance transform : pour chaque pixel de mur, distance au plus proche vide
+      - seuil = max(distance) / 2  ← centre du mur le plus épais
+      - pixel avec dist >= seuil  → béton  (coeur d'un mur épais)
+      - pixel avec dist <  seuil  → cloison (mur fin, proche du bord)
 
     Retourne deux masques binaires uint8 (m_beton, m_cloisons).
     """
@@ -1401,33 +1400,20 @@ def _split_walls_by_ai_thickness(m_walls_ai: np.ndarray):
         return np.zeros((H, W), np.uint8), np.zeros((H, W), np.uint8)
 
     _, binary = cv2.threshold(m_walls_ai, 127, 255, cv2.THRESH_BINARY)
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
 
-    thicknesses = []
-    for i in range(1, num):
-        area = float(stats[i, cv2.CC_STAT_AREA])
-        comp_mask = (labels == i).astype(np.uint8) * 255
-        cnts, _ = cv2.findContours(comp_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        perim = sum(cv2.arcLength(c, True) for c in cnts) if cnts else 1.0
-        thicknesses.append((2.0 * area / perim) if perim > 0 else 0.0)
+    # Distance de chaque pixel de mur au bord le plus proche
+    dist = cv2.distanceTransform(binary, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
 
-    if not thicknesses:
+    max_dist = float(dist.max())
+    if max_dist == 0:
         H, W = binary.shape
         return np.zeros((H, W), np.uint8), np.zeros((H, W), np.uint8)
 
-    max_thickness = max(thicknesses)
-    threshold = max_thickness / 2.0
+    threshold = max_dist / 2.0
+    wall_px   = binary > 0
 
-    H, W = binary.shape
-    m_beton    = np.zeros((H, W), np.uint8)
-    m_cloisons = np.zeros((H, W), np.uint8)
-
-    for i, thick in enumerate(thicknesses, start=1):
-        comp_mask = (labels == i).astype(np.uint8) * 255
-        if thick >= threshold:
-            m_beton    = cv2.bitwise_or(m_beton,    comp_mask)
-        else:
-            m_cloisons = cv2.bitwise_or(m_cloisons, comp_mask)
+    m_beton    = np.where(wall_px & (dist >= threshold), 255, 0).astype(np.uint8)
+    m_cloisons = np.where(wall_px & (dist <  threshold), 255, 0).astype(np.uint8)
 
     return m_beton, m_cloisons
 
