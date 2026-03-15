@@ -489,23 +489,33 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
-              {/* Doors RGBA overlay */}
+              {/* Doors overlay — CSS mask for vivid color (same as editor) */}
               {showDoors && result.mask_doors_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_doors_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#FF00CC",
+                  opacity: 0.5,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  WebkitMaskMode: "luminance",
+                  maskMode: "luminance",
+                  zIndex: 1,
+                }} />
               )}
-              {/* Windows RGBA overlay */}
+              {/* Windows overlay — CSS mask for vivid color (same as editor) */}
               {showWindows && result.mask_windows_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_windows_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#00CCFF",
+                  opacity: 0.5,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  WebkitMaskMode: "luminance",
+                  maskMode: "luminance",
+                  zIndex: 1,
+                }} />
               )}
               {/* Walls RGBA overlay */}
               {showWalls && result.mask_walls_b64 && (
