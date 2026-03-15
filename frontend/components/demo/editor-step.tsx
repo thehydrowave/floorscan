@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -169,10 +169,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     if (layer === "rooms") {
       setShowRooms(true);
       setTool("select");
-    } else if (layer === "door" || layer === "window") {
-      if (tool === "split") setTool("add_rect");
-    } else if (layer === "interior" || layer === "wall" || layer === "cloison") {
-      if (tool === "split" || tool === "select") setTool("add_rect");
+    } else {
+      // Sur les couches masque : revenir à add_rect si outil incompatible
+      if (tool === "select" || tool === "split") setTool("add_rect");
+      // SAM seulement pour door/window/interior
+      if (tool === "sam" && layer !== "door" && layer !== "window" && layer !== "interior") setTool("add_rect");
+      pts.current = [];
     }
     if (layer !== "rooms") {
       setSelectedRoomId(null);
@@ -201,7 +203,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
   const [exportOpen, setExportOpen] = useState(false);
-  const [modifyPanelOpen, setModifyPanelOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
@@ -1298,122 +1299,153 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         <div className="flex gap-1.5" style={{ height: "calc(100vh - 7rem)" }}>
 
 {/* ══ LEFT VERTICAL TOOLBAR ══ */}
-          <div className="w-14 shrink-0 flex flex-col items-center gap-1 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
-            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">LAYER</span>
-            {(["door", "window", "interior", "rooms", "wall", "cloison"] as Layer[]).map(l => (
-              <button key={l} onClick={() => setLayer(l)}
-                title={l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : l === "rooms" ? d("ed_rooms") : l === "wall" ? "Murs (Pixel)" : "Cloisons"}
-                className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-sm transition-all",
-                  layer === l
-                    ? l === "rooms" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
-                      : l === "wall" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40"
-                      : l === "cloison" ? "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40"
-                      : "bg-accent/20 text-accent ring-1 ring-accent/40"
-                    : "text-slate-500 hover:text-white hover:bg-white/5"
-                )}>
-                <span>{l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : l === "rooms" ? "🏘️" : l === "wall" ? "🧱" : "🔲"}</span>
-                <span className="text-[7px] leading-none">{l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : l === "rooms" ? d("ed_rooms") : l === "wall" ? "Murs" : "Cloisons"}</span>
-              </button>
-            ))}
-            <div className="w-8 border-t border-white/10 my-1" />
-            <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">EDITOR</span>
-            {/* Select */}
-            <button onClick={() => { setTool("select"); pts.current = []; setModifyPanelOpen(false); }}
-              title={d("ed_select")}
-              className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg transition-all",
-                tool === "select" ? "bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <MousePointer2 className="w-4 h-4" />
-              <span className="text-[7px] leading-none">{d("ed_select")}</span>
-            </button>
-            {/* Modify — opens overlay panel */}
-            <button onClick={() => setModifyPanelOpen(v => !v)}
-              title={d("ed_modify")}
-              className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg transition-all",
-                modifyPanelOpen || (tool !== "select" && tool !== "visual_search")
-                  ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
-              <PenLine className="w-4 h-4" />
-              <span className="text-[7px] leading-none">{d("ed_modify")}</span>
-            </button>
-            {/* Finish polygon (contextual) */}
-            {(tool === "add_poly" || tool === "erase_poly") && (
-              <button onClick={finishPoly}
-                title={d("ed_finish_poly")}
-                className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg bg-accent-green/20 text-accent-green ring-1 ring-accent-green/40 text-[7px] font-bold animate-pulse">
-                <span className="text-sm">✓</span>
-                <span className="leading-none">OK</span>
-              </button>
+          <div className="w-16 shrink-0 flex flex-col items-center gap-0.5 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
+
+            {/* ── ÉTAPE 1 : ÉLÉMENT ── */}
+            <span className="text-[7px] text-slate-500 font-mono uppercase tracking-wider mb-0.5">Élément</span>
+            {(["door", "window", "wall", "cloison", "interior", "rooms"] as Layer[]).map(l => {
+              const meta: Record<Layer, { emoji: string; label: string; active: string }> = {
+                door:     { emoji: "🚪", label: d("ed_doors"),    active: "bg-fuchsia-500/20 text-fuchsia-400 ring-1 ring-fuchsia-500/40" },
+                window:   { emoji: "🪟", label: d("ed_windows"),  active: "bg-cyan-500/20 text-cyan-400 ring-1 ring-cyan-500/40" },
+                wall:     { emoji: "🧱", label: "Béton",          active: "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" },
+                cloison:  { emoji: "🔲", label: "Cloisons",       active: "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40" },
+                interior: { emoji: "🏠", label: d("ed_living_s"), active: "bg-accent/20 text-accent ring-1 ring-accent/40" },
+                rooms:    { emoji: "🏘️", label: d("ed_rooms"),   active: "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40" },
+              };
+              const m = meta[l];
+              return (
+                <button key={l} onClick={() => setLayer(l)} title={m.label}
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-sm transition-all",
+                    layer === l ? m.active : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <span>{m.emoji}</span>
+                  <span className="text-[7px] leading-none truncate w-full text-center">{m.label}</span>
+                </button>
+              );
+            })}
+
+            <div className="w-10 border-t border-white/10 my-1.5" />
+
+            {/* ── ÉTAPE 2 : OUTILS — contextuel par couche ── */}
+            <span className="text-[7px] text-slate-500 font-mono uppercase tracking-wider mb-0.5">Outils</span>
+
+            {/* Outils couches masque (tout sauf rooms) */}
+            {layer !== "rooms" && (
+              <>
+                <button onClick={() => { setTool("add_rect"); pts.current = []; }}
+                  title="Dessiner un rectangle"
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "add_rect" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <Square className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Dessiner</span>
+                </button>
+                <button onClick={() => { setTool("erase_rect"); pts.current = []; }}
+                  title="Effacer un rectangle"
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "erase_rect" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <Eraser className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Effacer</span>
+                </button>
+                <button onClick={() => { setTool("add_poly"); pts.current = []; }}
+                  title="Dessiner une forme libre (polygone)"
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "add_poly" ? "bg-accent/20 text-accent ring-1 ring-accent/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <PenLine className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Forme lib.</span>
+                </button>
+                <button onClick={() => { setTool("erase_poly"); pts.current = []; }}
+                  title="Effacer une forme libre (polygone)"
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "erase_poly" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <X className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Eff. libre</span>
+                </button>
+                {(layer === "door" || layer === "window" || layer === "interior") && (
+                  <button onClick={() => setTool("sam")}
+                    title="Détection automatique par IA (clic sur la zone)"
+                    className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                      tool === "sam" ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                    <span className="text-base leading-none">✨</span>
+                    <span className="text-[7px] leading-none">IA Auto</span>
+                  </button>
+                )}
+                {/* Valider polygone en cours */}
+                {(tool === "add_poly" || tool === "erase_poly") && (
+                  <button onClick={finishPoly}
+                    title="Valider la forme dessinée"
+                    className="w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40 animate-pulse">
+                    <span className="text-base leading-none">✓</span>
+                    <span className="text-[7px] leading-none font-bold">Valider</span>
+                  </button>
+                )}
+              </>
             )}
-            <div className="w-8 border-t border-white/10 my-1" />
-            {/* Undo/Redo */}
+
+            {/* Outils couche Pièces */}
+            {layer === "rooms" && (
+              <>
+                <button onClick={() => { setTool("select"); pts.current = []; }}
+                  title="Sélectionner une pièce et modifier ses sommets"
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "select" ? "bg-teal-500/20 text-teal-400 ring-1 ring-teal-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+                  <MousePointer2 className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Sélectionner</span>
+                </button>
+                <button
+                  onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
+                  disabled={selectedRoomId === null}
+                  title={selectedRoomId === null ? "Sélectionnez d'abord une pièce" : "Couper la pièce sélectionnée en deux"}
+                  className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all",
+                    tool === "split" ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/40"
+                      : selectedRoomId !== null ? "text-slate-500 hover:text-white hover:bg-white/5"
+                      : "text-slate-700 opacity-40 cursor-not-allowed")}>
+                  <Scissors className="w-4 h-4" />
+                  <span className="text-[7px] leading-none">Couper</span>
+                </button>
+                {/* Annuler la découpe en cours */}
+                {tool === "split" && (
+                  <button onClick={() => { pts.current = []; drawCanvas(); setTool("select"); }}
+                    title="Annuler la découpe en cours"
+                    className="w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg bg-red-500/10 text-red-400 ring-1 ring-red-500/30">
+                    <X className="w-4 h-4" />
+                    <span className="text-[7px] leading-none">Annuler</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Recherche visuelle — disponible toujours */}
+            <button onClick={() => { setTool(tool === "visual_search" ? (layer === "rooms" ? "select" : "add_rect") : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
+              title="Recherche visuelle de motifs similaires"
+              className={cn("w-12 flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-all mt-0.5",
+                tool === "visual_search" ? "bg-amber-500/20 text-amber-400 ring-1 ring-amber-500/40" : "text-slate-500 hover:text-white hover:bg-white/5")}>
+              <Search className="w-4 h-4" />
+              <span className="text-[7px] leading-none">Recherche</span>
+            </button>
+
+            <div className="flex-1 min-h-2" />
+            <div className="w-10 border-t border-white/10 mb-0.5" />
+
+            {/* Annuler / Rétablir */}
             {layer === "rooms" ? (
               <>
                 <button onClick={sendUndoRoom} disabled={roomHistoryLen === 0 || loading}
-                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Undo</span></button>
+                  className="w-12 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Annuler</span></button>
                 <button onClick={sendRedoRoom} disabled={roomFutureLen === 0 || loading}
-                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Redo</span></button>
+                  className="w-12 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Rétablir</span></button>
               </>
             ) : (
               <>
                 <button onClick={sendUndoMask} disabled={editHistoryLen === 0 || loading}
-                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Undo</span></button>
+                  className="w-12 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_undo_tt")}><Undo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Annuler</span></button>
                 <button onClick={sendRedoMask} disabled={editFutureLen === 0 || loading}
-                  className="w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Redo</span></button>
+                  className="w-12 flex flex-col items-center gap-0.5 py-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                  title={d("ed_redo_tt")}><Redo2 className="w-4 h-4" /><span className="text-[7px] leading-none">Rétablir</span></button>
               </>
             )}
           </div>
-          {/* Modify panel — fixed overlay */}
-          {modifyPanelOpen && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setModifyPanelOpen(false)} />
-              <div className="fixed left-20 top-1/3 z-40 glass border border-white/10 rounded-xl p-2 flex flex-col gap-0.5 min-w-[200px] shadow-2xl">
-                <span className="text-[9px] text-slate-600 font-mono uppercase tracking-wider px-2 mb-1">{d("ed_tools_panel")}</span>
-                <button onClick={() => { setTool("add_rect"); pts.current = []; setModifyPanelOpen(false); }}
-                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                    tool === "add_rect" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                  <Plus className="w-4 h-4" /> {d("ed_add_rect")}
-                </button>
-                <button onClick={() => { setTool("erase_rect"); pts.current = []; setModifyPanelOpen(false); }}
-                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                    tool === "erase_rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                  <Trash2 className="w-4 h-4" /> {d("ed_erase_rect")}
-                </button>
-                <button onClick={() => { setTool("add_poly"); pts.current = []; setModifyPanelOpen(false); }}
-                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                    tool === "add_poly" ? "bg-accent/20 text-accent" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                  <PenLine className="w-4 h-4" /> {d("ed_add_poly")}
-                </button>
-                <button onClick={() => { setTool("erase_poly"); pts.current = []; setModifyPanelOpen(false); }}
-                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                    tool === "erase_poly" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                  <X className="w-4 h-4" /> {d("ed_erase_poly")}
-                </button>
-                {(layer === "door" || layer === "window" || layer === "interior") && (
-                  <button onClick={() => { setTool("sam"); setModifyPanelOpen(false); }}
-                    className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                      tool === "sam" ? "bg-orange-500/20 text-orange-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                    <span className="w-4 text-center">✨</span> {d("ed_sam_auto")}
-                  </button>
-                )}
-                {layer === "rooms" && selectedRoomId !== null && (
-                  <button onClick={() => { setTool("split"); pts.current = []; setModifyPanelOpen(false); toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
-                    className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                      tool === "split" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                    <Scissors className="w-4 h-4" /> {d("ed_split")}
-                  </button>
-                )}
-                <div className="w-full border-t border-white/10 my-0.5" />
-                <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") { setVsCrop(null); } setVsEditMode("search"); setModifyPanelOpen(false); }}
-                  className={cn("flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all w-full text-left",
-                    tool === "visual_search" ? "bg-amber-500/20 text-amber-400" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                  <Search className="w-4 h-4" /> {d("vs_tool")}
-                </button>
-              </div>
-            </>
-          )}
 
 {/* ══ CENTER: PLAN ══ */}
           <div className="flex-1 flex flex-col gap-1 min-w-0">
@@ -1424,17 +1456,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 : layer === "wall"   ? "border-red-500/30 bg-red-500/10 text-red-400"
                 : layer === "cloison"? "border-blue-500/30 bg-blue-500/10 text-blue-400"
                 : "border-accent/30 bg-accent/10 text-accent")}>
-                {layer === "door" ? `🚪 ${d("ed_doors")}` : layer === "window" ? `🪟 ${d("ed_windows")}` : layer === "interior" ? `🏠 ${d("ed_living_s")}` : layer === "rooms" ? `🏘️ ${d("ed_rooms")}` : layer === "wall" ? "🧱 Murs (Pixel)" : "🔲 Cloisons"}
+                {layer === "door" ? `🚪 ${d("ed_doors")}` : layer === "window" ? `🪟 ${d("ed_windows")}` : layer === "interior" ? `🏠 ${d("ed_living_s")}` : layer === "rooms" ? `🏘️ ${d("ed_rooms")}` : layer === "wall" ? "🧱 Béton" : "🔲 Cloisons"}
               </span>
               <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-600 border",
                 tool.startsWith("erase") ? "border-red-500/30 bg-red-500/10 text-red-400"
                 : tool === "sam" ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
                 : tool === "visual_search" ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
                 : tool === "select" ? "border-teal-500/30 bg-teal-500/10 text-teal-400"
+                : tool === "split" ? "border-orange-500/30 bg-orange-500/10 text-orange-400"
                 : "border-white/10 bg-white/5 text-slate-400")}>
-                {tool === "select" ? d("ed_select") : tool === "add_rect" ? d("ed_add_rect") : tool === "erase_rect" ? d("ed_erase_rect")
-                : tool === "add_poly" ? d("ed_add_poly") : tool === "erase_poly" ? d("ed_erase_poly") : tool === "sam" ? d("ed_sam_auto")
-                : tool === "split" ? d("ed_split") : tool === "visual_search" ? d("vs_tool") : tool}
+                {tool === "select" ? "Sélectionner"
+                : tool === "add_rect" ? "Dessiner rectangle"
+                : tool === "erase_rect" ? "Effacer rectangle"
+                : tool === "add_poly" ? "Dessiner forme libre"
+                : tool === "erase_poly" ? "Effacer forme libre"
+                : tool === "sam" ? "IA Auto"
+                : tool === "split" ? "Couper pièce"
+                : tool === "visual_search" ? "Recherche visuelle"
+                : tool}
               </span>
               {layer === "rooms" && (
                 <div className="flex gap-0.5 items-center">
@@ -1565,6 +1604,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
+              )}
+
+              {/* Overlay Murs béton (RGBA PNG) — affiché quand couche béton active */}
+              {layer === "wall" && result.mask_walls_pixel_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_walls_pixel_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none object-contain"
+                  style={{ zIndex: 2, opacity: 0.75 }}
+                />
+              )}
+
+              {/* Overlay Cloisons (RGBA PNG) — affiché quand couche cloison active */}
+              {layer === "cloison" && result.mask_cloisons_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_cloisons_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none object-contain"
+                  style={{ zIndex: 2, opacity: 0.75 }}
+                />
               )}
 
               {/* Masque coloré raster (fallback si pas de polygon_norm) */}
