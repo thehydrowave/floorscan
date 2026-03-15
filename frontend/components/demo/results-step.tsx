@@ -498,8 +498,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
-                  WebkitMaskMode: "luminance",
-                  maskMode: "luminance",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
                   zIndex: 1,
                 }} />
               )}
@@ -512,8 +511,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
-                  WebkitMaskMode: "luminance",
-                  maskMode: "luminance",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
                   zIndex: 1,
                 }} />
               )}
