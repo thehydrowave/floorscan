@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 // build: 2026-03-15
-const RENDER_BACKEND = "https://floorscan-backend.onrender.com";
+const RENDER_BACKEND = "https://floorscan-production.up.railway.app";
 
 const nextConfig = {
   reactStrictMode: false,
