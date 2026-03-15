@@ -1533,22 +1533,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {useRawPlan && showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00FF",
-                  opacity: 0.25,
+                  opacity: 0.35,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}
               {useRawPlan && showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FFFF00",
-                  opacity: 0.25,
+                  opacity: 0.35,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}

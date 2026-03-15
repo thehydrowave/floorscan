@@ -477,44 +477,48 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#D946EF",
-                  opacity: 0.25,
+                  opacity: 0.35,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}
               {showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#22D3EE",
-                  opacity: 0.25,
+                  opacity: 0.35,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}
               {showWalls && result.mask_walls_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#60A5FA",
-                  opacity: 0.25,
+                  opacity: 0.35,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}
               {showWallsAI && result.mask_walls_ai_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#F59E0B",
-                  opacity: 0.3,
+                  opacity: 0.4,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
               )}
