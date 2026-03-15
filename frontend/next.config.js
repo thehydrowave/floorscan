@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  experimental: {
-    serverComponentsExternalPackages: ["better-sqlite3"],
-  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.alias = { ...config.resolve.alias, canvas: false };

@@ -12,12 +12,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     }
 
-    const existing = getUserByEmail(email);
+    const existing = await getUserByEmail(email);
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
 
-    const user = createUser(email, name || "", password);
+    const user = await createUser(email, name || "", password);
     return NextResponse.json({
       id: user.id,
       email: user.email,

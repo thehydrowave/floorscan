@@ -12,8 +12,8 @@ export async function PATCH(
   }
   const { id } = await params;
   const { name, role } = await request.json();
-  updateUser(id, { name, role });
-  const updated = getUserById(id);
+  await updateUser(id, { name, role });
+  const updated = await getUserById(id);
   return NextResponse.json({
     id: updated?.id,
     email: updated?.email,
@@ -35,6 +35,6 @@ export async function DELETE(
   if (id === session.user.id) {
     return NextResponse.json({ error: "Cannot delete yourself" }, { status: 400 });
   }
-  deleteUser(id);
+  await deleteUser(id);
   return NextResponse.json({ ok: true });
 }

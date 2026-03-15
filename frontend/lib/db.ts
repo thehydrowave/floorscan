@@ -1,45 +1,49 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { neon } from "@neondatabase/serverless";
 import { hashSync } from "bcryptjs";
 
-// Store DB file at project root (outside /app to avoid HMR issues)
-const DB_PATH = path.join(process.cwd(), "floorscan-auth.db");
+function getSql() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+  return neon(process.env.DATABASE_URL);
+}
 
-let _db: Database.Database | null = null;
+// ── Ensure table exists (idempotent) ──────────────────────────────────────
+let initPromise: Promise<void> | null = null;
 
-export function getDb(): Database.Database {
-  if (_db) return _db;
+function ensureInit(): Promise<void> {
+  if (!initPromise) {
+    initPromise = doInit();
+  }
+  return initPromise;
+}
 
-  _db = new Database(DB_PATH);
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-
-  // Create users table
-  _db.exec(`
+async function doInit(): Promise<void> {
+  const sql = getSql();
+  await sql`
     CREATE TABLE IF NOT EXISTS users (
       id         TEXT PRIMARY KEY,
       email      TEXT UNIQUE NOT NULL,
       name       TEXT NOT NULL DEFAULT '',
       password   TEXT NOT NULL,
       role       TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
+  `;
 
   // Seed default admin if not exists
   const adminEmail = process.env.ADMIN_EMAIL || "admin@floorscan.local";
   const adminPassword = process.env.ADMIN_PASSWORD || "AdminFloorscan2024!";
-  const existing = _db.prepare("SELECT id FROM users WHERE email = ?").get(adminEmail);
-  if (!existing) {
+  const existing = await sql`SELECT id FROM users WHERE email = ${adminEmail}`;
+  if (existing.length === 0) {
     const id = crypto.randomUUID();
     const hashed = hashSync(adminPassword, 12);
-    _db.prepare(
-      "INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)"
-    ).run(id, adminEmail, "Admin", hashed, "admin");
+    await sql`
+      INSERT INTO users (id, email, name, password, role)
+      VALUES (${id}, ${adminEmail}, ${"Admin"}, ${hashed}, ${"admin"})
+    `;
   }
-
-  return _db;
 }
 
 // ── User types ─────────────────────────────────────────────────────────────
@@ -54,40 +58,65 @@ export interface DbUser {
 }
 
 // ── Query helpers ──────────────────────────────────────────────────────────
-export function getUserByEmail(email: string): DbUser | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE email = ?").get(email) as DbUser | undefined;
+export async function getUserByEmail(email: string): Promise<DbUser | undefined> {
+  await ensureInit();
+  const sql = getSql();
+  const rows = await sql`SELECT * FROM users WHERE email = ${email}`;
+  return rows[0] as DbUser | undefined;
 }
 
-export function getUserById(id: string): DbUser | undefined {
-  return getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as DbUser | undefined;
+export async function getUserById(id: string): Promise<DbUser | undefined> {
+  await ensureInit();
+  const sql = getSql();
+  const rows = await sql`SELECT * FROM users WHERE id = ${id}`;
+  return rows[0] as DbUser | undefined;
 }
 
-export function getAllUsers(): Omit<DbUser, "password">[] {
-  return getDb()
-    .prepare("SELECT id, email, name, role, created_at, updated_at FROM users ORDER BY created_at DESC")
-    .all() as Omit<DbUser, "password">[];
+export async function getAllUsers(): Promise<Omit<DbUser, "password">[]> {
+  await ensureInit();
+  const sql = getSql();
+  const rows = await sql`
+    SELECT id, email, name, role, created_at, updated_at
+    FROM users
+    ORDER BY created_at DESC
+  `;
+  return rows as Omit<DbUser, "password">[];
 }
 
-export function createUser(email: string, name: string, password: string, role: "admin" | "user" = "user"): DbUser {
+export async function createUser(
+  email: string,
+  name: string,
+  password: string,
+  role: "admin" | "user" = "user"
+): Promise<DbUser> {
+  await ensureInit();
+  const sql = getSql();
   const id = crypto.randomUUID();
   const hashed = hashSync(password, 12);
-  getDb().prepare(
-    "INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)"
-  ).run(id, email, name, hashed, role);
-  return getUserById(id)!;
+  await sql`
+    INSERT INTO users (id, email, name, password, role)
+    VALUES (${id}, ${email}, ${name}, ${hashed}, ${role})
+  `;
+  return (await getUserById(id))!;
 }
 
-export function updateUser(id: string, data: { name?: string; role?: "admin" | "user" }): void {
-  const sets: string[] = [];
-  const values: unknown[] = [];
-  if (data.name !== undefined) { sets.push("name = ?"); values.push(data.name); }
-  if (data.role !== undefined) { sets.push("role = ?"); values.push(data.role); }
-  if (sets.length === 0) return;
-  sets.push("updated_at = datetime('now')");
-  values.push(id);
-  getDb().prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+export async function updateUser(
+  id: string,
+  data: { name?: string; role?: "admin" | "user" }
+): Promise<void> {
+  await ensureInit();
+  const sql = getSql();
+  if (data.name !== undefined && data.role !== undefined) {
+    await sql`UPDATE users SET name = ${data.name}, role = ${data.role}, updated_at = NOW() WHERE id = ${id}`;
+  } else if (data.name !== undefined) {
+    await sql`UPDATE users SET name = ${data.name}, updated_at = NOW() WHERE id = ${id}`;
+  } else if (data.role !== undefined) {
+    await sql`UPDATE users SET role = ${data.role}, updated_at = NOW() WHERE id = ${id}`;
+  }
 }
 
-export function deleteUser(id: string): void {
-  getDb().prepare("DELETE FROM users WHERE id = ?").run(id);
+export async function deleteUser(id: string): Promise<void> {
+  await ensureInit();
+  const sql = getSql();
+  await sql`DELETE FROM users WHERE id = ${id}`;
 }
