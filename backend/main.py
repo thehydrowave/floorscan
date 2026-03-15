@@ -303,10 +303,12 @@ def analyze(req: AnalyzeRequest):
 
     with _get_session_lock(req.session_id):
         sessions[req.session_id].update({
-            "m_doors":          np.array(result["_m_doors"],    dtype=np.uint8),
-            "m_windows":        np.array(result["_m_windows"],  dtype=np.uint8),
-            "walls":            np.array(result["_walls"],      dtype=np.uint8),
-            "m_walls_ai":       np.array(result["_m_walls_ai"], dtype=np.uint8),
+            "m_doors":          np.array(result["_m_doors"],        dtype=np.uint8),
+            "m_windows":        np.array(result["_m_windows"],      dtype=np.uint8),
+            "walls":            np.array(result["_walls"],          dtype=np.uint8),
+            "m_walls_ai":       np.array(result["_m_walls_ai"],     dtype=np.uint8),
+            "m_walls_pixel":    np.array(result["_m_walls_pixel"],  dtype=np.uint8),
+            "m_cloisons":       np.array(result["_m_cloisons"],     dtype=np.uint8),
             "interior_mask":    interior_mask,
             "pixels_per_meter": result["pixels_per_meter"],
             "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
@@ -356,9 +358,11 @@ def edit_mask(req: EditMaskRequest):
 
     # ── Push undo snapshot for mask edit ──
     snapshot = {
-        "m_doors": _compress_mask(s["m_doors"]),
-        "m_windows": _compress_mask(s["m_windows"]),
+        "m_doors":       _compress_mask(s["m_doors"]),
+        "m_windows":     _compress_mask(s["m_windows"]),
         "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
+        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
     }
     history = s.setdefault("mask_edit_history", [])
     history.append(snapshot)
@@ -372,15 +376,16 @@ def edit_mask(req: EditMaskRequest):
     elif req.layer == "window":
         mask = s["m_windows"].copy()
     elif req.layer == "interior":
-        # FIX: support de l'édition du masque de surface habitable
         existing = s.get("interior_mask")
-        if existing is None:
-            # Créer un masque vide si pas encore calculé
-            mask = np.zeros((H, W), np.uint8)
-        else:
-            mask = existing.copy()
+        mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
+    elif req.layer == "wall":
+        existing = s.get("m_walls_pixel")
+        mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
+    elif req.layer == "cloison":
+        existing = s.get("m_cloisons")
+        mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
     else:
-        raise HTTPException(400, "layer doit être 'door', 'window' ou 'interior'")
+        raise HTTPException(400, "layer invalide")
 
     # Appliquer l'action
     add = req.action.startswith("add")
@@ -412,8 +417,41 @@ def edit_mask(req: EditMaskRequest):
         sessions[req.session_id]["m_windows"] = mask
     elif req.layer == "interior":
         sessions[req.session_id]["interior_mask"] = mask
+    elif req.layer == "wall":
+        sessions[req.session_id]["m_walls_pixel"] = mask
+        # Recompute cloisons depuis le masque pixel édité
+        m_walls_ai = s.get("m_walls_ai")
+        cnt_stored  = s.get("analysis", {}).get("_cnt")
+        cnt_np = np.array(cnt_stored, dtype=np.int32) if cnt_stored is not None else None
+        new_cloisons = pipeline._compute_cloisons(
+            m_walls_ai if m_walls_ai is not None else np.zeros((H, W), np.uint8),
+            mask, cnt_np, H, W
+        )
+        sessions[req.session_id]["m_cloisons"] = new_cloisons
+        # Réponse légère : uniquement les deux masques mis à jour
+        wp_b64 = pipeline._np_to_b64(pipeline._mask_to_rgba(mask, (239, 68, 68), 80)) if cv2.countNonZero(mask) > 0 else None
+        cl_b64 = pipeline._np_to_b64(pipeline._mask_to_rgba(new_cloisons, (0, 100, 255), 210)) if cv2.countNonZero(new_cloisons) > 0 else None
+        sessions[req.session_id]["analysis"]["mask_walls_pixel_b64"] = wp_b64
+        sessions[req.session_id]["analysis"]["mask_cloisons_b64"]    = cl_b64
+        _touch_session(req.session_id)
+        return {
+            "mask_walls_pixel_b64": wp_b64,
+            "mask_cloisons_b64":    cl_b64,
+            "edit_history_len": len(s.get("mask_edit_history", [])),
+            "edit_future_len":  len(s.get("mask_edit_future",  [])),
+        }
+    elif req.layer == "cloison":
+        sessions[req.session_id]["m_cloisons"] = mask
+        cl_b64 = pipeline._np_to_b64(pipeline._mask_to_rgba(mask, (0, 100, 255), 210)) if cv2.countNonZero(mask) > 0 else None
+        sessions[req.session_id]["analysis"]["mask_cloisons_b64"] = cl_b64
+        _touch_session(req.session_id)
+        return {
+            "mask_cloisons_b64": cl_b64,
+            "edit_history_len": len(s.get("mask_edit_history", [])),
+            "edit_future_len":  len(s.get("mask_edit_future",  [])),
+        }
 
-    # Recalculer surfaces + overlays
+    # Recalculer surfaces + overlays (door / window / interior uniquement)
     ppm = s.get("pixels_per_meter")
     interior_override = sessions[req.session_id].get("interior_mask") if req.layer == "interior" else None
 
@@ -428,7 +466,6 @@ def edit_mask(req: EditMaskRequest):
         m_walls_ai=s.get("m_walls_ai"),
     )
 
-    # FIX: mettre à jour la session avec les nouvelles images pour l'export PDF
     sessions[req.session_id]["analysis"].update({
         "overlay_openings_b64": result["overlay_openings_b64"],
         "overlay_interior_b64": result.get("overlay_interior_b64"),
@@ -440,16 +477,14 @@ def edit_mask(req: EditMaskRequest):
         "surfaces":             result["surfaces"],
         "pixels_per_meter":     result.get("pixels_per_meter"),
     })
-    # Mettre à jour le masque intérieur brut si recalculé
     if result.get("_interior_mask") is not None:
         sessions[req.session_id]["interior_mask"] = result["_interior_mask"]
 
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
-    # Conserver rooms et walls (non recalculés lors de l'édition des masques)
     resp["rooms"] = sessions[req.session_id]["analysis"].get("rooms", [])
     resp["walls"] = sessions[req.session_id]["analysis"].get("walls", [])
     resp["edit_history_len"] = len(s.get("mask_edit_history", []))
-    resp["edit_future_len"] = len(s.get("mask_edit_future", []))
+    resp["edit_future_len"]  = len(s.get("mask_edit_future",  []))
     _touch_session(req.session_id)
     return resp
 
@@ -652,15 +687,16 @@ class UndoRedoMaskEditRequest(BaseModel):
     session_id: str
 
 def _restore_masks(s, snapshot, cfg):
-    """Restore door/window/interior masks from a compressed snapshot and recompute overlays."""
+    """Restore all editable masks from a compressed snapshot and recompute overlays."""
     img_rgb = s["img_rgb"]
     H, W = img_rgb.shape[:2]
-    s["m_doors"] = _decompress_mask(snapshot["m_doors"], (H, W))
+    s["m_doors"]   = _decompress_mask(snapshot["m_doors"],   (H, W))
     s["m_windows"] = _decompress_mask(snapshot["m_windows"], (H, W))
-    if snapshot["interior_mask"] is not None:
-        s["interior_mask"] = _decompress_mask(snapshot["interior_mask"], (H, W))
-    else:
-        s["interior_mask"] = None
+    s["interior_mask"] = _decompress_mask(snapshot["interior_mask"], (H, W)) if snapshot.get("interior_mask") is not None else None
+    if snapshot.get("m_walls_pixel") is not None:
+        s["m_walls_pixel"] = _decompress_mask(snapshot["m_walls_pixel"], (H, W))
+    if snapshot.get("m_cloisons") is not None:
+        s["m_cloisons"] = _decompress_mask(snapshot["m_cloisons"], (H, W))
 
     ppm = s.get("pixels_per_meter")
     interior_override = s.get("interior_mask")
@@ -682,7 +718,16 @@ def _restore_masks(s, snapshot, cfg):
     })
     if result.get("_interior_mask") is not None:
         s["interior_mask"] = result["_interior_mask"]
+    # Regenerate wall/cloison b64 from restored masks
+    wp = s.get("m_walls_pixel")
+    cl = s.get("m_cloisons")
+    if wp is not None:
+        s["analysis"]["mask_walls_pixel_b64"] = pipeline._np_to_b64(pipeline._mask_to_rgba(wp, (239, 68, 68), 80)) if cv2.countNonZero(wp) > 0 else None
+    if cl is not None:
+        s["analysis"]["mask_cloisons_b64"] = pipeline._np_to_b64(pipeline._mask_to_rgba(cl, (0, 100, 255), 210)) if cv2.countNonZero(cl) > 0 else None
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
+    resp["mask_walls_pixel_b64"] = s["analysis"].get("mask_walls_pixel_b64")
+    resp["mask_cloisons_b64"]    = s["analysis"].get("mask_cloisons_b64")
     resp["rooms"] = s["analysis"].get("rooms", [])
     resp["walls"] = s["analysis"].get("walls", [])
     return resp
@@ -697,9 +742,11 @@ def undo_edit_mask(req: UndoRedoMaskEditRequest):
         raise HTTPException(400, "Rien à annuler")
     # Save current state to redo stack
     current = {
-        "m_doors": _compress_mask(s["m_doors"]),
-        "m_windows": _compress_mask(s["m_windows"]),
+        "m_doors":       _compress_mask(s["m_doors"]),
+        "m_windows":     _compress_mask(s["m_windows"]),
         "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
+        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
     }
     future = s.setdefault("mask_edit_future", [])
     future.append(current)
@@ -723,9 +770,11 @@ def redo_edit_mask(req: UndoRedoMaskEditRequest):
         raise HTTPException(400, "Rien à rétablir")
     # Save current state to undo stack
     current = {
-        "m_doors": _compress_mask(s["m_doors"]),
-        "m_windows": _compress_mask(s["m_windows"]),
+        "m_doors":       _compress_mask(s["m_doors"]),
+        "m_windows":     _compress_mask(s["m_windows"]),
         "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
+        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
     }
     history = s.setdefault("mask_edit_history", [])
     history.append(current)

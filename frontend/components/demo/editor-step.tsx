@@ -16,7 +16,7 @@ import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
 import { BACKEND } from "@/lib/backend";
-type Layer = "door" | "window" | "interior" | "rooms";
+type Layer = "door" | "window" | "interior" | "rooms" | "wall" | "cloison";
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
 type Mode = "editor" | "measure";
 
@@ -171,7 +171,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setTool("select");
     } else if (layer === "door" || layer === "window") {
       if (tool === "split") setTool("add_rect");
-    } else if (layer === "interior") {
+    } else if (layer === "interior" || layer === "wall" || layer === "cloison") {
       if (tool === "split" || tool === "select") setTool("add_rect");
     }
     if (layer !== "rooms") {
@@ -312,7 +312,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // When either door/window toggle is OFF, use raw plan + individual mask overlays
   // When both are ON, use the pre-rendered annotated overlay (includes emprise, doors, windows)
   const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64;
-  const currentOverlay = useRawPlan
+  const currentOverlay = (useRawPlan || layer === "wall" || layer === "cloison")
     ? result.plan_b64!
     : layer === "interior" && result.overlay_interior_b64
       ? result.overlay_interior_b64
@@ -492,7 +492,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
     const roomColor = layer === "rooms" ? getRoomColor(activeRoomType) : null;
-    const color = isErase ? "#F87171" : (roomColor ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE"));
+    const color = isErase ? "#F87171" : (roomColor ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : layer === "wall" ? "#EF4444" : layer === "cloison" ? "#0064ff" : "#22D3EE"));
     if (pts.current.length > 0 && (tool === "add_poly" || tool === "erase_poly")) {
       const img = imgRef.current!;
       // Fill the polygon shape preview with semi-transparent color
@@ -644,17 +644,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       const data = await r.json();
       setResult(prev => ({
         ...prev,
-        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
-        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
-        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
-        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
-        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
-        doors_count: data.doors_count ?? prev.doors_count,
+        overlay_openings_b64:  data.overlay_openings_b64  ?? prev.overlay_openings_b64,
+        overlay_interior_b64:  data.overlay_interior_b64  ?? prev.overlay_interior_b64,
+        mask_doors_b64:        data.mask_doors_b64        ?? prev.mask_doors_b64,
+        mask_windows_b64:      data.mask_windows_b64      ?? prev.mask_windows_b64,
+        mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
+        mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
+        mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
-        rooms: data.rooms ?? prev.rooms,
-        walls: data.walls ?? prev.walls,
+        rooms:    data.rooms    ?? prev.rooms,
+        walls:    data.walls    ?? prev.walls,
       }));
       if (data.edit_history_len != null) setEditHistoryLen(data.edit_history_len);
       if (data.edit_future_len != null) setEditFutureLen(data.edit_future_len);
@@ -682,17 +684,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       const data = await r.json();
       setResult(prev => ({
         ...prev,
-        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
-        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
-        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
-        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
-        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
-        doors_count: data.doors_count ?? prev.doors_count,
+        overlay_openings_b64:  data.overlay_openings_b64  ?? prev.overlay_openings_b64,
+        overlay_interior_b64:  data.overlay_interior_b64  ?? prev.overlay_interior_b64,
+        mask_doors_b64:        data.mask_doors_b64        ?? prev.mask_doors_b64,
+        mask_windows_b64:      data.mask_windows_b64      ?? prev.mask_windows_b64,
+        mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
+        mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
+        mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
-        rooms: data.rooms ?? prev.rooms,
-        walls: data.walls ?? prev.walls,
+        rooms:    data.rooms    ?? prev.rooms,
+        walls:    data.walls    ?? prev.walls,
       }));
       setEditHistoryLen(data.edit_history_len ?? 0);
       setEditFutureLen(data.edit_future_len ?? 0);
@@ -713,17 +717,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       const data = await r.json();
       setResult(prev => ({
         ...prev,
-        overlay_openings_b64: data.overlay_openings_b64 ?? prev.overlay_openings_b64,
-        overlay_interior_b64: data.overlay_interior_b64 ?? prev.overlay_interior_b64,
-        mask_doors_b64: data.mask_doors_b64 ?? prev.mask_doors_b64,
-        mask_windows_b64: data.mask_windows_b64 ?? prev.mask_windows_b64,
-        mask_walls_b64: data.mask_walls_b64 ?? prev.mask_walls_b64,
-        doors_count: data.doors_count ?? prev.doors_count,
+        overlay_openings_b64:  data.overlay_openings_b64  ?? prev.overlay_openings_b64,
+        overlay_interior_b64:  data.overlay_interior_b64  ?? prev.overlay_interior_b64,
+        mask_doors_b64:        data.mask_doors_b64        ?? prev.mask_doors_b64,
+        mask_windows_b64:      data.mask_windows_b64      ?? prev.mask_windows_b64,
+        mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
+        mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
+        mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
-        rooms: data.rooms ?? prev.rooms,
-        walls: data.walls ?? prev.walls,
+        rooms:    data.rooms    ?? prev.rooms,
+        walls:    data.walls    ?? prev.walls,
       }));
       setEditHistoryLen(data.edit_history_len ?? 0);
       setEditFutureLen(data.edit_future_len ?? 0);
@@ -1294,16 +1300,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ LEFT VERTICAL TOOLBAR ══ */}
           <div className="w-14 shrink-0 flex flex-col items-center gap-1 glass rounded-xl border border-white/10 py-2 px-1 overflow-y-auto">
             <span className="text-[7px] text-slate-600 font-mono uppercase tracking-wider mb-0.5">LAYER</span>
-            {(["door", "window", "interior", "rooms"] as Layer[]).map(l => (
+            {(["door", "window", "interior", "rooms", "wall", "cloison"] as Layer[]).map(l => (
               <button key={l} onClick={() => setLayer(l)}
-                title={l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : d("ed_rooms")}
+                title={l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : l === "rooms" ? d("ed_rooms") : l === "wall" ? "Murs (Pixel)" : "Cloisons"}
                 className={cn("w-11 flex flex-col items-center gap-0.5 py-1 rounded-lg text-sm transition-all",
                   layer === l
-                    ? l === "rooms" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40" : "bg-accent/20 text-accent ring-1 ring-accent/40"
+                    ? l === "rooms" ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
+                      : l === "wall" ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/40"
+                      : l === "cloison" ? "bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40"
+                      : "bg-accent/20 text-accent ring-1 ring-accent/40"
                     : "text-slate-500 hover:text-white hover:bg-white/5"
                 )}>
-                <span>{l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : "🏘️"}</span>
-                <span className="text-[7px] leading-none">{l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : d("ed_rooms")}</span>
+                <span>{l === "door" ? "🚪" : l === "window" ? "🪟" : l === "interior" ? "🏠" : l === "rooms" ? "🏘️" : l === "wall" ? "🧱" : "🔲"}</span>
+                <span className="text-[7px] leading-none">{l === "door" ? d("ed_doors") : l === "window" ? d("ed_windows") : l === "interior" ? d("ed_living_s") : l === "rooms" ? d("ed_rooms") : l === "wall" ? "Murs" : "Cloisons"}</span>
               </button>
             ))}
             <div className="w-8 border-t border-white/10 my-1" />
@@ -1411,8 +1420,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {/* Floating context bar */}
             <div className="flex items-center gap-2 px-1 h-7 shrink-0">
               <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-600 border",
-                layer === "rooms" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-accent/30 bg-accent/10 text-accent")}>
-                {layer === "door" ? `🚪 ${d("ed_doors")}` : layer === "window" ? `🪟 ${d("ed_windows")}` : layer === "interior" ? `🏠 ${d("ed_living_s")}` : `🏘️ ${d("ed_rooms")}`}
+                layer === "rooms"    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                : layer === "wall"   ? "border-red-500/30 bg-red-500/10 text-red-400"
+                : layer === "cloison"? "border-blue-500/30 bg-blue-500/10 text-blue-400"
+                : "border-accent/30 bg-accent/10 text-accent")}>
+                {layer === "door" ? `🚪 ${d("ed_doors")}` : layer === "window" ? `🪟 ${d("ed_windows")}` : layer === "interior" ? `🏠 ${d("ed_living_s")}` : layer === "rooms" ? `🏘️ ${d("ed_rooms")}` : layer === "wall" ? "🧱 Murs (Pixel)" : "🔲 Cloisons"}
               </span>
               <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-600 border",
                 tool.startsWith("erase") ? "border-red-500/30 bg-red-500/10 text-red-400"

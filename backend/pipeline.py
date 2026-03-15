@@ -1206,6 +1206,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "_m_windows": m_windows,
         "_walls": walls,
         "_m_walls_ai": m_walls_ai,
+        "_m_walls_pixel": m_walls_pixel,   # masque béton OTSU — éditable
+        "_m_cloisons": m_cloisons,         # masque cloisons calculé — éditable
         "_cnt": cnt.tolist() if cnt is not None else None,
         "_mask_rooms_rgba": mask_rooms_rgb,  # numpy RGBA array pour édition
     }
