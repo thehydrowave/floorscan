@@ -1184,7 +1184,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_doors_b64":   _np_to_b64(m_doors),
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
-        "mask_walls_ai_b64": _np_to_b64(m_walls_ai) if cv2.countNonZero(m_walls_ai) > 0 else None,
+        "mask_walls_ai_b64": _np_to_b64(_walls_ai_to_lines(m_walls_ai)) if cv2.countNonZero(m_walls_ai) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1298,6 +1298,39 @@ def _build_overlay_interior(img_rgb, interior_mask):
     idx = (interior_mask > 0)
     overlay[idx] = (0.6 * overlay[idx] + 0.4 * green).astype(np.uint8)
     return overlay
+
+
+def _walls_ai_to_lines(m_walls: np.ndarray) -> np.ndarray:
+    """Convert filled AI wall regions into thin wall lines (contours + morphological skeleton)."""
+    if m_walls is None or cv2.countNonZero(m_walls) == 0:
+        return m_walls
+
+    H, W = m_walls.shape[:2]
+    result = np.zeros((H, W), np.uint8)
+
+    # 1) Draw contours of the filled wall regions (thickness 2)
+    contours, _ = cv2.findContours(m_walls, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(result, contours, -1, 255, 2)
+
+    # 2) Morphological skeleton of the filled regions for interior wall lines
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    skel = np.zeros_like(m_walls)
+    temp = m_walls.copy()
+    while True:
+        eroded = cv2.erode(temp, element)
+        opened = cv2.dilate(eroded, element)
+        diff = cv2.subtract(temp, opened)
+        skel = cv2.bitwise_or(skel, diff)
+        temp = eroded
+        if cv2.countNonZero(temp) == 0:
+            break
+
+    # 3) Merge contours + skeleton, dilate slightly for visibility
+    result = cv2.bitwise_or(result, skel)
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    result = cv2.dilate(result, k, iterations=1)
+
+    return result
 
 
 def _np_to_b64(arr: np.ndarray) -> str:
