@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -164,14 +164,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
 
-  // Auto-enable overlays + reset tool + sync sidebar tab on layer change
+  // Sync tool + sidebar tab on layer change
+  // La visibilité des overlays est contrôlée manuellement via les toggles de visualisation
   useEffect(() => {
     if (layer === null) {
-      // Aucun élément sélectionné : masquer tous les overlays
+      // Aucun élément sélectionné : tout masquer et réinitialiser
       setShowRooms(false);
       setShowDoors(false);
       setShowWindows(false);
       setShowWalls(false);
+      setShowOpeningOverlay(false);
       pts.current = [];
       setSelectedRoomId(null);
       setEditingRoomId(null);
@@ -179,22 +181,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       return;
     }
     if (layer === "rooms") {
-      setShowRooms(true);
-      setShowDoors(false);
-      setShowWindows(false);
-      setShowWalls(false);
+      setShowRooms(true); // nécessaire pour voir + sélectionner les pièces
       setTool("select");
       setSidebarTab("rooms");
     } else {
-      setShowRooms(false);
-      setShowDoors(layer === "door");
-      setShowWindows(layer === "window");
-      setShowWalls(layer === "wall");
-      // Revenir à add_rect si outil incompatible
+      // Revenir à add_rect si outil incompatible avec la nouvelle couche
       if (tool === "select" || tool === "split") setTool("add_rect");
       if (tool === "sam" && layer !== "door" && layer !== "window" && layer !== "interior") setTool("add_rect");
       pts.current = [];
-      setSidebarTab("results");
+      // Auto-switch sidebar : ouvertures pour portes/fenêtres, résultats sinon
+      setSidebarTab(layer === "door" || layer === "window" ? "openings" : "results");
     }
     if (layer !== "rooms") {
       setSelectedRoomId(null);
@@ -2219,6 +2215,37 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
           {/* \u2550\u2550 RIGHT SIDEBAR \u2550\u2550 */}
           <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
+
+            {/* ── Toggles de visualisation ── */}
+            <div className="flex items-center gap-1 px-1 shrink-0">
+              <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5">{d("ed_visibility")}</span>
+              <button onClick={() => setShowDoors(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showDoors ? "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                🚪 {showDoors ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowWindows(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showWindows ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                🪟 {showWindows ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowWalls(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showWalls ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                <Layers size={10} /> {showWalls ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowRooms(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  showRooms ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                <LayoutGrid size={10} /> {showRooms ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+              <button onClick={() => setShowOpeningOverlay(v => !v)}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all",
+                  showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                N°
+              </button>
+            </div>
+
             <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
               {([
                 { id: "results" as const, label: d("ed_ia_results") },
