@@ -62,7 +62,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
       const r = await fetch(`${BACKEND}/upload-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf_base64: b64, filename: fname, zoom: 3.0, page }),
+        body: JSON.stringify({ pdf_base64: b64, filename: fname, zoom: 2.0, page }),
       });
 
       if (!r.ok) {
@@ -316,8 +316,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
                   <p>{error}</p>
                   {error.includes("serveur") && (
                     <p className="text-xs text-red-400/70 mt-1">
-                      Vérifiez que le backend est démarré sur{" "}
-                      <code className="bg-red-500/10 px-1 rounded">{process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}</code>
+                      Erreur backend — réessayez dans quelques secondes.
                     </p>
                   )}
                 </div>
