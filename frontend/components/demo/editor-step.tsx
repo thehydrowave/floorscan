@@ -1310,9 +1310,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       {mode === "editor" && (
         <div className="flex flex-col gap-1" style={{ height: "calc(100vh - 7rem)" }}>
 
-{/* ══ BAR 1 : VISIBILITÉ + SÉLECTION ÉLÉMENT ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
-            {/* Visibilité */}
+{/* ══ BAR 1 : VISIBILITÉ ══ */}
+          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_visibility")}</span>
             <button onClick={() => setShowDoors(v => !v)}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
@@ -1339,9 +1338,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               N°
             </button>
-            {/* Séparateur */}
-            <div className="w-px h-5 bg-white/20 mx-1 shrink-0" />
-            {/* Sélection élément */}
+          </div>
+
+{/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
+          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">Élément</span>
             {(["door", "window", "wall", "cloison", "interior", "rooms"] as const).map(l => {
               const layerMeta: Record<"door"|"window"|"wall"|"cloison"|"interior"|"rooms", { emoji: string; label: string; active: string }> = {
@@ -1370,7 +1370,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             )}
           </div>
 
-{/* ══ BAR 2 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
+{/* ══ BAR 3 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
           {layer !== null && (
             <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
               {/* Outils couches masque (tout sauf rooms) */}
