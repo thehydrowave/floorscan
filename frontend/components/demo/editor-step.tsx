@@ -1246,6 +1246,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // Detect panoramic/wide images (ratio > 3:1)
   const isWideImage = imageNatural.w > 0 && imageNatural.h > 0 && (imageNatural.w / imageNatural.h) > 3;
 
+  type NonNullLayer = NonNullable<Layer>;
+  const LAYER_ORDER: NonNullLayer[] = ["door","window","wall","cloison","interior","rooms"];
+  const LAYER_META: Record<NonNullLayer, { emoji: string; label: string; bg: string; ring: string }> = {
+    door:     { emoji:"🚪", label:d("ed_doors"),    bg:"bg-fuchsia-500/20 text-fuchsia-400", ring:"ring-fuchsia-500/40" },
+    window:   { emoji:"🪟", label:d("ed_windows"),  bg:"bg-cyan-500/20 text-cyan-400",       ring:"ring-cyan-500/40" },
+    wall:     { emoji:"🧱", label:"Béton",          bg:"bg-red-500/20 text-red-400",         ring:"ring-red-500/40" },
+    cloison:  { emoji:"🔲", label:"Cloisons",       bg:"bg-blue-500/20 text-blue-400",       ring:"ring-blue-500/40" },
+    interior: { emoji:"🏠", label:d("ed_living_s"), bg:"bg-accent/20 text-accent",           ring:"ring-accent/40" },
+    rooms:    { emoji:"🏘️", label:d("ed_rooms"),   bg:"bg-emerald-500/20 text-emerald-400", ring:"ring-emerald-500/40" },
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       {/* ── Compact Header ── */}
@@ -1318,16 +1329,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ BARRE 1 : SÉLECTION D'ÉLÉMENT ══ */}
           <div className="flex items-center gap-1.5 flex-wrap glass rounded-xl border border-white/10 px-3 py-2 shrink-0">
             <span className="text-[8px] text-slate-500 font-mono uppercase tracking-wider mr-1 shrink-0">Élément</span>
-            {(["door","window","wall","cloison","interior","rooms"] as NonNullable<Layer>[]).map(l => {
-              const META: Record<NonNullable<Layer>, { emoji: string; label: string; bg: string; ring: string }> = {
-                door:     { emoji:"🚪", label:d("ed_doors"),    bg:"bg-fuchsia-500/20 text-fuchsia-400", ring:"ring-fuchsia-500/40" },
-                window:   { emoji:"🪟", label:d("ed_windows"),  bg:"bg-cyan-500/20 text-cyan-400",       ring:"ring-cyan-500/40" },
-                wall:     { emoji:"🧱", label:"Béton",          bg:"bg-red-500/20 text-red-400",         ring:"ring-red-500/40" },
-                cloison:  { emoji:"🔲", label:"Cloisons",       bg:"bg-blue-500/20 text-blue-400",       ring:"ring-blue-500/40" },
-                interior: { emoji:"🏠", label:d("ed_living_s"), bg:"bg-accent/20 text-accent",           ring:"ring-accent/40" },
-                rooms:    { emoji:"🏘️", label:d("ed_rooms"),   bg:"bg-emerald-500/20 text-emerald-400", ring:"ring-emerald-500/40" },
-              };
-              const m = META[l];
+            {LAYER_ORDER.map(l => {
+              const m = LAYER_META[l];
               return (
                 <button key={l} onClick={() => setLayer(prev => prev === l ? null : l)} title={m.label}
                   className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-500 border transition-all",
