@@ -323,7 +323,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   // When either door/window toggle is OFF, use raw plan + individual mask overlays
   // When both are ON, use the pre-rendered annotated overlay (includes emprise, doors, windows)
-  const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64;
+  // Exception: interior layer must always use overlay_interior_b64 (ignore door/window toggles)
+  const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64 && layer !== "interior";
   const currentOverlay = (useRawPlan || layer === "wall" || layer === "cloison")
     ? result.plan_b64!
     : layer === "interior" && result.overlay_interior_b64
