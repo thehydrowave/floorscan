@@ -1181,10 +1181,10 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         # Images encodées en base64 PNG
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,
-        "mask_doors_b64":   _np_to_b64(m_doors),
-        "mask_windows_b64": _np_to_b64(m_windows),
-        "mask_walls_b64":   _np_to_b64(walls),
-        "mask_walls_ai_b64": _np_to_b64(m_walls_ai) if cv2.countNonZero(m_walls_ai) > 0 else None,
+        "mask_doors_b64":   _np_to_b64(_mask_to_rgba(m_doors, (217, 70, 239), 90)),      # fuchsia
+        "mask_windows_b64": _np_to_b64(_mask_to_rgba(m_windows, (34, 211, 238), 90)),   # cyan
+        "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
+        "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1331,6 +1331,19 @@ def _walls_ai_to_lines(m_walls: np.ndarray) -> np.ndarray:
     result = cv2.dilate(result, k, iterations=1)
 
     return result
+
+
+def _mask_to_rgba(mask: np.ndarray, color: tuple, alpha: int = 100) -> np.ndarray:
+    """Convert a grayscale mask to an RGBA overlay image.
+    White pixels (255) become colored with given alpha, black pixels become fully transparent."""
+    H, W = mask.shape[:2]
+    rgba = np.zeros((H, W, 4), np.uint8)
+    white = mask > 127
+    rgba[white, 0] = color[0]
+    rgba[white, 1] = color[1]
+    rgba[white, 2] = color[2]
+    rgba[white, 3] = alpha
+    return rgba
 
 
 def _np_to_b64(arr: np.ndarray) -> str:

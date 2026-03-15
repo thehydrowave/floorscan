@@ -83,12 +83,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportOpen, setExportOpen] = useState(false);
   const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
 
-  // Base plan image: use annotated overlay (doors+windows drawn) when toggles are on,
-  // otherwise use clean plan
-  const hasAnnotatedOverlay = (showDoors || showWindows) && result.overlay_openings_b64;
-  const basePlanB64 = hasAnnotatedOverlay
-    ? result.overlay_openings_b64
-    : (result.plan_b64 || result.overlay_openings_b64);
+  // Base plan image (clean plan without annotations)
+  const basePlanB64 = result.plan_b64 || result.overlay_openings_b64;
   const baseImageB64 = showInterior && result.overlay_interior_b64
     ? result.overlay_interior_b64
     : basePlanB64;
@@ -477,22 +473,40 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
-              {/* Walls mask overlay (img with tint) */}
+              {/* Doors RGBA overlay */}
+              {showDoors && result.mask_doors_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_doors_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 1 }}
+                />
+              )}
+              {/* Windows RGBA overlay */}
+              {showWindows && result.mask_windows_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_windows_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 1 }}
+                />
+              )}
+              {/* Walls RGBA overlay */}
               {showWalls && result.mask_walls_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ opacity: 0.4, zIndex: 1, mixBlendMode: "multiply" }}
+                  style={{ zIndex: 1 }}
                 />
               )}
-              {/* Walls AI mask overlay — raw filled regions showing wall thickness */}
+              {/* Walls AI RGBA overlay */}
               {showWallsAI && result.mask_walls_ai_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ opacity: 0.45, zIndex: 1, filter: "invert(1) sepia(1) saturate(10) hue-rotate(5deg) brightness(1.2)" }}
+                  style={{ zIndex: 1 }}
                 />
               )}
             </>
