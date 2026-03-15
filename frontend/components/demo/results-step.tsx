@@ -489,29 +489,29 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
-              {/* Doors overlay — vivid solid color through alpha-channel mask */}
+              {/* Doors overlay — grayscale luminance mask → vivid solid color where white pixels */}
               {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00CC",
-                  opacity: 0.65,
+                  opacity: 0.55,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "alpha", maskMode: "alpha" } as any),
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
                   zIndex: 1,
                 }} />
               )}
-              {/* Windows overlay — vivid solid color through alpha-channel mask */}
+              {/* Windows overlay — grayscale luminance mask → vivid solid color where white pixels */}
               {showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#00CCFF",
-                  opacity: 0.65,
+                  opacity: 0.55,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
                   WebkitMaskSize: "100% 100%",
                   maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "alpha", maskMode: "alpha" } as any),
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
                   zIndex: 1,
                 }} />
               )}

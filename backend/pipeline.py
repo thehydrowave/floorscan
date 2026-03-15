@@ -1191,8 +1191,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         # Images encodées en base64 PNG
         "overlay_openings_b64": _np_to_b64(overlay_openings),
         "overlay_interior_b64": _np_to_b64(overlay_interior) if overlay_interior is not None else None,
-        "mask_doors_b64":   _np_to_b64(_mask_to_rgba(m_doors, (217, 70, 239), 90)),      # fuchsia
-        "mask_windows_b64": _np_to_b64(_mask_to_rgba(m_windows, (34, 211, 238), 90)),   # cyan
+        "mask_doors_b64":   _np_to_b64(m_doors),     # grayscale binary (white=door) → luminance mask works
+        "mask_windows_b64": _np_to_b64(m_windows),  # grayscale binary (white=window) → luminance mask works
         "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
