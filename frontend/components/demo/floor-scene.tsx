@@ -597,12 +597,13 @@ interface FloorSceneProps {
   imgH: number;
   ceilingHeight: number;
   numFloors?: number;
+  showRoof?: boolean;
   wireframe: boolean;
   resetSignal: number;
 }
 
 export default function FloorScene({
-  rooms, openings, ppm, imgW, imgH, ceilingHeight, numFloors = 1, wireframe, resetSignal,
+  rooms, openings, ppm, imgW, imgH, ceilingHeight, numFloors = 1, showRoof = true, wireframe, resetSignal,
 }: FloorSceneProps) {
   const [hoveredRoom, setHoveredRoom] = useState<number | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -714,13 +715,15 @@ export default function FloorScene({
                 />
               ))}
 
-              {/* Dalle béton au-dessus de cet étage */}
-              <FloorSlab
-                bounds={bounds}
-                y={ceilingHeight}
-                thickness={CONCRETE_SLAB_THICKNESS}
-                wireframe={wireframe}
-              />
+              {/* Dalle béton au-dessus de cet étage — toit masquable sur le dernier étage */}
+              {(floorIdx < numFloors - 1 || showRoof) && (
+                <FloorSlab
+                  bounds={bounds}
+                  y={ceilingHeight}
+                  thickness={CONCRETE_SLAB_THICKNESS}
+                  wireframe={wireframe}
+                />
+              )}
             </group>
           );
         })}

@@ -436,7 +436,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showConcrete
-                  ? "bg-slate-500/20 text-slate-300 border-slate-500/40"
+                  ? "bg-red-500/15 text-red-400 border-red-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
@@ -451,7 +451,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showPartitions
-                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
@@ -575,10 +575,10 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 1 }}
                 />
               )}
-              {/* Béton overlay — gris ardoise via luminance mask */}
+              {/* Béton overlay — rouge vif via luminance mask */}
               {showConcrete && result.mask_walls_concrete_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#374151",
+                  backgroundColor: "#ef4444",
                   opacity: 0.70,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
@@ -588,11 +588,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   zIndex: 2,
                 }} />
               )}
-              {/* Cloisons overlay — ambre via luminance mask */}
+              {/* Cloisons overlay — bleu électrique via luminance mask */}
               {showPartitions && result.mask_walls_partition_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#f59e0b",
-                  opacity: 0.55,
+                  backgroundColor: "#3b82f6",
+                  opacity: 0.65,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
                   WebkitMaskSize: "100% 100%",

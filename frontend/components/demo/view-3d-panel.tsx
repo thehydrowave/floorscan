@@ -24,6 +24,7 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [ceilingHeight, setCeilingHeight] = useState(2.5);
   const [numFloors, setNumFloors] = useState(1);
+  const [showRoof, setShowRoof] = useState(true);
   const [wireframe, setWireframe] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -132,6 +133,19 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
                     </button>
                   </div>
 
+                  {/* Toit toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowRoof((v) => !v)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      showRoof
+                        ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
+                        : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    🏠 Toit
+                  </button>
+
                   {/* Wireframe toggle */}
                   <button
                     type="button"
@@ -175,6 +189,7 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
                       imgH={imgH}
                       ceilingHeight={ceilingHeight}
                       numFloors={numFloors}
+                      showRoof={showRoof}
                       wireframe={wireframe}
                       resetSignal={resetSignal}
                     />
