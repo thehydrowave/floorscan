@@ -23,7 +23,7 @@ app = FastAPI(title="FloorScan API", version="1.0.0")
 # CORS : restrict to known frontend origins (fallback to * for local dev)
 ALLOWED_ORIGINS = os.environ.get(
     "CORS_ORIGINS",
-    "http://localhost:3000,http://localhost:3001,https://floorscan.vercel.app,https://*.vercel.app"
+    "http://localhost:3000,http://localhost:3001,https://floorscan.vercel.app,https://floorscan-xi.vercel.app"
 ).split(",")
 
 app.add_middleware(
