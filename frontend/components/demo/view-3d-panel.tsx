@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Box, ChevronDown, ChevronUp, RotateCcw, Grid3x3, Loader2, AlertTriangle } from "lucide-react";
+import { Box, ChevronDown, ChevronUp, RotateCcw, Grid3x3, Loader2, AlertTriangle, Plus, Minus } from "lucide-react";
 import dynamic from "next/dynamic";
 import type { AnalysisResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
@@ -23,6 +23,7 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
 
   const [expanded, setExpanded] = useState(false);
   const [ceilingHeight, setCeilingHeight] = useState(2.5);
+  const [numFloors, setNumFloors] = useState(1);
   const [wireframe, setWireframe] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -109,6 +110,28 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
                     <span className="font-mono text-sky-400 w-10">{ceilingHeight.toFixed(1)}m</span>
                   </label>
 
+                  {/* Nombre d'étages */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <span>Étages</span>
+                    <button
+                      type="button"
+                      onClick={() => setNumFloors(n => Math.max(1, n - 1))}
+                      disabled={numFloors <= 1}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 transition-colors"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
+                    <span className="font-mono text-sky-400 w-5 text-center">{numFloors}</span>
+                    <button
+                      type="button"
+                      onClick={() => setNumFloors(n => Math.min(12, n + 1))}
+                      disabled={numFloors >= 12}
+                      className="w-6 h-6 flex items-center justify-center rounded bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+
                   {/* Wireframe toggle */}
                   <button
                     type="button"
@@ -151,6 +174,7 @@ export default function View3dPanel({ result, imgW, imgH }: View3dPanelProps) {
                       imgW={imgW}
                       imgH={imgH}
                       ceilingHeight={ceilingHeight}
+                      numFloors={numFloors}
                       wireframe={wireframe}
                       resetSignal={resetSignal}
                     />

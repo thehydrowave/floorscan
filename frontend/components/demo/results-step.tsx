@@ -71,6 +71,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
+  const [showConcrete, setShowConcrete] = useState(false);
+  const [showPartitions, setShowPartitions] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
@@ -427,6 +429,36 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
+          {/* Béton toggle */}
+          {result.mask_walls_concrete_b64 && (
+            <button
+              onClick={() => setShowConcrete(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showConcrete
+                  ? "bg-slate-500/20 text-slate-300 border-slate-500/40"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showConcrete ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Béton
+            </button>
+          )}
+
+          {/* Cloisons toggle */}
+          {result.mask_walls_partition_b64 && (
+            <button
+              onClick={() => setShowPartitions(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showPartitions
+                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showPartitions ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
+            </button>
+          )}
+
           {/* Interior toggle */}
           {result.overlay_interior_b64 && (
             <button
@@ -542,6 +574,32 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   style={{ zIndex: 1 }}
                 />
+              )}
+              {/* Béton overlay — gris ardoise via luminance mask */}
+              {showConcrete && result.mask_walls_concrete_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#374151",
+                  opacity: 0.70,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
+                  zIndex: 2,
+                }} />
+              )}
+              {/* Cloisons overlay — ambre via luminance mask */}
+              {showPartitions && result.mask_walls_partition_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#f59e0b",
+                  opacity: 0.55,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
+                  zIndex: 2,
+                }} />
               )}
             </>
           ) : (

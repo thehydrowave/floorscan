@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "api_key": "Kh56un5foPflRVreiNOM",
     "model_id": "cubicasa5k-2-qpmsa-1gd2e/1",
-    "assumed_door_width_m": 0.90,
+    "assumed_door_width_m": 0.80,
     "wall_thickness_m": 0.20,
     "wall_thickness_px_fallback": 10,
     "door_len_px_min": 25,
@@ -1174,6 +1174,9 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
+    # === SÉPARATION murs béton / cloisons ===
+    m_concrete, m_partitions = _split_walls_by_type(walls, cnt, ppm)
+
     return {
         "img_w": W, "img_h": H,
         "pixels_per_meter": ppm,
@@ -1196,6 +1199,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
+        "mask_walls_concrete_b64": _np_to_b64(m_concrete),   # grayscale — béton (épais/périmètre)
+        "mask_walls_partition_b64": _np_to_b64(m_partitions) if cv2.countNonZero(m_partitions) > 0 else None,  # grayscale — cloisons
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1379,6 +1384,37 @@ def _mask_to_rgba(mask: np.ndarray, color: tuple, alpha: int = 100) -> np.ndarra
     return rgba
 
 
+def _split_walls_by_type(walls_bin: np.ndarray, cnt, ppm) -> tuple:
+    """Sépare le masque murs en :
+    - béton : épais (survit à l'érosion) OU situé près du périmètre extérieur
+    - cloisons : fins ET intérieurs
+    Retourne (concrete_mask, partition_mask) — deux ndarrays grayscale binaires.
+    """
+    H, W = walls_bin.shape[:2]
+
+    # — Classification par épaisseur : kernel ~13cm —
+    k_r = max(2, int(round((0.13 * ppm) / 2))) if ppm else 3
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k_r + 1, 2 * k_r + 1))
+    eroded = cv2.erode(walls_bin, k, iterations=1)
+    concrete_thick = cv2.dilate(eroded, k, iterations=1)
+    concrete_thick = cv2.bitwise_and(concrete_thick, walls_bin)
+
+    # — Classification par position : zone ≈30 px autour du contour extérieur —
+    concrete_perimeter = np.zeros((H, W), np.uint8)
+    if cnt is not None:
+        contour_img = np.zeros((H, W), np.uint8)
+        cv2.drawContours(contour_img, [cnt], -1, 255, thickness=3)
+        k_ext = cv2.getStructuringElement(cv2.MORPH_RECT, (31, 31))
+        near_ext = cv2.dilate(contour_img, k_ext, iterations=1)
+        concrete_perimeter = cv2.bitwise_and(near_ext, walls_bin)
+
+    # — Combinaison —
+    concrete = cv2.bitwise_or(concrete_thick, concrete_perimeter)
+    concrete = cv2.bitwise_and(concrete, walls_bin)
+    partitions = cv2.bitwise_and(walls_bin, cv2.bitwise_not(concrete))
+    return concrete, partitions
+
+
 def _np_to_b64(arr: np.ndarray) -> str:
     pil = Image.fromarray(arr.astype(np.uint8))
     buf = io.BytesIO()
@@ -1442,6 +1478,9 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
     rooms_list = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, pixels_per_meter)
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
+    # Séparation béton / cloisons sur les murs édités
+    m_concrete_r, m_partitions_r = _split_walls_by_type(walls, cnt, pixels_per_meter)
+
     return {
         "doors_count": sum(1 for o in openings if o["class"] == "door"),
         "windows_count": sum(1 for o in openings if o["class"] == "window"),
@@ -1459,6 +1498,8 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
         "mask_walls_ai_b64": None,  # AI walls only available on initial analysis
+        "mask_walls_concrete_b64": _np_to_b64(m_concrete_r),
+        "mask_walls_partition_b64": _np_to_b64(m_partitions_r) if cv2.countNonZero(m_partitions_r) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour nouvelle édition
         "_interior_mask": surfaces.get("interior_mask"),

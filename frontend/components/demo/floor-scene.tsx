@@ -17,6 +17,7 @@ const WINDOW_FRAME_COLOR = "#e5e7eb";
 const FLOOR_OPACITY = 0.55;
 const FLOOR_HOVER_OPACITY = 0.85;
 const SLAB_DEPTH = 0.04;
+const CONCRETE_SLAB_THICKNESS = 0.20; // dalle béton entre étages (20 cm)
 const FRAME_THICK = 0.04;
 const DOOR_PANEL_THICK = 0.04;
 const DOOR_OPEN_ANGLE = Math.PI / 6; // 30°
@@ -538,30 +539,47 @@ function AnimatedGroup({ children }: { children: React.ReactNode }) {
 
 // ── Camera controller ─────────────────────────────────────────────────────────
 
-function CameraRig({
-  bounds, ceilingHeight, resetSignal, autoRotate, onInteract,
+// ── Dalle béton inter-étages ──────────────────────────────────────────────────
+
+function FloorSlab({
+  bounds, y, thickness, wireframe,
 }: {
-  bounds: SceneBounds; ceilingHeight: number; resetSignal: number;
+  bounds: SceneBounds; y: number; thickness: number; wireframe: boolean;
+}) {
+  return (
+    <mesh position={[0, y + thickness / 2, 0]} receiveShadow castShadow>
+      <boxGeometry args={[bounds.width + 0.6, thickness, bounds.depth + 0.6]} />
+      <meshStandardMaterial color="#6b7280" wireframe={wireframe} roughness={0.85} metalness={0.1} />
+    </mesh>
+  );
+}
+
+function CameraRig({
+  bounds, ceilingHeight, numFloors, resetSignal, autoRotate, onInteract,
+}: {
+  bounds: SceneBounds; ceilingHeight: number; numFloors: number; resetSignal: number;
   autoRotate: boolean; onInteract: () => void;
 }) {
   const controlsRef = useRef<any>(null);
   const { camera } = useThree();
-  const camDist = bounds.maxDim * 1.2 + 2;
+  const totalH = numFloors * (ceilingHeight + CONCRETE_SLAB_THICKNESS);
+  const camDist = Math.max(bounds.maxDim * 1.2 + 2, totalH * 1.4);
+  const targetY = totalH * 0.5;
 
   useEffect(() => {
     if (controlsRef.current) {
-      camera.position.set(camDist * 0.7, camDist * 0.55, camDist * 0.7);
-      controlsRef.current.target.set(0, ceilingHeight * 0.3, 0);
+      camera.position.set(camDist * 0.7, Math.max(camDist * 0.55, totalH * 0.7), camDist * 0.7);
+      controlsRef.current.target.set(0, targetY, 0);
       controlsRef.current.update();
     }
-  }, [resetSignal, camDist, ceilingHeight, camera]);
+  }, [resetSignal, camDist, totalH, targetY, camera]);
 
   return (
     <OrbitControls
       ref={controlsRef}
       autoRotate={autoRotate} autoRotateSpeed={1.2}
       enableDamping dampingFactor={0.06}
-      target={[0, ceilingHeight * 0.3, 0]}
+      target={[0, targetY, 0]}
       maxPolarAngle={Math.PI * 0.48}
       minDistance={2} maxDistance={camDist * 3}
       onStart={onInteract} makeDefault
@@ -578,12 +596,13 @@ interface FloorSceneProps {
   imgW: number;
   imgH: number;
   ceilingHeight: number;
+  numFloors?: number;
   wireframe: boolean;
   resetSignal: number;
 }
 
 export default function FloorScene({
-  rooms, openings, ppm, imgW, imgH, ceilingHeight, wireframe, resetSignal,
+  rooms, openings, ppm, imgW, imgH, ceilingHeight, numFloors = 1, wireframe, resetSignal,
 }: FloorSceneProps) {
   const [hoveredRoom, setHoveredRoom] = useState<number | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -620,7 +639,7 @@ export default function FloorScene({
       />
 
       <CameraRig
-        bounds={bounds} ceilingHeight={ceilingHeight}
+        bounds={bounds} ceilingHeight={ceilingHeight} numFloors={numFloors}
         resetSignal={resetSignal} autoRotate={autoRotate}
         onInteract={() => setAutoRotate(false)}
       />
@@ -639,52 +658,72 @@ export default function FloorScene({
       <Environment preset="city" />
 
       <AnimatedGroup>
-        {/* Room floor slabs */}
-        {rooms.map((room) => (
-          <RoomFloor
-            key={`floor-${room.id}`}
-            room={room} imgW={imgW} imgH={imgH} ppm={ppm}
-            bounds={bounds} wireframe={wireframe}
-            hovered={hoveredRoom === room.id} onHover={setHoveredRoom}
-          />
-        ))}
+        {/* ── Dalle sol (sous le RDC) ── */}
+        <FloorSlab bounds={bounds} y={-CONCRETE_SLAB_THICKNESS} thickness={CONCRETE_SLAB_THICKNESS} wireframe={wireframe} />
 
-        {/* Walls with opening holes cut */}
-        {walls.map((wall, i) => (
-          <WallWithOpenings
-            key={`wall-${i}`}
-            wall={wall}
-            wallOpenings={wallOpeningsMap.get(i) ?? []}
-            height={ceilingHeight}
-            wireframe={wireframe}
-          />
-        ))}
+        {/* ── Boucle multi-étages ── */}
+        {Array.from({ length: numFloors }, (_, floorIdx) => {
+          const yOffset = floorIdx * (ceilingHeight + CONCRETE_SLAB_THICKNESS);
+          return (
+            <group key={`floor-${floorIdx}`} position={[0, yOffset, 0]}>
+              {/* Room floor slabs */}
+              {rooms.map((room) => (
+                <RoomFloor
+                  key={`floor-${floorIdx}-${room.id}`}
+                  room={room} imgW={imgW} imgH={imgH} ppm={ppm}
+                  bounds={bounds} wireframe={wireframe}
+                  hovered={floorIdx === 0 && hoveredRoom === room.id}
+                  onHover={floorIdx === 0 ? setHoveredRoom : () => {}}
+                />
+              ))}
 
-        {/* 3D Doors & Windows */}
-        {walls.map((wall, wi) =>
-          (wallOpeningsMap.get(wi) ?? []).map((op, oi) =>
-            op.isDoor ? (
-              <DoorMesh3D
-                key={`door-${wi}-${oi}`}
-                wall={wall} info={op} wireframe={wireframe}
+              {/* Walls with opening holes */}
+              {walls.map((wall, i) => (
+                <WallWithOpenings
+                  key={`wall-${floorIdx}-${i}`}
+                  wall={wall}
+                  wallOpenings={wallOpeningsMap.get(i) ?? []}
+                  height={ceilingHeight}
+                  wireframe={wireframe}
+                />
+              ))}
+
+              {/* 3D Doors & Windows */}
+              {walls.map((wall, wi) =>
+                (wallOpeningsMap.get(wi) ?? []).map((op, oi) =>
+                  op.isDoor ? (
+                    <DoorMesh3D
+                      key={`door-${floorIdx}-${wi}-${oi}`}
+                      wall={wall} info={op} wireframe={wireframe}
+                    />
+                  ) : (
+                    <WindowMesh3D
+                      key={`win-${floorIdx}-${wi}-${oi}`}
+                      wall={wall} info={op} wireframe={wireframe}
+                    />
+                  )
+                )
+              )}
+
+              {/* Labels uniquement au RDC */}
+              {floorIdx === 0 && rooms.map((room) => (
+                <RoomLabel
+                  key={`label-${room.id}`}
+                  room={room} imgW={imgW} imgH={imgH} ppm={ppm}
+                  bounds={bounds} ceilingHeight={ceilingHeight}
+                />
+              ))}
+
+              {/* Dalle béton au-dessus de cet étage */}
+              <FloorSlab
+                bounds={bounds}
+                y={ceilingHeight}
+                thickness={CONCRETE_SLAB_THICKNESS}
+                wireframe={wireframe}
               />
-            ) : (
-              <WindowMesh3D
-                key={`win-${wi}-${oi}`}
-                wall={wall} info={op} wireframe={wireframe}
-              />
-            )
-          )
-        )}
-
-        {/* Room labels */}
-        {rooms.map((room) => (
-          <RoomLabel
-            key={`label-${room.id}`}
-            room={room} imgW={imgW} imgH={imgH} ppm={ppm}
-            bounds={bounds} ceilingHeight={ceilingHeight}
-          />
-        ))}
+            </group>
+          );
+        })}
       </AnimatedGroup>
 
       {/* Ground plane with grid */}
