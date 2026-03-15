@@ -62,7 +62,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
       const r = await fetch(`${BACKEND}/upload-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf_base64: b64, filename: fname, zoom: 2.0, page }),
+        body: JSON.stringify({ pdf_base64: b64, filename: fname, zoom: 3.0, page }),
       });
 
       if (!r.ok) {
