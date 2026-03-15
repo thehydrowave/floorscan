@@ -83,8 +83,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportOpen, setExportOpen] = useState(false);
   const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
 
-  // Base plan image (clean plan or fallback to openings overlay)
-  const basePlanB64 = result.plan_b64 || result.overlay_openings_b64;
+  // Base plan image: use annotated overlay (doors+windows drawn) when toggles are on,
+  // otherwise use clean plan
+  const hasAnnotatedOverlay = (showDoors || showWindows) && result.overlay_openings_b64;
+  const basePlanB64 = hasAnnotatedOverlay
+    ? result.overlay_openings_b64
+    : (result.plan_b64 || result.overlay_openings_b64);
   const baseImageB64 = showInterior && result.overlay_interior_b64
     ? result.overlay_interior_b64
     : basePlanB64;
@@ -473,54 +477,23 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
-              {/* Stacked CSS mask overlays (like editor) */}
-              {showDoors && result.mask_doors_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#D946EF",
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
-                  zIndex: 1,
-                }} />
-              )}
-              {showWindows && result.mask_windows_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#22D3EE",
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
-                  zIndex: 1,
-                }} />
-              )}
+              {/* Walls mask overlay (img with tint) */}
               {showWalls && result.mask_walls_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#60A5FA",
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
-                  zIndex: 1,
-                }} />
+                <img
+                  src={`data:image/png;base64,${result.mask_walls_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ opacity: 0.4, zIndex: 1, mixBlendMode: "multiply" }}
+                />
               )}
+              {/* Walls AI mask overlay */}
               {showWallsAI && result.mask_walls_ai_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#F59E0B",
-                  opacity: 0.4,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
-                  zIndex: 1,
-                }} />
+                <img
+                  src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ opacity: 0.5, zIndex: 1, filter: "sepia(1) saturate(5) hue-rotate(10deg)" }}
+                />
               )}
             </>
           ) : (
