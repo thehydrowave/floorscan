@@ -77,6 +77,11 @@ export interface AnalysisResult {
   mask_walls_ai_b64?: string | null;       // Direct Roboflow wall predictions
   mask_walls_pixel_b64?: string | null;    // OTSU pixel-based wall detection
   mask_cloisons_b64?: string | null;        // Cloisons intérieures (IA − Pixel − périmètre)
+  // Model V2 comparison (admin only)
+  mask_doors_v2_b64?: string | null;
+  mask_windows_v2_b64?: string | null;
+  mask_walls_v2_b64?: string | null;
+  stats_v2?: { pass1: any; pass2: any };
   mask_rooms_b64?: string;
   plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };
