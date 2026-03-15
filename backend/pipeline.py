@@ -1174,8 +1174,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
-    # === SÉPARATION béton / cloisons depuis masque IA (épaisseur 2*aire/périmètre) ===
-    m_beton, m_cloisons = _split_walls_by_ai_thickness(m_walls_ai)
+    # === CLOISONS : Mur_IA − Mur_Pixel − Zone_périmètre ===
+    m_cloisons = _compute_cloisons(m_walls_ai, m_walls_pixel, cnt, H, W)
 
     return {
         "img_w": W, "img_h": H,
@@ -1199,8 +1199,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
-        "mask_walls_beton_b64":   _np_to_b64(_mask_to_rgba(m_beton,    (220, 38,  38),  200)) if cv2.countNonZero(m_beton)    > 0 else None,  # rouge — murs béton IA
-        "mask_cloisons_b64":      _np_to_b64(_mask_to_rgba(m_cloisons, (0,  100, 255),  210)) if cv2.countNonZero(m_cloisons) > 0 else None,  # bleu fluo — cloisons IA
+        "mask_cloisons_b64": _np_to_b64(_mask_to_rgba(m_cloisons, (0, 100, 255), 210)) if cv2.countNonZero(m_cloisons) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1384,38 +1383,42 @@ def _mask_to_rgba(mask: np.ndarray, color: tuple, alpha: int = 100) -> np.ndarra
     return rgba
 
 
-def _split_walls_by_ai_thickness(m_walls_ai: np.ndarray):
-    """Sépare le masque murs IA en béton / cloisons via distance transform.
+def _compute_cloisons(m_walls_ai: np.ndarray, m_walls_pixel: np.ndarray,
+                       cnt, H: int, W: int, perim_pad_px: int = 40) -> np.ndarray:
+    """Calcule le masque cloisons intérieures :
 
-    Principe (pixel par pixel, insensible à la connexité) :
-      - distance transform : pour chaque pixel de mur, distance au plus proche vide
-      - seuil = max(distance) / 2  ← centre du mur le plus épais
-      - pixel avec dist >= seuil  → béton  (coeur d'un mur épais)
-      - pixel avec dist <  seuil  → cloison (mur fin, proche du bord)
+        cloisons = Mur_IA  −  Mur_Pixel  −  Zone_périmètre_extérieur
 
-    Retourne deux masques binaires uint8 (m_beton, m_cloisons).
+    - Mur_IA     : tous les murs détectés par Roboflow (béton + cloisons)
+    - Mur_Pixel  : murs béton (OTSU, déjà fiables) → soustraits
+    - Zone périmètre : bande ~perim_pad_px px autour du contour extérieur
+                       (façade, murs de refend extérieurs) → soustraite
+    Ce qui reste = uniquement les cloisons intérieures.
+
+    Retourne un masque binaire uint8.
     """
     if cv2.countNonZero(m_walls_ai) == 0:
-        H, W = m_walls_ai.shape[:2]
-        return np.zeros((H, W), np.uint8), np.zeros((H, W), np.uint8)
+        return np.zeros((H, W), np.uint8)
 
-    _, binary = cv2.threshold(m_walls_ai, 127, 255, cv2.THRESH_BINARY)
+    _, ai_bin  = cv2.threshold(m_walls_ai,   127, 255, cv2.THRESH_BINARY)
+    _, px_bin  = cv2.threshold(m_walls_pixel, 127, 255, cv2.THRESH_BINARY)
 
-    # Distance de chaque pixel de mur au bord le plus proche
-    dist = cv2.distanceTransform(binary, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+    # Bande périmétrique : dilater le contour extérieur
+    perim_mask = np.zeros((H, W), np.uint8)
+    if cnt is not None:
+        cv2.drawContours(perim_mask, [cnt], -1, 255, thickness=perim_pad_px * 2)
 
-    max_dist = float(dist.max())
-    if max_dist == 0:
-        H, W = binary.shape
-        return np.zeros((H, W), np.uint8), np.zeros((H, W), np.uint8)
+    # cloisons = IA AND NOT pixel AND NOT périmètre
+    not_pixel  = cv2.bitwise_not(px_bin)
+    not_perim  = cv2.bitwise_not(perim_mask)
+    cloisons   = cv2.bitwise_and(ai_bin,    not_pixel)
+    cloisons   = cv2.bitwise_and(cloisons,  not_perim)
 
-    threshold = max_dist / 2.0
-    wall_px   = binary > 0
+    # Nettoyage morpho léger : supprimer les artefacts minuscules
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    cloisons = cv2.morphologyEx(cloisons, cv2.MORPH_OPEN, k, iterations=1)
 
-    m_beton    = np.where(wall_px & (dist >= threshold), 255, 0).astype(np.uint8)
-    m_cloisons = np.where(wall_px & (dist <  threshold), 255, 0).astype(np.uint8)
-
-    return m_beton, m_cloisons
+    return cloisons
 
 
 def _np_to_b64(arr: np.ndarray) -> str:
@@ -1482,12 +1485,11 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
     rooms_list = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, pixels_per_meter)
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
-    # Séparation béton / cloisons depuis masque IA (si disponible)
+    # Cloisons : Mur_IA − Mur_Pixel − Zone_périmètre (si masque IA disponible)
     if m_walls_ai is not None and cv2.countNonZero(m_walls_ai) > 0:
-        m_beton_r, m_cloisons_r = _split_walls_by_ai_thickness(m_walls_ai)
+        m_cloisons_r = _compute_cloisons(m_walls_ai, walls, cnt, H, W)
     else:
-        H2, W2 = walls.shape[:2]
-        m_beton_r, m_cloisons_r = np.zeros((H2, W2), np.uint8), np.zeros((H2, W2), np.uint8)
+        m_cloisons_r = np.zeros((H, W), np.uint8)
 
     return {
         "doors_count": sum(1 for o in openings if o["class"] == "door"),
@@ -1506,8 +1508,7 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
         "mask_walls_ai_b64": None,  # AI walls only available on initial analysis
-        "mask_walls_beton_b64":   _np_to_b64(_mask_to_rgba(m_beton_r,    (220, 38,  38),  200)) if cv2.countNonZero(m_beton_r)    > 0 else None,
-        "mask_cloisons_b64":      _np_to_b64(_mask_to_rgba(m_cloisons_r, (0,  100, 255),  210)) if cv2.countNonZero(m_cloisons_r) > 0 else None,
+        "mask_cloisons_b64": _np_to_b64(_mask_to_rgba(m_cloisons_r, (0, 100, 255), 210)) if cv2.countNonZero(m_cloisons_r) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour nouvelle édition
         "_interior_mask": surfaces.get("interior_mask"),

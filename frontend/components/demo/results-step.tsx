@@ -71,7 +71,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
-  const [showBeton, setShowBeton] = useState(false);
   const [showCloisons, setShowCloisons] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
@@ -429,22 +428,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* Béton (murs porteurs IA) toggle */}
-          {result.mask_walls_beton_b64 && (
-            <button
-              onClick={() => setShowBeton(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showBeton
-                  ? "bg-red-500/15 text-red-400 border-red-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showBeton ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Béton
-            </button>
-          )}
-
-          {/* Cloisons (murs fins IA) toggle */}
+          {/* Cloisons (IA − Pixel − périmètre) toggle */}
           {result.mask_cloisons_b64 && (
             <button
               onClick={() => setShowCloisons(v => !v)}
@@ -575,16 +559,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 1 }}
                 />
               )}
-              {/* Béton RGBA overlay — rouge, murs porteurs IA */}
-              {showBeton && result.mask_walls_beton_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_walls_beton_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 2 }}
-                />
-              )}
-              {/* Cloisons RGBA overlay — bleu fluo, murs fins IA */}
+              {/* Cloisons RGBA overlay — bleu fluo (IA − Pixel − périmètre) */}
               {showCloisons && result.mask_cloisons_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_cloisons_b64}`}
