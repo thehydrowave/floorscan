@@ -8,7 +8,7 @@ import { toast } from "@/components/ui/use-toast";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { BACKEND } from "@/lib/backend";
 
 interface CropStepProps {
   sessionId: string;

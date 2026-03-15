@@ -1,5 +1,6 @@
 "use client";
 
+import { BACKEND } from "@/lib/backend";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -347,7 +348,7 @@ export default function DemoClient() {
   };
 
   // ── Diff handlers ──
-  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  // BACKEND imported at top of file
 
   const handleDiffV1Uploaded = (sid: string, imgB64: string) => {
     setV1SessionId(sid);

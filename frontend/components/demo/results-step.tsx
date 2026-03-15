@@ -29,7 +29,7 @@ import RapportDialog from "@/components/demo/rapport-dialog";
 import OcrPanel from "@/components/demo/ocr-panel";
 import HousingPanel from "@/components/demo/housing-panel";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { BACKEND } from "@/lib/backend";
 
 interface ResultsStepProps {
   result: AnalysisResult;

@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { BACKEND } from "@/lib/backend";
 const STORAGE_KEY = "floorscan_project_v2";
 
 // ── Rendu canvas : plan annoté avec zones colorées + labels ──────────────────

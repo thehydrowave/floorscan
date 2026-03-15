@@ -1,17 +1,16 @@
 /** @type {import('next').NextConfig} */
-// build: 2026-03-15
-const RENDER_BACKEND = "https://floorscan-production.up.railway.app";
+const RAILWAY_BACKEND = "https://floorscan-production.up.railway.app";
+const LOCAL_BACKEND   = "http://localhost:8000";
 
 const nextConfig = {
   reactStrictMode: false,
-  // Proxy /api/backend/* → Render backend (eliminates CORS entirely)
+  // Proxy /api/backend/* → Railway (prod) or localhost (dev)
+  // This eliminates CORS: the browser only calls the same origin.
   async rewrites() {
-    return [
-      {
-        source: "/api/backend/:path*",
-        destination: `${RENDER_BACKEND}/:path*`,
-      },
-    ];
+    const dest = process.env.NODE_ENV === "development"
+      ? `${LOCAL_BACKEND}/:path*`
+      : `${RAILWAY_BACKEND}/:path*`;
+    return [{ source: "/api/backend/:path*", destination: dest }];
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {

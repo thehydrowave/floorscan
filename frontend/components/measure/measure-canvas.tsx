@@ -5,7 +5,7 @@ import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spl
 import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+import { BACKEND } from "@/lib/backend";
 
 interface MeasureCanvasProps {
   imageB64: string;
