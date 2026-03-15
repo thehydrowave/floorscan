@@ -17,6 +17,7 @@ import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/
 
 import { BACKEND } from "@/lib/backend";
 type Layer = "door" | "window" | "interior" | "rooms" | "wall" | "cloison" | null;
+type NonNullLayer = "door" | "window" | "interior" | "rooms" | "wall" | "cloison";
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
 type Mode = "editor" | "measure";
 
@@ -1245,7 +1246,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // Detect panoramic/wide images (ratio > 3:1)
   const isWideImage = imageNatural.w > 0 && imageNatural.h > 0 && (imageNatural.w / imageNatural.h) > 3;
 
-  type NonNullLayer = NonNullable<Layer>;
   const LAYER_ORDER: NonNullLayer[] = ["door","window","wall","cloison","interior","rooms"];
   const LAYER_META: Record<NonNullLayer, { emoji: string; label: string; bg: string; ring: string }> = {
     door:     { emoji:"🚪", label:d("ed_doors"),    bg:"bg-fuchsia-500/20 text-fuchsia-400", ring:"ring-fuchsia-500/40" },
