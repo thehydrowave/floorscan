@@ -486,13 +486,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ opacity: 0.4, zIndex: 1, mixBlendMode: "multiply" }}
                 />
               )}
-              {/* Walls AI mask overlay */}
+              {/* Walls AI mask overlay — raw filled regions showing wall thickness */}
               {showWallsAI && result.mask_walls_ai_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ opacity: 0.5, zIndex: 1, filter: "sepia(1) saturate(5) hue-rotate(10deg)" }}
+                  style={{ opacity: 0.45, zIndex: 1, filter: "invert(1) sepia(1) saturate(10) hue-rotate(5deg) brightness(1.2)" }}
                 />
               )}
             </>

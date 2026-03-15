@@ -1184,7 +1184,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_doors_b64":   _np_to_b64(m_doors),
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
-        "mask_walls_ai_b64": _np_to_b64(_walls_ai_to_lines(m_walls_ai)) if cv2.countNonZero(m_walls_ai) > 0 else None,
+        "mask_walls_ai_b64": _np_to_b64(m_walls_ai) if cv2.countNonZero(m_walls_ai) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
