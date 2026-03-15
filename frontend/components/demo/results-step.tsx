@@ -71,8 +71,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
-  const [showConcrete, setShowConcrete] = useState(false);
-  const [showPartitions, setShowPartitions] = useState(false);
+  const [showCloisonsPixel, setShowCloisonsPixel] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
@@ -429,33 +428,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* Béton toggle */}
-          {result.mask_walls_concrete_b64 && (
+          {/* Cloisons pixel toggle */}
+          {result.mask_cloisons_pixel_b64 && (
             <button
-              onClick={() => setShowConcrete(v => !v)}
+              onClick={() => setShowCloisonsPixel(v => !v)}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showConcrete
-                  ? "bg-red-500/15 text-red-400 border-red-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showConcrete ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Béton
-            </button>
-          )}
-
-          {/* Cloisons toggle */}
-          {result.mask_walls_partition_b64 && (
-            <button
-              onClick={() => setShowPartitions(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showPartitions
+                showCloisonsPixel
                   ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showPartitions ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
+              {showCloisonsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
             </button>
           )}
 
@@ -575,31 +559,14 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 1 }}
                 />
               )}
-              {/* Béton overlay — rouge vif via luminance mask */}
-              {showConcrete && result.mask_walls_concrete_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#ef4444",
-                  opacity: 0.70,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_walls_concrete_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
-                  zIndex: 2,
-                }} />
-              )}
-              {/* Cloisons overlay — bleu électrique via luminance mask */}
-              {showPartitions && result.mask_walls_partition_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#3b82f6",
-                  opacity: 0.65,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_walls_partition_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
-                  zIndex: 2,
-                }} />
+              {/* Cloisons pixel RGBA overlay — bleu fluo rempli */}
+              {showCloisonsPixel && result.mask_cloisons_pixel_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_cloisons_pixel_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 2 }}
+                />
               )}
             </>
           ) : (

@@ -76,8 +76,7 @@ export interface AnalysisResult {
   mask_walls_b64: string;
   mask_walls_ai_b64?: string | null;       // Direct Roboflow wall predictions
   mask_walls_pixel_b64?: string | null;    // OTSU pixel-based wall detection
-  mask_walls_concrete_b64?: string | null; // Murs béton (épais + périmètre)
-  mask_walls_partition_b64?: string | null; // Cloisons (fins + intérieurs)
+  mask_cloisons_pixel_b64?: string | null;  // Cloisons pixel bleu fluo (murs fins OTSU)
   mask_rooms_b64?: string;
   plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };

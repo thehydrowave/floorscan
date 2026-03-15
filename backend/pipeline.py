@@ -1174,8 +1174,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
-    # === SÉPARATION murs béton / cloisons ===
-    m_concrete, m_partitions = _split_walls_by_type(walls, cnt, ppm)
+    # === CLOISONS pixel (murs fins depuis OTSU) ===
+    mask_cloisons_pixel = _detect_cloisons_pixel(m_walls_pixel, ppm)
 
     return {
         "img_w": W, "img_h": H,
@@ -1199,8 +1199,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
-        "mask_walls_concrete_b64": _np_to_b64(m_concrete),   # grayscale — béton (épais/périmètre)
-        "mask_walls_partition_b64": _np_to_b64(m_partitions) if cv2.countNonZero(m_partitions) > 0 else None,  # grayscale — cloisons
+        "mask_cloisons_pixel_b64": _np_to_b64(mask_cloisons_pixel) if np.any(mask_cloisons_pixel > 0) else None,  # RGBA bleu fluo — cloisons pixel
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1384,35 +1383,28 @@ def _mask_to_rgba(mask: np.ndarray, color: tuple, alpha: int = 100) -> np.ndarra
     return rgba
 
 
-def _split_walls_by_type(walls_bin: np.ndarray, cnt, ppm) -> tuple:
-    """Sépare le masque murs en :
-    - béton : épais (survit à l'érosion) OU situé près du périmètre extérieur
-    - cloisons : fins ET intérieurs
-    Retourne (concrete_mask, partition_mask) — deux ndarrays grayscale binaires.
+def _detect_cloisons_pixel(m_walls_pixel: np.ndarray, ppm) -> np.ndarray:
+    """Extrait les cloisons (murs fins) depuis le masque pixel OTSU.
+    Principe : érosion morphologique élimine les murs épais (béton) ;
+    ce qui reste = cloisons intérieures.
+    Retourne un RGBA PNG bleu fluo rempli (pas juste un contour).
     """
-    H, W = walls_bin.shape[:2]
+    if cv2.countNonZero(m_walls_pixel) == 0:
+        H, W = m_walls_pixel.shape[:2]
+        return np.zeros((H, W, 4), np.uint8)
 
-    # — Classification par épaisseur : kernel ~13cm —
-    k_r = max(2, int(round((0.13 * ppm) / 2))) if ppm else 3
+    # Érosion : kernel ≈ moitié de l'épaisseur min d'un mur béton (~15cm)
+    k_r = max(3, int(round((0.15 * ppm) / 2))) if ppm else 4
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k_r + 1, 2 * k_r + 1))
-    eroded = cv2.erode(walls_bin, k, iterations=1)
-    concrete_thick = cv2.dilate(eroded, k, iterations=1)
-    concrete_thick = cv2.bitwise_and(concrete_thick, walls_bin)
+    thick_walls = cv2.erode(m_walls_pixel, k, iterations=1)
+    thick_walls = cv2.dilate(thick_walls, k, iterations=1)
+    thick_walls = cv2.bitwise_and(thick_walls, m_walls_pixel)
 
-    # — Classification par position : zone ≈30 px autour du contour extérieur —
-    concrete_perimeter = np.zeros((H, W), np.uint8)
-    if cnt is not None:
-        contour_img = np.zeros((H, W), np.uint8)
-        cv2.drawContours(contour_img, [cnt], -1, 255, thickness=3)
-        k_ext = cv2.getStructuringElement(cv2.MORPH_RECT, (31, 31))
-        near_ext = cv2.dilate(contour_img, k_ext, iterations=1)
-        concrete_perimeter = cv2.bitwise_and(near_ext, walls_bin)
+    # Cloisons = murs pixel − murs épais
+    cloisons = cv2.bitwise_and(m_walls_pixel, cv2.bitwise_not(thick_walls))
 
-    # — Combinaison —
-    concrete = cv2.bitwise_or(concrete_thick, concrete_perimeter)
-    concrete = cv2.bitwise_and(concrete, walls_bin)
-    partitions = cv2.bitwise_and(walls_bin, cv2.bitwise_not(concrete))
-    return concrete, partitions
+    # Retourner en RGBA bleu fluo rempli (0, 100, 255) alpha=210
+    return _mask_to_rgba(cloisons, (0, 100, 255), 210)
 
 
 def _np_to_b64(arr: np.ndarray) -> str:
@@ -1478,8 +1470,8 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
     rooms_list = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, pixels_per_meter)
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
 
-    # Séparation béton / cloisons sur les murs édités
-    m_concrete_r, m_partitions_r = _split_walls_by_type(walls, cnt, pixels_per_meter)
+    # Cloisons pixel sur les murs édités
+    mask_cloisons_pixel_r = _detect_cloisons_pixel(walls, pixels_per_meter)
 
     return {
         "doors_count": sum(1 for o in openings if o["class"] == "door"),
@@ -1498,8 +1490,7 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
         "mask_walls_ai_b64": None,  # AI walls only available on initial analysis
-        "mask_walls_concrete_b64": _np_to_b64(m_concrete_r),
-        "mask_walls_partition_b64": _np_to_b64(m_partitions_r) if cv2.countNonZero(m_partitions_r) > 0 else None,
+        "mask_cloisons_pixel_b64": _np_to_b64(mask_cloisons_pixel_r) if np.any(mask_cloisons_pixel_r > 0) else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour nouvelle édition
         "_interior_mask": surfaces.get("interior_mask"),
