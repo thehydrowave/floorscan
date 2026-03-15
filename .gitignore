@@ -7,3 +7,8 @@ __pycache__/
 *.pyc
 .DS_Store
 tsconfig.tsbuildinfo
+
+# Auth database
+floorscan-auth.db
+floorscan-auth.db-wal
+floorscan-auth.db-shm

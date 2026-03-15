@@ -3,19 +3,24 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, Menu, X, ChevronDown } from "lucide-react";
+import { ScanLine, Menu, X, ChevronDown, Shield, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { LANGUAGES, t } from "@/lib/i18n";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
+import { useAuth } from "@/lib/use-auth";
+import { signOut } from "next-auth/react";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const { lang, setLang } = useLang();
+  const { isLoggedIn, isAdmin, user } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -27,6 +32,9 @@ export default function Navbar() {
     const handler = (e: MouseEvent) => {
       if (langRef.current && !langRef.current.contains(e.target as Node)) {
         setLangOpen(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -122,6 +130,70 @@ export default function Navbar() {
             </AnimatePresence>
           </div>
 
+          {/* Auth: user menu or sign in */}
+          {isLoggedIn ? (
+            <div ref={userMenuRef} className="relative">
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 text-sm font-medium border rounded-lg transition-all bg-slate-800/50",
+                  isAdmin
+                    ? "text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                    : "text-slate-300 border-slate-700 hover:bg-slate-800 hover:border-slate-600"
+                )}
+              >
+                <div className={cn(
+                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-700",
+                  isAdmin ? "bg-amber-500/20 text-amber-400" : "bg-sky-500/20 text-sky-400"
+                )}>
+                  {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                </div>
+                <span className="text-xs max-w-[100px] truncate">{user?.name || user?.email}</span>
+                <ChevronDown className={cn("w-3 h-3 text-slate-500 transition-transform", userMenuOpen && "rotate-180")} />
+              </button>
+
+              <AnimatePresence>
+                {userMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                    transition={{ duration: 0.12 }}
+                    className="absolute right-0 top-full mt-1.5 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl shadow-black/30 overflow-hidden z-50"
+                  >
+                    <div className="px-3.5 py-2.5 border-b border-slate-700/50">
+                      <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-0.5">
+                        {isAdmin ? "Admin" : "Utilisateur"}
+                      </p>
+                    </div>
+                    {isAdmin && (
+                      <Link
+                        href="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-amber-400 hover:bg-slate-700/50 transition-colors"
+                      >
+                        <Shield className="w-3.5 h-3.5" /> Administration
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => { setUserMenuOpen(false); signOut({ callbackUrl: "/" }); }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-slate-700/50 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" /> Deconnexion
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <Button variant="outline" size="sm" asChild className="border-slate-700 text-slate-300 hover:bg-slate-800">
+              <Link href="/login">
+                <User className="w-3.5 h-3.5" /> Connexion
+              </Link>
+            </Button>
+          )}
+
           <Button variant="outline" size="sm" asChild className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent">
             <Link href="/measure">Métré ✦</Link>
           </Button>
@@ -182,6 +254,31 @@ export default function Navbar() {
             className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60">
             Métré
           </Link>
+          {/* Mobile auth section */}
+          <div className="border-t border-slate-700/50 pt-2 mt-1">
+            {isLoggedIn ? (
+              <div className="flex flex-col gap-1">
+                <div className="px-4 py-2 text-xs text-slate-500">{user?.email} ({isAdmin ? "admin" : "user"})</div>
+                {isAdmin && (
+                  <Link href="/admin" onClick={() => setMenuOpen(false)}
+                    className="px-4 py-2.5 text-sm text-amber-400 hover:text-amber-300 rounded-lg hover:bg-slate-800/60 flex items-center gap-2">
+                    <Shield className="w-3.5 h-3.5" /> Administration
+                  </Link>
+                )}
+                <button
+                  onClick={() => { setMenuOpen(false); signOut({ callbackUrl: "/" }); }}
+                  className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60 text-left flex items-center gap-2"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Deconnexion
+                </button>
+              </div>
+            ) : (
+              <Link href="/login" onClick={() => setMenuOpen(false)}
+                className="px-4 py-2.5 text-sm text-sky-400 hover:text-sky-300 rounded-lg hover:bg-slate-800/60 flex items-center gap-2">
+                <User className="w-3.5 h-3.5" /> Connexion
+              </Link>
+            )}
+          </div>
           <Button className="mt-2" asChild>
             <Link href="/demo">{t("nav_try", lang)} →</Link>
           </Button>

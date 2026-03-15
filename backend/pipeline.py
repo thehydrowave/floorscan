@@ -916,8 +916,9 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
 
     m_doors = np.zeros((H, W), np.uint8)
     m_wins  = np.zeros((H, W), np.uint8)
+    m_walls = np.zeros((H, W), np.uint8)
     rows = []
-    tile_count = kept_doors = kept_wins = pred_count = 0
+    tile_count = kept_doors = kept_wins = kept_walls = pred_count = 0
 
     with tempfile.TemporaryDirectory() as td:
         for (x0, y0, x1, y1) in iter_tiles(W, H, tile_size, overlap):
@@ -981,12 +982,17 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
                     xmx, ymx = float(poly[:, 0].max()), float(poly[:, 1].max())
                     cxc, cyc = (xmn+xmx)/2.0, (ymn+ymx)/2.0
 
+                    is_wall = lbl.startswith("wall")
+
                     if is_door:
                         cv2.fillPoly(m_doors, [poly], 255); kept_doors += 1
                     elif is_window:
                         cv2.fillPoly(m_wins, [poly], 255); kept_wins += 1
-                    elif write_rooms and rooms_index is not None:
-                        cv2.fillPoly(rooms_index, [poly], rid_for(lbl))
+                    else:
+                        if is_wall:
+                            cv2.fillPoly(m_walls, [poly], 255); kept_walls += 1
+                        if write_rooms and rooms_index is not None:
+                            cv2.fillPoly(rooms_index, [poly], rid_for(lbl))
 
                     rows.append({"label": lbl, "type": "polygon",
                                  "x_px": cxc, "y_px": cyc,
@@ -1007,12 +1013,17 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
                     x1g, y1g, x2g, y2g = clamp_box(x1g, y1g, x2g, y2g, W, H)
                     cxc, cyc = (x1g+x2g)/2, (y1g+y2g)/2
 
+                    is_wall_bb = lbl.startswith("wall")
+
                     if is_door:
                         cv2.rectangle(m_doors, (x1g,y1g), (x2g,y2g), 255, -1); kept_doors += 1
                     elif is_window:
                         cv2.rectangle(m_wins, (x1g,y1g), (x2g,y2g), 255, -1); kept_wins += 1
-                    elif write_rooms and rooms_index is not None:
-                        cv2.rectangle(rooms_index, (x1g,y1g), (x2g,y2g), rid_for(lbl), -1)
+                    else:
+                        if is_wall_bb:
+                            cv2.rectangle(m_walls, (x1g,y1g), (x2g,y2g), 255, -1); kept_walls += 1
+                        if write_rooms and rooms_index is not None:
+                            cv2.rectangle(rooms_index, (x1g,y1g), (x2g,y2g), rid_for(lbl), -1)
 
                     rows.append({"label": lbl, "type": "bbox",
                                  "x_px": cxc, "y_px": cyc,
@@ -1023,8 +1034,8 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
         rooms_index = np.zeros((H, W), np.int32)
 
     stats = dict(tile_size=tile_size, tiles=tile_count, preds=pred_count,
-                 kept_doors=kept_doors, kept_windows=kept_wins)
-    return rooms_index, legend, m_doors, m_wins, rows, stats
+                 kept_doors=kept_doors, kept_windows=kept_wins, kept_walls=kept_walls)
+    return rooms_index, legend, m_doors, m_wins, m_walls, rows, stats
 
 
 # ============================================================
@@ -1045,7 +1056,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     )
 
     # === PASS 1 (2048) ===
-    rooms_index, legend, m_doors_1, m_wins_1, rows_1, st1 = infer_pass(
+    rooms_index, legend, m_doors_1, m_wins_1, m_walls_1, rows_1, st1 = infer_pass(
         img_pil, client, cfg["model_id"],
         cfg["pass1_tile"], cfg["pass1_over"], write_rooms=True,
         conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
@@ -1060,7 +1071,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_wins_1  = clean_mask(m_wins_1,  cfg["min_area_win_px"],  cfg["clean_close_k_win"])
 
     # === PASS 2 (1024) ===
-    _, _, m_doors_2, m_wins_2, rows_2, st2 = infer_pass(
+    _, _, m_doors_2, m_wins_2, m_walls_2, rows_2, st2 = infer_pass(
         img_pil, client, cfg["model_id"],
         cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
         conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
@@ -1069,8 +1080,10 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_wins_2  = clean_mask(m_wins_2,  cfg["min_area_win_px"],  cfg["clean_close_k_win"])
 
     # === UNION ===
-    m_doors   = cv2.bitwise_or(m_doors_1, m_doors_2)
-    m_windows = cv2.bitwise_or(m_wins_1,  m_wins_2)
+    m_doors    = cv2.bitwise_or(m_doors_1, m_doors_2)
+    m_windows  = cv2.bitwise_or(m_wins_1,  m_wins_2)
+    m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
+    print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
     # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
     # Cette approche donne des murs fins et nets calqués sur les détections IA.
@@ -1171,11 +1184,13 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_doors_b64":   _np_to_b64(m_doors),
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
+        "mask_walls_ai_b64": _np_to_b64(m_walls_ai) if cv2.countNonZero(m_walls_ai) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
         "_m_windows": m_windows,
         "_walls": walls,
+        "_m_walls_ai": m_walls_ai,
         "_cnt": cnt.tolist() if cnt is not None else None,
         "_mask_rooms_rgba": mask_rooms_rgb,  # numpy RGBA array pour édition
     }
@@ -1364,6 +1379,7 @@ def recompute_from_edited_masks(img_rgb: np.ndarray, m_doors: np.ndarray,
         "mask_doors_b64":   _np_to_b64(m_doors),
         "mask_windows_b64": _np_to_b64(m_windows),
         "mask_walls_b64":   _np_to_b64(walls),
+        "mask_walls_ai_b64": None,  # AI walls only available on initial analysis
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour nouvelle édition
         "_interior_mask": surfaces.get("interior_mask"),

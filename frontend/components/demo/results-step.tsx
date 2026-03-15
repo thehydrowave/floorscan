@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { useAuth } from "@/lib/use-auth";
 import MaterialsPanel from "@/components/demo/materials-panel";
 import MetrePanel from "@/components/demo/metre-panel";
 import DpgfPanel from "@/components/demo/dpgf-panel";
@@ -62,9 +63,14 @@ function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ??
 export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart, pageCount, currentPage, onSwitchPage, analyzedPages, onAddPage }: ResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
+  const { isAdmin } = useAuth();
 
-  // ── Image overlay toggles (mutually exclusive for the base image) ──
-  const [activeImageOverlay, setActiveImageOverlay] = useState<string>("openings");
+  // ── Mask overlays (stackable, like editor) ──
+  const [showDoors, setShowDoors] = useState(true);
+  const [showWindows, setShowWindows] = useState(true);
+  const [showWalls, setShowWalls] = useState(false);
+  const [showWallsAI, setShowWallsAI] = useState(false);
+  const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
   const [showDetectionsOverlay, setShowDetectionsOverlay] = useState(false);
@@ -74,30 +80,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportingPdf, setExportingPdf] = useState(false);
   const [measureActive, setMeasureActive] = useState(false);
   const [rapportOpen, setRapportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
 
-  const overlayB64Map: Record<string, string | null> = {
-    openings: result.overlay_openings_b64,
-    interior: result.overlay_interior_b64,
-    mask_doors: result.mask_doors_b64,
-    mask_windows: result.mask_windows_b64,
-    mask_walls: result.mask_walls_b64,
-  };
-
-  const toggleImageOverlay = (key: string) => {
-    setActiveImageOverlay(prev => prev === key ? "" : key);
-  };
+  // Base plan image (clean plan or fallback to openings overlay)
+  const basePlanB64 = result.plan_b64 || result.overlay_openings_b64;
+  const baseImageB64 = showInterior && result.overlay_interior_b64
+    ? result.overlay_interior_b64
+    : basePlanB64;
+  const hasBaseImage = !!baseImageB64;
 
   const hasRooms = (result.rooms ?? []).length > 0;
   const hasDetections = customDetections.length > 0;
-
-  // ── Image overlay button definitions ──
-  const imageOverlayButtons = [
-    { key: "openings",     label: d("re_tab_openings"),  color: "#D946EF", emoji: "🚪" },
-    { key: "interior",     label: d("re_tab_interior"),  color: "#34D399", emoji: "🏠" },
-    { key: "mask_doors",   label: d("re_mask_doors"),    color: "#D946EF", emoji: "🚪" },
-    { key: "mask_windows", label: d("re_mask_windows"),  color: "#22D3EE", emoji: "🪟" },
-    { key: "mask_walls",   label: d("re_mask_walls"),    color: "#60A5FA", emoji: "🧱" },
-  ].filter(o => overlayB64Map[o.key]);
 
   const handleExportPdf = async () => {
     setExportingPdf(true);
@@ -213,24 +207,37 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <h2 className="font-display text-2xl font-700 text-white">{d("re_title")}</h2>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={handleExportCSV} variant="outline" title="Exporter CSV">
-            <Table2 className="w-4 h-4" /> CSV
-          </Button>
-          <Button onClick={() => window.print()} variant="outline" title={d("btn_print")}>
-            <Printer className="w-4 h-4" /> {d("btn_print")}
-          </Button>
+          {/* Export dropdown */}
+          <div className="relative">
+            <Button onClick={() => setExportOpen(v => !v)} variant="outline">
+              <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3 ml-1" />
+            </Button>
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900 border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px]">
+                  <button onClick={() => { handleExportCSV(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
+                    <Table2 className="w-4 h-4" /> CSV
+                  </button>
+                  <button onClick={() => { window.print(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
+                    <Printer className="w-4 h-4" /> {d("btn_print")}
+                  </button>
+                  <button onClick={() => { setRapportOpen(true); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
+                    <FileDown className="w-4 h-4" /> {d("rap_btn" as DTKey)}
+                  </button>
+                  <button onClick={() => { handleExportPdf(); setExportOpen(false); }} disabled={exportingPdf} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors disabled:opacity-50">
+                    {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} {d("re_pdf")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <Button
             onClick={() => setMeasureActive(v => !v)}
             variant={measureActive ? "default" : "outline"}
             title={d("meas_btn" as DTKey)}
           >
             <Ruler className="w-4 h-4" /> {d("meas_btn" as DTKey)}
-          </Button>
-          <Button onClick={() => setRapportOpen(true)} variant="outline" title={d("rap_btn" as DTKey)}>
-            <FileDown className="w-4 h-4" /> {d("rap_btn" as DTKey)}
-          </Button>
-          <Button onClick={handleExportPdf} disabled={exportingPdf} variant="outline">
-            {exportingPdf ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("re_exporting")}</> : <><Download className="w-4 h-4" /> {d("re_pdf")}</>}
           </Button>
           <Button onClick={onGoEditor}>
             <Edit3 className="w-4 h-4" /> {d("re_editor")}
@@ -342,24 +349,82 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
       {/* ══════════════════════ Overlays section ══════════════════════ */}
       <div className="glass rounded-xl border border-white/10 p-5">
-        {/* ── Toggle buttons ── */}
+        {/* ── Toggle buttons (stackable overlays like editor) ── */}
         <div className="flex gap-2 flex-wrap mb-4 items-center">
-          {/* Image-based overlays (mutually exclusive) */}
-          {imageOverlayButtons.map(({ key, label, color, emoji }) => (
+          {/* Doors toggle */}
+          {result.mask_doors_b64 && (
             <button
-              key={key}
-              onClick={() => toggleImageOverlay(key)}
+              onClick={() => setShowDoors(v => !v)}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                activeImageOverlay === key
-                  ? "text-white border-white/20"
+                showDoors
+                  ? "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
-              style={activeImageOverlay === key ? { backgroundColor: color + "20", borderColor: color + "40", color: color } : undefined}
             >
-              <span>{emoji}</span> {label}
+              {showDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_doors")}
             </button>
-          ))}
+          )}
+
+          {/* Windows toggle */}
+          {result.mask_windows_b64 && (
+            <button
+              onClick={() => setShowWindows(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showWindows
+                  ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_windows")}
+            </button>
+          )}
+
+          {/* Walls toggle */}
+          {result.mask_walls_b64 && (
+            <button
+              onClick={() => setShowWalls(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showWalls
+                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_area")}
+            </button>
+          )}
+
+          {/* Walls AI toggle (debug: direct Roboflow wall predictions) */}
+          {result.mask_walls_ai_b64 && (
+            <button
+              onClick={() => setShowWallsAI(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showWallsAI
+                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showWallsAI ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs (IA)
+            </button>
+          )}
+
+          {/* Interior toggle */}
+          {result.overlay_interior_b64 && (
+            <button
+              onClick={() => setShowInterior(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showInterior
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showInterior ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_tab_interior")}
+            </button>
+          )}
 
           {/* Separator when data overlays exist */}
           {(hasRooms || hasDetections) && (
@@ -377,7 +442,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              🏷️ {d("re_overlay_rooms")}
+              {showRoomsOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_overlay_rooms")}
             </button>
           )}
 
@@ -397,21 +462,69 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           )}
         </div>
 
-        {/* ── Image display + SVG data overlays ── */}
+        {/* ── Image display + stacked mask overlays ── */}
         <div className="relative rounded-xl overflow-hidden border border-white/10">
-          {activeImageOverlay && overlayB64Map[activeImageOverlay] ? (
-            <img
-              src={`data:image/png;base64,${overlayB64Map[activeImageOverlay]}`}
-              alt={activeImageOverlay}
-              className="w-full h-auto block"
-              onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-            />
+          {hasBaseImage ? (
+            <>
+              <img
+                src={`data:image/png;base64,${baseImageB64}`}
+                alt="Plan"
+                className="w-full h-auto block"
+                onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              />
+
+              {/* Stacked CSS mask overlays (like editor) */}
+              {showDoors && result.mask_doors_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#D946EF",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
+              {showWindows && result.mask_windows_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#22D3EE",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
+              {showWalls && result.mask_walls_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#60A5FA",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_walls_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
+              {showWallsAI && result.mask_walls_ai_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#F59E0B",
+                  opacity: 0.3,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_walls_ai_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  zIndex: 1,
+                }} />
+              )}
+            </>
           ) : (
             <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
           )}
 
           {/* Measure tool overlay */}
-          {activeImageOverlay && overlayB64Map[activeImageOverlay] && (
+          {hasBaseImage && (
             <MeasureTool
               ppm={result.pixels_per_meter ?? null}
               active={measureActive}
@@ -421,11 +534,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           )}
 
           {/* SVG overlay layer for rooms & VS detections */}
-          {(showRoomsOverlay || showDetectionsOverlay) && activeImageOverlay && overlayB64Map[activeImageOverlay] && (
+          {(showRoomsOverlay || showDetectionsOverlay) && hasBaseImage && (
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
               viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
               preserveAspectRatio="xMidYMid meet"
+              style={{ zIndex: 2 }}
             >
               {/* Room polygons */}
               {showRoomsOverlay && result.rooms?.map(room => {
@@ -605,8 +719,21 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         />
       )}
 
-      {/* ── Métré détaillé par pièce ── */}
-      <MetrePanel result={result} />
+      {/* ── Métré détaillé par pièce (collapsible, collapsed by default) ── */}
+      <div className="mt-8 glass rounded-xl border border-white/10">
+        <button
+          onClick={() => setRoofTakeOffOpen(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
+        >
+          <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("metre_title" as DTKey)}</p>
+          {roofTakeOffOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+        </button>
+        {roofTakeOffOpen && (
+          <div className="px-0 pb-0">
+            <MetrePanel result={result} />
+          </div>
+        )}
+      </div>
 
       {/* ── DPGF estimatif panel ── */}
       <DpgfPanel result={result} customDetections={customDetections} />
@@ -635,8 +762,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       {/* ── OCR text detection panel (Beta) ── */}
       <OcrPanel result={result} />
 
-      {/* ── Debug technique panel ── */}
-      <DebugPanel result={result} customDetections={customDetections} />
+      {/* ── Debug technique panel (admin only) ── */}
+      {isAdmin && <DebugPanel result={result} customDetections={customDetections} />}
 
       <div className="flex justify-center mt-6">
         <Button variant="ghost" onClick={onRestart}>

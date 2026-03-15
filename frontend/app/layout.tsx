@@ -3,6 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { LangProvider } from "@/lib/lang-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { AuthProvider } from "@/lib/auth-provider";
 
 export const metadata: Metadata = {
   title: "FloorScan — Analyse IA de Plans de Sol",
@@ -19,12 +20,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" className="scroll-smooth">
       <body className="bg-ink text-slate-100 font-body antialiased">
-        <ThemeProvider>
-          <LangProvider>
-            {children}
-            <Toaster />
-          </LangProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <LangProvider>
+              {children}
+              <Toaster />
+            </LangProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

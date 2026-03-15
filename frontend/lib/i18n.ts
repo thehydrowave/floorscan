@@ -1193,6 +1193,21 @@ export const DEMO_T = {
   ed_go_results:          { fr:"Voir resultats",                       en:"View results",                      es:"Ver resultados",                      de:"Ergebnisse anzeigen",                it:"Vedi risultati"                       },
   ed_erase:               { fr:"Effacer",                              en:"Erase",                             es:"Borrar",                              de:"Loschen",                            it:"Cancellare"                           },
   ed_tools_panel:          { fr:"Outils",                               en:"Tools",                             es:"Herramientas",                        de:"Werkzeuge",                          it:"Strumenti"                            },
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  auth_login:              { fr:"Connexion",                             en:"Sign in",                           es:"Iniciar sesion",                      de:"Anmelden",                           it:"Accedi"                               },
+  auth_register:           { fr:"Inscription",                           en:"Sign up",                           es:"Registrarse",                         de:"Registrieren",                       it:"Registrati"                           },
+  auth_email:              { fr:"Email",                                 en:"Email",                             es:"Correo",                              de:"E-Mail",                             it:"Email"                                },
+  auth_password:           { fr:"Mot de passe",                          en:"Password",                          es:"Contrasena",                          de:"Passwort",                           it:"Password"                             },
+  auth_name:               { fr:"Nom",                                   en:"Name",                              es:"Nombre",                              de:"Name",                               it:"Nome"                                 },
+  auth_confirm_pwd:        { fr:"Confirmer",                             en:"Confirm password",                  es:"Confirmar",                           de:"Bestatigen",                         it:"Conferma"                             },
+  auth_submit:             { fr:"Se connecter",                          en:"Sign in",                           es:"Acceder",                             de:"Einloggen",                          it:"Accedi"                               },
+  auth_register_btn:       { fr:"S'inscrire",                            en:"Create account",                    es:"Crear cuenta",                        de:"Konto erstellen",                    it:"Crea account"                         },
+  auth_no_account:         { fr:"Pas encore de compte ?",                en:"No account yet?",                   es:"Sin cuenta?",                         de:"Noch kein Konto?",                   it:"Nessun account?"                      },
+  auth_has_account:        { fr:"Deja un compte ?",                      en:"Already registered?",               es:"Ya registrado?",                      de:"Bereits registriert?",               it:"Gia registrato?"                      },
+  auth_signout:            { fr:"Deconnexion",                           en:"Sign out",                          es:"Cerrar sesion",                       de:"Abmelden",                           it:"Esci"                                 },
+  auth_admin:              { fr:"Administration",                        en:"Admin panel",                       es:"Panel admin",                         de:"Admin-Panel",                        it:"Pannello admin"                       },
+  auth_error_cred:         { fr:"Email ou mot de passe invalide",        en:"Invalid email or password",         es:"Email o contrasena invalidos",        de:"Ungultige Anmeldedaten",             it:"Credenziali non valide"               },
+  auth_error_exist:        { fr:"Cet email est deja utilise",            en:"This email is already in use",      es:"Este email ya esta en uso",           de:"Diese E-Mail wird bereits verwendet", it:"Questa email e gia in uso"           },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;
