@@ -74,7 +74,8 @@ export interface AnalysisResult {
   mask_doors_b64: string;
   mask_windows_b64: string;
   mask_walls_b64: string;
-  mask_walls_ai_b64?: string | null;  // Direct Roboflow wall predictions (debug/comparison)
+  mask_walls_ai_b64?: string | null;     // Direct Roboflow wall predictions
+  mask_walls_pixel_b64?: string | null;  // OTSU pixel-based wall detection
   mask_rooms_b64?: string;
   plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };

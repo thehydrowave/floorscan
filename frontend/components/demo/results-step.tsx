@@ -70,6 +70,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWindows, setShowWindows] = useState(true);
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
+  const [showWallsPixel, setShowWallsPixel] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
@@ -411,6 +412,21 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
+          {/* Walls Pixel toggle (OTSU pixel-based detection) */}
+          {result.mask_walls_pixel_b64 && (
+            <button
+              onClick={() => setShowWallsPixel(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showWallsPixel
+                  ? "bg-red-500/15 text-red-400 border-red-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showWallsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs (Pixel)
+            </button>
+          )}
+
           {/* Interior toggle */}
           {result.overlay_interior_b64 && (
             <button
@@ -504,6 +520,15 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               {showWallsAI && result.mask_walls_ai_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 1 }}
+                />
+              )}
+              {/* Walls Pixel RGBA overlay */}
+              {showWallsPixel && result.mask_walls_pixel_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_walls_pixel_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   style={{ zIndex: 1 }}

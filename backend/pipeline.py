@@ -1150,8 +1150,18 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         df_openings["width_m"]  = df_openings["width_px"]  / ppm
         df_openings["height_m"] = df_openings["height_px"] / ppm
 
+    # === DÉTECTION MURS PAR PIXEL (OTSU) — compare avec IA ===
+    m_walls_pixel = _detect_walls_pixel(img_rgb, cnt)
+
     # === SURFACES & PÉRIMÈTRES ===
     surfaces = _compute_surfaces(img_rgb, cnt, walls, ppm, cfg)
+
+    # Surfaces comparées : murs IA vs murs pixel
+    if ppm is not None:
+        if cv2.countNonZero(m_walls_ai) > 0:
+            surfaces["area_walls_ai_m2"] = float(cv2.countNonZero(m_walls_ai)) / (ppm ** 2)
+        if cv2.countNonZero(m_walls_pixel) > 0:
+            surfaces["area_walls_pixel_m2"] = float(cv2.countNonZero(m_walls_pixel)) / (ppm ** 2)
 
     # === OVERLAYS ===
     overlay_openings = _build_overlay_openings(img_rgb, cnt, m_doors, m_windows)
@@ -1185,6 +1195,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_windows_b64": _np_to_b64(_mask_to_rgba(m_windows, (34, 211, 238), 90)),   # cyan
         "mask_walls_b64":   _np_to_b64(_mask_to_rgba(walls, (96, 165, 250), 90)),        # blue
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
+        "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1298,6 +1309,28 @@ def _build_overlay_interior(img_rgb, interior_mask):
     idx = (interior_mask > 0)
     overlay[idx] = (0.6 * overlay[idx] + 0.4 * green).astype(np.uint8)
     return overlay
+
+
+def _detect_walls_pixel(img_rgb: np.ndarray, cnt: np.ndarray = None) -> np.ndarray:
+    """Detect walls by pixel thresholding (OTSU) — dark lines = walls with real thickness."""
+    H, W = img_rgb.shape[:2]
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # OTSU threshold: dark pixels = wall lines
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Restrict to building contour if available
+    if cnt is not None:
+        mask_building = np.zeros((H, W), np.uint8)
+        cv2.fillPoly(mask_building, [cnt], 255)
+        binary = cv2.bitwise_and(binary, mask_building)
+
+    # Remove small noise (text, hatching) — keep only thick structures
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k, iterations=2)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k, iterations=1)
+
+    return binary
 
 
 def _walls_ai_to_lines(m_walls: np.ndarray) -> np.ndarray:
