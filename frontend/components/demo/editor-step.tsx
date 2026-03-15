@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -164,7 +164,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
 
-  // Auto-enable overlays + reset tool on layer change
+  // Auto-enable overlays + reset tool + sync sidebar tab on layer change
   useEffect(() => {
     if (layer === null) {
       // Aucun élément sélectionné : masquer tous les overlays
@@ -175,6 +175,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       pts.current = [];
       setSelectedRoomId(null);
       setEditingRoomId(null);
+      setSidebarTab("results");
       return;
     }
     if (layer === "rooms") {
@@ -183,6 +184,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setShowWindows(false);
       setShowWalls(false);
       setTool("select");
+      setSidebarTab("rooms");
     } else {
       setShowRooms(false);
       setShowDoors(layer === "door");
@@ -192,6 +194,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       if (tool === "select" || tool === "split") setTool("add_rect");
       if (tool === "sam" && layer !== "door" && layer !== "window" && layer !== "interior") setTool("add_rect");
       pts.current = [];
+      setSidebarTab("results");
     }
     if (layer !== "rooms") {
       setSelectedRoomId(null);
@@ -2302,9 +2305,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <div className="glass rounded-xl border border-white/10 p-3">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("ed_rooms_det")}</h3>
-                    <button onClick={() => setShowRooms(v => !v)} className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
-                      {showRooms ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                    </button>
                   </div>
                   <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto pr-0.5">
                     {displayRooms.map(room => {
