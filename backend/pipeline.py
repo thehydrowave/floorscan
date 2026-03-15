@@ -1092,27 +1092,35 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_v2 = np.zeros((H, W), np.uint8)
     st_v2 = {}
     model_v2_id = cfg.get("model_id_v2")
+    logger.info("=== MODEL V2: model_id_v2=%s ===", model_v2_id)
     if model_v2_id:
         try:
+            logger.info("V2 pass1 starting with model %s, tile=%d, over=%d",
+                        model_v2_id, cfg["pass1_tile"], cfg["pass1_over"])
             _, _, md_v2_1, mw_v2_1, mwall_v2_1, _, stv2_1 = infer_pass(
                 img_pil, client, model_v2_id,
                 cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
                 conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
             )
+            logger.info("V2 pass1 done: doors=%d wins=%d walls=%d",
+                        cv2.countNonZero(md_v2_1), cv2.countNonZero(mw_v2_1), cv2.countNonZero(mwall_v2_1))
+            logger.info("V2 pass2 starting...")
             _, _, md_v2_2, mw_v2_2, mwall_v2_2, _, stv2_2 = infer_pass(
                 img_pil, client, model_v2_id,
                 cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
                 conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
             )
+            logger.info("V2 pass2 done: doors=%d wins=%d walls=%d",
+                        cv2.countNonZero(md_v2_2), cv2.countNonZero(mw_v2_2), cv2.countNonZero(mwall_v2_2))
             m_doors_v2 = cv2.bitwise_or(md_v2_1, md_v2_2)
             m_wins_v2  = cv2.bitwise_or(mw_v2_1, mw_v2_2)
             m_walls_v2 = cv2.bitwise_or(mwall_v2_1, mwall_v2_2)
             st_v2 = {"pass1": stv2_1, "pass2": stv2_2}
-            logger.info("Model V2 (%s): doors=%d wins=%d walls=%d",
+            logger.info("Model V2 (%s) FINAL: doors=%d wins=%d walls=%d",
                         model_v2_id, cv2.countNonZero(m_doors_v2),
                         cv2.countNonZero(m_wins_v2), cv2.countNonZero(m_walls_v2))
         except Exception as e:
-            logger.warning("Model V2 inference failed: %s", e)
+            logger.error("Model V2 inference FAILED: %s", e, exc_info=True)
 
     # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
     # Cette approche donne des murs fins et nets calqués sur les détections IA.
