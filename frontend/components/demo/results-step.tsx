@@ -486,6 +486,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 src={`data:image/png;base64,${baseImageB64}`}
                 alt="Plan"
                 className="w-full h-auto block"
+                style={{ filter: "brightness(0.72) contrast(1.15) saturate(0.85)" }}
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
