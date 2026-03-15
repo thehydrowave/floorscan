@@ -71,7 +71,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
-  const [showCloisonsPixel, setShowCloisonsPixel] = useState(false);
+  const [showBeton, setShowBeton] = useState(false);
+  const [showCloisons, setShowCloisons] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
@@ -428,18 +429,33 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* Cloisons pixel toggle */}
-          {result.mask_cloisons_pixel_b64 && (
+          {/* Béton (murs porteurs IA) toggle */}
+          {result.mask_walls_beton_b64 && (
             <button
-              onClick={() => setShowCloisonsPixel(v => !v)}
+              onClick={() => setShowBeton(v => !v)}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showCloisonsPixel
+                showBeton
+                  ? "bg-red-500/15 text-red-400 border-red-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showBeton ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Béton
+            </button>
+          )}
+
+          {/* Cloisons (murs fins IA) toggle */}
+          {result.mask_cloisons_b64 && (
+            <button
+              onClick={() => setShowCloisons(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showCloisons
                   ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showCloisonsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
+              {showCloisons ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
             </button>
           )}
 
@@ -559,13 +575,22 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 1 }}
                 />
               )}
-              {/* Cloisons pixel RGBA overlay — bleu fluo rempli */}
-              {showCloisonsPixel && result.mask_cloisons_pixel_b64 && (
+              {/* Béton RGBA overlay — rouge, murs porteurs IA */}
+              {showBeton && result.mask_walls_beton_b64 && (
                 <img
-                  src={`data:image/png;base64,${result.mask_cloisons_pixel_b64}`}
+                  src={`data:image/png;base64,${result.mask_walls_beton_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   style={{ zIndex: 2 }}
+                />
+              )}
+              {/* Cloisons RGBA overlay — bleu fluo, murs fins IA */}
+              {showCloisons && result.mask_cloisons_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_cloisons_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 3 }}
                 />
               )}
             </>

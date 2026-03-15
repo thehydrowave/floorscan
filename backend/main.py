@@ -303,9 +303,10 @@ def analyze(req: AnalyzeRequest):
 
     with _get_session_lock(req.session_id):
         sessions[req.session_id].update({
-            "m_doors":          np.array(result["_m_doors"],   dtype=np.uint8),
-            "m_windows":        np.array(result["_m_windows"], dtype=np.uint8),
-            "walls":            np.array(result["_walls"],     dtype=np.uint8),
+            "m_doors":          np.array(result["_m_doors"],    dtype=np.uint8),
+            "m_windows":        np.array(result["_m_windows"],  dtype=np.uint8),
+            "walls":            np.array(result["_walls"],      dtype=np.uint8),
+            "m_walls_ai":       np.array(result["_m_walls_ai"], dtype=np.uint8),
             "interior_mask":    interior_mask,
             "pixels_per_meter": result["pixels_per_meter"],
             "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
@@ -424,6 +425,7 @@ def edit_mask(req: EditMaskRequest):
         ppm,
         cfg,
         interior_mask_override=interior_override,
+        m_walls_ai=s.get("m_walls_ai"),
     )
 
     # FIX: mettre à jour la session avec les nouvelles images pour l'export PDF
@@ -665,6 +667,7 @@ def _restore_masks(s, snapshot, cfg):
     result = pipeline.recompute_from_edited_masks(
         img_rgb, s["m_doors"], s["m_windows"], s["walls"], ppm, cfg,
         interior_mask_override=interior_override,
+        m_walls_ai=s.get("m_walls_ai"),
     )
     s["analysis"].update({
         "overlay_openings_b64": result["overlay_openings_b64"],
@@ -854,6 +857,7 @@ def sam_segment(req: SamSegmentRequest):
         ppm,
         cfg,
         interior_mask_override=interior_override,
+        m_walls_ai=s.get("m_walls_ai"),
     )
 
     # FIX: mettre à jour la session pour l'export PDF
