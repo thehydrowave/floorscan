@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,16 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const { isAdmin } = useAuth();
+
+  // DEBUG: log admin status and V2 masks availability
+  useEffect(() => {
+    console.log("[ResultsStep] isAdmin:", isAdmin);
+    console.log("[ResultsStep] V2 masks:", {
+      doors_v2: !!result?.mask_doors_v2_b64,
+      windows_v2: !!result?.mask_windows_v2_b64,
+      walls_v2: !!result?.mask_walls_v2_b64,
+    });
+  }, [isAdmin, result]);
 
   // ── Mask overlays (stackable, like editor) ──
   const [showDoors, setShowDoors] = useState(true);
