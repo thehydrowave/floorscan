@@ -194,12 +194,6 @@ export default function Navbar() {
             </Button>
           )}
 
-          <Button variant="outline" size="sm" asChild className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent">
-            <Link href="/measure">Métré ✦</Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/demo">{t("nav_try", lang)}</Link>
-          </Button>
           <Button size="sm" asChild>
             <Link href="/demo">{t("nav_start", lang)}</Link>
           </Button>
@@ -250,10 +244,6 @@ export default function Navbar() {
               </button>
             ))}
           </div>
-          <Link href="/measure" onClick={() => setMenuOpen(false)}
-            className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60">
-            Métré
-          </Link>
           {/* Mobile auth section */}
           <div className="border-t border-slate-700/50 pt-2 mt-1">
             {isLoggedIn ? (

@@ -2064,7 +2064,19 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
 
     # ── Pipeline F: Consensus (fusion of all models) ──
     try:
+        logger.info("Building consensus pipeline F from %d pipelines...", len(results))
+        for pid in ["A", "B", "C", "D", "E"]:
+            r = results.get(pid)
+            if r:
+                has_d = r.get("_m_doors_raw") is not None
+                has_w = r.get("_m_windows_raw") is not None
+                has_wl = r.get("_m_walls_raw") is not None
+                logger.info("  Pipeline %s: error=%s, raw_doors=%s, raw_wins=%s, raw_walls=%s",
+                            pid, r.get("error"), has_d, has_w, has_wl)
         results["F"] = _build_consensus_pipeline(results, img_rgb, ppm, cfg)
+        logger.info("Consensus pipeline F built successfully: doors=%d, windows=%d, walls_fused=%d",
+                     results["F"].get("doors_count", 0), results["F"].get("windows_count", 0),
+                     results["F"].get("models_fused_walls", 0))
     except Exception as e:
         logger.error("Consensus pipeline F failed: %s", e, exc_info=True)
         pdef_f = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "F")
