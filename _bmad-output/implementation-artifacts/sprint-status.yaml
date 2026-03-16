@@ -1,0 +1,109 @@
+# generated: 2026-03-16
+# last_updated: 2026-03-16
+# project: FloorScan
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-16
+last_updated: 2026-03-16
+project: FloorScan
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Document Upload & Page Selection
+  epic-1: backlog
+  1-1-upload-pdf-and-select-page: backlog
+  1-2-upload-image-directly: backlog
+  1-3-return-to-upload-for-additional-pages: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Image Preparation & Scale Calibration
+  epic-2: backlog
+  2-1-crop-floor-plan-image: backlog
+  2-2-automatic-scale-detection: backlog
+  2-3-manual-scale-calibration: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: AI Analysis Pipeline
+  epic-3: backlog
+  3-1-run-multi-model-detection-pipeline-g: backlog
+  3-2-room-detection-and-classification: backlog
+  3-3-generate-mask-overlays: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Results Visualization & Export
+  epic-4: backlog
+  4-1-results-dashboard-with-mask-overlays: backlog
+  4-2-materials-estimation-panel: backlog
+  4-3-dpgf-cost-breakdown-panel: backlog
+  4-4-cctp-technical-specifications-panel: backlog
+  4-5-pmr-compliance-panel: backlog
+  4-6-3d-visualization-panel: backlog
+  4-7-export-suite-pdf-dxf-csv-rapport-pro: backlog
+  4-8-stepper-navigation-with-back-support: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Interactive Mask Editor
+  epic-5: backlog
+  5-1-layer-based-mask-editing-with-brush-eraser: backlog
+  5-2-sam-click-to-segment: backlog
+  5-3-undo-redo-edit-history: backlog
+  5-4-switch-between-editor-and-results: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: AI Chatbot Assistant
+  epic-6: backlog
+  6-1-global-floating-chatbot-panel: backlog
+  6-2-help-mode-no-analysis-data: backlog
+  6-3-analysis-mode-results-available: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Authentication & Admin Configuration
+  epic-7: backlog
+  7-1-user-registration-and-login: backlog
+  7-2-admin-model-configuration-connect-step: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Manual Measurement (Metré)
+  epic-8: backlog
+  8-1-draw-measurement-zones: backlog
+  8-2-classify-and-export-measurements: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Session Management & Reliability
+  epic-9: backlog
+  9-1-session-save-and-restore: backlog
+  9-2-unsaved-work-warning-and-session-stability: backlog
+  epic-9-retrospective: optional
