@@ -79,6 +79,13 @@ PIPELINE_DEFINITIONS = [
         "description": "Détection pixel uniquement, pas d'IA",
         "color": "#F43F5E",  # rose
     },
+    {
+        "id": "F", "name": "Consensus (F)",
+        "model_ids": [],
+        "type": "consensus",
+        "description": "Fusion 5 modèles — vote composants + murs pondérés",
+        "color": "#14B8A6",  # teal
+    },
 ]
 
 # Labels structurels à exclure des pièces détectées
@@ -1488,6 +1495,335 @@ def _walls_from_rooms_index(rooms_index: np.ndarray, H: int, W: int) -> np.ndarr
 
 
 # ============================================================
+# CONSENSUS HELPERS — Ensemble methods for Pipeline F
+# ============================================================
+
+def _compute_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
+    """Compute Intersection over Union between two binary masks."""
+    a = mask_a > 127
+    b = mask_b > 127
+    intersection = np.count_nonzero(a & b)
+    union = np.count_nonzero(a | b)
+    if union == 0:
+        return 0.0
+    return float(intersection) / float(union)
+
+
+def _extract_components(mask: np.ndarray):
+    """Extract connected components from a binary mask.
+    Returns list of dicts: {mask, bbox, area_px, centroid}."""
+    if cv2.countNonZero(mask) == 0:
+        return []
+    _, binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+    n_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    components = []
+    H, W = mask.shape[:2]
+    for i in range(1, n_labels):  # skip background
+        x, y, w, h, area = stats[i]
+        if area < 4:  # ignore tiny noise
+            continue
+        comp_mask = np.zeros((H, W), np.uint8)
+        comp_mask[labels == i] = 255
+        components.append({
+            "mask": comp_mask,
+            "bbox": (x, y, w, h),
+            "area_px": int(area),
+            "centroid": (float(centroids[i][0]), float(centroids[i][1])),
+        })
+    return components
+
+
+def _match_components_across_models(all_components: list, iou_threshold: float = 0.25) -> list:
+    """Match detected components across multiple models using greedy IoU matching.
+
+    Args:
+        all_components: list of (model_idx, component_list) tuples
+        iou_threshold: minimum IoU to consider two components as matching
+
+    Returns:
+        list of groups: {mask (union), agreement_count, agreement_models, confirmed, centroid}
+    """
+    # Flatten all components with model origin
+    flat = []
+    for model_idx, comps in all_components:
+        for comp in comps:
+            flat.append({"model": model_idx, "comp": comp, "matched": False})
+
+    groups = []
+
+    for i, item in enumerate(flat):
+        if item["matched"]:
+            continue
+        # Start a new group with this component
+        item["matched"] = True
+        group_members = [item]
+        group_models = {item["model"]}
+
+        # Search for matching components from other models
+        for j in range(i + 1, len(flat)):
+            other = flat[j]
+            if other["matched"]:
+                continue
+            if other["model"] in group_models:
+                continue  # each model contributes max 1x per group
+
+            # Check IoU with any member of the group
+            best_iou = 0.0
+            for member in group_members:
+                iou = _compute_iou(member["comp"]["mask"], other["comp"]["mask"])
+                best_iou = max(best_iou, iou)
+
+            if best_iou >= iou_threshold:
+                other["matched"] = True
+                group_members.append(other)
+                group_models.add(other["model"])
+
+        # Build union mask for this group
+        H, W = group_members[0]["comp"]["mask"].shape[:2]
+        union_mask = np.zeros((H, W), np.uint8)
+        total_cx, total_cy, total_area = 0.0, 0.0, 0
+        for member in group_members:
+            union_mask = cv2.bitwise_or(union_mask, member["comp"]["mask"])
+            cx, cy = member["comp"]["centroid"]
+            a = member["comp"]["area_px"]
+            total_cx += cx * a
+            total_cy += cy * a
+            total_area += a
+
+        centroid = (total_cx / max(total_area, 1), total_cy / max(total_area, 1))
+        agreement_count = len(group_models)
+        confirmed = agreement_count >= 2
+
+        groups.append({
+            "mask": union_mask,
+            "agreement_count": agreement_count,
+            "agreement_models": sorted(group_models),
+            "confirmed": confirmed,
+            "centroid": centroid,
+            "area_px": int(cv2.countNonZero(union_mask)),
+        })
+
+    return groups
+
+
+def _consensus_walls(wall_masks: list, weights: list, threshold: float = 1.5) -> np.ndarray:
+    """Weighted pixel voting for wall consensus.
+
+    Args:
+        wall_masks: list of binary wall masks (numpy uint8)
+        weights: weight for each mask
+        threshold: minimum weighted sum to be considered wall
+
+    Returns:
+        consensus wall mask (binary uint8)
+    """
+    if not wall_masks:
+        return np.zeros((100, 100), np.uint8)
+
+    H, W = wall_masks[0].shape[:2]
+    weighted_sum = np.zeros((H, W), np.float32)
+
+    for mask, weight in zip(wall_masks, weights):
+        if mask is not None and mask.shape == (H, W):
+            binary = (mask > 127).astype(np.float32)
+            weighted_sum += binary * weight
+
+    # Apply threshold
+    consensus = (weighted_sum >= threshold).astype(np.uint8) * 255
+
+    # Morphological cleanup: close small gaps, remove noise
+    k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    consensus = cv2.morphologyEx(consensus, cv2.MORPH_CLOSE, k, iterations=1)
+    consensus = cv2.morphologyEx(consensus, cv2.MORPH_OPEN, k, iterations=1)
+
+    return consensus
+
+
+def _build_agreement_heatmap(door_groups: list, window_groups: list,
+                              H: int, W: int) -> np.ndarray:
+    """Build an RGBA heatmap overlay showing agreement level per detection.
+
+    Colors:
+        Green  (3-4/4 models) = high confidence
+        Yellow (2/4 models)   = confirmed, moderate confidence
+        Red    (1/4 model)    = uncertain, excluded from consensus
+    """
+    rgba = np.zeros((H, W, 4), np.uint8)
+
+    all_groups = [(g, "door") for g in door_groups] + [(g, "window") for g in window_groups]
+
+    for group, _ in all_groups:
+        mask = group["mask"] > 127
+        ac = group["agreement_count"]
+
+        if ac >= 3:
+            # Green — high confidence
+            rgba[mask, 0] = 34
+            rgba[mask, 1] = 197
+            rgba[mask, 2] = 94
+            rgba[mask, 3] = 120
+        elif ac == 2:
+            # Yellow — moderate
+            rgba[mask, 0] = 250
+            rgba[mask, 1] = 204
+            rgba[mask, 2] = 21
+            rgba[mask, 3] = 110
+        else:
+            # Red — uncertain (1 model only)
+            rgba[mask, 0] = 239
+            rgba[mask, 1] = 68
+            rgba[mask, 2] = 68
+            rgba[mask, 3] = 100
+
+    return rgba
+
+
+def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
+                               ppm: float, cfg: dict) -> dict:
+    """Build consensus pipeline F from all pipeline results.
+
+    Uses:
+        - Component matching + IoU voting for doors/windows (AI models A,B,C,D)
+        - Weighted pixel voting for walls (all 5 models A,B,C,D,E)
+        - Derived rooms and footprint from consensus masks
+    """
+    t0 = time.time()
+    H, W = img_rgb.shape[:2]
+
+    # ── Collect raw masks from each pipeline ──
+    ai_pids = ["A", "B", "C", "D"]  # AI models for doors/windows
+    all_pids = ["A", "B", "C", "D", "E"]  # All models for walls
+
+    # Gather raw masks (skip pipelines that errored out)
+    door_components_by_model = []
+    window_components_by_model = []
+    wall_masks = []
+    wall_weights = []
+
+    for pid in all_pids:
+        r = pipeline_results.get(pid)
+        if r is None or r.get("error"):
+            continue
+
+        raw_doors = r.get("_m_doors_raw")
+        raw_wins = r.get("_m_windows_raw")
+        raw_walls = r.get("_m_walls_raw")
+
+        # Doors and windows: only from AI models
+        if pid in ai_pids:
+            if raw_doors is not None and cv2.countNonZero(raw_doors) > 0:
+                comps = _extract_components(raw_doors)
+                if comps:
+                    door_components_by_model.append((pid, comps))
+
+            if raw_wins is not None and cv2.countNonZero(raw_wins) > 0:
+                comps = _extract_components(raw_wins)
+                if comps:
+                    window_components_by_model.append((pid, comps))
+
+        # Walls: all models, but pixel model has lower weight
+        if raw_walls is not None and cv2.countNonZero(raw_walls) > 0:
+            wall_masks.append(raw_walls)
+            wall_weights.append(0.6 if pid == "E" else 1.0)
+
+    # ── Component matching for doors ──
+    door_groups = _match_components_across_models(door_components_by_model, iou_threshold=0.25) \
+        if door_components_by_model else []
+
+    # ── Component matching for windows ──
+    window_groups = _match_components_across_models(window_components_by_model, iou_threshold=0.25) \
+        if window_components_by_model else []
+
+    # ── Build consensus door/window masks (only confirmed detections) ──
+    m_doors_consensus = np.zeros((H, W), np.uint8)
+    m_wins_consensus = np.zeros((H, W), np.uint8)
+
+    confirmed_doors = [g for g in door_groups if g["confirmed"]]
+    confirmed_windows = [g for g in window_groups if g["confirmed"]]
+    uncertain_doors = [g for g in door_groups if not g["confirmed"]]
+    uncertain_windows = [g for g in window_groups if not g["confirmed"]]
+
+    for g in confirmed_doors:
+        m_doors_consensus = cv2.bitwise_or(m_doors_consensus, g["mask"])
+    for g in confirmed_windows:
+        m_wins_consensus = cv2.bitwise_or(m_wins_consensus, g["mask"])
+
+    # ── Weighted pixel voting for walls ──
+    m_walls_consensus = _consensus_walls(wall_masks, wall_weights, threshold=1.5) \
+        if wall_masks else np.zeros((H, W), np.uint8)
+
+    # ── Derived: footprint ──
+    cnt, footprint_mask = _compute_footprint(m_walls_consensus, m_doors_consensus, m_wins_consensus, H, W)
+    footprint_area_m2 = None
+    if cnt is not None and ppm is not None:
+        footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
+
+    # ── Derived: rooms ──
+    rooms_list = segment_rooms_from_walls(m_walls_consensus, m_doors_consensus, m_wins_consensus, cnt, H, W, ppm)
+
+    # ── Counts ──
+    doors_count = len(confirmed_doors)
+    windows_count = len(confirmed_windows)
+
+    # ── Build RGBA overlays ──
+    mask_doors_b64 = _np_to_b64(_mask_to_rgba(m_doors_consensus, (217, 70, 239), 90)) \
+        if cv2.countNonZero(m_doors_consensus) > 0 else None
+    mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_wins_consensus, (34, 211, 238), 90)) \
+        if cv2.countNonZero(m_wins_consensus) > 0 else None
+    mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls_consensus, (96, 165, 250), 90)) \
+        if cv2.countNonZero(m_walls_consensus) > 0 else None
+    mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
+    mask_footprint_b64 = _np_to_b64(_mask_to_rgba(footprint_mask, (251, 191, 36), 50)) \
+        if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None
+
+    # ── Agreement heatmap ──
+    heatmap = _build_agreement_heatmap(door_groups, window_groups, H, W)
+    agreement_heatmap_b64 = _np_to_b64(heatmap) if cv2.countNonZero(heatmap[:, :, 3]) > 0 else None
+
+    elapsed = time.time() - t0
+
+    # ── Build detection details for frontend ──
+    def _detail(group, img_h, img_w):
+        cx, cy = group["centroid"]
+        return {
+            "centroid_norm": {"x": cx / max(img_w, 1), "y": cy / max(img_h, 1)},
+            "agreement_count": group["agreement_count"],
+            "agreement_models": group["agreement_models"],
+            "area_px": group["area_px"],
+            "confirmed": group["confirmed"],
+        }
+
+    pdef_f = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "F")
+
+    return {
+        "id": "F",
+        "name": pdef_f["name"],
+        "description": pdef_f["description"],
+        "color": pdef_f["color"],
+        "doors_count": doors_count,
+        "windows_count": windows_count,
+        "mask_doors_b64": mask_doors_b64,
+        "mask_windows_b64": mask_windows_b64,
+        "mask_walls_b64": mask_walls_b64,
+        "mask_footprint_b64": mask_footprint_b64,
+        "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
+        "rooms_count": len(rooms_list),
+        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
+        "mask_rooms_b64": mask_rooms_b64,
+        "timing_seconds": round(elapsed, 2),
+        "error": None,
+        # Consensus-specific fields
+        "is_consensus": True,
+        "agreement_heatmap_b64": agreement_heatmap_b64,
+        "door_details": [_detail(g, H, W) for g in door_groups],
+        "window_details": [_detail(g, H, W) for g in window_groups],
+        "uncertain_doors_count": len(uncertain_doors),
+        "uncertain_windows_count": len(uncertain_windows),
+        "models_fused_walls": len(wall_masks),
+    }
+
+
+# ============================================================
 # MULTI-MODEL COMPARISON (admin only)
 # ============================================================
 def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
@@ -1625,6 +1961,10 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
         "mask_rooms_b64": mask_rooms_b64,
         "timing_seconds": round(elapsed, 2),
         "error": error,
+        # Internal raw masks for consensus pipeline (cleaned before JSON serialization)
+        "_m_doors_raw": m_doors,
+        "_m_windows_raw": m_wins,
+        "_m_walls_raw": m_walls,
     }
 
 
@@ -1661,6 +2001,16 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
     if existing_analysis:
         ea = existing_analysis
         sf = ea.get("surfaces", {})
+        # Recover raw masks from internal fields if present (from run_analysis)
+        _raw_doors = ea.get("_m_doors")
+        _raw_wins  = ea.get("_m_windows")
+        _raw_walls = ea.get("_walls")
+        if _raw_doors is None:
+            _raw_doors = np.zeros((H, W), np.uint8)
+        if _raw_wins is None:
+            _raw_wins = np.zeros((H, W), np.uint8)
+        if _raw_walls is None:
+            _raw_walls = np.zeros((H, W), np.uint8)
         results["A"] = {
             "id": "A",
             "name": pdef_a["name"],
@@ -1678,6 +2028,9 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_rooms_b64": ea.get("mask_rooms_b64"),
             "timing_seconds": 0,
             "error": None,
+            "_m_doors_raw": np.array(_raw_doors, dtype=np.uint8),
+            "_m_windows_raw": np.array(_raw_wins, dtype=np.uint8),
+            "_m_walls_raw": np.array(_raw_walls, dtype=np.uint8),
         }
     else:
         results["A"] = run_single_pipeline(pdef_a, img_pil, img_rgb, client, ppm, cfg)
@@ -1709,10 +2062,32 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
                     "error": str(e),
                 }
 
+    # ── Pipeline F: Consensus (fusion of all models) ──
+    try:
+        results["F"] = _build_consensus_pipeline(results, img_rgb, ppm, cfg)
+    except Exception as e:
+        logger.error("Consensus pipeline F failed: %s", e, exc_info=True)
+        pdef_f = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "F")
+        results["F"] = {
+            "id": "F", "name": pdef_f["name"], "description": pdef_f["description"],
+            "color": pdef_f["color"],
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_consensus": True,
+        }
+
+    # ── Clean up internal raw masks before JSON serialization ──
+    for pid in list(results.keys()):
+        for k in list(results[pid].keys()):
+            if k.startswith("_"):
+                del results[pid][k]
+
     total_time = round(time.time() - t0, 2)
 
-    # ── Build comparison table ──
-    ordered = ["A", "B", "C", "D", "E"]
+    # ── Build comparison table (F first = recommended) ──
+    ordered = ["F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})

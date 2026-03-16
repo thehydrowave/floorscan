@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ComparisonResult, PipelineResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, BarChart3, Layers, AlertTriangle, Clock } from "lucide-react";
+import { Eye, EyeOff, BarChart3, Layers, AlertTriangle, Clock, Sparkles, Shield, ShieldAlert } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
@@ -13,26 +13,28 @@ interface ComparisonPanelProps {
   ppm: number | null;
 }
 
-const PIPELINE_ORDER = ["A", "B", "C", "D", "E"];
+const PIPELINE_ORDER = ["F", "A", "B", "C", "D", "E"];
 
 export default function ComparisonPanel({ result, basePlanB64, ppm }: ComparisonPanelProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const [activeTab, setActiveTab] = useState<"table" | "visual">("table");
-  const [selectedPipeline, setSelectedPipeline] = useState<string>("A");
+  const [selectedPipeline, setSelectedPipeline] = useState<string>("F");
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
   const [showWalls, setShowWalls] = useState(true);
   const [showFootprint, setShowFootprint] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   const pipeline = result.pipelines[selectedPipeline] as PipelineResult | undefined;
   const table = result.comparison_table;
 
-  // Find best values per column for highlighting
-  const bestDoors = Math.max(...table.map(r => r.doors));
-  const bestWindows = Math.max(...table.map(r => r.windows));
-  const bestRooms = Math.max(...table.map(r => r.rooms));
+  // Find best values per column for highlighting (exclude F from "best" competition)
+  const nonConsensusRows = table.filter(r => r.id !== "F");
+  const bestDoors = Math.max(...nonConsensusRows.map(r => r.doors));
+  const bestWindows = Math.max(...nonConsensusRows.map(r => r.windows));
+  const bestRooms = Math.max(...nonConsensusRows.map(r => r.rooms));
 
   return (
     <div className="glass rounded-xl border border-white/10 p-5">
@@ -87,64 +89,79 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               </tr>
             </thead>
             <tbody>
-              {table.map((row) => (
-                <tr
-                  key={row.id}
-                  className={cn(
-                    "border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer",
-                    selectedPipeline === row.id && "bg-white/5"
-                  )}
-                  onClick={() => { setSelectedPipeline(row.id); setActiveTab("visual"); }}
-                >
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
-                      <span className="text-white font-500">{row.name}</span>
-                    </div>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    <span className={cn(
-                      "font-mono font-600",
-                      row.doors === bestDoors && row.doors > 0 ? "text-emerald-400" : "text-slate-300"
-                    )}>
-                      {row.doors}
-                    </span>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    <span className={cn(
-                      "font-mono font-600",
-                      row.windows === bestWindows && row.windows > 0 ? "text-emerald-400" : "text-slate-300"
-                    )}>
-                      {row.windows}
-                    </span>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    <span className="font-mono font-600 text-slate-300">
-                      {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "\u2014"}
-                    </span>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    <span className={cn(
-                      "font-mono font-600",
-                      row.rooms === bestRooms && row.rooms > 0 ? "text-emerald-400" : "text-slate-300"
-                    )}>
-                      {row.rooms}
-                    </span>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    <span className="font-mono text-slate-500">{row.time_s}s</span>
-                  </td>
-                  <td className="text-center py-2.5 px-3">
-                    {row.error ? (
-                      <span className="text-red-400 flex items-center justify-center gap-1" title={row.error}>
-                        <AlertTriangle className="w-3 h-3" /> {d("cmp_error")}
-                      </span>
-                    ) : (
-                      <span className="text-emerald-400">\u2713</span>
+              {table.map((row) => {
+                const isConsensus = row.id === "F";
+                return (
+                  <tr
+                    key={row.id}
+                    className={cn(
+                      "border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer",
+                      selectedPipeline === row.id && "bg-white/5",
+                      isConsensus && "bg-teal-500/5"
                     )}
-                  </td>
-                </tr>
-              ))}
+                    onClick={() => { setSelectedPipeline(row.id); setActiveTab("visual"); }}
+                  >
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
+                        <span className="text-white font-500">{row.name}</span>
+                        {isConsensus && (
+                          <span className="text-[9px] font-600 text-teal-400 bg-teal-500/15 border border-teal-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Sparkles className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" :
+                        row.doors === bestDoors && row.doors > 0 ? "text-emerald-400" : "text-slate-300"
+                      )}>
+                        {row.doors}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" :
+                        row.windows === bestWindows && row.windows > 0 ? "text-emerald-400" : "text-slate-300"
+                      )}>
+                        {row.windows}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" : "text-slate-300"
+                      )}>
+                        {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "\u2014"}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" :
+                        row.rooms === bestRooms && row.rooms > 0 ? "text-emerald-400" : "text-slate-300"
+                      )}>
+                        {row.rooms}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className="font-mono text-slate-500">{row.time_s}s</span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      {row.error ? (
+                        <span className="text-red-400 flex items-center justify-center gap-1" title={row.error}>
+                          <AlertTriangle className="w-3 h-3" /> {d("cmp_error")}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400">{"\u2713"}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -158,6 +175,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
             {PIPELINE_ORDER.map((pid) => {
               const p = result.pipelines[pid];
               if (!p) return null;
+              const isConsensus = pid === "F";
               return (
                 <button
                   key={pid}
@@ -172,6 +190,9 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 >
                   <span className="w-2 h-2 rounded-full inline-block mr-1.5" style={{ backgroundColor: p.color }} />
                   {pid}
+                  {isConsensus && selectedPipeline !== pid && (
+                    <Sparkles className="w-2.5 h-2.5 inline ml-1 text-teal-400" />
+                  )}
                 </button>
               );
             })}
@@ -182,6 +203,11 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               {/* Pipeline info + mini stats */}
               <div className="flex items-center gap-4 mb-3 text-xs">
                 <span className="text-white font-500">{pipeline.name}</span>
+                {pipeline.is_consensus && (
+                  <span className="text-[9px] font-600 text-teal-400 bg-teal-500/15 border border-teal-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <Sparkles className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                  </span>
+                )}
                 <span className="text-slate-500">{pipeline.description}</span>
                 {pipeline.error && (
                   <span className="text-red-400 flex items-center gap-1">
@@ -205,6 +231,96 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                   </div>
                 ))}
               </div>
+
+              {/* ── Consensus details panel ── */}
+              {pipeline.is_consensus && !pipeline.error && (
+                <div className="bg-teal-500/5 border border-teal-500/20 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Shield className="w-3.5 h-3.5 text-teal-400" />
+                    <span className="text-xs font-600 text-teal-400">{d("cmp_details")}</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    {/* Confirmed doors */}
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                      <span className="text-slate-400">{d("cmp_doors")}</span>
+                      <span className="font-mono font-600 text-emerald-400">{pipeline.doors_count}</span>
+                      <span className="text-slate-600">{d("cmp_confirmed").toLowerCase()}</span>
+                    </div>
+                    {/* Uncertain doors */}
+                    {(pipeline.uncertain_doors_count ?? 0) > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <ShieldAlert className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                        <span className="text-slate-400">{d("cmp_doors")}</span>
+                        <span className="font-mono font-600 text-amber-400">{pipeline.uncertain_doors_count}</span>
+                        <span className="text-slate-600">{d("cmp_uncertain").toLowerCase()}</span>
+                      </div>
+                    )}
+                    {/* Confirmed windows */}
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                      <span className="text-slate-400">{d("cmp_windows")}</span>
+                      <span className="font-mono font-600 text-emerald-400">{pipeline.windows_count}</span>
+                      <span className="text-slate-600">{d("cmp_confirmed").toLowerCase()}</span>
+                    </div>
+                    {/* Uncertain windows */}
+                    {(pipeline.uncertain_windows_count ?? 0) > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <ShieldAlert className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                        <span className="text-slate-400">{d("cmp_windows")}</span>
+                        <span className="font-mono font-600 text-amber-400">{pipeline.uncertain_windows_count}</span>
+                        <span className="text-slate-600">{d("cmp_uncertain").toLowerCase()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Walls fusion info */}
+                  {pipeline.models_fused_walls != null && pipeline.models_fused_walls > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2 text-xs">
+                      <Layers className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                      <span className="text-slate-400">{d("cmp_walls")}</span>
+                      <span className="font-mono font-600 text-blue-400">{pipeline.models_fused_walls}</span>
+                      <span className="text-slate-600">{d("cmp_models_fused")}</span>
+                    </div>
+                  )}
+
+                  {/* Per-detection agreement badges */}
+                  {pipeline.door_details && pipeline.door_details.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {pipeline.door_details.map((det, i) => (
+                        <span
+                          key={`d${i}`}
+                          className={cn(
+                            "text-[9px] font-mono px-1.5 py-0.5 rounded-full border",
+                            det.confirmed
+                              ? det.agreement_count >= 3
+                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+                                : "text-yellow-400 bg-yellow-500/10 border-yellow-500/30"
+                              : "text-red-400 bg-red-500/10 border-red-500/30"
+                          )}
+                        >
+                          D{i + 1}: {det.agreement_count}/4
+                        </span>
+                      ))}
+                      {pipeline.window_details && pipeline.window_details.map((det, i) => (
+                        <span
+                          key={`w${i}`}
+                          className={cn(
+                            "text-[9px] font-mono px-1.5 py-0.5 rounded-full border",
+                            det.confirmed
+                              ? det.agreement_count >= 3
+                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+                                : "text-yellow-400 bg-yellow-500/10 border-yellow-500/30"
+                              : "text-red-400 bg-red-500/10 border-red-500/30"
+                          )}
+                        >
+                          W{i + 1}: {det.agreement_count}/4
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Toggle buttons */}
               <div className="flex gap-2 mb-3 flex-wrap">
@@ -263,6 +379,18 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     {showRooms ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_rooms")}
                   </button>
                 )}
+                {/* Agreement heatmap toggle (consensus only) */}
+                {pipeline.is_consensus && pipeline.agreement_heatmap_b64 && (
+                  <button
+                    onClick={() => setShowHeatmap(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
+                      showHeatmap ? "bg-teal-500/15 text-teal-400 border-teal-500/30" : "text-slate-500 border-transparent hover:border-white/10"
+                    )}
+                  >
+                    {showHeatmap ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_heatmap")}
+                  </button>
+                )}
               </div>
 
               {/* Plan image with mask overlays */}
@@ -313,7 +441,34 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     style={{ zIndex: 1 }}
                   />
                 )}
+                {/* Agreement heatmap overlay (consensus only) */}
+                {showHeatmap && pipeline.is_consensus && pipeline.agreement_heatmap_b64 && (
+                  <img
+                    src={`data:image/png;base64,${pipeline.agreement_heatmap_b64}`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ zIndex: 2 }}
+                  />
+                )}
               </div>
+
+              {/* Heatmap legend (when visible) */}
+              {showHeatmap && pipeline.is_consensus && pipeline.agreement_heatmap_b64 && (
+                <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                    <span>3-4/4</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" />
+                    <span>2/4</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
+                    <span>1/4 ({d("cmp_uncertain").toLowerCase()})</span>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

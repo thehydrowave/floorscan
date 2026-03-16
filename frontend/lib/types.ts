@@ -295,6 +295,14 @@ export interface DevisOptions {
 
 // ── Multi-model comparison (admin only) ──────────────────────────────────────
 
+export interface ConsensusDetectionDetail {
+  centroid_norm: { x: number; y: number };
+  agreement_count: number;
+  agreement_models: string[];
+  area_px: number;
+  confirmed: boolean;
+}
+
 export interface PipelineResult {
   id: string;
   name: string;
@@ -312,6 +320,14 @@ export interface PipelineResult {
   mask_rooms_b64: string | null;
   timing_seconds: number;
   error: string | null;
+  // Consensus-specific fields (Pipeline F only)
+  is_consensus?: boolean;
+  agreement_heatmap_b64?: string | null;
+  door_details?: ConsensusDetectionDetail[];
+  window_details?: ConsensusDetectionDetail[];
+  uncertain_doors_count?: number;
+  uncertain_windows_count?: number;
+  models_fused_walls?: number;
 }
 
 export interface ComparisonTableRow {
