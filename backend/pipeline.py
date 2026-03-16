@@ -1764,6 +1764,22 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
     if cnt is not None and ppm is not None:
         footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
+    # ── Compute habitable area (footprint - walls) ──
+    walls_area_m2 = None
+    hab_area_m2 = None
+    if cnt is not None and ppm is not None:
+        building = np.zeros((H, W), np.uint8)
+        cv2.fillPoly(building, [cnt], 255)
+        walls_bin = (m_walls_consensus > 0).astype(np.uint8) * 255
+        wall_t_m = cfg.get("wall_thickness_m", 0.20)
+        r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+        k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
+        walls_thick = cv2.dilate(walls_bin, k_w, iterations=1)
+        walls_thick = cv2.bitwise_and(walls_thick, building)
+        interior = cv2.subtract(building, walls_thick)
+        walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
+        hab_area_m2 = round(float(cv2.countNonZero(interior)) / (ppm ** 2), 2)
+
     # ── Derived: rooms ──
     rooms_list = segment_rooms_from_walls(m_walls_consensus, m_doors_consensus, m_wins_consensus, cnt, H, W, ppm)
 
@@ -1813,6 +1829,8 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
         "mask_walls_b64": mask_walls_b64,
         "mask_footprint_b64": mask_footprint_b64,
         "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
+        "walls_area_m2": walls_area_m2,
+        "hab_area_m2": hab_area_m2,
         "rooms_count": len(rooms_list),
         "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
         "mask_rooms_b64": mask_rooms_b64,
@@ -1847,6 +1865,8 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
     cnt = None
     footprint_mask = None
     footprint_area_m2 = None
+    walls_area_m2 = None
+    hab_area_m2 = None
     error = None
 
     try:
@@ -1928,6 +1948,20 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
         if cnt is not None and ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
+        # ── Compute habitable area (footprint - walls) ──
+        if cnt is not None and ppm is not None:
+            building = np.zeros((H, W), np.uint8)
+            cv2.fillPoly(building, [cnt], 255)
+            walls_bin = (m_walls > 0).astype(np.uint8) * 255
+            wall_t_m = cfg.get("wall_thickness_m", 0.20)
+            r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+            k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
+            walls_thick = cv2.dilate(walls_bin, k_w, iterations=1)
+            walls_thick = cv2.bitwise_and(walls_thick, building)
+            interior = cv2.subtract(building, walls_thick)
+            walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
+            hab_area_m2 = round(float(cv2.countNonZero(interior)) / (ppm ** 2), 2)
+
         # ── Extract rooms from this pipeline's walls ──
         rooms_list = segment_rooms_from_walls(m_walls, m_doors, m_wins, cnt, H, W, ppm)
 
@@ -1962,6 +1996,8 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
         "mask_walls_b64": mask_walls_b64,
         "mask_footprint_b64": mask_footprint_b64,
         "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
+        "walls_area_m2": walls_area_m2,
+        "hab_area_m2": hab_area_m2,
         "rooms_count": len(rooms_list),
         "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
         "mask_rooms_b64": mask_rooms_b64,
@@ -2029,6 +2065,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_walls_b64": ea.get("mask_walls_b64"),
             "mask_footprint_b64": ea.get("mask_footprint_b64"),
             "footprint_area_m2": round(sf.get("area_building_m2", 0), 2) if sf.get("area_building_m2") else None,
+            "walls_area_m2": round(sf.get("area_walls_m2", 0), 2) if sf.get("area_walls_m2") else None,
+            "hab_area_m2": round(sf.get("area_hab_m2", 0), 2) if sf.get("area_hab_m2") else None,
             "rooms_count": len(ea.get("rooms", [])),
             "rooms": ea.get("rooms", []),
             "mask_rooms_b64": ea.get("mask_rooms_b64"),
@@ -2116,6 +2154,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "doors": r.get("doors_count", 0),
             "windows": r.get("windows_count", 0),
             "footprint_m2": r.get("footprint_area_m2"),
+            "walls_m2": r.get("walls_area_m2"),
+            "hab_m2": r.get("hab_area_m2"),
             "rooms": r.get("rooms_count", 0),
             "time_s": r.get("timing_seconds", 0),
             "error": r.get("error"),

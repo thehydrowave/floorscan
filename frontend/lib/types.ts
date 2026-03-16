@@ -315,6 +315,8 @@ export interface PipelineResult {
   mask_walls_b64: string | null;
   mask_footprint_b64: string | null;
   footprint_area_m2: number | null;
+  walls_area_m2: number | null;
+  hab_area_m2: number | null;
   rooms_count: number;
   rooms: Room[];
   mask_rooms_b64: string | null;
@@ -337,6 +339,8 @@ export interface ComparisonTableRow {
   doors: number;
   windows: number;
   footprint_m2: number | null;
+  walls_m2: number | null;
+  hab_m2: number | null;
   rooms: number;
   time_s: number;
   error: string | null;

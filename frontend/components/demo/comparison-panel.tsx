@@ -81,6 +81,8 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_doors")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_windows")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_footprint")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_hab")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_walls_area")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_rooms")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">
                   <Clock className="w-3 h-3 inline" /> {d("cmp_time")}
@@ -136,6 +138,22 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                         isConsensus ? "text-teal-400" : "text-slate-300"
                       )}>
                         {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "\u2014"}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" : "text-slate-300"
+                      )}>
+                        {row.hab_m2 != null ? row.hab_m2.toFixed(1) : "\u2014"}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isConsensus ? "text-teal-400" : "text-slate-300"
+                      )}>
+                        {row.walls_m2 != null ? row.walls_m2.toFixed(1) : "\u2014"}
                       </span>
                     </td>
                     <td className="text-center py-2.5 px-3">
@@ -217,11 +235,13 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               </div>
 
               {/* Mini KPI cards */}
-              <div className="grid grid-cols-5 gap-2 mb-4">
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-4">
                 {[
                   { label: d("cmp_doors"), value: pipeline.doors_count, color: "#D946EF" },
                   { label: d("cmp_windows"), value: pipeline.windows_count, color: "#22D3EE" },
                   { label: d("cmp_footprint_short"), value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#FBBF24" },
+                  { label: d("cmp_hab_short"), value: pipeline.hab_area_m2 != null ? `${pipeline.hab_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#4ADE80" },
+                  { label: d("cmp_walls"), value: pipeline.walls_area_m2 != null ? `${pipeline.walls_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#60A5FA" },
                   { label: d("cmp_rooms"), value: pipeline.rooms_count, color: "#34D399" },
                   { label: d("cmp_time"), value: `${pipeline.timing_seconds}s`, color: "#94a3b8" },
                 ].map(({ label, value, color }) => (
