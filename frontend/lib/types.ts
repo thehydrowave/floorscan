@@ -314,6 +314,7 @@ export interface PipelineResult {
   mask_windows_b64: string | null;
   mask_walls_b64: string | null;
   mask_footprint_b64: string | null;
+  mask_hab_b64: string | null;
   footprint_area_m2: number | null;
   walls_area_m2: number | null;
   hab_area_m2: number | null;

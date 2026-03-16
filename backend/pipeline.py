@@ -1767,18 +1767,25 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
     # ── Compute habitable area (footprint - walls) ──
     walls_area_m2 = None
     hab_area_m2 = None
-    if cnt is not None and ppm is not None:
+    interior_mask_f = None
+    if cnt is not None:
         building = np.zeros((H, W), np.uint8)
         cv2.fillPoly(building, [cnt], 255)
         walls_bin = (m_walls_consensus > 0).astype(np.uint8) * 255
-        wall_t_m = cfg.get("wall_thickness_m", 0.20)
-        r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+        if ppm is not None:
+            wall_t_m = cfg.get("wall_thickness_m", 0.20)
+            r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+        else:
+            r_px = max(1, cfg.get("wall_thickness_px_fallback", 10) // 2)
         k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
         walls_thick = cv2.dilate(walls_bin, k_w, iterations=1)
         walls_thick = cv2.bitwise_and(walls_thick, building)
-        interior = cv2.subtract(building, walls_thick)
-        walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
-        hab_area_m2 = round(float(cv2.countNonZero(interior)) / (ppm ** 2), 2)
+        interior_mask_f = cv2.subtract(building, walls_thick)
+        k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        interior_mask_f = cv2.morphologyEx(interior_mask_f, cv2.MORPH_OPEN, k2, iterations=1)
+        if ppm is not None:
+            walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
+            hab_area_m2 = round(float(cv2.countNonZero(interior_mask_f)) / (ppm ** 2), 2)
 
     # ── Derived: rooms ──
     rooms_list = segment_rooms_from_walls(m_walls_consensus, m_doors_consensus, m_wins_consensus, cnt, H, W, ppm)
@@ -1797,6 +1804,8 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
     mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
     mask_footprint_b64 = _np_to_b64(_mask_to_rgba(footprint_mask, (251, 191, 36), 50)) \
         if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None
+    mask_hab_b64 = _np_to_b64(_mask_to_rgba(interior_mask_f, (74, 222, 128), 60)) \
+        if interior_mask_f is not None and cv2.countNonZero(interior_mask_f) > 0 else None
 
     # ── Agreement heatmap ──
     heatmap = _build_agreement_heatmap(door_groups, window_groups, H, W)
@@ -1828,6 +1837,7 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
         "mask_windows_b64": mask_windows_b64,
         "mask_walls_b64": mask_walls_b64,
         "mask_footprint_b64": mask_footprint_b64,
+        "mask_hab_b64": mask_hab_b64,
         "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
         "walls_area_m2": walls_area_m2,
         "hab_area_m2": hab_area_m2,
@@ -1861,6 +1871,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
     m_doors  = np.zeros((H, W), np.uint8)
     m_wins   = np.zeros((H, W), np.uint8)
     m_walls  = np.zeros((H, W), np.uint8)
+    interior_mask = None
     rooms_list = []
     cnt = None
     footprint_mask = None
@@ -1949,18 +1960,24 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
         # ── Compute habitable area (footprint - walls) ──
-        if cnt is not None and ppm is not None:
+        if cnt is not None:
             building = np.zeros((H, W), np.uint8)
             cv2.fillPoly(building, [cnt], 255)
             walls_bin = (m_walls > 0).astype(np.uint8) * 255
-            wall_t_m = cfg.get("wall_thickness_m", 0.20)
-            r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+            if ppm is not None:
+                wall_t_m = cfg.get("wall_thickness_m", 0.20)
+                r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+            else:
+                r_px = max(1, cfg.get("wall_thickness_px_fallback", 10) // 2)
             k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
             walls_thick = cv2.dilate(walls_bin, k_w, iterations=1)
             walls_thick = cv2.bitwise_and(walls_thick, building)
-            interior = cv2.subtract(building, walls_thick)
-            walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
-            hab_area_m2 = round(float(cv2.countNonZero(interior)) / (ppm ** 2), 2)
+            interior_mask = cv2.subtract(building, walls_thick)
+            k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            interior_mask = cv2.morphologyEx(interior_mask, cv2.MORPH_OPEN, k2, iterations=1)
+            if ppm is not None:
+                walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
+                hab_area_m2 = round(float(cv2.countNonZero(interior_mask)) / (ppm ** 2), 2)
 
         # ── Extract rooms from this pipeline's walls ──
         rooms_list = segment_rooms_from_walls(m_walls, m_doors, m_wins, cnt, H, W, ppm)
@@ -1983,6 +2000,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
     mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls, (96, 165, 250), 90)) if cv2.countNonZero(m_walls) > 0 else None
     mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
     mask_footprint_b64 = _np_to_b64(_mask_to_rgba(footprint_mask, (251, 191, 36), 50)) if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None
+    mask_hab_b64 = _np_to_b64(_mask_to_rgba(interior_mask, (74, 222, 128), 60)) if interior_mask is not None and cv2.countNonZero(interior_mask) > 0 else None
 
     return {
         "id": pid,
@@ -1995,6 +2013,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
         "mask_windows_b64": mask_windows_b64,
         "mask_walls_b64": mask_walls_b64,
         "mask_footprint_b64": mask_footprint_b64,
+        "mask_hab_b64": mask_hab_b64,
         "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
         "walls_area_m2": walls_area_m2,
         "hab_area_m2": hab_area_m2,
@@ -2064,6 +2083,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_windows_b64": ea.get("mask_windows_b64"),
             "mask_walls_b64": ea.get("mask_walls_b64"),
             "mask_footprint_b64": ea.get("mask_footprint_b64"),
+            "mask_hab_b64": _np_to_b64(_mask_to_rgba(sf.get("interior_mask"), (74, 222, 128), 60))
+                if sf.get("interior_mask") is not None and cv2.countNonZero(sf.get("interior_mask")) > 0 else None,
             "footprint_area_m2": round(sf.get("area_building_m2", 0), 2) if sf.get("area_building_m2") else None,
             "walls_area_m2": round(sf.get("area_walls_m2", 0), 2) if sf.get("area_walls_m2") else None,
             "hab_area_m2": round(sf.get("area_hab_m2", 0), 2) if sf.get("area_hab_m2") else None,

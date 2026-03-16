@@ -24,6 +24,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
   const [showWindows, setShowWindows] = useState(true);
   const [showWalls, setShowWalls] = useState(true);
   const [showFootprint, setShowFootprint] = useState(false);
+  const [showHab, setShowHab] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
 
@@ -388,6 +389,17 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     {showFootprint ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_footprint_short")}
                   </button>
                 )}
+                {pipeline.mask_hab_b64 && (
+                  <button
+                    onClick={() => setShowHab(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
+                      showHab ? "bg-green-500/15 text-green-400 border-green-500/30" : "text-slate-500 border-transparent hover:border-white/10"
+                    )}
+                  >
+                    {showHab ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_hab_short")}
+                  </button>
+                )}
                 {pipeline.mask_rooms_b64 && (
                   <button
                     onClick={() => setShowRooms(v => !v)}
@@ -448,6 +460,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 {showFootprint && pipeline.mask_footprint_b64 && (
                   <img
                     src={`data:image/png;base64,${pipeline.mask_footprint_b64}`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ zIndex: 1 }}
+                  />
+                )}
+                {showHab && pipeline.mask_hab_b64 && (
+                  <img
+                    src={`data:image/png;base64,${pipeline.mask_hab_b64}`}
                     alt=""
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ zIndex: 1 }}
