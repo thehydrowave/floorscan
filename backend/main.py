@@ -276,6 +276,7 @@ class AnalyzeRequest(BaseModel):
     conf_min_door: float = 0.05
     conf_min_win: float = 0.15
     wall_thickness_m: float = 0.20
+    pipeline_mode: str = "bestof"  # "default" = single model A, "bestof" = A+D combined
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
@@ -292,6 +293,7 @@ def analyze(req: AnalyzeRequest):
     cfg["conf_min_door"]    = req.conf_min_door
     cfg["conf_min_win"]     = req.conf_min_win
     cfg["wall_thickness_m"] = req.wall_thickness_m
+    cfg["pipeline_mode"]    = req.pipeline_mode
 
     try:
         result = pipeline.run_analysis(img_rgb, pixels_per_meter=ppm, cfg=cfg)

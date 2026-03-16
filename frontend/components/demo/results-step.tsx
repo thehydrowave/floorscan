@@ -133,6 +133,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       "=== ÉLÉMENTS DÉTECTÉS ===",
       `Portes;${result.doors_count}`,
       `Fenêtres;${result.windows_count}`,
+      ...(result.french_doors_count ? [`Portes-fenêtres;${result.french_doors_count}`] : []),
       "",
       "=== SURFACES ===",
       `Emprise bâtiment (m²);${sf.area_building_m2?.toFixed(2) ?? "—"}`,
@@ -288,10 +289,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className={`grid grid-cols-2 ${result.french_doors_count ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 mb-6`}>
         {[
           { label: `🚪 ${d("re_doors")}`, value: result.doors_count, color: "#D946EF" },
           { label: `🪟 ${d("re_windows")}`, value: result.windows_count, color: "#22D3EE" },
+          ...(result.french_doors_count ? [{ label: "🚪🪟 Portes-fenêtres", value: result.french_doors_count, color: "#F97316" }] : []),
           { label: `🏠 ${d("re_living")}`, value: fmt(sf.area_hab_m2, 1, " m²"), color: "#34D399" },
           { label: `⬜ ${d("re_walls_area")}`, value: fmt(sf.area_walls_m2, 1, " m²"), color: "#60A5FA" },
         ].map(({ label, value, color }) => (

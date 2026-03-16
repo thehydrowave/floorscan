@@ -21,6 +21,8 @@ const CONCRETE_SLAB_THICKNESS = 0.20; // dalle béton entre étages (20 cm)
 const FRAME_THICK = 0.04;
 const DOOR_PANEL_THICK = 0.04;
 const DOOR_OPEN_ANGLE = Math.PI / 6; // 30°
+const FRENCH_DOOR_COLOR = "#F97316";         // orange
+const FRENCH_DOOR_FRAME_COLOR = "#e5e7eb";   // light gray (like window)
 
 const ROOM_COLORS: Record<string, string> = {
   "bedroom": "#818cf8", "living room": "#34d399", "living": "#34d399",
@@ -150,6 +152,7 @@ interface WallOpeningInfo {
   heightM: number;     // opening height in meters
   sillM: number;       // sill height from floor
   isDoor: boolean;
+  isFrenchDoor: boolean;
 }
 
 function mapOpeningsToWalls(
@@ -191,9 +194,11 @@ function mapOpeningsToWalls(
 
     if (bestWallIdx === -1) continue;
 
-    const isDoor = opening.class === "door";
+    const isDoor = opening.class === "door" || opening.class === "french_door";
+    const isFrenchDoor = opening.class === "french_door";
     const widthM = opening.length_m
       ?? (Math.max(opening.width_px, opening.height_px) / ppm);
+    // French doors: full height (2.1m) like regular doors, start at floor
     const heightM = opening.height_m ?? (isDoor ? 2.1 : 1.2);
     const sillM = isDoor ? 0 : 0.9;
 
@@ -208,6 +213,7 @@ function mapOpeningsToWalls(
       heightM,
       sillM,
       isDoor,
+      isFrenchDoor,
     });
   }
 
@@ -475,6 +481,111 @@ function WindowMesh3D({
   );
 }
 
+// ── 3D French Door (porte-fenêtre) ────────────────────────────────────────────
+
+function FrenchDoorMesh3D({
+  wall, info, wireframe,
+}: {
+  wall: WallEdge;
+  info: WallOpeningInfo;
+  wireframe: boolean;
+}) {
+  const centerX = (info.t - 0.5) * wall.length;
+  const halfW = info.widthM / 2;
+  const h = info.heightM;
+  const w = info.widthM;
+  const panelW = (w - 0.03) / 2; // each panel width (minus central bar)
+  const glassInset = 0.04; // inset from panel edges for glass
+
+  return (
+    <group position={[wall.cx, 0, wall.cz]} rotation={[0, -wall.angle, 0]}>
+      {/* Frame — top */}
+      <mesh position={[centerX, h, 0]}>
+        <boxGeometry args={[w + FRAME_THICK * 2, FRAME_THICK, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — left */}
+      <mesh position={[centerX - halfW - FRAME_THICK / 2, h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+      {/* Frame — right */}
+      <mesh position={[centerX + halfW + FRAME_THICK / 2, h / 2, 0]}>
+        <boxGeometry args={[FRAME_THICK, h, WALL_THICKNESS + 0.02]} />
+        <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+
+      {/* Central separation bar (thick) */}
+      <mesh position={[centerX, h / 2, 0]}>
+        <boxGeometry args={[0.03, h, WALL_THICKNESS * 0.7]} />
+        <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+      </mesh>
+
+      {/* ── Left panel ── */}
+      <group position={[centerX - panelW / 2 - 0.015, 0, 0]}>
+        {/* Left glass pane */}
+        <mesh position={[0, h / 2, 0]}>
+          <boxGeometry args={[panelW - glassInset * 2, h - FRAME_THICK * 2 - glassInset, 0.008]} />
+          <meshStandardMaterial
+            color={WINDOW_COLOR} transparent opacity={0.35}
+            roughness={0.05} metalness={0.1} side={THREE.DoubleSide}
+            emissive={WINDOW_COLOR} emissiveIntensity={0.15}
+          />
+        </mesh>
+        {/* Left panel — horizontal crossbar */}
+        <mesh position={[0, h * 0.45, 0]}>
+          <boxGeometry args={[panelW - glassInset, FRAME_THICK * 0.5, WALL_THICKNESS * 0.5]} />
+          <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+        </mesh>
+        {/* Left panel — vertical crossbar */}
+        <mesh position={[0, h / 2, 0]}>
+          <boxGeometry args={[FRAME_THICK * 0.5, h - FRAME_THICK * 2, WALL_THICKNESS * 0.5]} />
+          <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+        </mesh>
+        {/* Left handle */}
+        <mesh position={[panelW * 0.35, h * 0.45, WALL_THICKNESS * 0.35 + 0.01]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.1, 8]} />
+          <meshStandardMaterial color="#d4af37" metalness={0.8} roughness={0.2} />
+        </mesh>
+      </group>
+
+      {/* ── Right panel ── */}
+      <group position={[centerX + panelW / 2 + 0.015, 0, 0]}>
+        {/* Right glass pane */}
+        <mesh position={[0, h / 2, 0]}>
+          <boxGeometry args={[panelW - glassInset * 2, h - FRAME_THICK * 2 - glassInset, 0.008]} />
+          <meshStandardMaterial
+            color={WINDOW_COLOR} transparent opacity={0.35}
+            roughness={0.05} metalness={0.1} side={THREE.DoubleSide}
+            emissive={WINDOW_COLOR} emissiveIntensity={0.15}
+          />
+        </mesh>
+        {/* Right panel — horizontal crossbar */}
+        <mesh position={[0, h * 0.45, 0]}>
+          <boxGeometry args={[panelW - glassInset, FRAME_THICK * 0.5, WALL_THICKNESS * 0.5]} />
+          <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+        </mesh>
+        {/* Right panel — vertical crossbar */}
+        <mesh position={[0, h / 2, 0]}>
+          <boxGeometry args={[FRAME_THICK * 0.5, h - FRAME_THICK * 2, WALL_THICKNESS * 0.5]} />
+          <meshStandardMaterial color={FRENCH_DOOR_FRAME_COLOR} roughness={0.5} wireframe={wireframe} />
+        </mesh>
+        {/* Right handle */}
+        <mesh position={[-panelW * 0.35, h * 0.45, WALL_THICKNESS * 0.35 + 0.01]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.1, 8]} />
+          <meshStandardMaterial color="#d4af37" metalness={0.8} roughness={0.2} />
+        </mesh>
+      </group>
+
+      {/* Threshold / rail at floor */}
+      <mesh position={[centerX, 0.01, 0]}>
+        <boxGeometry args={[w, 0.02, WALL_THICKNESS + 0.04]} />
+        <meshStandardMaterial color="#78716c" roughness={0.8} wireframe={wireframe} />
+      </mesh>
+    </group>
+  );
+}
+
 // ── Room label ────────────────────────────────────────────────────────────────
 
 function RoomLabel({
@@ -689,10 +800,15 @@ export default function FloorScene({
                 />
               ))}
 
-              {/* 3D Doors & Windows */}
+              {/* 3D Doors, French Doors & Windows */}
               {walls.map((wall, wi) =>
                 (wallOpeningsMap.get(wi) ?? []).map((op, oi) =>
-                  op.isDoor ? (
+                  op.isFrenchDoor ? (
+                    <FrenchDoorMesh3D
+                      key={`fd-${floorIdx}-${wi}-${oi}`}
+                      wall={wall} info={op} wireframe={wireframe}
+                    />
+                  ) : op.isDoor ? (
                     <DoorMesh3D
                       key={`door-${floorIdx}-${wi}-${oi}`}
                       wall={wall} info={op} wireframe={wireframe}

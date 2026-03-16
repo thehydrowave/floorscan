@@ -1141,26 +1141,101 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
     print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
+    # === BEST-OF MODE: import walls/windows from Model D specialists ===
+    m_french_doors = np.zeros((H, W), np.uint8)
+    pipeline_mode = cfg.get("pipeline_mode", "bestof")
+    if pipeline_mode == "bestof":
+        logger.info("Best-of mode: running Model D specialists for walls + windows...")
+        MODEL_D_DW = "floorplan-3xara/1"       # doors+windows specialist (95.8% mAP)
+        MODEL_D_W  = "wall-detection-xi9ox/1"   # walls specialist
+
+        # D: doors+windows specialist (2 passes) → we only use windows from D
+        _, _, _dd1, _dw1, _, _, _ = infer_pass(
+            img_pil, client, MODEL_D_DW,
+            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
+            conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg)
+        _, _, _dd2, _dw2, _, _, _ = infer_pass(
+            img_pil, client, MODEL_D_DW,
+            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+            conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg)
+        m_windows_D = cv2.bitwise_or(
+            clean_mask(_dw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
+            clean_mask(_dw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]))
+
+        # D: walls specialist (2 passes)
+        _, _, _, _, _ww1, _, _ = infer_pass(
+            img_pil, client, MODEL_D_W,
+            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+        _, _, _, _, _ww2, _, _ = infer_pass(
+            img_pil, client, MODEL_D_W,
+            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+        m_walls_D = cv2.bitwise_or(_ww1, _ww2)
+
+        # ── Detect French doors: A doors that overlap D windows ──
+        door_labels, door_comps = _extract_components_light(m_doors)
+        win_labels_d, win_comps_d = _extract_components_light(m_windows_D)
+        m_doors_only = m_doors.copy()
+        m_windows_only = m_windows_D.copy()
+        if door_comps and win_comps_d:
+            matched_door_ids = set()
+            matched_win_ids = set()
+            for dc in door_comps:
+                for wc in win_comps_d:
+                    if _bbox_iou(dc["bbox"], wc["bbox"]) >= 0.15:
+                        matched_door_ids.add(dc["label_id"])
+                        matched_win_ids.add(wc["label_id"])
+            if matched_door_ids or matched_win_ids:
+                for lid in matched_door_ids:
+                    m_french_doors[door_labels == lid] = 255
+                    m_doors_only[door_labels == lid] = 0
+                for lid in matched_win_ids:
+                    m_french_doors[win_labels_d == lid] = 255
+                    m_windows_only[win_labels_d == lid] = 0
+            m_doors = m_doors_only
+            m_windows = m_windows_only
+
+        logger.info("Best-of: D walls=%d px, D windows=%d px, french_doors=%d px, A doors=%d px",
+                     cv2.countNonZero(m_walls_D), cv2.countNonZero(m_windows),
+                     cv2.countNonZero(m_french_doors), cv2.countNonZero(m_doors))
+
+        # Replace walls with D's (better detection)
+        m_walls_ai = m_walls_D
+        walls_bestof = m_walls_D
+    else:
+        m_windows_D = None
+        walls_bestof = None
+
     # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
-    walls = _walls_from_rooms_index(rooms_index, H, W)
-    if cv2.countNonZero(walls) == 0:
-        walls = detect_walls_from_image(img_rgb)
+    walls_rooms = _walls_from_rooms_index(rooms_index, H, W)
+    if walls_bestof is not None and cv2.countNonZero(walls_bestof) > 0:
+        walls = walls_bestof  # Best-of: use D's walls
+    elif cv2.countNonZero(walls_rooms) > 0:
+        walls = walls_rooms   # Fallback: rooms_index boundaries
+    else:
+        walls = detect_walls_from_image(img_rgb)  # Fallback: image-based detection
 
-    # === EMPRISE (contour extérieur) ===
-    cnt, footprint_filled = _compute_footprint(walls, m_doors, m_windows, H, W)
+    # === EMPRISE (contour extérieur) — include french doors for closing walls ===
+    all_doors_for_fp = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
+    all_wins_for_fp = cv2.bitwise_or(m_windows, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_windows
+    cnt, footprint_filled = _compute_footprint(walls, all_doors_for_fp, all_wins_for_fp, H, W)
 
-    # === Extraire ouvertures depuis masques ===
+    # === Extraire ouvertures depuis masques (3 classes) ===
     _, md_binary = cv2.threshold(m_doors,   127, 255, cv2.THRESH_BINARY)
     _, mw_binary = cv2.threshold(m_windows, 127, 255, cv2.THRESH_BINARY)
+    _, mfd_binary = cv2.threshold(m_french_doors, 127, 255, cv2.THRESH_BINARY)
 
     if cnt is not None:
         emp = np.zeros((H,W), np.uint8)
         cv2.fillPoly(emp, [cnt], 255)
         md_binary = cv2.bitwise_and(md_binary, emp)
         mw_binary = cv2.bitwise_and(mw_binary, emp)
+        mfd_binary = cv2.bitwise_and(mfd_binary, emp)
 
     openings = _extract_openings(md_binary, "door", cfg) + \
-               _extract_openings(mw_binary, "window", cfg)
+               _extract_openings(mw_binary, "window", cfg) + \
+               _extract_openings(mfd_binary, "french_door", cfg)
     import pandas as pd
     df_openings = pd.DataFrame(openings)
 
@@ -1194,12 +1269,14 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         if cv2.countNonZero(m_walls_pixel) > 0:
             surfaces["area_walls_pixel_m2"] = float(cv2.countNonZero(m_walls_pixel)) / (ppm ** 2)
 
-    # === OVERLAYS ===
-    overlay_openings = _build_overlay_openings(img_rgb, cnt, m_doors, m_windows)
+    # === OVERLAYS (include french doors in openings overlay) ===
+    all_doors_overlay = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
+    overlay_openings = _build_overlay_openings(img_rgb, cnt, all_doors_overlay, m_windows)
     overlay_interior = _build_overlay_interior(img_rgb, surfaces.get("interior_mask"))
 
-    # === PIÈCES via flood fill (robuste, indépendant du modèle) ===
-    rooms_list    = segment_rooms_from_walls(walls, m_doors, m_windows, cnt, H, W, ppm)
+    # === PIÈCES via flood fill (french doors = walkable like doors) ===
+    all_doors_rooms = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
+    rooms_list    = segment_rooms_from_walls(walls, all_doors_rooms, m_windows, cnt, H, W, ppm)
     wall_segments = vectorize_walls(walls, H, W, ppm)
 
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
@@ -1214,6 +1291,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "scale_info": scale_info,
         "doors_count": int((df_openings["class"] == "door").sum()) if not df_openings.empty else 0,
         "windows_count": int((df_openings["class"] == "window").sum()) if not df_openings.empty else 0,
+        "french_doors_count": int((df_openings["class"] == "french_door").sum()) if not df_openings.empty else 0,
         "openings": df_openings.to_dict(orient="records") if not df_openings.empty else [],
         "surfaces": surfaces,
         "stats": {"pass1": st1, "pass2": st2},
@@ -1233,9 +1311,11 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_cloisons_b64": _np_to_b64(_mask_to_rgba(m_cloisons, (0, 100, 255), 210)) if cv2.countNonZero(m_cloisons) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         "mask_footprint_b64": _np_to_b64(_mask_to_rgba(footprint_filled, (251, 191, 36), 50)) if footprint_filled is not None and cv2.countNonZero(footprint_filled) > 0 else None,
+        "mask_french_doors_b64": _np_to_b64(_mask_to_rgba(m_french_doors, (249, 115, 22), 90)) if cv2.countNonZero(m_french_doors) > 0 else None,  # orange
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
         "_m_windows": m_windows,
+        "_m_french_doors": m_french_doors,
         "_walls": walls,
         "_m_walls_ai": m_walls_ai,
         "_m_walls_pixel": m_walls_pixel,   # masque béton OTSU — éditable

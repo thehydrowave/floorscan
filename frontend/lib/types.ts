@@ -65,6 +65,7 @@ export interface AnalysisResult {
   session_id: string;
   doors_count: number;
   windows_count: number;
+  french_doors_count?: number;
   pixels_per_meter: number | null;
   scale_info?: ScaleInfo;
   openings: Opening[];
@@ -73,11 +74,13 @@ export interface AnalysisResult {
   overlay_interior_b64: string | null;
   mask_doors_b64: string;
   mask_windows_b64: string;
+  mask_french_doors_b64?: string | null;  // orange overlay for french doors
   mask_walls_b64: string;
   mask_walls_ai_b64?: string | null;       // Direct Roboflow wall predictions
   mask_walls_pixel_b64?: string | null;    // OTSU pixel-based wall detection
   mask_cloisons_b64?: string | null;        // Cloisons intérieures (IA − Pixel − périmètre)
   mask_rooms_b64?: string;
+  mask_footprint_b64?: string | null;
   plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };
   // Nouvelles données structurées
@@ -89,7 +92,7 @@ export interface AnalysisResult {
 }
 
 export interface Opening {
-  class: "door" | "window";
+  class: "door" | "window" | "french_door";
   x_px: number;
   y_px: number;
   width_px: number;
