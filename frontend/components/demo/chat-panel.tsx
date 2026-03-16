@@ -214,12 +214,8 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
     ? (lang === "fr" ? ANALYSIS_SUGGESTIONS_FR : ANALYSIS_SUGGESTIONS_EN)
     : (lang === "fr" ? HELP_SUGGESTIONS_FR : HELP_SUGGESTIONS_EN);
 
-  const welcomeMsg = hasAnalysis ? d("chat_welcome") : (lang === "fr" ? "Bonjour ! Je suis votre assistant FloorScan." : "Hello! I'm your FloorScan assistant.");
-  const welcomeSub = hasAnalysis
-    ? d("chat_welcome_sub")
-    : (lang === "fr"
-      ? "Posez-moi vos questions sur l'utilisation de l'application."
-      : "Ask me anything about using the application.");
+  const welcomeMsg = hasAnalysis ? d("chat_welcome") : d("chat_welcome_help");
+  const welcomeSub = hasAnalysis ? d("chat_welcome_sub") : d("chat_welcome_help_sub");
 
   /* ── Closed: floating button with avatar ─────────────────────────── */
 
@@ -241,14 +237,13 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
           "group"
         )}
         title={d("chat_title")}
+        aria-label={d("chat_title")}
       >
         <AvatarIcon size={30} />
         <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-950 animate-pulse" />
         {/* Tooltip label */}
         <span className="absolute right-16 bg-slate-800/95 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-slate-700/50 shadow-lg">
-          {hasAnalysis
-            ? (lang === "fr" ? "Analyser vos données" : "Analyze your data")
-            : (lang === "fr" ? "Besoin d'aide ?" : "Need help?")}
+          {hasAnalysis ? d("chat_tooltip_analyze") : d("chat_tooltip_help")}
         </span>
       </motion.button>
     );
@@ -280,8 +275,8 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
           <p className="text-xs font-semibold text-white truncate">{d("chat_title")}</p>
           <p className="text-[10px] text-slate-400 truncate">
             {messages.length > 0
-              ? (lang === "fr" ? `${messages.length} message${messages.length > 1 ? "s" : ""}` : `${messages.length} message${messages.length > 1 ? "s" : ""}`)
-              : (lang === "fr" ? "Cliquez pour ouvrir" : "Click to open")}
+              ? `${messages.length} ${d("chat_msg_count")}`
+              : d("chat_click_open")}
           </p>
         </div>
         <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -325,12 +320,12 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
               {d("chat_title")}
               {hasAnalysis && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium">
-                  {lang === "fr" ? "Données" : "Data"}
+                  {d("chat_data_badge")}
                 </span>
               )}
             </h3>
             <p className="text-[10px] text-slate-400">
-              {hasAnalysis ? d("chat_subtitle") : (lang === "fr" ? "Assistant d'utilisation" : "Usage assistant")}
+              {hasAnalysis ? d("chat_subtitle") : d("chat_subtitle_help")}
             </p>
           </div>
         </div>
@@ -338,7 +333,8 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
           <button
             onClick={() => setShowSettings(!showSettings)}
             className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
-            title="Settings"
+            title={d("chat_settings")}
+            aria-label={d("chat_settings")}
           >
             <Settings2 className="w-4 h-4" />
           </button>
@@ -346,20 +342,23 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
             onClick={() => { setMessages([]); setError(null); }}
             className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
             title={d("chat_clear")}
+            aria-label={d("chat_clear")}
           >
             <Trash2 className="w-4 h-4" />
           </button>
           <button
             onClick={() => setMinimized(true)}
             className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
-            title={lang === "fr" ? "Réduire" : "Minimize"}
+            title={d("chat_minimize")}
+            aria-label={d("chat_minimize")}
           >
             <Minus className="w-4 h-4" />
           </button>
           <button
             onClick={() => { setOpen(false); setMinimized(false); abortRef.current?.abort(); }}
             className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
-            title={lang === "fr" ? "Fermer" : "Close"}
+            title={d("chat_close")}
+            aria-label={d("chat_close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -466,7 +465,7 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
           <div className="mx-auto px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300 max-w-[90%]">
             {error.includes("API key") || error.includes("401")
               ? d("chat_no_key")
-              : `Erreur : ${error}`}
+              : `${d("chat_error_prefix")} : ${error}`}
           </div>
         )}
       </div>
@@ -479,7 +478,7 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={hasAnalysis ? d("chat_placeholder") : (lang === "fr" ? "Posez votre question..." : "Ask your question...")}
+          placeholder={hasAnalysis ? d("chat_placeholder") : d("chat_placeholder_help")}
           disabled={streaming}
           className={cn(
             "flex-1 px-4 py-2.5 text-sm rounded-xl",
@@ -493,6 +492,7 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
         <button
           type="submit"
           disabled={streaming || !input.trim()}
+          aria-label="Send"
           className={cn(
             "p-2.5 rounded-xl transition-all",
             input.trim() && !streaming

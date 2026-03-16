@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, ContactShadows, Environment, PerspectiveCamera } from "@react-three/drei";
 import type { Room, Opening } from "@/lib/types";
+import { getRoomColor } from "@/lib/room-colors";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -24,18 +25,7 @@ const DOOR_OPEN_ANGLE = Math.PI / 6; // 30°
 const FRENCH_DOOR_COLOR = "#F97316";         // orange
 const FRENCH_DOOR_FRAME_COLOR = "#e5e7eb";   // light gray (like window)
 
-const ROOM_COLORS: Record<string, string> = {
-  "bedroom": "#818cf8", "living room": "#34d399", "living": "#34d399",
-  "kitchen": "#fb923c", "bathroom": "#22d3ee", "hallway": "#94a3b8",
-  "corridor": "#94a3b8", "office": "#a78bfa", "study": "#a78bfa",
-  "wc": "#fbbf24", "toilet": "#fbbf24", "dining room": "#f472b6",
-  "storage": "#78716c", "closet": "#78716c", "garage": "#6b7280",
-  "balcony": "#86efac", "laundry": "#67e8f9",
-};
-
-function getRoomColor(type: string): string {
-  return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8";
-}
+// ROOM_COLORS & getRoomColor imported from @/lib/room-colors
 
 // ── Coordinate helpers ────────────────────────────────────────────────────────
 

@@ -41,7 +41,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
     const parsed = parseModel(modelId);
     if (!parsed) {
       setStatus("error");
-      setMsg("Format de Model ID invalide. Attendu : workspace/model/version");
+      setMsg(d("co_invalid_model_id"));
       return;
     }
     try {
@@ -63,7 +63,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
           : "";
         setMsg(`Connexion OK · ${name} v${parsed.version}${classes}`);
       } else {
-        throw new Error(data.error ?? "Erreur inconnue");
+        throw new Error(data.error ?? d("err_unknown"));
       }
     } catch (e: any) {
       setStatus("error");
@@ -135,7 +135,7 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
             {status === "testing" && <Loader2 className="w-4 h-4 shrink-0 mt-0.5 animate-spin" />}
             {status === "ok"      && <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
             {status === "error"   && <XCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-            <p className="font-medium">{status === "testing" ? "Test de la connexion Roboflow…" : msg}</p>
+            <p className="font-medium">{status === "testing" ? d("co_testing_connection") : msg}</p>
           </motion.div>
         )}
 

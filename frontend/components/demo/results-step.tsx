@@ -30,6 +30,7 @@ import OcrPanel from "@/components/demo/ocr-panel";
 import HousingPanel from "@/components/demo/housing-panel";
 
 import { BACKEND } from "@/lib/backend";
+import { getRoomColor } from "@/lib/room-colors";
 
 interface ResultsStepProps {
   result: AnalysisResult;
@@ -50,15 +51,7 @@ function fmt(v: number | undefined, nd = 1, suffix = "") {
   return v.toFixed(nd) + suffix;
 }
 
-const ROOM_COLORS: Record<string, string> = {
-  "bedroom": "#818cf8", "living room": "#34d399", "living": "#34d399",
-  "kitchen": "#fb923c", "bathroom": "#22d3ee", "hallway": "#94a3b8",
-  "corridor": "#94a3b8", "office": "#a78bfa", "study": "#a78bfa",
-  "wc": "#fbbf24", "toilet": "#fbbf24", "dining room": "#f472b6",
-  "storage": "#78716c", "closet": "#78716c", "garage": "#6b7280",
-  "balcony": "#86efac", "laundry": "#67e8f9",
-};
-function getRoomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
+// ROOM_COLORS & getRoomColor imported from @/lib/room-colors
 
 export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart, pageCount, currentPage, onSwitchPage, analyzedPages, onAddPage }: ResultsStepProps) {
   const { lang } = useLang();

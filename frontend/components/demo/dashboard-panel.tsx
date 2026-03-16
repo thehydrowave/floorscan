@@ -8,17 +8,7 @@ import { runComplianceChecks } from "@/lib/compliance-checker";
 import { buildDefaultDpgf } from "@/lib/dpgf-defaults";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
-
-/* ── Room type colour palette (same as results-step) ── */
-const ROOM_COLORS: Record<string, string> = {
-  bedroom: "#818cf8", "living room": "#34d399", living: "#34d399",
-  kitchen: "#fb923c", bathroom: "#22d3ee", hallway: "#94a3b8",
-  corridor: "#94a3b8", office: "#a78bfa", study: "#a78bfa",
-  wc: "#fbbf24", toilet: "#fbbf24", "dining room": "#f472b6",
-  storage: "#78716c", closet: "#78716c", garage: "#6b7280",
-  balcony: "#86efac", laundry: "#67e8f9",
-};
-function roomColor(type: string) { return ROOM_COLORS[type?.toLowerCase()] ?? "#94a3b8"; }
+import { getRoomColor as roomColor } from "@/lib/room-colors";
 
 /* ── Circular arc SVG for score ── */
 function ScoreArc({ pct, size = 64 }: { pct: number; size?: number }) {

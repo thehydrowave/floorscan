@@ -212,6 +212,41 @@ body {
   background:#e2e8f0;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCESSIBILITY — Focus indicators & skip-to-content
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Visible focus ring for keyboard navigation only */
+*:focus-visible {
+  outline: 2px solid rgba(14,165,233,0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Suppress outline for mouse/touch focus */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Skip-to-content link (screen readers + keyboard) */
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background: #0ea5e9;
+  color: #fff;
+  border-radius: 0 0 8px 8px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.2s ease;
+}
+.skip-to-content:focus {
+  top: 0;
+}
+
 @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
 @keyframes slideUp   { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
 @keyframes shimmer   { from{background-position:200% center} to{background-position:-200% center} }

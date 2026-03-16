@@ -20,10 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" className="scroll-smooth">
       <body className="bg-ink text-slate-100 font-body antialiased">
+        <a href="#main-content" className="skip-to-content">Skip to content</a>
         <AuthProvider>
           <ThemeProvider>
             <LangProvider>
-              {children}
+              <main id="main-content">{children}</main>
               <Toaster />
             </LangProvider>
           </ThemeProvider>

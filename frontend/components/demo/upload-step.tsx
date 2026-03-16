@@ -89,7 +89,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
       setAwaitingPage(false);
       onUploaded(data.session_id, data.image_b64);
     } catch (e: any) {
-      const msg = e.message ?? "Erreur inconnue";
+      const msg = e.message ?? dt("err_unknown", lang);
       setError(msg);
       toast({ title: dt("up_err_upload", lang), description: msg, variant: "error" });
     } finally {
@@ -113,13 +113,13 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
 
     // Size validation
     if (f.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`Fichier trop volumineux (${formatBytes(f.size)}). Maximum ${MAX_SIZE_MB} Mo.`);
+      setError(`${d("up_file_too_large")} (${formatBytes(f.size)}). Max ${MAX_SIZE_MB} MB.`);
       return;
     }
 
     // Empty file check
     if (f.size === 0) {
-      setError("Le fichier est vide.");
+      setError(d("up_file_empty"));
       return;
     }
 
@@ -131,7 +131,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
       b64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
+        reader.onerror = () => reject(new Error(d("up_file_read_error")));
         reader.readAsDataURL(f);
       });
     } catch (e: any) {
@@ -157,7 +157,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
         toast({ title: d("up_img_loaded"), description: `${data.width}×${data.height} px`, variant: "success" });
         onUploaded(data.session_id, data.image_b64);
       } catch (e: any) {
-        const msg = e.message ?? "Erreur inconnue";
+        const msg = e.message ?? d("err_unknown");
         setError(msg);
         toast({ title: d("up_err_upload"), description: msg, variant: "error" });
       } finally {
@@ -195,7 +195,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
             <BookOpen className="w-10 h-10 text-accent mx-auto mb-4" />
             <p className="text-white font-display font-700 text-lg mb-1">{pendingFileName}</p>
             <p className="text-slate-400 text-sm mb-6">
-              PDF multi-pages ({pageCount} pages) — choisissez la page à analyser
+              {d("up_multipage_hint")} ({pageCount} pages)
             </p>
             {/* Page picker */}
             <div className="flex items-center justify-center gap-3 mb-6">
@@ -241,14 +241,14 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
                 onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); }}
                 className="px-4 py-2 glass border border-white/10 rounded-xl text-sm text-slate-400 hover:text-white transition-colors"
               >
-                Annuler
+                {d("up_cancel")}
               </button>
               <button
                 onClick={confirmPage}
                 disabled={loading}
                 className="px-6 py-2 bg-accent hover:bg-accent/80 disabled:opacity-50 text-white rounded-xl text-sm font-600 transition-colors"
               >
-                {loading ? "Chargement…" : `Analyser la page ${currentPage + 1}`}
+                {loading ? d("up_loading") : `${d("up_analyze_page")} ${currentPage + 1}`}
               </button>
             </div>
           </motion.div>
@@ -314,9 +314,9 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p>{error}</p>
-                  {error.includes("serveur") && (
+                  {(error.includes("serveur") || error.includes("server") || error.includes("backend")) && (
                     <p className="text-xs text-red-400/70 mt-1">
-                      Erreur backend — réessayez dans quelques secondes.
+                      {d("up_backend_error")}
                     </p>
                   )}
                 </div>

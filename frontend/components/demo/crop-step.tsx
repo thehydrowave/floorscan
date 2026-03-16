@@ -126,10 +126,10 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSes
       onCropped();
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("err_session_expired"), description: d("err_server_restarted"), variant: "error" });
         onSessionExpired?.();
       } else {
-        toast({ title: "Error", description: e.message, variant: "error" });
+        toast({ title: d("err_generic"), description: e.message, variant: "error" });
       }
     } finally {
       setConfirming(false);

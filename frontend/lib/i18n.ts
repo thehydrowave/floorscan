@@ -1285,6 +1285,41 @@ export const DEMO_T = {
   auth_admin:              { fr:"Administration",                        en:"Admin panel",                       es:"Panel admin",                         de:"Admin-Panel",                        it:"Pannello admin"                       },
   auth_error_cred:         { fr:"Email ou mot de passe invalide",        en:"Invalid email or password",         es:"Email o contrasena invalidos",        de:"Ungultige Anmeldedaten",             it:"Credenziali non valide"               },
   auth_error_exist:        { fr:"Cet email est deja utilise",            en:"This email is already in use",      es:"Este email ya esta en uso",           de:"Diese E-Mail wird bereits verwendet", it:"Questa email e gia in uso"           },
+
+  // ── Error messages (shared) ─────────────────────────────────────────────
+  err_session_expired:     { fr:"Session expirée",                        en:"Session expired",                   es:"Sesión expirada",                     de:"Sitzung abgelaufen",                  it:"Sessione scaduta"                     },
+  err_server_restarted:    { fr:"Le serveur a redémarré. Veuillez recommencer l'upload.", en:"The server restarted. Please re-upload your file.", es:"El servidor se reinició. Vuelva a cargar su archivo.", de:"Der Server wurde neu gestartet. Bitte laden Sie Ihre Datei erneut hoch.", it:"Il server è stato riavviato. Si prega di ricaricare il file." },
+  err_generic:             { fr:"Erreur",                                 en:"Error",                             es:"Error",                               de:"Fehler",                              it:"Errore"                               },
+  err_unknown:             { fr:"Erreur inconnue",                        en:"Unknown error",                     es:"Error desconocido",                   de:"Unbekannter Fehler",                  it:"Errore sconosciuto"                   },
+
+  // ── Upload extras ───────────────────────────────────────────────────────
+  up_file_too_large:       { fr:"Fichier trop volumineux",                en:"File too large",                    es:"Archivo demasiado grande",            de:"Datei zu groß",                       it:"File troppo grande"                   },
+  up_file_empty:           { fr:"Le fichier est vide.",                   en:"The file is empty.",                es:"El archivo está vacío.",              de:"Die Datei ist leer.",                 it:"Il file è vuoto."                     },
+  up_file_read_error:      { fr:"Impossible de lire le fichier",          en:"Could not read file",               es:"No se pudo leer el archivo",          de:"Datei konnte nicht gelesen werden",   it:"Impossibile leggere il file"          },
+  up_backend_error:        { fr:"Erreur backend — réessayez dans quelques secondes.", en:"Backend error — try again in a few seconds.", es:"Error del servidor — intente de nuevo en unos segundos.", de:"Backend-Fehler — versuchen Sie es in einigen Sekunden erneut.", it:"Errore backend — riprovare tra qualche secondo." },
+  up_cancel:               { fr:"Annuler",                                en:"Cancel",                            es:"Cancelar",                            de:"Abbrechen",                           it:"Annulla"                              },
+  up_loading:              { fr:"Chargement…",                            en:"Loading…",                          es:"Cargando…",                           de:"Laden…",                              it:"Caricamento…"                         },
+  up_analyze_page:         { fr:"Analyser la page",                       en:"Analyze page",                      es:"Analizar página",                     de:"Seite analysieren",                   it:"Analizza pagina"                      },
+  up_multipage_hint:       { fr:"PDF multi-pages — choisissez la page à analyser", en:"Multi-page PDF — choose the page to analyze", es:"PDF multipágina — elija la página a analizar", de:"Mehrseitiges PDF — wählen Sie die Seite zur Analyse", it:"PDF multipagina — scegliete la pagina da analizzare" },
+
+  // ── Connect extras ──────────────────────────────────────────────────────
+  co_invalid_model_id:     { fr:"Format de Model ID invalide. Attendu : workspace/model/version", en:"Invalid Model ID format. Expected: workspace/model/version", es:"Formato de Model ID inválido. Esperado: workspace/model/version", de:"Ungültiges Model-ID-Format. Erwartet: workspace/model/version", it:"Formato Model ID non valido. Atteso: workspace/model/version" },
+  co_testing_connection:   { fr:"Test de la connexion Roboflow…",         en:"Testing Roboflow connection…",      es:"Probando conexión Roboflow…",         de:"Roboflow-Verbindung testen…",         it:"Test connessione Roboflow…"           },
+
+  // ── Chat extras ─────────────────────────────────────────────────────────
+  chat_welcome_help:       { fr:"Bonjour ! Je suis votre assistant FloorScan.", en:"Hello! I'm your FloorScan assistant.", es:"¡Hola! Soy su asistente FloorScan.", de:"Hallo! Ich bin Ihr FloorScan-Assistent.", it:"Ciao! Sono il vostro assistente FloorScan." },
+  chat_welcome_help_sub:   { fr:"Posez-moi vos questions sur l'utilisation de l'application.", en:"Ask me anything about using the application.", es:"Pregúnteme sobre el uso de la aplicación.", de:"Fragen Sie mich zur Nutzung der Anwendung.", it:"Chiedetemi qualsiasi cosa sull'uso dell'applicazione." },
+  chat_tooltip_analyze:    { fr:"Analyser vos données",                   en:"Analyze your data",                 es:"Analizar sus datos",                  de:"Ihre Daten analysieren",              it:"Analizzare i vostri dati"             },
+  chat_tooltip_help:       { fr:"Besoin d'aide ?",                        en:"Need help?",                        es:"¿Necesita ayuda?",                    de:"Brauchen Sie Hilfe?",                 it:"Bisogno di aiuto?"                    },
+  chat_msg_count:          { fr:"messages",                               en:"messages",                          es:"mensajes",                            de:"Nachrichten",                         it:"messaggi"                             },
+  chat_click_open:         { fr:"Cliquez pour ouvrir",                    en:"Click to open",                     es:"Haga clic para abrir",                de:"Klicken zum Öffnen",                  it:"Clicca per aprire"                    },
+  chat_data_badge:         { fr:"Données",                                en:"Data",                              es:"Datos",                               de:"Daten",                               it:"Dati"                                 },
+  chat_subtitle_help:      { fr:"Assistant d'utilisation",                en:"Usage assistant",                   es:"Asistente de uso",                    de:"Nutzungsassistent",                   it:"Assistente d'uso"                     },
+  chat_settings:           { fr:"Paramètres",                             en:"Settings",                          es:"Ajustes",                             de:"Einstellungen",                       it:"Impostazioni"                         },
+  chat_minimize:           { fr:"Réduire",                                en:"Minimize",                          es:"Minimizar",                           de:"Minimieren",                          it:"Riduci"                               },
+  chat_close:              { fr:"Fermer",                                 en:"Close",                             es:"Cerrar",                              de:"Schließen",                           it:"Chiudi"                               },
+  chat_error_prefix:       { fr:"Erreur",                                 en:"Error",                             es:"Error",                               de:"Fehler",                              it:"Errore"                               },
+  chat_placeholder_help:   { fr:"Posez votre question…",                  en:"Ask your question…",                es:"Haga su pregunta…",                   de:"Stellen Sie Ihre Frage…",             it:"Fate la vostra domanda…"              },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

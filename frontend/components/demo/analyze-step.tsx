@@ -125,7 +125,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
     } catch (e: any) {
       stopTimer();
       if (e.message?.includes("Session introuvable")) {
-        toast({ title: "Session expirée", description: "Le serveur a redémarré. Veuillez recommencer l'upload.", variant: "error" });
+        toast({ title: d("err_session_expired"), description: d("err_server_restarted"), variant: "error" });
         onSessionExpired?.();
       } else {
         setError(e.message);
