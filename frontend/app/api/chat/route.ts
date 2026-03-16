@@ -72,7 +72,7 @@ function buildContext(data: any): string {
   return lines.join("\n");
 }
 
-const SYSTEM_PROMPT = `Tu es l'assistant IA de FloorScan, un outil d'analyse de plans architecturaux.
+const ANALYSIS_SYSTEM_PROMPT = `Tu es l'assistant IA de FloorScan, un outil d'analyse de plans architecturaux.
 Tu as accès aux données complètes d'un plan analysé (pièces, surfaces, ouvertures, chiffrage DPGF, conformité).
 
 Règles :
@@ -84,6 +84,36 @@ Règles :
 - Sois concis mais complet — maximum 300 mots par réponse
 - Tu peux suggérer des optimisations ou signaler des anomalies si pertinent
 - Tu es un expert BTP/architecture, utilise le vocabulaire métier approprié`;
+
+const HELP_SYSTEM_PROMPT = `Tu es l'assistant IA de FloorScan, une application web d'analyse de plans architecturaux.
+Tu aides les utilisateurs à comprendre et utiliser l'application.
+
+Voici les fonctionnalités de FloorScan :
+1. **Import** : Upload d'images (JPG, PNG) ou de fichiers PDF. Les PDF multi-pages sont supportés.
+2. **Recadrage** : Permet de recadrer le plan pour ne garder que la zone utile.
+3. **Calibration d'échelle** : Mode automatique (détecte l'échelle sur le plan) ou mode manuel (l'utilisateur trace une ligne de référence connue).
+4. **Analyse IA** : Détection automatique par intelligence artificielle des murs, portes, fenêtres, portes-fenêtres, et pièces du plan.
+5. **Résultats** : Affichage des surfaces (habitable, bâtie, murs), des pièces détectées avec leurs dimensions, des ouvertures, et des overlays de masques.
+6. **Éditeur** : Permet de corriger les masques de détection (murs, portes, fenêtres, portes-fenêtres, cloisons, intérieur) en dessinant ou en utilisant l'outil SAM (segmentation assistée).
+7. **Outils avancés** : DPGF (chiffrage), conformité PMR, export PDF/CSV, mesures manuelles, rapport pro, scénarios de rénovation.
+
+Règles :
+- Réponds TOUJOURS en français, sauf si l'utilisateur parle dans une autre langue
+- Sois concis et pratique — guide l'utilisateur étape par étape
+- Formate tes réponses en markdown clair
+- Maximum 200 mots par réponse
+- Si tu ne sais pas, dis-le honnêtement
+- Sois amical et encourageant`;
+
+const STEP_NAMES: Record<number, string> = {
+  1: "Connexion (admin)",
+  2: "Upload / Import",
+  3: "Recadrage",
+  4: "Calibration d'échelle",
+  5: "Analyse IA",
+  6: "Résultats",
+  7: "Éditeur de masques",
+};
 
 // ─── POST /api/chat ─────────────────────────────────────────────────────────
 
@@ -98,7 +128,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { messages, analysisContext, apiKey } = body;
+  const { messages, analysisContext, apiKey, mode, currentStep } = body;
 
   if (!messages?.length) {
     return new Response(JSON.stringify({ error: "No messages provided" }), {
@@ -116,9 +146,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Build full system prompt with plan context
-  const contextStr = analysisContext ? buildContext(analysisContext) : "Aucune donnée de plan disponible.";
-  const fullSystem = `${SYSTEM_PROMPT}\n\n--- DONNÉES DU PLAN ANALYSÉ ---\n${contextStr}`;
+  // Build system prompt based on mode
+  const isAnalysis = mode === "analysis" && analysisContext;
+  let fullSystem: string;
+
+  if (isAnalysis) {
+    const contextStr = buildContext(analysisContext);
+    fullSystem = `${ANALYSIS_SYSTEM_PROMPT}\n\n--- DONNÉES DU PLAN ANALYSÉ ---\n${contextStr}`;
+  } else {
+    const stepInfo = currentStep ? `\nL'utilisateur est actuellement à l'étape : ${STEP_NAMES[currentStep] ?? `Étape ${currentStep}`}.` : "";
+    fullSystem = `${HELP_SYSTEM_PROMPT}${stepInfo}`;
+  }
 
   try {
     const result = streamText({

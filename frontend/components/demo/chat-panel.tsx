@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MessageCircle, Send, X,
+  Send, X,
   Sparkles, Trash2, Settings2, Loader2, Bot, User,
+  HelpCircle, ScanLine,
 } from "lucide-react";
 import { AnalysisResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
@@ -20,32 +21,69 @@ interface ChatMsg {
 }
 
 interface ChatPanelProps {
-  result: AnalysisResult;
+  result?: AnalysisResult | null;
+  currentStep?: number;
   dpgf?: any;
   compliance?: any[];
 }
 
-/* ── Suggestions ────────────────────────────────────────────────────────── */
+/* ── Suggestions per context ──────────────────────────────────────────── */
 
-const SUGGESTIONS_FR = [
+const ANALYSIS_SUGGESTIONS_FR = [
   "Quelle est la surface habitable totale ?",
   "Détaille-moi le coût du lot peinture",
   "Les pièces sont-elles conformes PMR ?",
   "Quelles optimisations pour réduire le budget ?",
 ];
 
-const SUGGESTIONS_EN = [
+const ANALYSIS_SUGGESTIONS_EN = [
   "What is the total living area?",
   "Break down the painting costs",
   "Are the rooms PMR compliant?",
   "What optimizations to reduce the budget?",
 ];
 
+const HELP_SUGGESTIONS_FR = [
+  "Comment utiliser FloorScan ?",
+  "Comment importer un plan PDF ?",
+  "Comment calibrer l'échelle ?",
+  "Quels formats de fichier sont supportés ?",
+];
+
+const HELP_SUGGESTIONS_EN = [
+  "How do I use FloorScan?",
+  "How do I import a PDF plan?",
+  "How do I calibrate the scale?",
+  "What file formats are supported?",
+];
+
+/* ── Avatar SVG ────────────────────────────────────────────────────────── */
+
+function AvatarIcon({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="20" fill="url(#av_grad)" />
+      <path d="M12 28c0-4.418 3.582-8 8-8s8 3.582 8 8" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none" />
+      <circle cx="20" cy="15" r="5" fill="white" opacity="0.9" />
+      <path d="M14 13l2 2m10-2l-2 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+      <path d="M8 20h2m20 0h2M20 8v2" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+      <defs>
+        <linearGradient id="av_grad" x1="0" y1="0" x2="40" y2="40">
+          <stop stopColor="#7c3aed" />
+          <stop offset="1" stopColor="#4f46e5" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
 /* ── Component ──────────────────────────────────────────────────────────── */
 
-export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) {
+export default function ChatPanel({ result, currentStep, dpgf, compliance }: ChatPanelProps) {
   const { lang } = useLang();
   const d = (k: Parameters<typeof dt>[0]) => dt(k, lang);
+
+  const hasAnalysis = !!result;
 
   const [open, setOpen] = useState(false);
   const [apiKey, setApiKey] = useState("");
@@ -58,20 +96,23 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
   const abortRef = useRef<AbortController | null>(null);
 
   // Build context (no base64 images — just structured data)
-  const buildCtx = useCallback(() => ({
-    surfaces: result.surfaces,
-    doors_count: result.doors_count,
-    windows_count: result.windows_count,
-    pixels_per_meter: result.pixels_per_meter,
-    openings: result.openings?.map((o) => ({
-      class: o.class, length_m: o.length_m, width_m: o.width_m, height_m: o.height_m,
-    })),
-    rooms: result.rooms?.map((r) => ({
-      type: r.type, label_fr: r.label_fr, area_m2: r.area_m2, perimeter_m: r.perimeter_m,
-    })),
-    ...(dpgf ? { dpgf } : {}),
-    ...(compliance ? { compliance } : {}),
-  }), [result, dpgf, compliance]);
+  const buildCtx = useCallback(() => {
+    if (!result) return null;
+    return {
+      surfaces: result.surfaces,
+      doors_count: result.doors_count,
+      windows_count: result.windows_count,
+      pixels_per_meter: result.pixels_per_meter,
+      openings: result.openings?.map((o) => ({
+        class: o.class, length_m: o.length_m, width_m: o.width_m, height_m: o.height_m,
+      })),
+      rooms: result.rooms?.map((r) => ({
+        type: r.type, label_fr: r.label_fr, area_m2: r.area_m2, perimeter_m: r.perimeter_m,
+      })),
+      ...(dpgf ? { dpgf } : {}),
+      ...(compliance ? { compliance } : {}),
+    };
+  }, [result, dpgf, compliance]);
 
   // Auto-scroll
   useEffect(() => {
@@ -103,6 +144,8 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
         body: JSON.stringify({
           messages: allMsgs.map((m) => ({ role: m.role, content: m.content })),
           analysisContext: buildCtx(),
+          mode: hasAnalysis ? "analysis" : "help",
+          currentStep: currentStep ?? null,
           apiKey: apiKey || undefined,
         }),
         signal: abort.signal,
@@ -146,23 +189,33 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
       setStreaming(false);
       abortRef.current = null;
     }
-  }, [messages, streaming, buildCtx, apiKey]);
+  }, [messages, streaming, buildCtx, apiKey, hasAnalysis, currentStep]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     sendMessage(input);
   };
 
-  const suggestions = lang === "fr" ? SUGGESTIONS_FR : SUGGESTIONS_EN;
+  // Contextual suggestions
+  const suggestions = hasAnalysis
+    ? (lang === "fr" ? ANALYSIS_SUGGESTIONS_FR : ANALYSIS_SUGGESTIONS_EN)
+    : (lang === "fr" ? HELP_SUGGESTIONS_FR : HELP_SUGGESTIONS_EN);
 
-  /* ── Floating button ──────────────────────────────────────────────────── */
+  const welcomeMsg = hasAnalysis ? d("chat_welcome") : (lang === "fr" ? "Bonjour ! Je suis votre assistant FloorScan." : "Hello! I'm your FloorScan assistant.");
+  const welcomeSub = hasAnalysis
+    ? d("chat_welcome_sub")
+    : (lang === "fr"
+      ? "Posez-moi vos questions sur l'utilisation de l'application."
+      : "Ask me anything about using the application.");
+
+  /* ── Floating button with avatar ────────────────────────────────────── */
 
   if (!open) {
     return (
       <motion.button
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 1, type: "spring", stiffness: 200 }}
+        transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
         onClick={() => setOpen(true)}
         className={cn(
           "fixed bottom-6 right-6 z-50",
@@ -171,12 +224,19 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
           "shadow-lg shadow-violet-500/30",
           "flex items-center justify-center",
           "hover:scale-110 transition-transform",
-          "ring-2 ring-violet-400/30 ring-offset-2 ring-offset-slate-950"
+          "ring-2 ring-violet-400/30 ring-offset-2 ring-offset-slate-950",
+          "group"
         )}
         title={d("chat_title")}
       >
-        <MessageCircle className="w-6 h-6 text-white" />
+        <AvatarIcon size={30} />
         <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-950 animate-pulse" />
+        {/* Tooltip label */}
+        <span className="absolute right-16 bg-slate-800/95 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-slate-700/50 shadow-lg">
+          {hasAnalysis
+            ? (lang === "fr" ? "Analyser vos données" : "Analyze your data")
+            : (lang === "fr" ? "Besoin d'aide ?" : "Need help?")}
+        </span>
       </motion.button>
     );
   }
@@ -201,13 +261,22 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
     >
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-violet-600/20 to-indigo-600/20 border-b border-slate-700/50">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-violet-600/30 flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-violet-300" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600/40 to-indigo-600/40 flex items-center justify-center border border-violet-500/20">
+            <AvatarIcon size={24} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-white">{d("chat_title")}</h3>
-            <p className="text-[10px] text-slate-400">{d("chat_subtitle")}</p>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
+              {d("chat_title")}
+              {hasAnalysis && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium">
+                  {lang === "fr" ? "Données" : "Data"}
+                </span>
+              )}
+            </h3>
+            <p className="text-[10px] text-slate-400">
+              {hasAnalysis ? d("chat_subtitle") : (lang === "fr" ? "Assistant d'utilisation" : "Usage assistant")}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -262,12 +331,16 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scroll-smooth">
         {messages.length === 0 && !streaming && (
           <div className="flex flex-col items-center justify-center h-full gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-violet-600/10 flex items-center justify-center">
-              <Bot className="w-8 h-8 text-violet-400" />
+            <div className="w-16 h-16 rounded-2xl bg-violet-600/10 flex items-center justify-center border border-violet-500/10">
+              {hasAnalysis ? (
+                <ScanLine className="w-8 h-8 text-violet-400" />
+              ) : (
+                <AvatarIcon size={36} />
+              )}
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-slate-200">{d("chat_welcome")}</p>
-              <p className="text-xs text-slate-500 mt-1">{d("chat_welcome_sub")}</p>
+              <p className="text-sm font-medium text-slate-200">{welcomeMsg}</p>
+              <p className="text-xs text-slate-500 mt-1">{welcomeSub}</p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center max-w-[340px]">
               {suggestions.map((s, i) => (
@@ -290,7 +363,7 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
           >
             {msg.role === "assistant" && (
               <div className="w-6 h-6 rounded-md bg-violet-600/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot className="w-3.5 h-3.5 text-violet-400" />
+                <AvatarIcon size={18} />
               </div>
             )}
             <div
@@ -343,7 +416,7 @@ export default function ChatPanel({ result, dpgf, compliance }: ChatPanelProps) 
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={d("chat_placeholder")}
+          placeholder={hasAnalysis ? d("chat_placeholder") : (lang === "fr" ? "Posez votre question..." : "Ask your question...")}
           disabled={streaming}
           className={cn(
             "flex-1 px-4 py-2.5 text-sm rounded-xl",

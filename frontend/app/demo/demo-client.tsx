@@ -24,6 +24,7 @@ import FacadeEditorStep from "@/components/facade/facade-editor-step";
 import DiffViewStep from "@/components/diff/diff-view-step";
 import CartoucheResultStep from "@/components/cartouche/cartouche-result-step";
 import MeasureClient from "@/app/measure/measure-client";
+import ChatPanel from "@/components/demo/chat-panel";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, DiffResult, CartoucheResult } from "@/lib/types";
@@ -1069,6 +1070,14 @@ export default function DemoClient() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-64 bg-gradient-to-b from-brand-900/10 to-transparent" />
         <div className="absolute inset-0 bg-grid-pattern bg-grid-size opacity-30" />
       </div>
+
+      {/* ── Global AI Assistant (present on all steps) ── */}
+      {demoMode && (
+        <ChatPanel
+          result={analysisResult}
+          currentStep={step}
+        />
+      )}
     </div>
   );
 }

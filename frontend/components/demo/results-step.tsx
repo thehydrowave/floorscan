@@ -19,7 +19,6 @@ import CompliancePanel from "@/components/demo/compliance-panel";
 import DebugPanel from "@/components/demo/debug-panel";
 import ComparisonPanel from "@/components/demo/comparison-panel";
 import View3dPanel from "@/components/demo/view-3d-panel";
-import ChatPanel from "@/components/demo/chat-panel";
 import ScenarioPanel from "@/components/demo/scenario-panel";
 import PatternPanel from "@/components/demo/pattern-panel";
 import ToolkitPanel from "@/components/demo/toolkit-panel";
@@ -71,8 +70,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWindows, setShowWindows] = useState(true);
   const [showFrenchDoors, setShowFrenchDoors] = useState(true);
   const [showWalls, setShowWalls] = useState(false);
-  const [showWallsAI, setShowWallsAI] = useState(false);
-  const [showWallsPixel, setShowWallsPixel] = useState(false);
   const [showCloisons, setShowCloisons] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
@@ -405,48 +402,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* Walls toggle */}
-          {result.mask_walls_b64 && (
+          {/* Walls toggle (AI model detection only) */}
+          {result.mask_walls_ai_b64 && (
             <button
               onClick={() => setShowWalls(v => !v)}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showWalls
-                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_area")}
-            </button>
-          )}
-
-          {/* Walls AI toggle (debug: direct Roboflow wall predictions) */}
-          {result.mask_walls_ai_b64 && (
-            <button
-              onClick={() => setShowWallsAI(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showWallsAI
                   ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showWallsAI ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_ai")}
-            </button>
-          )}
-
-          {/* Walls Pixel toggle (OTSU pixel-based detection) */}
-          {result.mask_walls_pixel_b64 && (
-            <button
-              onClick={() => setShowWallsPixel(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showWallsPixel
-                  ? "bg-red-500/15 text-red-400 border-red-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showWallsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_pixel")}
+              {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_area")}
             </button>
           )}
 
@@ -563,28 +530,10 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 1 }}
                 />
               )}
-              {/* Walls RGBA overlay */}
-              {showWalls && result.mask_walls_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_walls_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
-              )}
-              {/* Walls AI RGBA overlay */}
-              {showWallsAI && result.mask_walls_ai_b64 && (
+              {/* Walls RGBA overlay (AI model detection) */}
+              {showWalls && result.mask_walls_ai_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
-              )}
-              {/* Walls Pixel RGBA overlay */}
-              {showWallsPixel && result.mask_walls_pixel_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_walls_pixel_b64}`}
                   alt=""
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   style={{ zIndex: 1 }}
@@ -908,8 +857,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         />
       )}
 
-      {/* ── AI Chat floating panel ── */}
-      <ChatPanel result={result} />
     </motion.div>
   );
 }
