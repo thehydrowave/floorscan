@@ -305,6 +305,7 @@ export interface PipelineResult {
   mask_doors_b64: string | null;
   mask_windows_b64: string | null;
   mask_walls_b64: string | null;
+  mask_footprint_b64: string | null;
   footprint_area_m2: number | null;
   rooms_count: number;
   rooms: Room[];

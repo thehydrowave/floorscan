@@ -19,6 +19,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
   const [showWalls, setShowWalls] = useState(true);
+  const [showFootprint, setShowFootprint] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
 
   const pipeline = result.pipelines[selectedPipeline] as PipelineResult | undefined;
@@ -190,7 +191,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 {[
                   { label: "Portes", value: pipeline.doors_count, color: "#D946EF" },
                   { label: "Fenêtres", value: pipeline.windows_count, color: "#22D3EE" },
-                  { label: "Emprise", value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m²` : "—", color: "#60A5FA" },
+                  { label: "Emprise", value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m²` : "—", color: "#FBBF24" },
                   { label: "Pièces", value: pipeline.rooms_count, color: "#34D399" },
                   { label: "Temps", value: `${pipeline.timing_seconds}s`, color: "#94a3b8" },
                 ].map(({ label, value, color }) => (
@@ -236,6 +237,17 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs
                   </button>
                 )}
+                {pipeline.mask_footprint_b64 && (
+                  <button
+                    onClick={() => setShowFootprint(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
+                      showFootprint ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "text-slate-500 border-transparent hover:border-white/10"
+                    )}
+                  >
+                    {showFootprint ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Emprise
+                  </button>
+                )}
                 {pipeline.mask_rooms_b64 && (
                   <button
                     onClick={() => setShowRooms(v => !v)}
@@ -276,6 +288,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 {showWalls && pipeline.mask_walls_b64 && (
                   <img
                     src={`data:image/png;base64,${pipeline.mask_walls_b64}`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ zIndex: 1 }}
+                  />
+                )}
+                {showFootprint && pipeline.mask_footprint_b64 && (
+                  <img
+                    src={`data:image/png;base64,${pipeline.mask_footprint_b64}`}
                     alt=""
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ zIndex: 1 }}

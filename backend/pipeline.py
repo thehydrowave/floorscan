@@ -1133,7 +1133,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         walls = detect_walls_from_image(img_rgb)
 
     # === EMPRISE (contour extérieur) ===
-    cnt, _ = _compute_footprint(walls, m_doors, m_windows, H, W)
+    cnt, footprint_filled = _compute_footprint(walls, m_doors, m_windows, H, W)
 
     # === Extraire ouvertures depuis masques ===
     _, md_binary = cv2.threshold(m_doors,   127, 255, cv2.THRESH_BINARY)
@@ -1218,6 +1218,7 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
         "mask_cloisons_b64": _np_to_b64(_mask_to_rgba(m_cloisons, (0, 100, 255), 210)) if cv2.countNonZero(m_cloisons) > 0 else None,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
+        "mask_footprint_b64": _np_to_b64(_mask_to_rgba(footprint_filled, (251, 191, 36), 50)) if footprint_filled is not None and cv2.countNonZero(footprint_filled) > 0 else None,
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
         "_m_windows": m_windows,
@@ -1502,6 +1503,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
     m_walls  = np.zeros((H, W), np.uint8)
     rooms_list = []
     cnt = None
+    footprint_mask = None
     footprint_area_m2 = None
     error = None
 
@@ -1579,7 +1581,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
             # doors and windows stay zero — pixel can't detect them
 
         # ── Compute footprint from this pipeline's walls ──
-        cnt, _ = _compute_footprint(m_walls, m_doors, m_wins, H, W)
+        cnt, footprint_mask = _compute_footprint(m_walls, m_doors, m_wins, H, W)
 
         if cnt is not None and ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
@@ -1604,6 +1606,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
     mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_wins, (34, 211, 238), 90)) if cv2.countNonZero(m_wins) > 0 else None
     mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls, (96, 165, 250), 90)) if cv2.countNonZero(m_walls) > 0 else None
     mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
+    mask_footprint_b64 = _np_to_b64(_mask_to_rgba(footprint_mask, (251, 191, 36), 50)) if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None
 
     return {
         "id": pid,
@@ -1615,6 +1618,7 @@ def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
         "mask_doors_b64": mask_doors_b64,
         "mask_windows_b64": mask_windows_b64,
         "mask_walls_b64": mask_walls_b64,
+        "mask_footprint_b64": mask_footprint_b64,
         "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
         "rooms_count": len(rooms_list),
         "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
@@ -1667,6 +1671,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_doors_b64": ea.get("mask_doors_b64"),
             "mask_windows_b64": ea.get("mask_windows_b64"),
             "mask_walls_b64": ea.get("mask_walls_b64"),
+            "mask_footprint_b64": ea.get("mask_footprint_b64"),
             "footprint_area_m2": round(sf.get("area_building_m2", 0), 2) if sf.get("area_building_m2") else None,
             "rooms_count": len(ea.get("rooms", [])),
             "rooms": ea.get("rooms", []),
@@ -1699,7 +1704,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
                     "color": pdef.get("color", "#94a3b8"),
                     "doors_count": 0, "windows_count": 0,
                     "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
-                    "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+                    "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
                     "mask_rooms_b64": None, "timing_seconds": 0,
                     "error": str(e),
                 }
