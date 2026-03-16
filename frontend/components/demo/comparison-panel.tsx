@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ComparisonResult, PipelineResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, BarChart3, Layers, AlertTriangle, Clock } from "lucide-react";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 
 interface ComparisonPanelProps {
   result: ComparisonResult;
@@ -14,6 +16,8 @@ interface ComparisonPanelProps {
 const PIPELINE_ORDER = ["A", "B", "C", "D", "E"];
 
 export default function ComparisonPanel({ result, basePlanB64, ppm }: ComparisonPanelProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const [activeTab, setActiveTab] = useState<"table" | "visual">("table");
   const [selectedPipeline, setSelectedPipeline] = useState<string>("A");
   const [showDoors, setShowDoors] = useState(true);
@@ -36,7 +40,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-amber-400" />
-          <h3 className="text-sm font-600 text-white">Comparaison multi-modèles</h3>
+          <h3 className="text-sm font-600 text-white">{d("cmp_title")}</h3>
           <span className="text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
             {result.total_time_seconds}s total
           </span>
@@ -51,7 +55,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               activeTab === "table" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"
             )}
           >
-            <BarChart3 className="w-3 h-3 inline mr-1" /> Tableau
+            <BarChart3 className="w-3 h-3 inline mr-1" /> {d("cmp_table")}
           </button>
           <button
             onClick={() => setActiveTab("visual")}
@@ -60,7 +64,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               activeTab === "visual" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"
             )}
           >
-            <Layers className="w-3 h-3 inline mr-1" /> Visuel
+            <Layers className="w-3 h-3 inline mr-1" /> {d("cmp_visual")}
           </button>
         </div>
       </div>
@@ -71,15 +75,15 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="text-left py-2 px-3 text-slate-500 font-500">Pipeline</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-500">Portes</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-500">Fenêtres</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-500">Emprise (m²)</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-500">Pièces</th>
+                <th className="text-left py-2 px-3 text-slate-500 font-500">{d("cmp_pipeline")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_doors")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_windows")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_footprint")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_rooms")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">
-                  <Clock className="w-3 h-3 inline" /> Temps
+                  <Clock className="w-3 h-3 inline" /> {d("cmp_time")}
                 </th>
-                <th className="text-center py-2 px-3 text-slate-500 font-500">Statut</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_status")}</th>
               </tr>
             </thead>
             <tbody>
@@ -116,7 +120,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                   </td>
                   <td className="text-center py-2.5 px-3">
                     <span className="font-mono font-600 text-slate-300">
-                      {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "—"}
+                      {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "\u2014"}
                     </span>
                   </td>
                   <td className="text-center py-2.5 px-3">
@@ -133,10 +137,10 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                   <td className="text-center py-2.5 px-3">
                     {row.error ? (
                       <span className="text-red-400 flex items-center justify-center gap-1" title={row.error}>
-                        <AlertTriangle className="w-3 h-3" /> Erreur
+                        <AlertTriangle className="w-3 h-3" /> {d("cmp_error")}
                       </span>
                     ) : (
-                      <span className="text-emerald-400">✓</span>
+                      <span className="text-emerald-400">\u2713</span>
                     )}
                   </td>
                 </tr>
@@ -189,11 +193,11 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               {/* Mini KPI cards */}
               <div className="grid grid-cols-5 gap-2 mb-4">
                 {[
-                  { label: "Portes", value: pipeline.doors_count, color: "#D946EF" },
-                  { label: "Fenêtres", value: pipeline.windows_count, color: "#22D3EE" },
-                  { label: "Emprise", value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m²` : "—", color: "#FBBF24" },
-                  { label: "Pièces", value: pipeline.rooms_count, color: "#34D399" },
-                  { label: "Temps", value: `${pipeline.timing_seconds}s`, color: "#94a3b8" },
+                  { label: d("cmp_doors"), value: pipeline.doors_count, color: "#D946EF" },
+                  { label: d("cmp_windows"), value: pipeline.windows_count, color: "#22D3EE" },
+                  { label: d("cmp_footprint_short"), value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#FBBF24" },
+                  { label: d("cmp_rooms"), value: pipeline.rooms_count, color: "#34D399" },
+                  { label: d("cmp_time"), value: `${pipeline.timing_seconds}s`, color: "#94a3b8" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="bg-slate-800/50 rounded-lg p-2 text-center">
                     <p className="text-[10px] text-slate-500 mb-0.5">{label}</p>
@@ -212,7 +216,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       showDoors ? "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30" : "text-slate-500 border-transparent hover:border-white/10"
                     )}
                   >
-                    {showDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Portes
+                    {showDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_doors")}
                   </button>
                 )}
                 {pipeline.mask_windows_b64 && (
@@ -223,7 +227,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       showWindows ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" : "text-slate-500 border-transparent hover:border-white/10"
                     )}
                   >
-                    {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Fenêtres
+                    {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_windows")}
                   </button>
                 )}
                 {pipeline.mask_walls_b64 && (
@@ -234,7 +238,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       showWalls ? "bg-blue-500/15 text-blue-400 border-blue-500/30" : "text-slate-500 border-transparent hover:border-white/10"
                     )}
                   >
-                    {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs
+                    {showWalls ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_walls")}
                   </button>
                 )}
                 {pipeline.mask_footprint_b64 && (
@@ -245,7 +249,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       showFootprint ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "text-slate-500 border-transparent hover:border-white/10"
                     )}
                   >
-                    {showFootprint ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Emprise
+                    {showFootprint ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_footprint_short")}
                   </button>
                 )}
                 {pipeline.mask_rooms_b64 && (
@@ -256,7 +260,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       showRooms ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "text-slate-500 border-transparent hover:border-white/10"
                     )}
                   >
-                    {showRooms ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Pièces
+                    {showRooms ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_rooms")}
                   </button>
                 )}
               </div>

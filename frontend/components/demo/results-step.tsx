@@ -164,7 +164,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     a.download = `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast({ title: "CSV exporté ✓", variant: "success" });
+    toast({ title: d("re_csv_ok"), variant: "success" });
   };
 
   /** Export CSV des pièces uniquement */
@@ -189,7 +189,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     a.download = `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast({ title: "CSV exporté ✓", variant: "success" });
+    toast({ title: d("re_csv_ok"), variant: "success" });
   };
 
   const sf = result.surfaces ?? {};
@@ -413,7 +413,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showWallsAI ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs (IA)
+              {showWallsAI ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_ai")}
             </button>
           )}
 
@@ -428,7 +428,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showWallsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs (Pixel)
+              {showWallsPixel ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_walls_pixel")}
             </button>
           )}
 
@@ -443,7 +443,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
               )}
             >
-              {showCloisons ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Cloisons
+              {showCloisons ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_cloisons")}
             </button>
           )}
 
@@ -834,7 +834,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   const data = await resp.json();
                   setComparisonResult(data);
                 } catch (e: any) {
-                  toast({ title: "Erreur comparaison", description: e.message, variant: "error" });
+                  toast({ title: d("cmp_error_toast"), description: e.message, variant: "error" });
                 } finally {
                   setComparingModels(false);
                 }
@@ -848,9 +848,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               )}
             >
               {comparingModels ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Comparaison en cours (5 modèles)...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> {d("cmp_btn_comparing")}</>
               ) : (
-                <><Layers className="w-4 h-4" /> Comparer 5 modèles (admin)</>
+                <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>
               )}
             </button>
           ) : (

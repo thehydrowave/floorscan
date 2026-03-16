@@ -1343,13 +1343,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
-            <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">Élément</span>
+            <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "wall", "cloison", "interior", "rooms"] as const).map(l => {
               const layerMeta: Record<"door"|"window"|"wall"|"cloison"|"interior"|"rooms", { emoji: string; label: string; active: string }> = {
                 door:     { emoji: "🚪", label: d("ed_doors"),    active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
                 window:   { emoji: "🪟", label: d("ed_windows"),  active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
-                wall:     { emoji: "🧱", label: "Béton",          active: "border-red-500/40 bg-red-500/10 text-red-400" },
-                cloison:  { emoji: "🔲", label: "Cloisons",       active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
+                wall:     { emoji: "🧱", label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
+                cloison:  { emoji: "🔲", label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
                 interior: { emoji: "🏠", label: d("ed_living_s"), active: "border-accent/40 bg-accent/10 text-accent" },
                 rooms:    { emoji: "🏘️", label: d("ed_rooms"),   active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
               };
@@ -1364,7 +1364,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               );
             })}
             {layer !== null && (
-              <button onClick={() => setLayer(null)} title="Désélectionner l'élément"
+              <button onClick={() => setLayer(null)} title={d("ed_tt_deselect")}
                 className="ml-0.5 p-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                 <X className="w-3 h-3" />
               </button>
@@ -1378,42 +1378,42 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {layer !== "rooms" && (
                 <>
                   <button onClick={() => { setTool("add_rect"); pts.current = []; }}
-                    title="Dessiner un rectangle"
+                    title={d("ed_tt_draw_rect")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "add_rect" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Square className="w-3 h-3" /> Dessiner
+                    <Square className="w-3 h-3" /> {d("ed_draw")}
                   </button>
                   <button onClick={() => { setTool("erase_rect"); pts.current = []; }}
-                    title="Effacer un rectangle"
+                    title={d("ed_tt_erase_rect")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Eraser className="w-3 h-3" /> Effacer
+                    <Eraser className="w-3 h-3" /> {d("ed_erase_tool")}
                   </button>
                   <button onClick={() => { setTool("add_poly"); pts.current = []; }}
-                    title="Dessiner une forme libre"
+                    title={d("ed_tt_free_shape")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "add_poly" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <PenLine className="w-3 h-3" /> Forme lib.
+                    <PenLine className="w-3 h-3" /> {d("ed_free_shape")}
                   </button>
                   <button onClick={() => { setTool("erase_poly"); pts.current = []; }}
-                    title="Effacer une forme libre"
+                    title={d("ed_tt_erase_free")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <X className="w-3 h-3" /> Eff. libre
+                    <X className="w-3 h-3" /> {d("ed_erase_free")}
                   </button>
                   {(layer === "door" || layer === "window" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
-                      title="Détection automatique par IA"
+                      title={d("ed_tt_ia_auto")}
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                         tool === "sam" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                      ✨ IA Auto
+                      ✨ {d("ed_ia_auto")}
                     </button>
                   )}
                   {(tool === "add_poly" || tool === "erase_poly") && (
                     <button onClick={finishPoly}
-                      title="Valider la forme"
+                      title={d("ed_tt_validate")}
                       className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
-                      ✓ Valider
+                      ✓ {d("ed_validate")}
                     </button>
                   )}
                 </>
@@ -1422,26 +1422,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {layer === "rooms" && (
                 <>
                   <button onClick={() => { setTool("select"); pts.current = []; }}
-                    title="Sélectionner une pièce"
+                    title={d("ed_tt_select")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <MousePointer2 className="w-3 h-3" /> Sélectionner
+                    <MousePointer2 className="w-3 h-3" /> {d("ed_select")}
                   </button>
                   <button
                     onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     disabled={selectedRoomId === null}
-                    title={selectedRoomId === null ? "Sélectionnez d'abord une pièce" : "Couper la pièce sélectionnée"}
+                    title={selectedRoomId === null ? d("ed_tt_cut_need") : d("ed_tt_cut")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "split" ? "border-orange-500/40 bg-orange-500/10 text-orange-400"
                         : selectedRoomId !== null ? "border-white/5 text-slate-500 hover:text-slate-300"
                         : "border-white/5 text-slate-700 opacity-40 cursor-not-allowed")}>
-                    <Scissors className="w-3 h-3" /> Couper
+                    <Scissors className="w-3 h-3" /> {d("ed_cut")}
                   </button>
                   {tool === "split" && (
                     <button onClick={() => { pts.current = []; drawCanvas(); setTool("select"); }}
-                      title="Annuler la découpe"
+                      title={d("ed_tt_cancel_cut")}
                       className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-red-500/30 bg-red-500/10 text-red-400">
-                      <X className="w-3 h-3" /> Annuler
+                      <X className="w-3 h-3" /> {d("ed_cancel")}
                     </button>
                   )}
                   <div className="flex gap-0.5 items-center ml-1">
@@ -1463,10 +1463,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
               {/* Recherche visuelle */}
               <button onClick={() => { setTool(tool === "visual_search" ? (layer === "rooms" ? "select" : "add_rect") : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
-                title="Recherche visuelle"
+                title={d("ed_tt_vs")}
                 className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                   tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                <Search className="w-3 h-3" /> Recherche
+                <Search className="w-3 h-3" /> {d("ed_vs_search")}
               </button>
               {tool === "visual_search" && (
                 <div className="flex items-center gap-1.5 ml-1">
@@ -2232,7 +2232,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             <p className="text-xs text-slate-600">
               {d("ed_canvas_hint")}
               {" · "}
-              <span className="text-slate-700">Scroll — zoom · Clic droit glisser — déplacer</span>
+              <span className="text-slate-700">{d("ed_canvas_zoom")}</span>
               {zoom > 1.05 && <span className="text-slate-500 font-mono ml-1">×{zoom.toFixed(1)}</span>}
             </p>
 
