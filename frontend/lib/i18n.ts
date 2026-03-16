@@ -1225,6 +1225,8 @@ export const DEMO_T = {
   cmp_bestof:             { fr:"Best-of",                              en:"Best-of",                           es:"Mejor de",                            de:"Best-of",                            it:"Best-of"                              },
   cmp_source_models:      { fr:"Sources",                              en:"Sources",                           es:"Fuentes",                             de:"Quellen",                            it:"Fonti"                                },
   cmp_bestof_desc:        { fr:"Meilleur masque par catégorie",        en:"Best mask per category",            es:"Mejor máscara por categoría",         de:"Beste Maske pro Kategorie",          it:"Migliore maschera per categoria"      },
+  cmp_french_doors:       { fr:"Portes-fenêtres",                      en:"French doors",                      es:"Puertas-ventanas",                    de:"Fenstertüren",                       it:"Portefinestre"                        },
+  cmp_french_doors_short: { fr:"P-F",                                  en:"Fr. doors",                         es:"P-V",                                 de:"FT",                                 it:"P-F"                                  },
 
   // ── Results overlays ──────────────────────────────────────────────────
   re_walls_ai:            { fr:"Murs (IA)",                            en:"Walls (AI)",                        es:"Muros (IA)",                          de:"Wände (KI)",                         it:"Muri (IA)"                            },

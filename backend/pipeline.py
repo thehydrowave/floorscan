@@ -1895,17 +1895,49 @@ def _build_bestof_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
     if m_windows is None:
         m_windows = np.zeros((H, W), np.uint8)
 
-    # ── Count doors/windows via connected components ──
+    # ── Detect french doors: doors (A) overlapping windows (D) ──
+    m_doors_only = m_doors.copy()
+    m_windows_only = m_windows.copy()
+    m_french_doors = np.zeros((H, W), np.uint8)
+
+    door_labels, door_comps = _extract_components_light(m_doors)
+    win_labels, win_comps = _extract_components_light(m_windows)
+
+    if door_comps and win_comps:
+        matched_door_ids = set()
+        matched_win_ids = set()
+        for dc in door_comps:
+            for wc in win_comps:
+                iou = _bbox_iou(dc["bbox"], wc["bbox"])
+                if iou >= 0.15:
+                    matched_door_ids.add(dc["label_id"])
+                    matched_win_ids.add(wc["label_id"])
+        # Build french doors mask from matched components (union of both)
+        if matched_door_ids or matched_win_ids:
+            for lid in matched_door_ids:
+                m_french_doors[door_labels == lid] = 255
+                m_doors_only[door_labels == lid] = 0
+            for lid in matched_win_ids:
+                m_french_doors[win_labels == lid] = 255
+                m_windows_only[win_labels == lid] = 0
+
+    # ── Count per category ──
     doors_count = 0
-    if cv2.countNonZero(m_doors) > 0:
-        doors_count = cv2.connectedComponentsWithStats(m_doors, connectivity=8)[0] - 1
+    if cv2.countNonZero(m_doors_only) > 0:
+        doors_count = cv2.connectedComponentsWithStats(m_doors_only, connectivity=8)[0] - 1
 
     windows_count = 0
-    if cv2.countNonZero(m_windows) > 0:
-        windows_count = cv2.connectedComponentsWithStats(m_windows, connectivity=8)[0] - 1
+    if cv2.countNonZero(m_windows_only) > 0:
+        windows_count = cv2.connectedComponentsWithStats(m_windows_only, connectivity=8)[0] - 1
 
-    # ── Footprint ──
-    cnt, footprint_mask = _compute_footprint(m_walls, m_doors, m_windows, H, W)
+    french_doors_count = 0
+    if cv2.countNonZero(m_french_doors) > 0:
+        french_doors_count = cv2.connectedComponentsWithStats(m_french_doors, connectivity=8)[0] - 1
+
+    # ── Footprint (all openings combined) ──
+    all_doors = cv2.bitwise_or(m_doors_only, m_french_doors)
+    all_windows = cv2.bitwise_or(m_windows_only, m_french_doors)
+    cnt, footprint_mask = _compute_footprint(m_walls, all_doors, all_windows, H, W)
     footprint_area_m2 = None
     if cnt is not None and ppm is not None:
         footprint_area_m2 = round(float(cv2.contourArea(cnt)) / (ppm ** 2), 2)
@@ -1933,14 +1965,16 @@ def _build_bestof_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
             walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
             hab_area_m2 = round(float(cv2.countNonZero(interior_mask_g)) / (ppm ** 2), 2)
 
-    # ── Rooms ──
-    rooms_list = segment_rooms_from_walls(m_walls, m_doors, m_windows, cnt, H, W, ppm)
+    # ── Rooms (use all openings combined) ──
+    rooms_list = segment_rooms_from_walls(m_walls, all_doors, all_windows, cnt, H, W, ppm)
 
     # ── Build RGBA overlays ──
-    mask_doors_b64 = _np_to_b64(_mask_to_rgba(m_doors, (217, 70, 239), 90)) \
-        if cv2.countNonZero(m_doors) > 0 else None
-    mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_windows, (34, 211, 238), 90)) \
-        if cv2.countNonZero(m_windows) > 0 else None
+    mask_doors_b64 = _np_to_b64(_mask_to_rgba(m_doors_only, (217, 70, 239), 90)) \
+        if cv2.countNonZero(m_doors_only) > 0 else None
+    mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_windows_only, (34, 211, 238), 90)) \
+        if cv2.countNonZero(m_windows_only) > 0 else None
+    mask_french_doors_b64 = _np_to_b64(_mask_to_rgba(m_french_doors, (249, 115, 22), 90)) \
+        if cv2.countNonZero(m_french_doors) > 0 else None
     mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls, (96, 165, 250), 90)) \
         if cv2.countNonZero(m_walls) > 0 else None
     mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
@@ -1952,9 +1986,10 @@ def _build_bestof_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
     elapsed = time.time() - t0
     pdef_g = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "G")
 
-    logger.info("Best-of pipeline G built: walls=%s, doors=%s, windows=%s → "
-                "footprint=%.1f, hab=%.1f, rooms=%d (%.2fs)",
-                SOURCE["walls"], SOURCE["doors"], SOURCE["windows"],
+    logger.info("Best-of pipeline G built: walls=%s, doors=%s(%d), windows=%s(%d), "
+                "french_doors=%d → footprint=%.1f, hab=%.1f, rooms=%d (%.2fs)",
+                SOURCE["walls"], SOURCE["doors"], doors_count,
+                SOURCE["windows"], windows_count, french_doors_count,
                 footprint_area_m2 or 0, hab_area_m2 or 0, len(rooms_list), elapsed)
 
     return {
@@ -1964,8 +1999,10 @@ def _build_bestof_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
         "color": pdef_g["color"],
         "doors_count": doors_count,
         "windows_count": windows_count,
+        "french_doors_count": french_doors_count,
         "mask_doors_b64": mask_doors_b64,
         "mask_windows_b64": mask_windows_b64,
+        "mask_french_doors_b64": mask_french_doors_b64,
         "mask_walls_b64": mask_walls_b64,
         "mask_footprint_b64": mask_footprint_b64,
         "mask_hab_b64": mask_hab_b64,
@@ -2363,6 +2400,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "color": r.get("color", "#94a3b8"),
             "doors": r.get("doors_count", 0),
             "windows": r.get("windows_count", 0),
+            "french_doors": r.get("french_doors_count", 0),
             "footprint_m2": r.get("footprint_area_m2"),
             "walls_m2": r.get("walls_area_m2"),
             "hab_m2": r.get("hab_area_m2"),

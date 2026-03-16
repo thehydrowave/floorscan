@@ -26,6 +26,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
   const [showFootprint, setShowFootprint] = useState(false);
   const [showHab, setShowHab] = useState(false);
   const [showRooms, setShowRooms] = useState(false);
+  const [showFrenchDoors, setShowFrenchDoors] = useState(true);
   const [showHeatmap, setShowHeatmap] = useState(false);
 
   const pipeline = result.pipelines[selectedPipeline] as PipelineResult | undefined;
@@ -81,6 +82,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 <th className="text-left py-2 px-3 text-slate-500 font-500">{d("cmp_pipeline")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_doors")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_windows")}</th>
+                <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_french_doors_short")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_footprint")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_hab")}</th>
                 <th className="text-center py-2 px-3 text-slate-500 font-500">{d("cmp_walls_area")}</th>
@@ -140,6 +142,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                         row.windows === bestWindows && row.windows > 0 ? "text-emerald-400" : "text-slate-300"
                       )}>
                         {row.windows}
+                      </span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={cn(
+                        "font-mono font-600",
+                        isBestof && row.french_doors > 0 ? "text-orange-400" : "text-slate-500"
+                      )}>
+                        {row.french_doors > 0 ? row.french_doors : "\u2014"}
                       </span>
                     </td>
                     <td className="text-center py-2.5 px-3">
@@ -258,10 +268,13 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               </div>
 
               {/* Mini KPI cards */}
-              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-4">
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-4">
                 {[
                   { label: d("cmp_doors"), value: pipeline.doors_count, color: "#D946EF" },
                   { label: d("cmp_windows"), value: pipeline.windows_count, color: "#22D3EE" },
+                  ...(pipeline.french_doors_count != null && pipeline.french_doors_count > 0
+                    ? [{ label: d("cmp_french_doors_short"), value: pipeline.french_doors_count, color: "#F97316" }]
+                    : []),
                   { label: d("cmp_footprint_short"), value: pipeline.footprint_area_m2 != null ? `${pipeline.footprint_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#FBBF24" },
                   { label: d("cmp_hab_short"), value: pipeline.hab_area_m2 != null ? `${pipeline.hab_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#4ADE80" },
                   { label: d("cmp_walls"), value: pipeline.walls_area_m2 != null ? `${pipeline.walls_area_m2.toFixed(1)} m\u00b2` : "\u2014", color: "#60A5FA" },
@@ -413,6 +426,17 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     {showWindows ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_windows")}
                   </button>
                 )}
+                {pipeline.mask_french_doors_b64 && (
+                  <button
+                    onClick={() => setShowFrenchDoors(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-[11px] font-500 border transition-all flex items-center gap-1",
+                      showFrenchDoors ? "bg-orange-500/15 text-orange-400 border-orange-500/30" : "text-slate-500 border-transparent hover:border-white/10"
+                    )}
+                  >
+                    {showFrenchDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("cmp_french_doors_short")}
+                  </button>
+                )}
                 {pipeline.mask_walls_b64 && (
                   <button
                     onClick={() => setShowWalls(v => !v)}
@@ -490,6 +514,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 {showWindows && pipeline.mask_windows_b64 && (
                   <img
                     src={`data:image/png;base64,${pipeline.mask_windows_b64}`}
+                    alt=""
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ zIndex: 1 }}
+                  />
+                )}
+                {showFrenchDoors && pipeline.mask_french_doors_b64 && (
+                  <img
+                    src={`data:image/png;base64,${pipeline.mask_french_doors_b64}`}
                     alt=""
                     className="absolute inset-0 w-full h-full pointer-events-none"
                     style={{ zIndex: 1 }}

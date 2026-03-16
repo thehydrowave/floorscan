@@ -334,6 +334,8 @@ export interface PipelineResult {
   // Best-of specific fields (Pipeline G only)
   is_bestof?: boolean;
   source_models?: { walls: string; doors: string; windows: string };
+  french_doors_count?: number;
+  mask_french_doors_b64?: string | null;
 }
 
 export interface ComparisonTableRow {
@@ -342,6 +344,7 @@ export interface ComparisonTableRow {
   color: string;
   doors: number;
   windows: number;
+  french_doors: number;
   footprint_m2: number | null;
   walls_m2: number | null;
   hab_m2: number | null;
