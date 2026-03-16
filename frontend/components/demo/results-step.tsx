@@ -69,6 +69,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   // ── Mask overlays (stackable, like editor) ──
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
+  const [showFrenchDoors, setShowFrenchDoors] = useState(true);
   const [showWalls, setShowWalls] = useState(false);
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
@@ -389,6 +390,21 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
+          {/* French Doors toggle */}
+          {result.mask_french_doors_b64 && (
+            <button
+              onClick={() => setShowFrenchDoors(v => !v)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showFrenchDoors
+                  ? "bg-orange-500/15 text-orange-400 border-orange-500/30"
+                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
+              )}
+            >
+              {showFrenchDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Portes-fenêtres
+            </button>
+          )}
+
           {/* Walls toggle */}
           {result.mask_walls_b64 && (
             <button
@@ -537,6 +553,15 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any),
                   zIndex: 1,
                 }} />
+              )}
+              {/* French Doors RGBA overlay (orange) */}
+              {showFrenchDoors && result.mask_french_doors_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_french_doors_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ zIndex: 1 }}
+                />
               )}
               {/* Walls RGBA overlay */}
               {showWalls && result.mask_walls_b64 && (

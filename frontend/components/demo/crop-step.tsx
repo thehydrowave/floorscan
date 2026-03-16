@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { RotateCcw, ArrowRight, Loader2 } from "lucide-react";
+import { RotateCcw, ArrowRight, Loader2, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { useLang } from "@/lib/lang-context";
@@ -16,12 +16,13 @@ interface CropStepProps {
   onCropped: () => void;
   onSkip: () => void;
   onSessionExpired?: () => void;
+  onBack?: () => void;
 }
 
 // x, y, w, h in % of the rendered image
 interface CropRect { x: number; y: number; w: number; h: number; }
 
-export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSessionExpired }: CropStepProps) {
+export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSessionExpired, onBack }: CropStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -243,6 +244,11 @@ export default function CropStep({ sessionId, imageB64, onCropped, onSkip, onSes
       )}
 
       <div className="flex gap-3 justify-center mt-6">
+        {onBack && (
+          <Button variant="ghost" size="sm" onClick={onBack} disabled={confirming}>
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={() => setCrop(null)} disabled={confirming || !hasCrop}>
           <RotateCcw className="w-4 h-4" /> {d("cr_reset")}
         </Button>

@@ -16,7 +16,7 @@ import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
 import { BACKEND } from "@/lib/backend";
-type Layer = "door" | "window" | "interior" | "rooms" | "wall" | "cloison" | null;
+type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | null;
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
 type Mode = "editor" | "measure";
 
@@ -141,6 +141,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [showRooms, setShowRooms] = useState(false);
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
+  const [showFrenchDoors, setShowFrenchDoors] = useState(false);
 
   // Mask edit undo/redo lengths
   const [editHistoryLen, setEditHistoryLen] = useState(0);
@@ -177,6 +178,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     // Visibilité exclusive : n'afficher que l'overlay de l'élément sélectionné
     setShowDoors(layer === "door");
     setShowWindows(layer === "window");
+    setShowFrenchDoors(layer === "french_door");
     setShowWalls(layer === "wall" || layer === "cloison");
     setShowRooms(layer === "rooms");
     // Réinitialisation outil
@@ -505,7 +507,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
     const roomColor = layer === "rooms" ? getRoomColor(activeRoomType) : null;
-    const color = isErase ? "#F87171" : (roomColor ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : layer === "wall" ? "#EF4444" : layer === "cloison" ? "#0064ff" : "#22D3EE"));
+    const color = isErase ? "#F87171" : (roomColor ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : layer === "french_door" ? "#F97316" : layer === "wall" ? "#EF4444" : layer === "cloison" ? "#0064ff" : "#22D3EE"));
     if (pts.current.length > 0 && (tool === "add_poly" || tool === "erase_poly")) {
       const img = imgRef.current!;
       // Fill the polygon shape preview with semi-transparent color
@@ -664,8 +666,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
         mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
         mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        mask_french_doors_b64: data.mask_french_doors_b64 ?? prev.mask_french_doors_b64,
         doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
+        french_doors_count: data.french_doors_count ?? prev.french_doors_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
         rooms:    data.rooms    ?? prev.rooms,
@@ -704,8 +708,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
         mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
         mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        mask_french_doors_b64: data.mask_french_doors_b64 ?? prev.mask_french_doors_b64,
         doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
+        french_doors_count: data.french_doors_count ?? prev.french_doors_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
         rooms:    data.rooms    ?? prev.rooms,
@@ -737,8 +743,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         mask_walls_b64:        data.mask_walls_b64        ?? prev.mask_walls_b64,
         mask_walls_pixel_b64:  data.mask_walls_pixel_b64  ?? prev.mask_walls_pixel_b64,
         mask_cloisons_b64:     data.mask_cloisons_b64     ?? prev.mask_cloisons_b64,
+        mask_french_doors_b64: data.mask_french_doors_b64 ?? prev.mask_french_doors_b64,
         doors_count:  data.doors_count  ?? prev.doors_count,
         windows_count: data.windows_count ?? prev.windows_count,
+        french_doors_count: data.french_doors_count ?? prev.french_doors_count,
         surfaces: data.surfaces ?? prev.surfaces,
         openings: data.openings ?? prev.openings,
         rooms:    data.rooms    ?? prev.rooms,
@@ -969,7 +977,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     ctx.clearRect(0, 0, cv.width, cv.height);
     const isErase = tool.startsWith("erase");
     const roomColorMv = layer === "rooms" ? getRoomColor(activeRoomType) : null;
-    const color = isErase ? "#F87171" : (roomColorMv ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : "#22D3EE"));
+    const color = isErase ? "#F87171" : (roomColorMv ?? (layer === "interior" ? "#34D399" : layer === "door" ? "#D946EF" : layer === "french_door" ? "#F97316" : "#22D3EE"));
     const img = imgRef.current!;
     const x0 = startPt.current.x * img.offsetWidth / img.naturalWidth;
     const y0 = startPt.current.y * img.offsetHeight / img.naturalHeight;
@@ -1324,6 +1332,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 showWindows ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               🪟 {showWindows ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
             </button>
+            <button onClick={() => setShowFrenchDoors(v => !v)}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                showFrenchDoors ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+              🚪🪟 {showFrenchDoors ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+            </button>
             <button onClick={() => setShowWalls(v => !v)}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
                 showWalls ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
@@ -1344,14 +1357,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
-            {(["door", "window", "wall", "cloison", "interior", "rooms"] as const).map(l => {
-              const layerMeta: Record<"door"|"window"|"wall"|"cloison"|"interior"|"rooms", { emoji: string; label: string; active: string }> = {
-                door:     { emoji: "🚪", label: d("ed_doors"),    active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
-                window:   { emoji: "🪟", label: d("ed_windows"),  active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
-                wall:     { emoji: "🧱", label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
-                cloison:  { emoji: "🔲", label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
-                interior: { emoji: "🏠", label: d("ed_living_s"), active: "border-accent/40 bg-accent/10 text-accent" },
-                rooms:    { emoji: "🏘️", label: d("ed_rooms"),   active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
+            {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms"] as const).map(l => {
+              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { emoji: string; label: string; active: string }> = {
+                door:        { emoji: "🚪", label: d("ed_doors"),    active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
+                window:      { emoji: "🪟", label: d("ed_windows"),  active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
+                french_door: { emoji: "🚪🪟", label: "P-Fenêtres",  active: "border-orange-500/40 bg-orange-500/10 text-orange-400" },
+                wall:        { emoji: "🧱", label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
+                cloison:     { emoji: "🔲", label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
+                interior:    { emoji: "🏠", label: d("ed_living_s"), active: "border-accent/40 bg-accent/10 text-accent" },
+                rooms:       { emoji: "🏘️", label: d("ed_rooms"),   active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
               };
               const m = layerMeta[l];
               return (
@@ -1401,7 +1415,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <X className="w-3 h-3" /> {d("ed_erase_free")}
                   </button>
-                  {(layer === "door" || layer === "window" || layer === "interior") && (
+                  {(layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
                       title={d("ed_tt_ia_auto")}
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
@@ -1603,6 +1617,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
                   zIndex: 1,
                 }} />
+              )}
+
+              {/* French Doors RGBA overlay (orange) */}
+              {showFrenchDoors && result.mask_french_doors_b64 && (
+                <img
+                  src={`data:image/png;base64,${result.mask_french_doors_b64}`}
+                  alt=""
+                  className="absolute inset-0 w-full h-full pointer-events-none object-contain"
+                  style={{ zIndex: 1, opacity: 0.75 }}
+                />
               )}
 
               {/* Overlay Murs béton (RGBA PNG) — affiché quand couche béton active */}

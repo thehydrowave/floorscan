@@ -311,6 +311,7 @@ def analyze(req: AnalyzeRequest):
             "m_walls_ai":       np.array(result["_m_walls_ai"],     dtype=np.uint8),
             "m_walls_pixel":    np.array(result["_m_walls_pixel"],  dtype=np.uint8),
             "m_cloisons":       np.array(result["_m_cloisons"],     dtype=np.uint8),
+            "m_french_doors":   np.array(result.get("_m_french_doors", np.zeros_like(result["_m_doors"])), dtype=np.uint8),
             "interior_mask":    interior_mask,
             "pixels_per_meter": result["pixels_per_meter"],
             "mask_rooms_rgba":  result["_mask_rooms_rgba"],   # numpy RGBA pour édition
@@ -391,11 +392,12 @@ def edit_mask(req: EditMaskRequest):
 
     # ── Push undo snapshot for mask edit ──
     snapshot = {
-        "m_doors":       _compress_mask(s["m_doors"]),
-        "m_windows":     _compress_mask(s["m_windows"]),
-        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
-        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
-        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
+        "m_doors":         _compress_mask(s["m_doors"]),
+        "m_windows":       _compress_mask(s["m_windows"]),
+        "m_french_doors":  _compress_mask(s["m_french_doors"]) if s.get("m_french_doors") is not None else None,
+        "interior_mask":   _compress_mask(s["interior_mask"])  if s.get("interior_mask")  is not None else None,
+        "m_walls_pixel":   _compress_mask(s["m_walls_pixel"])  if s.get("m_walls_pixel")  is not None else None,
+        "m_cloisons":      _compress_mask(s["m_cloisons"])     if s.get("m_cloisons")     is not None else None,
     }
     history = s.setdefault("mask_edit_history", [])
     history.append(snapshot)
@@ -413,6 +415,9 @@ def edit_mask(req: EditMaskRequest):
         mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
     elif req.layer == "wall":
         existing = s.get("m_walls_pixel")
+        mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
+    elif req.layer == "french_door":
+        existing = s.get("m_french_doors")
         mask = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
     elif req.layer == "cloison":
         existing = s.get("m_cloisons")
@@ -470,6 +475,18 @@ def edit_mask(req: EditMaskRequest):
         return {
             "mask_walls_pixel_b64": wp_b64,
             "mask_cloisons_b64":    cl_b64,
+            "edit_history_len": len(s.get("mask_edit_history", [])),
+            "edit_future_len":  len(s.get("mask_edit_future",  [])),
+        }
+    elif req.layer == "french_door":
+        sessions[req.session_id]["m_french_doors"] = mask
+        fd_b64 = pipeline._np_to_b64(pipeline._mask_to_rgba(mask, (249, 115, 22), 90)) if cv2.countNonZero(mask) > 0 else None
+        sessions[req.session_id]["analysis"]["mask_french_doors_b64"] = fd_b64
+        sessions[req.session_id]["analysis"]["french_doors_count"] = pipeline._count_connected_components(mask)
+        _touch_session(req.session_id)
+        return {
+            "mask_french_doors_b64": fd_b64,
+            "french_doors_count": sessions[req.session_id]["analysis"]["french_doors_count"],
             "edit_history_len": len(s.get("mask_edit_history", [])),
             "edit_future_len":  len(s.get("mask_edit_future",  [])),
         }
@@ -730,6 +747,8 @@ def _restore_masks(s, snapshot, cfg):
         s["m_walls_pixel"] = _decompress_mask(snapshot["m_walls_pixel"], (H, W))
     if snapshot.get("m_cloisons") is not None:
         s["m_cloisons"] = _decompress_mask(snapshot["m_cloisons"], (H, W))
+    if snapshot.get("m_french_doors") is not None:
+        s["m_french_doors"] = _decompress_mask(snapshot["m_french_doors"], (H, W))
 
     ppm = s.get("pixels_per_meter")
     interior_override = s.get("interior_mask")
@@ -758,9 +777,16 @@ def _restore_masks(s, snapshot, cfg):
         s["analysis"]["mask_walls_pixel_b64"] = pipeline._np_to_b64(pipeline._mask_to_rgba(wp, (239, 68, 68), 80)) if cv2.countNonZero(wp) > 0 else None
     if cl is not None:
         s["analysis"]["mask_cloisons_b64"] = pipeline._np_to_b64(pipeline._mask_to_rgba(cl, (0, 100, 255), 210)) if cv2.countNonZero(cl) > 0 else None
+    # Regenerate french_doors overlay
+    fd = s.get("m_french_doors")
+    if fd is not None:
+        s["analysis"]["mask_french_doors_b64"] = pipeline._np_to_b64(pipeline._mask_to_rgba(fd, (249, 115, 22), 90)) if cv2.countNonZero(fd) > 0 else None
+        s["analysis"]["french_doors_count"] = pipeline._count_connected_components(fd)
     resp = {k: v for k, v in result.items() if not k.startswith("_")}
-    resp["mask_walls_pixel_b64"] = s["analysis"].get("mask_walls_pixel_b64")
-    resp["mask_cloisons_b64"]    = s["analysis"].get("mask_cloisons_b64")
+    resp["mask_walls_pixel_b64"]  = s["analysis"].get("mask_walls_pixel_b64")
+    resp["mask_cloisons_b64"]     = s["analysis"].get("mask_cloisons_b64")
+    resp["mask_french_doors_b64"] = s["analysis"].get("mask_french_doors_b64")
+    resp["french_doors_count"]    = s["analysis"].get("french_doors_count", 0)
     resp["rooms"] = s["analysis"].get("rooms", [])
     resp["walls"] = s["analysis"].get("walls", [])
     return resp
@@ -775,11 +801,12 @@ def undo_edit_mask(req: UndoRedoMaskEditRequest):
         raise HTTPException(400, "Rien à annuler")
     # Save current state to redo stack
     current = {
-        "m_doors":       _compress_mask(s["m_doors"]),
-        "m_windows":     _compress_mask(s["m_windows"]),
-        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
-        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
-        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
+        "m_doors":        _compress_mask(s["m_doors"]),
+        "m_windows":      _compress_mask(s["m_windows"]),
+        "m_french_doors": _compress_mask(s["m_french_doors"]) if s.get("m_french_doors") is not None else None,
+        "interior_mask":  _compress_mask(s["interior_mask"])  if s.get("interior_mask")  is not None else None,
+        "m_walls_pixel":  _compress_mask(s["m_walls_pixel"])  if s.get("m_walls_pixel")  is not None else None,
+        "m_cloisons":     _compress_mask(s["m_cloisons"])     if s.get("m_cloisons")     is not None else None,
     }
     future = s.setdefault("mask_edit_future", [])
     future.append(current)
@@ -803,11 +830,12 @@ def redo_edit_mask(req: UndoRedoMaskEditRequest):
         raise HTTPException(400, "Rien à rétablir")
     # Save current state to undo stack
     current = {
-        "m_doors":       _compress_mask(s["m_doors"]),
-        "m_windows":     _compress_mask(s["m_windows"]),
-        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
-        "m_walls_pixel": _compress_mask(s["m_walls_pixel"]) if s.get("m_walls_pixel") is not None else None,
-        "m_cloisons":    _compress_mask(s["m_cloisons"])    if s.get("m_cloisons")    is not None else None,
+        "m_doors":        _compress_mask(s["m_doors"]),
+        "m_windows":      _compress_mask(s["m_windows"]),
+        "m_french_doors": _compress_mask(s["m_french_doors"]) if s.get("m_french_doors") is not None else None,
+        "interior_mask":  _compress_mask(s["interior_mask"])  if s.get("interior_mask")  is not None else None,
+        "m_walls_pixel":  _compress_mask(s["m_walls_pixel"])  if s.get("m_walls_pixel")  is not None else None,
+        "m_cloisons":     _compress_mask(s["m_cloisons"])     if s.get("m_cloisons")     is not None else None,
     }
     history = s.setdefault("mask_edit_history", [])
     history.append(current)
@@ -860,7 +888,7 @@ class SamSegmentRequest(BaseModel):
     x: int          # coordonnée X du point de clic
     y: int          # coordonnée Y du point de clic
     mode: str = "interior"   # "interior" | "flood"
-    apply_to: str = "interior"  # "interior" | "door" | "window" — masque cible
+    apply_to: str = "interior"  # "interior" | "door" | "window" | "french_door" — masque cible
     action: str = "add"      # "add" | "erase"
 
 @app.post("/sam-segment")
@@ -891,9 +919,12 @@ def sam_segment(req: SamSegmentRequest):
 
     # ── Push undo snapshot for SAM edit ──
     snapshot = {
-        "m_doors": _compress_mask(s["m_doors"]),
-        "m_windows": _compress_mask(s["m_windows"]),
-        "interior_mask": _compress_mask(s["interior_mask"]) if s.get("interior_mask") is not None else None,
+        "m_doors":        _compress_mask(s["m_doors"]),
+        "m_windows":      _compress_mask(s["m_windows"]),
+        "m_french_doors": _compress_mask(s["m_french_doors"]) if s.get("m_french_doors") is not None else None,
+        "interior_mask":  _compress_mask(s["interior_mask"])  if s.get("interior_mask")  is not None else None,
+        "m_walls_pixel":  _compress_mask(s["m_walls_pixel"])  if s.get("m_walls_pixel")  is not None else None,
+        "m_cloisons":     _compress_mask(s["m_cloisons"])     if s.get("m_cloisons")     is not None else None,
     }
     history = s.setdefault("mask_edit_history", [])
     history.append(snapshot)
@@ -906,11 +937,14 @@ def sam_segment(req: SamSegmentRequest):
         target = s["m_doors"].copy()
     elif req.apply_to == "window":
         target = s["m_windows"].copy()
+    elif req.apply_to == "french_door":
+        existing = s.get("m_french_doors")
+        target = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
     elif req.apply_to == "interior":
         existing = s.get("interior_mask")
         target = existing.copy() if existing is not None else np.zeros((H, W), np.uint8)
     else:
-        raise HTTPException(400, "apply_to doit être 'door', 'window' ou 'interior'")
+        raise HTTPException(400, "apply_to doit être 'door', 'window', 'french_door' ou 'interior'")
 
     if req.action == "add":
         target = cv2.bitwise_or(target, seg_mask)
@@ -924,6 +958,20 @@ def sam_segment(req: SamSegmentRequest):
         sessions[req.session_id]["m_doors"] = target
     elif req.apply_to == "window":
         sessions[req.session_id]["m_windows"] = target
+    elif req.apply_to == "french_door":
+        sessions[req.session_id]["m_french_doors"] = target
+        # Early return — french_door is standalone like wall/cloison
+        fd_b64 = pipeline._np_to_b64(pipeline._mask_to_rgba(target, (249, 115, 22), 90)) if cv2.countNonZero(target) > 0 else None
+        sessions[req.session_id]["analysis"]["mask_french_doors_b64"] = fd_b64
+        sessions[req.session_id]["analysis"]["french_doors_count"] = pipeline._count_connected_components(target)
+        _touch_session(req.session_id)
+        return {
+            "mask_french_doors_b64": fd_b64,
+            "french_doors_count": sessions[req.session_id]["analysis"]["french_doors_count"],
+            "sam_mask_b64": pipeline._np_to_b64(seg_mask),
+            "edit_history_len": len(s.get("mask_edit_history", [])),
+            "edit_future_len": len(s.get("mask_edit_future", [])),
+        }
     elif req.apply_to == "interior":
         sessions[req.session_id]["interior_mask"] = target
 

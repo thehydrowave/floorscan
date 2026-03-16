@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain, ArrowRight, AlertTriangle, Zap,
   ScanLine, Layers, Grid3X3, Home, FileCheck,
-  CheckCircle2, Clock,
+  CheckCircle2, Clock, ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoboflowConfig, AnalysisResult } from "@/lib/types";
@@ -39,9 +39,10 @@ interface AnalyzeStepProps {
   ppm?: number | null;
   onAnalyzed: (result: AnalysisResult) => void;
   onSessionExpired?: () => void;
+  onBack?: () => void;
 }
 
-export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSessionExpired }: AnalyzeStepProps) {
+export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSessionExpired, onBack }: AnalyzeStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -212,11 +213,18 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
               )}
 
               {/* Launch button */}
-              <Button onClick={runAnalysis} className="w-full" size="lg">
-                <Zap className="w-4 h-4" />
-                {error ? d("an_relance") : d("an_launch")}
-                <ArrowRight className="w-4 h-4" />
-              </Button>
+              <div className="flex gap-3 w-full">
+                {onBack && (
+                  <Button variant="ghost" size="lg" onClick={onBack}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                )}
+                <Button onClick={runAnalysis} className="flex-1" size="lg">
+                  <Zap className="w-4 h-4" />
+                  {error ? d("an_relance") : d("an_launch")}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
 
               <p className="text-slate-600 text-xs text-center">{d("an_tip")}</p>
             </motion.div>

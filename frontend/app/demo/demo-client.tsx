@@ -277,6 +277,21 @@ export default function DemoClient() {
 
   const handleGoEditor = () => setStep(7);
 
+  // Navigation: allow going back to any previous step via stepper click
+  const handleStepClick = (targetStep: number) => {
+    // Only allow going backward (to completed steps)
+    if (targetStep < step) {
+      setStep(targetStep);
+    }
+  };
+
+  // Generic back handler for step components
+  const handleBack = () => {
+    if (step > (isAdmin ? 1 : 2)) {
+      setStep(step - 1);
+    }
+  };
+
   const handleGoResults = (updatedResult: AnalysisResult, detections?: CustomDetection[]) => {
     setAnalysisResult(updatedResult);
     if (detections) setCustomDetections(detections);
@@ -772,7 +787,7 @@ export default function DemoClient() {
               transition={{ duration: 0.2 }}
             >
               <div className="mb-10">
-                <Stepper currentStep={step} totalSteps={STEP_TITLES.length} skipConnect={!isAdmin} />
+                <Stepper currentStep={step} totalSteps={STEP_TITLES.length} skipConnect={!isAdmin} onStepClick={handleStepClick} />
               </div>
 
               <AnimatePresence mode="wait">
@@ -800,10 +815,11 @@ export default function DemoClient() {
                       onCropped={handleCropped}
                       onSkip={handleCropped}
                       onSessionExpired={handleRestart}
+                      onBack={handleBack}
                     />
                   )}
                   {step === 4 && (
-                    <ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} />
+                    <ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack} />
                   )}
                   {step === 5 && sessionId && config && (
                     <AnalyzeStep
@@ -812,6 +828,7 @@ export default function DemoClient() {
                       ppm={ppm}
                       onAnalyzed={handleAnalyzed}
                       onSessionExpired={handleRestart}
+                      onBack={handleBack}
                     />
                   )}
                   {step === 6 && analysisResult && (

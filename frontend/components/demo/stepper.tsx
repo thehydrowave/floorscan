@@ -16,9 +16,10 @@ interface StepperProps {
   currentStep: number;   // 1-based (internal step number)
   totalSteps?: number;
   skipConnect?: boolean; // true for non-admin users
+  onStepClick?: (internalStep: number) => void; // callback when a completed step is clicked
 }
 
-export default function Stepper({ currentStep, totalSteps, skipConnect }: StepperProps) {
+export default function Stepper({ currentStep, totalSteps, skipConnect, onStepClick }: StepperProps) {
   const { lang } = useLang();
 
   const icons = skipConnect ? USER_STEP_ICONS : ALL_STEP_ICONS;
@@ -27,6 +28,13 @@ export default function Stepper({ currentStep, totalSteps, skipConnect }: Steppe
 
   // When skipConnect, internal step 2 maps to visual step 1
   const visualStep = skipConnect ? currentStep - 1 : currentStep;
+
+  const handleClick = (visualStepNum: number) => {
+    if (!onStepClick) return;
+    // Convert visual step back to internal step
+    const internalStep = skipConnect ? visualStepNum + 1 : visualStepNum;
+    onStepClick(internalStep);
+  };
 
   return (
     <div className="flex items-center w-full max-w-3xl mx-auto">
@@ -37,16 +45,24 @@ export default function Stepper({ currentStep, totalSteps, skipConnect }: Steppe
         const isLast = index === count - 1;
         const Icon = icons[index];
         const label = dt(keys[index], lang);
+        const isClickable = isDone && !!onStepClick;
 
         return (
           <div key={index} className="flex items-center flex-1">
-            <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+            <div
+              className={cn(
+                "flex flex-col items-center gap-1.5 flex-shrink-0",
+                isClickable && "cursor-pointer group"
+              )}
+              onClick={isClickable ? () => handleClick(stepNum) : undefined}
+            >
               <div
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",
                   isActive && "step-active text-white",
                   isDone && "step-done text-accent-green",
-                  !isActive && !isDone && "step-inactive text-slate-500"
+                  !isActive && !isDone && "step-inactive text-slate-500",
+                  isClickable && "group-hover:ring-2 group-hover:ring-accent-green/40 group-hover:scale-110"
                 )}
               >
                 {isDone ? (
@@ -60,7 +76,8 @@ export default function Stepper({ currentStep, totalSteps, skipConnect }: Steppe
                   "text-xs font-medium transition-colors hidden sm:block",
                   isActive && "text-white",
                   isDone && "text-accent-green",
-                  !isActive && !isDone && "text-slate-600"
+                  !isActive && !isDone && "text-slate-600",
+                  isClickable && "group-hover:text-white"
                 )}
               >
                 {label}
