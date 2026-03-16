@@ -2,6 +2,7 @@
 # Adaptée pour être appelée depuis FastAPI
 
 import os, io, json, math, time, tempfile, base64, logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import cv2
 from PIL import Image
@@ -32,13 +33,53 @@ DEFAULT_CONFIG = {
     "clean_close_k_win": 5,
     "min_area_door_px": 6,
     "min_area_win_px": 15,
-    "model_id_v2": "floorplan-3xara/1",  # second model for comparison (admin)
     "use_geom_filter_for_doors": False,
     "door_ar_min": 1.25,
     "door_len_min_px": 10,
     "door_len_max_px": 600,
     "door_area_max_px": 200000,
 }
+
+# ============================================================
+# PIPELINE DEFINITIONS — for multi-model comparison (admin)
+# ============================================================
+PIPELINE_DEFINITIONS = [
+    {
+        "id": "A", "name": "Model A (Main v1)",
+        "model_ids": ["cubicasa5k-2-qpmsa-1gd2e/1"],
+        "type": "roboflow_full",
+        "description": "Modèle principal, 74.0% mAP",
+        "color": "#3B82F6",  # blue
+    },
+    {
+        "id": "B", "name": "Model B (v3 mAP)",
+        "model_ids": ["cubicasa5k-2-qpmsa/3"],
+        "type": "roboflow_full",
+        "description": "Même archi, version 3 — 79.3% mAP",
+        "color": "#8B5CF6",  # violet
+    },
+    {
+        "id": "C", "name": "Model C (fine-tuned)",
+        "model_ids": ["cubicasa-xmyt3-d4s04/3"],
+        "type": "roboflow_full",
+        "description": "Modèle fine-tuné — 78.9% mAP",
+        "color": "#F59E0B",  # amber
+    },
+    {
+        "id": "D", "name": "Model D (spécialiste)",
+        "model_ids": ["floorplan-3xara/1", "wall-detection-xi9ox/1"],
+        "type": "roboflow_merged",
+        "description": "3xara (portes+fenêtres 95.8%) + wall-detection (murs)",
+        "color": "#10B981",  # emerald
+    },
+    {
+        "id": "E", "name": "Pixel (OTSU)",
+        "model_ids": [],
+        "type": "pixel_only",
+        "description": "Détection pixel uniquement, pas d'IA",
+        "color": "#F43F5E",  # rose
+    },
+]
 
 # Labels structurels à exclure des pièces détectées
 SKIP_ROOM_LABELS: set = {
@@ -1086,74 +1127,13 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
     print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
-    # === PASS V2 — second model for comparison (admin debug) ===
-    m_doors_v2 = np.zeros((H, W), np.uint8)
-    m_wins_v2  = np.zeros((H, W), np.uint8)
-    m_walls_v2 = np.zeros((H, W), np.uint8)
-    st_v2 = {}
-    model_v2_id = cfg.get("model_id_v2")
-    logger.info("=== MODEL V2: model_id_v2=%s ===", model_v2_id)
-    if model_v2_id:
-        try:
-            logger.info("V2 pass1 starting with model %s, tile=%d, over=%d",
-                        model_v2_id, cfg["pass1_tile"], cfg["pass1_over"])
-            _, _, md_v2_1, mw_v2_1, mwall_v2_1, _, stv2_1 = infer_pass(
-                img_pil, client, model_v2_id,
-                cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
-            )
-            logger.info("V2 pass1 done: doors=%d wins=%d walls=%d",
-                        cv2.countNonZero(md_v2_1), cv2.countNonZero(mw_v2_1), cv2.countNonZero(mwall_v2_1))
-            logger.info("V2 pass2 starting...")
-            _, _, md_v2_2, mw_v2_2, mwall_v2_2, _, stv2_2 = infer_pass(
-                img_pil, client, model_v2_id,
-                cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
-            )
-            logger.info("V2 pass2 done: doors=%d wins=%d walls=%d",
-                        cv2.countNonZero(md_v2_2), cv2.countNonZero(mw_v2_2), cv2.countNonZero(mwall_v2_2))
-            m_doors_v2 = cv2.bitwise_or(md_v2_1, md_v2_2)
-            m_wins_v2  = cv2.bitwise_or(mw_v2_1, mw_v2_2)
-            m_walls_v2 = cv2.bitwise_or(mwall_v2_1, mwall_v2_2)
-            st_v2 = {"pass1": stv2_1, "pass2": stv2_2}
-            logger.info("Model V2 (%s) FINAL: doors=%d wins=%d walls=%d",
-                        model_v2_id, cv2.countNonZero(m_doors_v2),
-                        cv2.countNonZero(m_wins_v2), cv2.countNonZero(m_walls_v2))
-        except Exception as e:
-            logger.error("Model V2 inference FAILED: %s", e, exc_info=True)
-
     # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
-    # Cette approche donne des murs fins et nets calqués sur les détections IA.
-    # Fallback OTSU si le modèle n'a pas détecté de pièces.
-    a = rooms_index
-    walls = np.zeros((H, W), np.uint8)
-    walls[1:,:]  |= (a[1:,:]  != a[:-1,:]).astype(np.uint8)
-    walls[:-1,:] |= (a[:-1,:] != a[1:,:]).astype(np.uint8)
-    walls[:,1:]  |= (a[:,1:]  != a[:,:-1]).astype(np.uint8)
-    walls[:,:-1] |= (a[:,:-1] != a[:,1:]).astype(np.uint8)
-    walls = (walls * 255).astype(np.uint8)
-    if cv2.countNonZero(walls) > 0:
-        kernel_w = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel_w, iterations=1)
-    else:
+    walls = _walls_from_rooms_index(rooms_index, H, W)
+    if cv2.countNonZero(walls) == 0:
         walls = detect_walls_from_image(img_rgb)
 
     # === EMPRISE (contour extérieur) ===
-    # Inclure portes + fenêtres pour boucher les trous du périmètre mural
-    cnt = None
-    try:
-        walls_for_outline = cv2.bitwise_or(walls, cv2.bitwise_or(m_doors, m_windows))
-        kernel_e = cv2.getStructuringElement(cv2.MORPH_RECT, (11,11))
-        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE, kernel_e, iterations=3)
-        inv = cv2.bitwise_not(closed)
-        flood = np.zeros((H+2, W+2), np.uint8)
-        cv2.floodFill(inv, flood, (0,0), 255)
-        filled = cv2.bitwise_not(inv)
-        cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if cnts:
-            cnt = max(cnts, key=cv2.contourArea)
-    except Exception as e:
-        logger.warning("Building outline detection failed: %s", e)
+    cnt, _ = _compute_footprint(walls, m_doors, m_windows, H, W)
 
     # === Extraire ouvertures depuis masques ===
     _, md_binary = cv2.threshold(m_doors,   127, 255, cv2.THRESH_BINARY)
@@ -1237,11 +1217,6 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         "mask_walls_ai_b64": _np_to_b64(_mask_to_rgba(m_walls_ai, (245, 158, 11), 100)) if cv2.countNonZero(m_walls_ai) > 0 else None,  # amber
         "mask_walls_pixel_b64": _np_to_b64(_mask_to_rgba(m_walls_pixel, (239, 68, 68), 80)) if cv2.countNonZero(m_walls_pixel) > 0 else None,  # red
         "mask_cloisons_b64": _np_to_b64(_mask_to_rgba(m_cloisons, (0, 100, 255), 210)) if cv2.countNonZero(m_cloisons) > 0 else None,
-        # Model V2 comparison masks (admin only)
-        "mask_doors_v2_b64":   _np_to_b64(_mask_to_rgba(m_doors_v2, (168, 85, 247), 100)) if cv2.countNonZero(m_doors_v2) > 0 else None,    # violet
-        "mask_windows_v2_b64": _np_to_b64(_mask_to_rgba(m_wins_v2, (52, 211, 153), 100)) if cv2.countNonZero(m_wins_v2) > 0 else None,      # emerald
-        "mask_walls_v2_b64":   _np_to_b64(_mask_to_rgba(m_walls_v2, (251, 191, 36), 100)) if cv2.countNonZero(m_walls_v2) > 0 else None,    # yellow
-        "stats_v2": st_v2,
         "mask_rooms_b64":   _np_to_b64(mask_rooms_rgb),
         # Masques bruts pour édition ultérieure
         "_m_doors": m_doors,
@@ -1470,6 +1445,289 @@ def _np_to_b64(arr: np.ndarray) -> str:
     buf = io.BytesIO()
     pil.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+# ============================================================
+# FOOTPRINT HELPER (réutilisé par run_analysis + comparaison)
+# ============================================================
+def _compute_footprint(walls: np.ndarray, m_doors: np.ndarray,
+                       m_windows: np.ndarray, H: int, W: int):
+    """Compute building footprint contour from walls + openings.
+    Returns (cnt, footprint_mask) or (None, None) if detection fails."""
+    try:
+        walls_for_outline = cv2.bitwise_or(walls, cv2.bitwise_or(m_doors, m_windows))
+        kernel_e = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11))
+        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE, kernel_e, iterations=3)
+        inv = cv2.bitwise_not(closed)
+        flood = np.zeros((H + 2, W + 2), np.uint8)
+        cv2.floodFill(inv, flood, (0, 0), 255)
+        filled = cv2.bitwise_not(inv)
+        cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if cnts:
+            cnt = max(cnts, key=cv2.contourArea)
+            return cnt, filled
+    except Exception as e:
+        logger.warning("Building outline detection failed: %s", e)
+    return None, None
+
+
+def _walls_from_rooms_index(rooms_index: np.ndarray, H: int, W: int) -> np.ndarray:
+    """Compute boundary-based walls from rooms_index (where room labels change)."""
+    a = rooms_index
+    walls = np.zeros((H, W), np.uint8)
+    walls[1:, :]  |= (a[1:, :]  != a[:-1, :]).astype(np.uint8)
+    walls[:-1, :] |= (a[:-1, :] != a[1:, :]).astype(np.uint8)
+    walls[:, 1:]  |= (a[:, 1:]  != a[:, :-1]).astype(np.uint8)
+    walls[:, :-1] |= (a[:, :-1] != a[:, 1:]).astype(np.uint8)
+    walls = (walls * 255).astype(np.uint8)
+    if cv2.countNonZero(walls) > 0:
+        kernel_w = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        walls = cv2.morphologyEx(walls, cv2.MORPH_CLOSE, kernel_w, iterations=1)
+    return walls
+
+
+# ============================================================
+# MULTI-MODEL COMPARISON (admin only)
+# ============================================================
+def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
+                        img_rgb: np.ndarray, client, ppm: float,
+                        cfg: dict) -> dict:
+    """Run a single detection pipeline and return standardized results."""
+    pid = pipeline_def["id"]
+    t0 = time.time()
+    W, H = img_pil.size
+
+    m_doors  = np.zeros((H, W), np.uint8)
+    m_wins   = np.zeros((H, W), np.uint8)
+    m_walls  = np.zeros((H, W), np.uint8)
+    rooms_list = []
+    cnt = None
+    footprint_area_m2 = None
+    error = None
+
+    try:
+        ptype = pipeline_def["type"]
+
+        if ptype == "roboflow_full":
+            # ── 2-pass inference with a single model ──
+            model_id = pipeline_def["model_ids"][0]
+            ri, legend, md1, mw1, mwall1, _, _ = infer_pass(
+                img_pil, client, model_id,
+                cfg["pass1_tile"], cfg["pass1_over"], write_rooms=True,
+                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
+            )
+            md1 = clean_mask(md1, cfg["min_area_door_px"], cfg["clean_close_k_door"])
+            mw1 = clean_mask(mw1, cfg["min_area_win_px"], cfg["clean_close_k_win"])
+
+            _, _, md2, mw2, mwall2, _, _ = infer_pass(
+                img_pil, client, model_id,
+                cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
+            )
+            md2 = clean_mask(md2, cfg["min_area_door_px"], cfg["clean_close_k_door"])
+            mw2 = clean_mask(mw2, cfg["min_area_win_px"], cfg["clean_close_k_win"])
+
+            m_doors = cv2.bitwise_or(md1, md2)
+            m_wins  = cv2.bitwise_or(mw1, mw2)
+            m_walls_ai = cv2.bitwise_or(mwall1, mwall2)
+
+            # Walls from rooms_index boundaries (clean) or fallback to AI walls
+            walls_boundary = _walls_from_rooms_index(ri, H, W)
+            m_walls = walls_boundary if cv2.countNonZero(walls_boundary) > 0 else m_walls_ai
+
+        elif ptype == "roboflow_merged":
+            # ── Model D: merge 2 specialist models ──
+            model_dw = pipeline_def["model_ids"][0]   # doors + windows
+            model_w  = pipeline_def["model_ids"][1]    # walls only
+
+            # Doors + windows from first model
+            _, _, md1, mw1, _, _, _ = infer_pass(
+                img_pil, client, model_dw,
+                cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
+                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
+            )
+            _, _, md2, mw2, _, _, _ = infer_pass(
+                img_pil, client, model_dw,
+                cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+                conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg
+            )
+            m_doors = cv2.bitwise_or(
+                clean_mask(md1, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
+                clean_mask(md2, cfg["min_area_door_px"], cfg["clean_close_k_door"])
+            )
+            m_wins = cv2.bitwise_or(
+                clean_mask(mw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
+                clean_mask(mw2, cfg["min_area_win_px"], cfg["clean_close_k_win"])
+            )
+
+            # Walls from second model
+            _, _, _, _, mwall1, _, _ = infer_pass(
+                img_pil, client, model_w,
+                cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
+                conf_min_door=0.01, conf_min_win=0.01, cfg=cfg
+            )
+            _, _, _, _, mwall2, _, _ = infer_pass(
+                img_pil, client, model_w,
+                cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+                conf_min_door=0.01, conf_min_win=0.01, cfg=cfg
+            )
+            m_walls = cv2.bitwise_or(mwall1, mwall2)
+
+        elif ptype == "pixel_only":
+            # ── Model E: no AI, just pixel thresholding ──
+            m_walls = _detect_walls_pixel(img_rgb, cnt=None)
+            # doors and windows stay zero — pixel can't detect them
+
+        # ── Compute footprint from this pipeline's walls ──
+        cnt, _ = _compute_footprint(m_walls, m_doors, m_wins, H, W)
+
+        if cnt is not None and ppm is not None:
+            footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
+
+        # ── Extract rooms from this pipeline's walls ──
+        rooms_list = segment_rooms_from_walls(m_walls, m_doors, m_wins, cnt, H, W, ppm)
+
+        # ── Count doors/windows from masks ──
+        doors_count = _count_connected_components(m_doors)
+        windows_count = _count_connected_components(m_wins)
+
+    except Exception as e:
+        error = str(e)
+        logger.error("Pipeline %s (%s) failed: %s", pid, pipeline_def["name"], e, exc_info=True)
+        doors_count = 0
+        windows_count = 0
+
+    elapsed = time.time() - t0
+
+    # ── Build RGBA mask overlays ──
+    mask_doors_b64 = _np_to_b64(_mask_to_rgba(m_doors, (217, 70, 239), 90)) if cv2.countNonZero(m_doors) > 0 else None
+    mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_wins, (34, 211, 238), 90)) if cv2.countNonZero(m_wins) > 0 else None
+    mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls, (96, 165, 250), 90)) if cv2.countNonZero(m_walls) > 0 else None
+    mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
+
+    return {
+        "id": pid,
+        "name": pipeline_def["name"],
+        "description": pipeline_def["description"],
+        "color": pipeline_def.get("color", "#94a3b8"),
+        "doors_count": doors_count,
+        "windows_count": windows_count,
+        "mask_doors_b64": mask_doors_b64,
+        "mask_windows_b64": mask_windows_b64,
+        "mask_walls_b64": mask_walls_b64,
+        "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
+        "rooms_count": len(rooms_list),
+        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
+        "mask_rooms_b64": mask_rooms_b64,
+        "timing_seconds": round(elapsed, 2),
+        "error": error,
+    }
+
+
+def _count_connected_components(mask: np.ndarray) -> int:
+    """Count connected components in a binary mask (proxy for door/window count)."""
+    if cv2.countNonZero(mask) == 0:
+        return 0
+    _, binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+    n_labels, _ = cv2.connectedComponents(binary)
+    return max(0, n_labels - 1)  # subtract background
+
+
+def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
+                   existing_analysis: dict = None) -> dict:
+    """Run all 5 pipelines and return comparison results.
+    Pipeline A is reused from existing_analysis if available.
+    Pipelines B, C, D run in parallel threads.
+    Pipeline E (pixel) runs inline (fast)."""
+
+    t0 = time.time()
+    img_pil = Image.fromarray(img_rgb).convert("RGB")
+    W, H = img_pil.size
+
+    from inference_sdk import InferenceHTTPClient
+    client = InferenceHTTPClient(
+        api_url="https://serverless.roboflow.com",
+        api_key=cfg["api_key"]
+    )
+
+    results = {}
+
+    # ── Pipeline A: reuse existing analysis if available ──
+    pdef_a = PIPELINE_DEFINITIONS[0]
+    if existing_analysis:
+        ea = existing_analysis
+        sf = ea.get("surfaces", {})
+        results["A"] = {
+            "id": "A",
+            "name": pdef_a["name"],
+            "description": pdef_a["description"],
+            "color": pdef_a["color"],
+            "doors_count": ea.get("doors_count", 0),
+            "windows_count": ea.get("windows_count", 0),
+            "mask_doors_b64": ea.get("mask_doors_b64"),
+            "mask_windows_b64": ea.get("mask_windows_b64"),
+            "mask_walls_b64": ea.get("mask_walls_b64"),
+            "footprint_area_m2": round(sf.get("area_building_m2", 0), 2) if sf.get("area_building_m2") else None,
+            "rooms_count": len(ea.get("rooms", [])),
+            "rooms": ea.get("rooms", []),
+            "mask_rooms_b64": ea.get("mask_rooms_b64"),
+            "timing_seconds": 0,
+            "error": None,
+        }
+    else:
+        results["A"] = run_single_pipeline(pdef_a, img_pil, img_rgb, client, ppm, cfg)
+
+    # ── Pipeline E: pixel-only (fast, no thread) ──
+    pdef_e = PIPELINE_DEFINITIONS[4]
+    results["E"] = run_single_pipeline(pdef_e, img_pil, img_rgb, client, ppm, cfg)
+
+    # ── Pipelines B, C, D: in parallel ──
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+        for pdef in PIPELINE_DEFINITIONS[1:4]:  # B, C, D
+            f = executor.submit(run_single_pipeline, pdef, img_pil, img_rgb, client, ppm, cfg)
+            futures[pdef["id"]] = f
+
+        for pid, future in futures.items():
+            try:
+                results[pid] = future.result(timeout=600)
+            except Exception as e:
+                pdef = next(p for p in PIPELINE_DEFINITIONS if p["id"] == pid)
+                logger.error("Pipeline %s timed out or failed: %s", pid, e)
+                results[pid] = {
+                    "id": pid, "name": pdef["name"], "description": pdef["description"],
+                    "color": pdef.get("color", "#94a3b8"),
+                    "doors_count": 0, "windows_count": 0,
+                    "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+                    "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+                    "mask_rooms_b64": None, "timing_seconds": 0,
+                    "error": str(e),
+                }
+
+    total_time = round(time.time() - t0, 2)
+
+    # ── Build comparison table ──
+    ordered = ["A", "B", "C", "D", "E"]
+    table_rows = []
+    for pid in ordered:
+        r = results.get(pid, {})
+        table_rows.append({
+            "id": pid,
+            "name": r.get("name", pid),
+            "color": r.get("color", "#94a3b8"),
+            "doors": r.get("doors_count", 0),
+            "windows": r.get("windows_count", 0),
+            "footprint_m2": r.get("footprint_area_m2"),
+            "rooms": r.get("rooms_count", 0),
+            "time_s": r.get("timing_seconds", 0),
+            "error": r.get("error"),
+        })
+
+    return {
+        "pipelines": results,
+        "comparison_table": table_rows,
+        "total_time_seconds": total_time,
+    }
 
 
 # ============================================================

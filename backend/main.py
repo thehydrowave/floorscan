@@ -329,6 +329,37 @@ def analyze(req: AnalyzeRequest):
     return resp
 
 
+# ── Multi-model comparison (admin only) ─────────────────────
+class CompareRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    session_id: str
+    roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
+
+@app.post("/compare")
+def compare(req: CompareRequest):
+    s = sessions.get(req.session_id)
+    if s is None:
+        raise HTTPException(404, "Session introuvable")
+
+    img_rgb = s["img_rgb"]
+    ppm = s.get("pixels_per_meter")
+    cfg = s.get("cfg", dict(pipeline.DEFAULT_CONFIG))
+    cfg["api_key"] = req.roboflow_api_key
+
+    existing_analysis = s.get("analysis")
+
+    try:
+        result = pipeline.run_comparison(img_rgb, ppm, cfg, existing_analysis)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur comparaison : {e}")
+
+    with _get_session_lock(req.session_id):
+        sessions[req.session_id]["comparison"] = result
+        _touch_session(req.session_id)
+
+    return result
+
+
 # ============================================================
 # ROUTE 6 — ÉDITEUR : MODIFIER UN MASQUE
 # Supporte désormais layer = "door" | "window" | "interior"

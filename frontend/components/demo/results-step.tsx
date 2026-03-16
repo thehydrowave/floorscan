@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AnalysisResult, CustomDetection } from "@/lib/types";
+import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -17,6 +17,7 @@ import CctpPanel from "@/components/demo/cctp-panel";
 import GanttPanel from "@/components/demo/gantt-panel";
 import CompliancePanel from "@/components/demo/compliance-panel";
 import DebugPanel from "@/components/demo/debug-panel";
+import ComparisonPanel from "@/components/demo/comparison-panel";
 import View3dPanel from "@/components/demo/view-3d-panel";
 import ChatPanel from "@/components/demo/chat-panel";
 import ScenarioPanel from "@/components/demo/scenario-panel";
@@ -65,16 +66,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const d = (key: DTKey) => dt(key, lang);
   const { isAdmin } = useAuth();
 
-  // DEBUG: log admin status and V2 masks availability
-  useEffect(() => {
-    console.log("[ResultsStep] isAdmin:", isAdmin);
-    console.log("[ResultsStep] V2 masks:", {
-      doors_v2: !!result?.mask_doors_v2_b64,
-      windows_v2: !!result?.mask_windows_v2_b64,
-      walls_v2: !!result?.mask_walls_v2_b64,
-    });
-  }, [isAdmin, result]);
-
   // ── Mask overlays (stackable, like editor) ──
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
@@ -82,14 +73,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showWallsAI, setShowWallsAI] = useState(false);
   const [showWallsPixel, setShowWallsPixel] = useState(false);
   const [showCloisons, setShowCloisons] = useState(false);
-  // Model V2 comparison (admin only)
-  const [showDoorsV2, setShowDoorsV2] = useState(false);
-  const [showWindowsV2, setShowWindowsV2] = useState(false);
-  const [showWallsV2, setShowWallsV2] = useState(false);
   const [showInterior, setShowInterior] = useState(false);
   // ── SVG data overlays (independent toggles) ──
   const [showRoomsOverlay, setShowRoomsOverlay] = useState(false);
   const [showDetectionsOverlay, setShowDetectionsOverlay] = useState(false);
+  // ── Multi-model comparison (admin only) ──
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [comparingModels, setComparingModels] = useState(false);
   // ── Image natural dimensions for SVG viewBox ──
   const [imgNatural, setImgNatural] = useState({ w: 1, h: 1 });
 
@@ -457,53 +447,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* ── Model V2 comparison toggles (admin only) ── */}
-          {isAdmin && (result.mask_doors_v2_b64 || result.mask_windows_v2_b64 || result.mask_walls_v2_b64) && (
-            <>
-              <div className="w-px h-6 bg-white/10 mx-1" />
-              <span className="text-[10px] text-slate-600 uppercase tracking-wider">V2</span>
-            </>
-          )}
-          {isAdmin && result.mask_doors_v2_b64 && (
-            <button
-              onClick={() => setShowDoorsV2(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showDoorsV2
-                  ? "bg-violet-500/15 text-violet-400 border-violet-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showDoorsV2 ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Portes V2
-            </button>
-          )}
-          {isAdmin && result.mask_windows_v2_b64 && (
-            <button
-              onClick={() => setShowWindowsV2(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showWindowsV2
-                  ? "bg-teal-500/15 text-teal-400 border-teal-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showWindowsV2 ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Fenêtres V2
-            </button>
-          )}
-          {isAdmin && result.mask_walls_v2_b64 && (
-            <button
-              onClick={() => setShowWallsV2(v => !v)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
-                showWallsV2
-                  ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
-                  : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10"
-              )}
-            >
-              {showWallsV2 ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Murs V2
-            </button>
-          )}
-
           {/* Interior toggle */}
           {result.overlay_interior_b64 && (
             <button
@@ -629,31 +572,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   style={{ zIndex: 3 }}
                 />
               )}
-              {/* Model V2 overlays (admin only) */}
-              {showDoorsV2 && result.mask_doors_v2_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_doors_v2_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 2 }}
-                />
-              )}
-              {showWindowsV2 && result.mask_windows_v2_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_windows_v2_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 2 }}
-                />
-              )}
-              {showWallsV2 && result.mask_walls_v2_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_walls_v2_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 2 }}
-                />
-              )}
+              {/* V2 overlays removed — use ComparisonPanel instead */}
             </>
           ) : (
             <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
@@ -897,6 +816,52 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
       {/* ── OCR text detection panel (Beta) ── */}
       <OcrPanel result={result} />
+
+      {/* ── Multi-model comparison (admin only) ── */}
+      {isAdmin && (
+        <div className="mt-6">
+          {!comparisonResult ? (
+            <button
+              onClick={async () => {
+                setComparingModels(true);
+                try {
+                  const resp = await fetch(`${BACKEND}/compare`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ session_id: result.session_id }),
+                  });
+                  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                  const data = await resp.json();
+                  setComparisonResult(data);
+                } catch (e: any) {
+                  toast({ title: "Erreur comparaison", description: e.message, variant: "error" });
+                } finally {
+                  setComparingModels(false);
+                }
+              }}
+              disabled={comparingModels}
+              className={cn(
+                "w-full px-4 py-3 rounded-xl text-sm font-500 border transition-all flex items-center justify-center gap-2",
+                comparingModels
+                  ? "border-amber-500/20 text-amber-400/50 cursor-wait"
+                  : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+              )}
+            >
+              {comparingModels ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Comparaison en cours (5 modèles)...</>
+              ) : (
+                <><Layers className="w-4 h-4" /> Comparer 5 modèles (admin)</>
+              )}
+            </button>
+          ) : (
+            <ComparisonPanel
+              result={comparisonResult}
+              basePlanB64={basePlanB64}
+              ppm={result.pixels_per_meter}
+            />
+          )}
+        </div>
+      )}
 
       {/* ── Debug technique panel (admin only) ── */}
       {isAdmin && <DebugPanel result={result} customDetections={customDetections} />}

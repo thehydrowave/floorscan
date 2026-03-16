@@ -77,11 +77,6 @@ export interface AnalysisResult {
   mask_walls_ai_b64?: string | null;       // Direct Roboflow wall predictions
   mask_walls_pixel_b64?: string | null;    // OTSU pixel-based wall detection
   mask_cloisons_b64?: string | null;        // Cloisons intérieures (IA − Pixel − périmètre)
-  // Model V2 comparison (admin only)
-  mask_doors_v2_b64?: string | null;
-  mask_windows_v2_b64?: string | null;
-  mask_walls_v2_b64?: string | null;
-  stats_v2?: { pass1: any; pass2: any };
   mask_rooms_b64?: string;
   plan_b64?: string;   // raw plan without annotations
   stats?: { pass1: any; pass2: any };
@@ -296,4 +291,42 @@ export interface DevisOptions {
   client: DevisClientInfo;
   notes: string;
   date: string;
+}
+
+// ── Multi-model comparison (admin only) ──────────────────────────────────────
+
+export interface PipelineResult {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  doors_count: number;
+  windows_count: number;
+  mask_doors_b64: string | null;
+  mask_windows_b64: string | null;
+  mask_walls_b64: string | null;
+  footprint_area_m2: number | null;
+  rooms_count: number;
+  rooms: Room[];
+  mask_rooms_b64: string | null;
+  timing_seconds: number;
+  error: string | null;
+}
+
+export interface ComparisonTableRow {
+  id: string;
+  name: string;
+  color: string;
+  doors: number;
+  windows: number;
+  footprint_m2: number | null;
+  rooms: number;
+  time_s: number;
+  error: string | null;
+}
+
+export interface ComparisonResult {
+  pipelines: Record<string, PipelineResult>;
+  comparison_table: ComparisonTableRow[];
+  total_time_seconds: number;
 }
