@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Send, X,
+  Send, X, Minus, ChevronUp,
   Sparkles, Trash2, Settings2, Loader2, Bot, User,
   HelpCircle, ScanLine,
 } from "lucide-react";
@@ -23,6 +23,7 @@ interface ChatMsg {
 interface ChatPanelProps {
   result?: AnalysisResult | null;
   currentStep?: number;
+  autoOpen?: boolean;
   dpgf?: any;
   compliance?: any[];
 }
@@ -79,14 +80,16 @@ function AvatarIcon({ size = 28 }: { size?: number }) {
 
 /* ── Component ──────────────────────────────────────────────────────────── */
 
-export default function ChatPanel({ result, currentStep, dpgf, compliance }: ChatPanelProps) {
+export default function ChatPanel({ result, currentStep, autoOpen, dpgf, compliance }: ChatPanelProps) {
   const { lang } = useLang();
   const d = (k: Parameters<typeof dt>[0]) => dt(k, lang);
 
   const hasAnalysis = !!result;
 
   const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [apiKey, setApiKey] = useState("");
+  const autoOpenedRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -113,6 +116,16 @@ export default function ChatPanel({ result, currentStep, dpgf, compliance }: Cha
       ...(compliance ? { compliance } : {}),
     };
   }, [result, dpgf, compliance]);
+
+  // Auto-open once when autoOpen becomes true
+  useEffect(() => {
+    if (autoOpen && !autoOpenedRef.current) {
+      autoOpenedRef.current = true;
+      // Small delay so the page renders first
+      const t = setTimeout(() => { setOpen(true); setMinimized(false); }, 1200);
+      return () => clearTimeout(t);
+    }
+  }, [autoOpen]);
 
   // Auto-scroll
   useEffect(() => {
@@ -208,7 +221,7 @@ export default function ChatPanel({ result, currentStep, dpgf, compliance }: Cha
       ? "Posez-moi vos questions sur l'utilisation de l'application."
       : "Ask me anything about using the application.");
 
-  /* ── Floating button with avatar ────────────────────────────────────── */
+  /* ── Closed: floating button with avatar ─────────────────────────── */
 
   if (!open) {
     return (
@@ -216,7 +229,7 @@ export default function ChatPanel({ result, currentStep, dpgf, compliance }: Cha
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
-        onClick={() => setOpen(true)}
+        onClick={() => { setOpen(true); setMinimized(false); }}
         className={cn(
           "fixed bottom-6 right-6 z-50",
           "w-14 h-14 rounded-full",
@@ -241,7 +254,49 @@ export default function ChatPanel({ result, currentStep, dpgf, compliance }: Cha
     );
   }
 
-  /* ── Chat window ──────────────────────────────────────────────────────── */
+  /* ── Minimized: slim bar with avatar ────────────────────────────────── */
+
+  if (minimized) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 20 }}
+        className={cn(
+          "fixed bottom-6 right-6 z-50",
+          "flex items-center gap-2.5",
+          "px-4 py-2.5 rounded-2xl",
+          "bg-slate-900/95 backdrop-blur-xl",
+          "border border-slate-700/50",
+          "shadow-lg shadow-violet-500/10",
+          "cursor-pointer hover:border-violet-500/30 transition-colors"
+        )}
+        onClick={() => setMinimized(false)}
+      >
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600/40 to-indigo-600/40 flex items-center justify-center border border-violet-500/20 flex-shrink-0">
+          <AvatarIcon size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-white truncate">{d("chat_title")}</p>
+          <p className="text-[10px] text-slate-400 truncate">
+            {messages.length > 0
+              ? (lang === "fr" ? `${messages.length} message${messages.length > 1 ? "s" : ""}` : `${messages.length} message${messages.length > 1 ? "s" : ""}`)
+              : (lang === "fr" ? "Cliquez pour ouvrir" : "Click to open")}
+          </p>
+        </div>
+        <ChevronUp className="w-4 h-4 text-slate-400" />
+        {streaming && <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />}
+        <button
+          onClick={(e) => { e.stopPropagation(); setOpen(false); setMinimized(false); }}
+          className="p-1 rounded-md hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </motion.div>
+    );
+  }
+
+  /* ── Expanded: full chat window ─────────────────────────────────────── */
 
   return (
     <motion.div
@@ -295,8 +350,16 @@ export default function ChatPanel({ result, currentStep, dpgf, compliance }: Cha
             <Trash2 className="w-4 h-4" />
           </button>
           <button
-            onClick={() => { setOpen(false); abortRef.current?.abort(); }}
+            onClick={() => setMinimized(true)}
             className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+            title={lang === "fr" ? "Réduire" : "Minimize"}
+          >
+            <Minus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => { setOpen(false); setMinimized(false); abortRef.current?.abort(); }}
+            className="p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+            title={lang === "fr" ? "Fermer" : "Close"}
           >
             <X className="w-4 h-4" />
           </button>

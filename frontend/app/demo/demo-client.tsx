@@ -1071,11 +1071,12 @@ export default function DemoClient() {
         <div className="absolute inset-0 bg-grid-pattern bg-grid-size opacity-30" />
       </div>
 
-      {/* ── Global AI Assistant (present on all steps) ── */}
+      {/* ── Global AI Assistant (present on all steps, auto-opens for IA & Métré) ── */}
       {demoMode && (
         <ChatPanel
           result={analysisResult}
           currentStep={step}
+          autoOpen={demoMode === "ia" || demoMode === "measure"}
         />
       )}
     </div>
