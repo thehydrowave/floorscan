@@ -1498,79 +1498,83 @@ def _walls_from_rooms_index(rooms_index: np.ndarray, H: int, W: int) -> np.ndarr
 # CONSENSUS HELPERS — Ensemble methods for Pipeline F
 # ============================================================
 
-def _compute_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
-    """Compute Intersection over Union between two binary masks."""
-    a = mask_a > 127
-    b = mask_b > 127
-    intersection = np.count_nonzero(a & b)
-    union = np.count_nonzero(a | b)
-    if union == 0:
+def _bbox_iou(a, b) -> float:
+    """Fast IoU between two bounding boxes (x, y, w, h)."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    # Intersection
+    ix = max(ax, bx)
+    iy = max(ay, by)
+    ix2 = min(ax + aw, bx + bw)
+    iy2 = min(ay + ah, by + bh)
+    iw = max(0, ix2 - ix)
+    ih = max(0, iy2 - iy)
+    inter = iw * ih
+    if inter == 0:
         return 0.0
-    return float(intersection) / float(union)
+    union = aw * ah + bw * bh - inter
+    return float(inter) / float(union) if union > 0 else 0.0
 
 
-def _extract_components(mask: np.ndarray):
-    """Extract connected components from a binary mask.
-    Returns list of dicts: {mask, bbox, area_px, centroid}."""
+def _extract_components_light(mask: np.ndarray):
+    """Extract connected components as lightweight bbox + label_id (no per-component mask).
+    Returns (labels_map, components_list) where components_list = [{label_id, bbox, area_px, centroid}]."""
     if cv2.countNonZero(mask) == 0:
-        return []
+        return None, []
     _, binary = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
     n_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
     components = []
-    H, W = mask.shape[:2]
     for i in range(1, n_labels):  # skip background
         x, y, w, h, area = stats[i]
         if area < 4:  # ignore tiny noise
             continue
-        comp_mask = np.zeros((H, W), np.uint8)
-        comp_mask[labels == i] = 255
         components.append({
-            "mask": comp_mask,
+            "label_id": i,
             "bbox": (x, y, w, h),
             "area_px": int(area),
             "centroid": (float(centroids[i][0]), float(centroids[i][1])),
         })
-    return components
+    return labels, components
 
 
-def _match_components_across_models(all_components: list, iou_threshold: float = 0.25) -> list:
-    """Match detected components across multiple models using greedy IoU matching.
+def _match_components_across_models(all_components: list, H: int, W: int,
+                                     iou_threshold: float = 0.25) -> list:
+    """Match detected components across multiple models using greedy bbox IoU matching.
+
+    Memory-efficient: uses bbox IoU for matching, builds full masks only for final groups.
 
     Args:
-        all_components: list of (model_idx, component_list) tuples
-        iou_threshold: minimum IoU to consider two components as matching
+        all_components: list of (model_idx, labels_map, component_list) tuples
+        H, W: image dimensions
+        iou_threshold: minimum bbox IoU to consider two components as matching
 
     Returns:
         list of groups: {mask (union), agreement_count, agreement_models, confirmed, centroid}
     """
     # Flatten all components with model origin
     flat = []
-    for model_idx, comps in all_components:
+    for model_idx, labels_map, comps in all_components:
         for comp in comps:
-            flat.append({"model": model_idx, "comp": comp, "matched": False})
+            flat.append({"model": model_idx, "labels": labels_map, "comp": comp, "matched": False})
 
     groups = []
 
     for i, item in enumerate(flat):
         if item["matched"]:
             continue
-        # Start a new group with this component
         item["matched"] = True
         group_members = [item]
         group_models = {item["model"]}
 
-        # Search for matching components from other models
+        # Search for matching components from other models (bbox IoU — very fast)
         for j in range(i + 1, len(flat)):
             other = flat[j]
-            if other["matched"]:
+            if other["matched"] or other["model"] in group_models:
                 continue
-            if other["model"] in group_models:
-                continue  # each model contributes max 1x per group
 
-            # Check IoU with any member of the group
             best_iou = 0.0
             for member in group_members:
-                iou = _compute_iou(member["comp"]["mask"], other["comp"]["mask"])
+                iou = _bbox_iou(member["comp"]["bbox"], other["comp"]["bbox"])
                 best_iou = max(best_iou, iou)
 
             if best_iou >= iou_threshold:
@@ -1578,12 +1582,14 @@ def _match_components_across_models(all_components: list, iou_threshold: float =
                 group_members.append(other)
                 group_models.add(other["model"])
 
-        # Build union mask for this group
-        H, W = group_members[0]["comp"]["mask"].shape[:2]
+        # Build union mask only for this final group (one allocation per group)
         union_mask = np.zeros((H, W), np.uint8)
         total_cx, total_cy, total_area = 0.0, 0.0, 0
         for member in group_members:
-            union_mask = cv2.bitwise_or(union_mask, member["comp"]["mask"])
+            lid = member["comp"]["label_id"]
+            lmap = member["labels"]
+            # Paint only this component's pixels onto the union mask
+            union_mask[lmap == lid] = 255
             cx, cy = member["comp"]["centroid"]
             a = member["comp"]["area_px"]
             total_cx += cx * a
@@ -1712,14 +1718,14 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
         # Doors and windows: only from AI models
         if pid in ai_pids:
             if raw_doors is not None and cv2.countNonZero(raw_doors) > 0:
-                comps = _extract_components(raw_doors)
+                labels_map, comps = _extract_components_light(raw_doors)
                 if comps:
-                    door_components_by_model.append((pid, comps))
+                    door_components_by_model.append((pid, labels_map, comps))
 
             if raw_wins is not None and cv2.countNonZero(raw_wins) > 0:
-                comps = _extract_components(raw_wins)
+                labels_map, comps = _extract_components_light(raw_wins)
                 if comps:
-                    window_components_by_model.append((pid, comps))
+                    window_components_by_model.append((pid, labels_map, comps))
 
         # Walls: all models, but pixel model has lower weight
         if raw_walls is not None and cv2.countNonZero(raw_walls) > 0:
@@ -1727,11 +1733,11 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
             wall_weights.append(0.6 if pid == "E" else 1.0)
 
     # ── Component matching for doors ──
-    door_groups = _match_components_across_models(door_components_by_model, iou_threshold=0.25) \
+    door_groups = _match_components_across_models(door_components_by_model, H, W, iou_threshold=0.25) \
         if door_components_by_model else []
 
     # ── Component matching for windows ──
-    window_groups = _match_components_across_models(window_components_by_model, iou_threshold=0.25) \
+    window_groups = _match_components_across_models(window_components_by_model, H, W, iou_threshold=0.25) \
         if window_components_by_model else []
 
     # ── Build consensus door/window masks (only confirmed detections) ──
