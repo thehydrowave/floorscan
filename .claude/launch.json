@@ -3,10 +3,10 @@
   "configurations": [
     {
       "name": "frontend",
-      "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "npx", "next", "dev", "--port", "3001"],
-      "port": 3001,
-      "cwd": "frontend"
+      "runtimeExecutable": "C:\\Users\\marco\\bin\\npm.cmd",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3001"],
+      "cwd": "frontend",
+      "port": 3001
     }
   ]
 }
