@@ -86,6 +86,13 @@ PIPELINE_DEFINITIONS = [
         "description": "Fusion 5 modèles — vote composants + murs pondérés",
         "color": "#14B8A6",  # teal
     },
+    {
+        "id": "G", "name": "Best-of (G)",
+        "model_ids": [],
+        "type": "bestof",
+        "description": "Cherry-pick: murs D + portes A + fenêtres D",
+        "color": "#EC4899",  # pink
+    },
 ]
 
 # Labels structurels à exclure des pièces détectées
@@ -1858,6 +1865,125 @@ def _build_consensus_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
 
 
 # ============================================================
+# BEST-OF PIPELINE — cherry-pick best mask per category
+# ============================================================
+def _build_bestof_pipeline(pipeline_results: dict, img_rgb: np.ndarray,
+                            ppm: float, cfg: dict) -> dict:
+    """Build best-of pipeline G: walls from D, doors from A, windows from D.
+
+    Uses the best-performing model per category (manually validated)
+    and recomputes footprint / habitable area / rooms from those masks.
+    """
+    t0 = time.time()
+    H, W = img_rgb.shape[:2]
+
+    # ── Source mapping (best model per category) ──
+    SOURCE = {"walls": "D", "doors": "A", "windows": "D"}
+
+    rD = pipeline_results.get("D", {})
+    rA = pipeline_results.get("A", {})
+
+    # ── Collect raw masks with fallback to zeros ──
+    m_walls = rD.get("_m_walls_raw") if not rD.get("error") else None
+    m_doors = rA.get("_m_doors_raw") if not rA.get("error") else None
+    m_windows = rD.get("_m_windows_raw") if not rD.get("error") else None
+
+    if m_walls is None:
+        m_walls = np.zeros((H, W), np.uint8)
+    if m_doors is None:
+        m_doors = np.zeros((H, W), np.uint8)
+    if m_windows is None:
+        m_windows = np.zeros((H, W), np.uint8)
+
+    # ── Count doors/windows via connected components ──
+    doors_count = 0
+    if cv2.countNonZero(m_doors) > 0:
+        doors_count = cv2.connectedComponentsWithStats(m_doors, connectivity=8)[0] - 1
+
+    windows_count = 0
+    if cv2.countNonZero(m_windows) > 0:
+        windows_count = cv2.connectedComponentsWithStats(m_windows, connectivity=8)[0] - 1
+
+    # ── Footprint ──
+    cnt, footprint_mask = _compute_footprint(m_walls, m_doors, m_windows, H, W)
+    footprint_area_m2 = None
+    if cnt is not None and ppm is not None:
+        footprint_area_m2 = round(float(cv2.contourArea(cnt)) / (ppm ** 2), 2)
+
+    # ── Habitable area (footprint - dilated walls) ──
+    walls_area_m2 = None
+    hab_area_m2 = None
+    interior_mask_g = None
+    if cnt is not None:
+        building = np.zeros((H, W), np.uint8)
+        cv2.fillPoly(building, [cnt], 255)
+        walls_bin = (m_walls > 0).astype(np.uint8) * 255
+        if ppm is not None:
+            wall_t_m = cfg.get("wall_thickness_m", 0.20)
+            r_px = max(1, int(round((wall_t_m * ppm) / 2.0)))
+        else:
+            r_px = max(1, cfg.get("wall_thickness_px_fallback", 10) // 2)
+        k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
+        walls_thick = cv2.dilate(walls_bin, k_w, iterations=1)
+        walls_thick = cv2.bitwise_and(walls_thick, building)
+        interior_mask_g = cv2.subtract(building, walls_thick)
+        k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        interior_mask_g = cv2.morphologyEx(interior_mask_g, cv2.MORPH_OPEN, k2, iterations=1)
+        if ppm is not None:
+            walls_area_m2 = round(float(cv2.countNonZero(walls_thick)) / (ppm ** 2), 2)
+            hab_area_m2 = round(float(cv2.countNonZero(interior_mask_g)) / (ppm ** 2), 2)
+
+    # ── Rooms ──
+    rooms_list = segment_rooms_from_walls(m_walls, m_doors, m_windows, cnt, H, W, ppm)
+
+    # ── Build RGBA overlays ──
+    mask_doors_b64 = _np_to_b64(_mask_to_rgba(m_doors, (217, 70, 239), 90)) \
+        if cv2.countNonZero(m_doors) > 0 else None
+    mask_windows_b64 = _np_to_b64(_mask_to_rgba(m_windows, (34, 211, 238), 90)) \
+        if cv2.countNonZero(m_windows) > 0 else None
+    mask_walls_b64 = _np_to_b64(_mask_to_rgba(m_walls, (96, 165, 250), 90)) \
+        if cv2.countNonZero(m_walls) > 0 else None
+    mask_rooms_b64 = _np_to_b64(_build_rooms_color_mask(rooms_list, H, W)) if rooms_list else None
+    mask_footprint_b64 = _np_to_b64(_mask_to_rgba(footprint_mask, (251, 191, 36), 50)) \
+        if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None
+    mask_hab_b64 = _np_to_b64(_mask_to_rgba(interior_mask_g, (74, 222, 128), 60)) \
+        if interior_mask_g is not None and cv2.countNonZero(interior_mask_g) > 0 else None
+
+    elapsed = time.time() - t0
+    pdef_g = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "G")
+
+    logger.info("Best-of pipeline G built: walls=%s, doors=%s, windows=%s → "
+                "footprint=%.1f, hab=%.1f, rooms=%d (%.2fs)",
+                SOURCE["walls"], SOURCE["doors"], SOURCE["windows"],
+                footprint_area_m2 or 0, hab_area_m2 or 0, len(rooms_list), elapsed)
+
+    return {
+        "id": "G",
+        "name": pdef_g["name"],
+        "description": pdef_g["description"],
+        "color": pdef_g["color"],
+        "doors_count": doors_count,
+        "windows_count": windows_count,
+        "mask_doors_b64": mask_doors_b64,
+        "mask_windows_b64": mask_windows_b64,
+        "mask_walls_b64": mask_walls_b64,
+        "mask_footprint_b64": mask_footprint_b64,
+        "mask_hab_b64": mask_hab_b64,
+        "footprint_area_m2": footprint_area_m2,
+        "walls_area_m2": walls_area_m2,
+        "hab_area_m2": hab_area_m2,
+        "rooms_count": len(rooms_list),
+        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
+        "mask_rooms_b64": mask_rooms_b64,
+        "timing_seconds": round(elapsed, 2),
+        "error": None,
+        # Best-of specific fields
+        "is_bestof": True,
+        "source_models": SOURCE,
+    }
+
+
+# ============================================================
 # MULTI-MODEL COMPARISON (admin only)
 # ============================================================
 def run_single_pipeline(pipeline_def: dict, img_pil: Image.Image,
@@ -2201,6 +2327,23 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_consensus": True,
         }
 
+    # ── Pipeline G: Best-of (cherry-pick best mask per category) ──
+    try:
+        logger.info("Building best-of pipeline G...")
+        results["G"] = _build_bestof_pipeline(results, img_rgb, ppm, cfg)
+    except Exception as e:
+        logger.error("Best-of pipeline G failed: %s", e, exc_info=True)
+        pdef_g = next(p for p in PIPELINE_DEFINITIONS if p["id"] == "G")
+        results["G"] = {
+            "id": "G", "name": pdef_g["name"], "description": pdef_g["description"],
+            "color": pdef_g["color"],
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_bestof": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2209,8 +2352,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
 
     total_time = round(time.time() - t0, 2)
 
-    # ── Build comparison table (F first = recommended) ──
-    ordered = ["F", "A", "B", "C", "D", "E"]
+    # ── Build comparison table (G first = recommended) ──
+    ordered = ["G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})

@@ -331,6 +331,9 @@ export interface PipelineResult {
   uncertain_doors_count?: number;
   uncertain_windows_count?: number;
   models_fused_walls?: number;
+  // Best-of specific fields (Pipeline G only)
+  is_bestof?: boolean;
+  source_models?: { walls: string; doors: string; windows: string };
 }
 
 export interface ComparisonTableRow {

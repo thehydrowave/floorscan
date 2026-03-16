@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ComparisonResult, PipelineResult } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, BarChart3, Layers, AlertTriangle, Clock, Sparkles, Shield, ShieldAlert } from "lucide-react";
+import { Eye, EyeOff, BarChart3, Layers, AlertTriangle, Clock, Sparkles, Shield, ShieldAlert, Star } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
@@ -13,13 +13,13 @@ interface ComparisonPanelProps {
   ppm: number | null;
 }
 
-const PIPELINE_ORDER = ["F", "A", "B", "C", "D", "E"];
+const PIPELINE_ORDER = ["G", "F", "A", "B", "C", "D", "E"];
 
 export default function ComparisonPanel({ result, basePlanB64, ppm }: ComparisonPanelProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const [activeTab, setActiveTab] = useState<"table" | "visual">("table");
-  const [selectedPipeline, setSelectedPipeline] = useState<string>("F");
+  const [selectedPipeline, setSelectedPipeline] = useState<string>("G");
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
   const [showWalls, setShowWalls] = useState(true);
@@ -31,8 +31,8 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
   const pipeline = result.pipelines[selectedPipeline] as PipelineResult | undefined;
   const table = result.comparison_table;
 
-  // Find best values per column for highlighting (exclude F from "best" competition)
-  const nonConsensusRows = table.filter(r => r.id !== "F");
+  // Find best values per column for highlighting (exclude F and G from "best" competition)
+  const nonConsensusRows = table.filter(r => r.id !== "F" && r.id !== "G");
   const bestDoors = Math.max(...nonConsensusRows.map(r => r.doors));
   const bestWindows = Math.max(...nonConsensusRows.map(r => r.windows));
   const bestRooms = Math.max(...nonConsensusRows.map(r => r.rooms));
@@ -94,12 +94,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
             <tbody>
               {table.map((row) => {
                 const isConsensus = row.id === "F";
+                const isBestof = row.id === "G";
                 return (
                   <tr
                     key={row.id}
                     className={cn(
                       "border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer",
                       selectedPipeline === row.id && "bg-white/5",
+                      isBestof && "bg-pink-500/5",
                       isConsensus && "bg-teal-500/5"
                     )}
                     onClick={() => { setSelectedPipeline(row.id); setActiveTab("visual"); }}
@@ -108,9 +110,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
                         <span className="text-white font-500">{row.name}</span>
+                        {isBestof && (
+                          <span className="text-[9px] font-600 text-pink-400 bg-pink-500/15 border border-pink-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                          </span>
+                        )}
                         {isConsensus && (
                           <span className="text-[9px] font-600 text-teal-400 bg-teal-500/15 border border-teal-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                            <Sparkles className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                            <Sparkles className="w-2.5 h-2.5" /> {d("cmp_consensus")}
                           </span>
                         )}
                       </div>
@@ -118,6 +125,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" :
                         row.doors === bestDoors && row.doors > 0 ? "text-emerald-400" : "text-slate-300"
                       )}>
@@ -127,6 +135,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" :
                         row.windows === bestWindows && row.windows > 0 ? "text-emerald-400" : "text-slate-300"
                       )}>
@@ -136,6 +145,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" : "text-slate-300"
                       )}>
                         {row.footprint_m2 != null ? row.footprint_m2.toFixed(1) : "\u2014"}
@@ -144,6 +154,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" : "text-slate-300"
                       )}>
                         {row.hab_m2 != null ? row.hab_m2.toFixed(1) : "\u2014"}
@@ -152,6 +163,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" : "text-slate-300"
                       )}>
                         {row.walls_m2 != null ? row.walls_m2.toFixed(1) : "\u2014"}
@@ -160,6 +172,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                     <td className="text-center py-2.5 px-3">
                       <span className={cn(
                         "font-mono font-600",
+                        isBestof ? "text-pink-400" :
                         isConsensus ? "text-teal-400" :
                         row.rooms === bestRooms && row.rooms > 0 ? "text-emerald-400" : "text-slate-300"
                       )}>
@@ -195,6 +208,7 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               const p = result.pipelines[pid];
               if (!p) return null;
               const isConsensus = pid === "F";
+              const isBestof = pid === "G";
               return (
                 <button
                   key={pid}
@@ -209,6 +223,9 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                 >
                   <span className="w-2 h-2 rounded-full inline-block mr-1.5" style={{ backgroundColor: p.color }} />
                   {pid}
+                  {isBestof && selectedPipeline !== pid && (
+                    <Star className="w-2.5 h-2.5 inline ml-1 text-pink-400" />
+                  )}
                   {isConsensus && selectedPipeline !== pid && (
                     <Sparkles className="w-2.5 h-2.5 inline ml-1 text-teal-400" />
                   )}
@@ -222,9 +239,14 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
               {/* Pipeline info + mini stats */}
               <div className="flex items-center gap-4 mb-3 text-xs">
                 <span className="text-white font-500">{pipeline.name}</span>
+                {pipeline.is_bestof && (
+                  <span className="text-[9px] font-600 text-pink-400 bg-pink-500/15 border border-pink-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                    <Star className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                  </span>
+                )}
                 {pipeline.is_consensus && (
                   <span className="text-[9px] font-600 text-teal-400 bg-teal-500/15 border border-teal-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                    <Sparkles className="w-2.5 h-2.5" /> {d("cmp_recommended")}
+                    <Sparkles className="w-2.5 h-2.5" /> {d("cmp_consensus")}
                   </span>
                 )}
                 <span className="text-slate-500">{pipeline.description}</span>
@@ -252,6 +274,30 @@ export default function ComparisonPanel({ result, basePlanB64, ppm }: Comparison
                   </div>
                 ))}
               </div>
+
+              {/* ── Best-of source models panel ── */}
+              {pipeline.is_bestof && pipeline.source_models && !pipeline.error && (
+                <div className="bg-pink-500/5 border border-pink-500/20 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Star className="w-3.5 h-3.5 text-pink-400" />
+                    <span className="text-xs font-600 text-pink-400">{d("cmp_bestof_desc")}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400">{d("cmp_walls")} :</span>
+                      <span className="font-mono font-600 text-blue-400">{pipeline.source_models.walls}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400">{d("cmp_doors")} :</span>
+                      <span className="font-mono font-600 text-fuchsia-400">{pipeline.source_models.doors}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400">{d("cmp_windows")} :</span>
+                      <span className="font-mono font-600 text-cyan-400">{pipeline.source_models.windows}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ── Consensus details panel ── */}
               {pipeline.is_consensus && !pipeline.error && (
