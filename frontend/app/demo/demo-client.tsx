@@ -30,6 +30,12 @@ import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, 
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/use-auth";
+
+const DEFAULT_CONFIG: RoboflowConfig = {
+  apiKey: "Kh56un5foPflRVreiNOM",
+  modelName: "cubicasa5k-2-qpmsa-1gd2e/1",
+};
 
 const SESSION_STORAGE_KEY = "floorscan_ia_session_v1";
 
@@ -136,16 +142,18 @@ function FacadeStepper({ currentStep, lang }: { currentStep: number; lang: strin
 export default function DemoClient() {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
+  const { isAdmin } = useAuth();
+
+  // Non-admin users skip the Connect step (step 1) entirely — start at step 2 with default config
   const [step, setStep] = useState(1);
   const [demoMode, setDemoMode] = useState<null | "ia" | "measure" | "facade" | "diff" | "cartouche">(null);
 
-  const STEP_TITLES = [
-    d("st_connect"), d("st_upload"), d("st_crop"),
-    d("st_scale"), d("st_analyze"), d("st_results"), d("st_editor"),
-  ];
+  const STEP_TITLES = isAdmin
+    ? [d("st_connect"), d("st_upload"), d("st_crop"), d("st_scale"), d("st_analyze"), d("st_results"), d("st_editor")]
+    : [d("st_upload"), d("st_crop"), d("st_scale"), d("st_analyze"), d("st_results"), d("st_editor")];
 
   // Step 1
-  const [config, setConfig] = useState<RoboflowConfig | null>(null);
+  const [config, setConfig] = useState<RoboflowConfig | null>(isAdmin ? null : DEFAULT_CONFIG);
   // Step 2
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [uploadedImageB64, setUploadedImageB64] = useState<string | null>(null);
@@ -179,6 +187,15 @@ export default function DemoClient() {
   // Restored session banner
   const [restoredSession, setRestoredSession] = useState<SavedSession | null>(null);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+
+  // When non-admin selects IA mode, auto-skip Connect step
+  const selectIaMode = () => {
+    setDemoMode("ia");
+    if (!isAdmin) {
+      setConfig(DEFAULT_CONFIG);
+      setStep(2);
+    }
+  };
 
   // Check for saved session on mount
   useEffect(() => {
@@ -216,7 +233,7 @@ export default function DemoClient() {
     setAnalysisResult(restoredSession.analysisResult);
     // Restore to results step (6) since we don't have the image anymore
     setStep(restoredSession.analysisResult ? 6 : Math.min(restoredSession.step, 5));
-    setDemoMode("ia");
+    selectIaMode();
     setShowRestoreBanner(false);
     setRestoredSession(null);
   };
@@ -306,7 +323,7 @@ export default function DemoClient() {
   };
 
   const handleRestart = () => {
-    setStep(1);
+    setStep(isAdmin ? 1 : 2);
     setSessionId(null);
     setUploadedImageB64(null);
     setPpm(null);
@@ -321,7 +338,7 @@ export default function DemoClient() {
 
   const handleFullReset = () => {
     setStep(1);
-    setConfig(null);
+    setConfig(isAdmin ? null : DEFAULT_CONFIG);
     setSessionId(null);
     setUploadedImageB64(null);
     setPpm(null);
@@ -446,7 +463,7 @@ export default function DemoClient() {
           {demoMode !== null && (
             <div className="flex items-center gap-1 glass border border-white/10 rounded-xl p-1">
               <button
-                onClick={() => setDemoMode("ia")}
+                onClick={selectIaMode}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   demoMode === "ia" ? "bg-accent text-white shadow-sm" : "text-slate-400 hover:text-white"
                 }`}
@@ -601,7 +618,7 @@ export default function DemoClient() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
                 {/* Card — Analyse IA */}
                 <button
-                  onClick={() => setDemoMode("ia")}
+                  onClick={selectIaMode}
                   className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-accent/40 hover:bg-accent/5 transition-all duration-300 overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
@@ -755,7 +772,7 @@ export default function DemoClient() {
               transition={{ duration: 0.2 }}
             >
               <div className="mb-10">
-                <Stepper currentStep={step} totalSteps={STEP_TITLES.length} />
+                <Stepper currentStep={step} totalSteps={STEP_TITLES.length} skipConnect={!isAdmin} />
               </div>
 
               <AnimatePresence mode="wait">
@@ -766,7 +783,7 @@ export default function DemoClient() {
                   exit={{ opacity: 0, x: -10 }}
                   transition={{ duration: 0.25 }}
                 >
-                  {step === 1 && <ConnectStep onConnected={handleConnected} />}
+                  {step === 1 && isAdmin && <ConnectStep onConnected={handleConnected} />}
                   {step === 2 && (
                     <UploadStep
                       onUploaded={handleUploaded}

@@ -311,6 +311,16 @@ export const DEMO_T = {
   an_fail:        { fr:"Analyse échouée",            en:"Analysis failed",    es:"Análisis fallido",        de:"Analyse fehlgeschlagen", it:"Analisi fallita"     },
   an_relance:     { fr:"Relancer l'analyse",         en:"Relaunch analysis",  es:"Relanzar análisis",       de:"Analyse neu starten",    it:"Riavvia analisi"     },
   an_auto:        { fr:"auto-détection",             en:"auto-detection",     es:"auto-detección",          de:"Auto-Erkennung",         it:"auto-rilevamento"    },
+  an_ready_go:    { fr:"Votre plan est prêt à être analysé", en:"Your plan is ready for analysis", es:"Su plano está listo para el análisis", de:"Ihr Plan ist bereit für die Analyse", it:"Il vostro piano è pronto per l'analisi" },
+  an_ready_desc:  { fr:"Notre IA va détecter les portes, fenêtres, murs et pièces de votre plan.", en:"Our AI will detect doors, windows, walls and rooms in your plan.", es:"Nuestra IA detectará puertas, ventanas, muros y habitaciones.", de:"Unsere KI erkennt Türen, Fenster, Wände und Räume.", it:"La nostra IA rileverà porte, finestre, muri e stanze." },
+  an_step_prep:   { fr:"Préparation",                en:"Preparation",        es:"Preparación",             de:"Vorbereitung",           it:"Preparazione"        },
+  an_step_detect: { fr:"Détection IA",               en:"AI Detection",       es:"Detección IA",            de:"KI-Erkennung",           it:"Rilevamento IA"      },
+  an_step_walls:  { fr:"Analyse des murs",            en:"Wall analysis",      es:"Análisis de muros",       de:"Wandanalyse",            it:"Analisi muri"        },
+  an_step_rooms:  { fr:"Identification des pièces",   en:"Room identification", es:"Identificación de habitaciones", de:"Raumidentifizierung", it:"Identificazione stanze" },
+  an_step_report: { fr:"Rapport final",               en:"Final report",       es:"Informe final",           de:"Abschlussbericht",       it:"Rapporto finale"     },
+  an_elapsed:     { fr:"Temps écoulé",                en:"Elapsed time",       es:"Tiempo transcurrido",     de:"Verstrichene Zeit",      it:"Tempo trascorso"     },
+  an_tip:         { fr:"L'analyse prend généralement 5 à 15 secondes selon la complexité du plan.", en:"Analysis typically takes 5 to 15 seconds depending on plan complexity.", es:"El análisis suele tardar de 5 a 15 segundos.", de:"Die Analyse dauert normalerweise 5-15 Sekunden.", it:"L'analisi richiede solitamente 5-15 secondi." },
+  sc_wip:         { fr:"Module en cours de développement", en:"Module under development", es:"Módulo en desarrollo", de:"Modul in Entwicklung", it:"Modulo in sviluppo" },
 
   // ── Results step — additional ─────────────────────────────────────────────
   re_editor:      { fr:"Éditeur de masques",         en:"Mask editor",        es:"Editor de máscaras",      de:"Masken-Editor",          it:"Editor maschere"     },

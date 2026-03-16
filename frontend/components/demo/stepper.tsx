@@ -5,27 +5,38 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
-const STEP_ICONS = [KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare];
-const STEP_KEYS: DTKey[] = ["st_connect", "st_upload", "st_crop", "st_scale", "st_analyze", "st_results", "st_editor"];
+const ALL_STEP_ICONS = [KeyRound, Upload, Crop, Ruler, Brain, BarChart3, PenSquare];
+const ALL_STEP_KEYS: DTKey[] = ["st_connect", "st_upload", "st_crop", "st_scale", "st_analyze", "st_results", "st_editor"];
+
+// Non-admin: skip Connect step (index 0)
+const USER_STEP_ICONS = [Upload, Crop, Ruler, Brain, BarChart3, PenSquare];
+const USER_STEP_KEYS: DTKey[] = ["st_upload", "st_crop", "st_scale", "st_analyze", "st_results", "st_editor"];
 
 interface StepperProps {
-  currentStep: number;   // 1-based
-  totalSteps?: number;   // defaults to STEP_ICONS.length
+  currentStep: number;   // 1-based (internal step number)
+  totalSteps?: number;
+  skipConnect?: boolean; // true for non-admin users
 }
 
-export default function Stepper({ currentStep, totalSteps }: StepperProps) {
+export default function Stepper({ currentStep, totalSteps, skipConnect }: StepperProps) {
   const { lang } = useLang();
-  const count = Math.min(totalSteps ?? STEP_ICONS.length, STEP_ICONS.length);
+
+  const icons = skipConnect ? USER_STEP_ICONS : ALL_STEP_ICONS;
+  const keys = skipConnect ? USER_STEP_KEYS : ALL_STEP_KEYS;
+  const count = Math.min(totalSteps ?? icons.length, icons.length);
+
+  // When skipConnect, internal step 2 maps to visual step 1
+  const visualStep = skipConnect ? currentStep - 1 : currentStep;
 
   return (
     <div className="flex items-center w-full max-w-3xl mx-auto">
       {Array.from({ length: count }).map((_, index) => {
         const stepNum = index + 1;
-        const isActive = stepNum === currentStep;
-        const isDone = stepNum < currentStep;
+        const isActive = stepNum === visualStep;
+        const isDone = stepNum < visualStep;
         const isLast = index === count - 1;
-        const Icon = STEP_ICONS[index];
-        const label = dt(STEP_KEYS[index], lang);
+        const Icon = icons[index];
+        const label = dt(keys[index], lang);
 
         return (
           <div key={index} className="flex items-center flex-1">
