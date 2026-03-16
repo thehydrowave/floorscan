@@ -2127,6 +2127,52 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
                     "error": str(e),
                 }
 
+    # ── Post-process Pipeline E: borrow doors/windows from A for footprint/hab ──
+    try:
+        rE = results.get("E", {})
+        rA = results.get("A", {})
+        if rE and not rE.get("error") and rA and not rA.get("error"):
+            raw_walls_e = rE.get("_m_walls_raw")
+            raw_doors_a = rA.get("_m_doors_raw")
+            raw_wins_a  = rA.get("_m_windows_raw")
+            if raw_walls_e is not None and cv2.countNonZero(raw_walls_e) > 0:
+                # Use A's doors/windows to close E's walls for footprint calculation
+                _dA = raw_doors_a if raw_doors_a is not None else np.zeros((H, W), np.uint8)
+                _wA = raw_wins_a  if raw_wins_a  is not None else np.zeros((H, W), np.uint8)
+                cnt_e, fp_e = _compute_footprint(raw_walls_e, _dA, _wA, H, W)
+                if cnt_e is not None:
+                    # Footprint
+                    if ppm is not None:
+                        rE["footprint_area_m2"] = round(float(cv2.contourArea(cnt_e)) / (ppm ** 2), 2)
+                    rE["mask_footprint_b64"] = _np_to_b64(_mask_to_rgba(fp_e, (251, 191, 36), 50)) \
+                        if fp_e is not None and cv2.countNonZero(fp_e) > 0 else None
+                    # Habitable area
+                    building_e = np.zeros((H, W), np.uint8)
+                    cv2.fillPoly(building_e, [cnt_e], 255)
+                    walls_bin_e = (raw_walls_e > 0).astype(np.uint8) * 255
+                    r_px_e = max(1, int(round((cfg.get("wall_thickness_m", 0.20) * ppm) / 2.0))) if ppm else 5
+                    k_e = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px_e + 1, 2 * r_px_e + 1))
+                    wt_e = cv2.bitwise_and(cv2.dilate(walls_bin_e, k_e, iterations=1), building_e)
+                    int_e = cv2.morphologyEx(cv2.subtract(building_e, wt_e),
+                                             cv2.MORPH_OPEN,
+                                             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+                                             iterations=1)
+                    if ppm is not None:
+                        rE["walls_area_m2"] = round(float(cv2.countNonZero(wt_e)) / (ppm ** 2), 2)
+                        rE["hab_area_m2"] = round(float(cv2.countNonZero(int_e)) / (ppm ** 2), 2)
+                    rE["mask_hab_b64"] = _np_to_b64(_mask_to_rgba(int_e, (74, 222, 128), 60)) \
+                        if cv2.countNonZero(int_e) > 0 else None
+                    # Rooms
+                    rooms_e = segment_rooms_from_walls(raw_walls_e, _dA, _wA, cnt_e, H, W, ppm)
+                    rE["rooms_count"] = len(rooms_e)
+                    rE["rooms"] = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_e]
+                    rE["mask_rooms_b64"] = _np_to_b64(_build_rooms_color_mask(rooms_e, H, W)) if rooms_e else None
+                    # Update table row later
+                    logger.info("Pipeline E post-processed with A's doors/windows: footprint=%.1f, hab=%.1f, rooms=%d",
+                                rE.get("footprint_area_m2", 0), rE.get("hab_area_m2", 0), rE.get("rooms_count", 0))
+    except Exception as e:
+        logger.warning("Pipeline E post-processing failed: %s", e, exc_info=True)
+
     # ── Pipeline F: Consensus (fusion of all models) ──
     try:
         logger.info("Building consensus pipeline F from %d pipelines...", len(results))
