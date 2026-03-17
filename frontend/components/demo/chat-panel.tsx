@@ -89,6 +89,7 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [apiKey, setApiKey] = useState("");
+  const [serverHasKey, setServerHasKey] = useState<boolean | null>(null);
   const autoOpenedRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -97,6 +98,14 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Check on mount whether the server has an API key configured
+  useEffect(() => {
+    fetch("/api/chat")
+      .then((r) => r.json())
+      .then((data) => setServerHasKey(!!data.configured))
+      .catch(() => setServerHasKey(false));
+  }, []);
 
   // Build context (no base64 images — just structured data)
   const buildCtx = useCallback(() => {
@@ -126,6 +135,14 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
       return () => clearTimeout(t);
     }
   }, [autoOpen]);
+
+  // Auto-show settings when chat opens and no key is available anywhere
+  const needsKey = serverHasKey === false && !apiKey;
+  useEffect(() => {
+    if (open && needsKey) {
+      setShowSettings(true);
+    }
+  }, [open, needsKey]);
 
   // Auto-scroll
   useEffect(() => {
@@ -374,16 +391,33 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden border-b border-slate-700/50"
           >
-            <div className="px-4 py-3 bg-slate-800/50">
-              <label className="text-xs text-slate-400 block mb-1">{d("chat_api_key")}</label>
+            <div className="px-4 py-3 bg-slate-800/50 space-y-2">
+              {needsKey && (
+                <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <span className="text-amber-400 text-sm mt-0.5">⚠</span>
+                  <p className="text-[11px] text-amber-300 leading-relaxed">
+                    {d("chat_no_key_hint")}
+                  </p>
+                </div>
+              )}
+              <label className="text-xs text-slate-400 block">{d("chat_api_key")}</label>
               <input
                 type="password"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
+                onChange={(e) => { setApiKey(e.target.value); setError(null); }}
+                placeholder="sk-proj-..."
+                autoFocus={needsKey}
                 className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-900/80 border border-slate-600/50 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
-              <p className="text-[10px] text-slate-500 mt-1">{d("chat_api_hint")}</p>
+              <p className="text-[10px] text-slate-500">{d("chat_api_hint")}</p>
+              {apiKey && (
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full py-1.5 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 text-xs font-medium transition-colors border border-violet-500/20"
+                >
+                  ✓ {d("chat_key_saved")}
+                </button>
+              )}
             </div>
           </motion.div>
         )}

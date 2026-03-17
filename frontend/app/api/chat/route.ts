@@ -115,6 +115,15 @@ const STEP_NAMES: Record<number, string> = {
   7: "Éditeur de masques",
 };
 
+// ─── GET /api/chat — check if server has OpenAI key ─────────────────────────
+
+export async function GET() {
+  return new Response(
+    JSON.stringify({ configured: !!process.env.OPENAI_API_KEY }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
+
 // ─── POST /api/chat ─────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
