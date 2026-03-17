@@ -109,35 +109,60 @@ export async function downloadCompliancePdf(
     const catTitle = d(CAT_LABELS[catKey], l);
     b.drawSectionTitle(catTitle);
 
-    // Table header
-    b.page.drawRectangle({
-      x: PAGE.MARGIN_X,
-      y: b.y - 4,
-      width: PAGE.TEXT_WIDTH,
-      height: TABLE.HEADER_ROW_HEIGHT,
-      color: C.BG_SUBTLE,
-    });
+    // Table header (navy background)
+    const hdrY = b.y - 4;
+    const hdrH = TABLE.HEADER_ROW_HEIGHT;
+    b.page.drawRectangle({ x: PAGE.MARGIN_X, y: hdrY + hdrH, width: PAGE.TEXT_WIDTH, height: 0.75, color: C.BLUE });
+    b.page.drawRectangle({ x: PAGE.MARGIN_X, y: hdrY, width: PAGE.TEXT_WIDTH, height: hdrH, color: C.BLUE });
+    // Header column separators
+    for (let i = 1; i < COMPLIANCE_COLS.length; i++) {
+      const prev = COMPLIANCE_COLS[i - 1];
+      const curr = COMPLIANCE_COLS[i];
+      b.page.drawRectangle({ x: Math.round((prev.x + prev.width + curr.x) / 2), y: hdrY, width: 0.5, height: hdrH, color: C.BLUE_MED });
+    }
     for (const col of COMPLIANCE_COLS) {
       const label = col.label.startsWith("compliance_") ? d(col.label, l) : col.label;
       b.page.drawText(truncateText(label, col.width - 4, b.fontBold, TYPO.TABLE_HEADER), {
-        x: col.x,
+        x: col.x + 2,
         y: b.y,
         size: TYPO.TABLE_HEADER,
         font: b.fontBold,
-        color: C.GRAY_700,
+        color: C.WHITE,
       });
     }
-    b.moveDown(TABLE.HEADER_ROW_HEIGHT + 2);
+    b.moveDown(hdrH + 2);
 
     // Check rows
     for (const check of catChecks) {
       b.ensureSpace(TABLE.ROW_HEIGHT + 20);
 
-      // Status label (coloured)
       const sLabel = statusLabel(check.status);
       const sColor = statusColor(check.status);
+      const rowY = b.y - 4;
+      const rowH = TABLE.ROW_HEIGHT;
+
+      // Color-coded row background (very pale tint by status)
+      const rowBg = check.status === "pass" ? C.GREEN_PALE
+        : check.status === "fail" ? C.RED_PALE
+        : check.status === "warning" ? C.AMBER_PALE
+        : C.BG_SUBTLE;
+      b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: rowH, color: rowBg });
+
+      // Left outer border (colored by status)
+      b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: 3, height: rowH, color: sColor });
+      // Right outer border
+      b.page.drawRectangle({ x: PAGE.W - PAGE.MARGIN_X - 0.75, y: rowY, width: 0.75, height: rowH, color: C.GRAY_300 });
+
+      // Column separators
+      for (let i = 1; i < COMPLIANCE_COLS.length; i++) {
+        const prev = COMPLIANCE_COLS[i - 1];
+        const curr = COMPLIANCE_COLS[i];
+        b.page.drawRectangle({ x: Math.round((prev.x + prev.width + curr.x) / 2), y: rowY, width: 0.4, height: rowH, color: C.GRAY_200 });
+      }
+
+      // Status label (bold, coloured)
       b.page.drawText(sLabel, {
-        x: COMPLIANCE_COLS[0].x + 4,
+        x: COMPLIANCE_COLS[0].x + 6,
         y: b.y,
         size: TYPO.TABLE_CELL,
         font: b.fontBold,
@@ -147,7 +172,7 @@ export async function downloadCompliancePdf(
       // Rule description
       const ruleText = truncateText(d(check.rule_key, l), COMPLIANCE_COLS[1].width - 4, b.font, TYPO.BODY);
       b.page.drawText(ruleText, {
-        x: COMPLIANCE_COLS[1].x,
+        x: COMPLIANCE_COLS[1].x + 2,
         y: b.y,
         size: TYPO.BODY,
         font: b.font,
@@ -156,7 +181,7 @@ export async function downloadCompliancePdf(
 
       // Target
       b.page.drawText(safeTxt(check.target), {
-        x: COMPLIANCE_COLS[2].x,
+        x: COMPLIANCE_COLS[2].x + 2,
         y: b.y,
         size: TYPO.TABLE_CELL,
         font: b.font,
@@ -165,14 +190,17 @@ export async function downloadCompliancePdf(
 
       // Actual (coloured by status)
       b.page.drawText(safeTxt(check.actual), {
-        x: COMPLIANCE_COLS[3].x,
+        x: COMPLIANCE_COLS[3].x + 2,
         y: b.y,
         size: TYPO.TABLE_CELL,
         font: b.font,
         color: sColor,
       });
 
-      b.moveDown(TABLE.ROW_HEIGHT);
+      // Hairline at bottom
+      b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: 0.3, color: C.GRAY_200 });
+
+      b.moveDown(rowH);
 
       // Affected elements (indented, red)
       if (check.affected && check.affected.length > 0) {

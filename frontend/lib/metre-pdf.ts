@@ -2,6 +2,7 @@
 
 import type { MetreResult, RoomMetre } from "@/lib/metre-calculator";
 import type { Lang } from "@/lib/i18n";
+import type { PDFPage } from "pdf-lib";
 import {
   PdfBuilder,
   PAGE,
@@ -10,6 +11,7 @@ import {
   C,
   d,
   fmtDate,
+  fmtQty,
   truncateText,
   type ColDef,
 } from "@/lib/pdf-theme";
@@ -33,7 +35,7 @@ const METRE_COLS: ColDef[] = [
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number, integer?: boolean): string {
-  return integer ? String(Math.round(n)) : n.toFixed(2);
+  return integer ? String(Math.round(n)) : fmtQty(n);
 }
 
 function rowValues(row: RoomMetre): Record<string, string> {
@@ -43,6 +45,26 @@ function rowValues(row: RoomMetre): Record<string, string> {
     vals[col.key] = fmt(v, col.integer);
   }
   return vals;
+}
+
+// ── Column separator helper ───────────────────────────────────────────────────
+
+function drawColSeparators(page: PDFPage, cols: ColDef[], rowY: number, rowH: number): void {
+  // Left outer border
+  page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: 0.75, height: rowH, color: C.GRAY_300 });
+  // Right outer border
+  page.drawRectangle({ x: PAGE.W - PAGE.MARGIN_X - 0.75, y: rowY, width: 0.75, height: rowH, color: C.GRAY_300 });
+  // Separator between room name column and first data column
+  const firstDataX = cols[0].x;
+  const roomSepX = Math.round((COL_ROOM_X + 96 + firstDataX) / 2);
+  page.drawRectangle({ x: roomSepX, y: rowY, width: 0.4, height: rowH, color: C.GRAY_200 });
+  // Separators between data columns
+  for (let i = 1; i < cols.length; i++) {
+    const prev = cols[i - 1];
+    const curr = cols[i];
+    const sepX = Math.round((prev.x + prev.width + curr.x) / 2);
+    page.drawRectangle({ x: sepX, y: rowY, width: 0.4, height: rowH, color: C.GRAY_200 });
+  }
 }
 
 // ── PDF Generation ───────────────────────────────────────────────────────────
@@ -74,14 +96,18 @@ export async function downloadMetrePdf(
 
   // ── Table header ────────────────────────────────────────────────────────
 
-  // Custom header because we have a "Room" column + 9 data columns
-  b.page.drawRectangle({
-    x: PAGE.MARGIN_X,
-    y: b.y - 4,
-    width: PAGE.TEXT_WIDTH,
-    height: TABLE.HEADER_ROW_HEIGHT,
-    color: C.BLUE,
-  });
+  // Custom header — "Room" column + 9 data columns
+  const headerY = b.y - 4;
+  const headerH = TABLE.HEADER_ROW_HEIGHT;
+
+  // Top outer border
+  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: headerY + headerH, width: PAGE.TEXT_WIDTH, height: 0.75, color: C.BLUE });
+
+  // Navy header background
+  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: headerY, width: PAGE.TEXT_WIDTH, height: headerH, color: C.BLUE });
+
+  // Column separators in header (medium blue on navy)
+  drawColSeparators(b.page, METRE_COLS, headerY, headerH);
 
   // Room column header
   b.page.drawText(d("metre_room", l), {
@@ -105,7 +131,7 @@ export async function downloadMetrePdf(
       color: C.WHITE,
     });
   }
-  b.moveDown(TABLE.HEADER_ROW_HEIGHT + 4);
+  b.moveDown(headerH + 4);
 
   // ── Data rows ───────────────────────────────────────────────────────────
 
@@ -113,17 +139,16 @@ export async function downloadMetrePdf(
     b.ensureSpace(TABLE.ROW_HEIGHT + 10);
 
     const room = metre.rooms[i];
+    const rowY = b.y - 4;
+    const rowH = TABLE.ROW_HEIGHT;
 
     // Alternating background
     if (i % 2 === 0) {
-      b.page.drawRectangle({
-        x: PAGE.MARGIN_X,
-        y: b.y - 4,
-        width: PAGE.TEXT_WIDTH,
-        height: TABLE.ROW_HEIGHT,
-        color: C.BG_SUBTLE,
-      });
+      b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: rowH, color: C.BG_SUBTLE });
     }
+
+    // Borders + column separators
+    drawColSeparators(b.page, METRE_COLS, rowY, rowH);
 
     // Room name
     const roomLabel = truncateText(room.room_label, 90, b.font, TYPO.TABLE_CELL);
@@ -149,7 +174,10 @@ export async function downloadMetrePdf(
       });
     }
 
-    b.moveDown(TABLE.ROW_HEIGHT);
+    // Hairline at bottom
+    b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: 0.3, color: C.GRAY_200 });
+
+    b.moveDown(rowH);
   }
 
   // ── Totals row ──────────────────────────────────────────────────────────
@@ -157,13 +185,14 @@ export async function downloadMetrePdf(
   b.moveDown(2);
   b.ensureSpace(TABLE.TOTAL_ROW_HEIGHT + 20);
 
-  b.page.drawRectangle({
-    x: PAGE.MARGIN_X,
-    y: b.y - 5,
-    width: PAGE.TEXT_WIDTH,
-    height: TABLE.TOTAL_ROW_HEIGHT,
-    color: C.VIOLET_PALE,
-  });
+  const totRowY = b.y - 5;
+  const totRowH = TABLE.TOTAL_ROW_HEIGHT;
+
+  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: totRowY, width: PAGE.TEXT_WIDTH, height: totRowH, color: C.VIOLET_PALE });
+
+  // Borders + separators
+  drawColSeparators(b.page, METRE_COLS, totRowY, totRowH);
+  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: totRowY, width: PAGE.TEXT_WIDTH, height: 0.75, color: C.GRAY_300 });
 
   // Total label
   const totalLabel = "TOTAL";

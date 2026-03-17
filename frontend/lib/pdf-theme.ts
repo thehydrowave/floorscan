@@ -77,32 +77,34 @@ export const TABLE = {
 // ── Colour palette ───────────────────────────────────────────────────────────
 
 export const C = {
-  // Brand
-  BLUE: rgb(0.055, 0.647, 0.914),
-  BLUE_LIGHT: rgb(0.85, 0.95, 1),
-  BLUE_PALE: rgb(0.93, 0.96, 1),
+  // Brand — professional navy palette
+  BLUE: rgb(0.09, 0.22, 0.44),        // Deep navy (headers, bars, main accents)
+  BLUE_MED: rgb(0.22, 0.51, 0.78),    // Medium blue (column separators on dark bg)
+  BLUE_LIGHT: rgb(0.72, 0.84, 0.96),  // Light blue (text/subtle elements on dark bg)
+  BLUE_PALE: rgb(0.93, 0.96, 1.00),   // Very light blue (TTC box, alternating bg)
 
   // Neutrals
   WHITE: rgb(1, 1, 1),
-  DARK: rgb(0.15, 0.18, 0.25),
+  DARK: rgb(0.12, 0.15, 0.22),
   GRAY_700: rgb(0.39, 0.46, 0.54),
-  GRAY_500: rgb(0.5, 0.55, 0.62),
-  GRAY_400: rgb(0.6, 0.65, 0.72),
-  GRAY_200: rgb(0.82, 0.85, 0.88),
-  GRAY_100: rgb(0.92, 0.93, 0.95),
-  BG_SUBTLE: rgb(0.97, 0.99, 1),
+  GRAY_500: rgb(0.50, 0.55, 0.62),
+  GRAY_400: rgb(0.60, 0.65, 0.72),
+  GRAY_300: rgb(0.75, 0.78, 0.83),    // Medium border / separators
+  GRAY_200: rgb(0.86, 0.88, 0.91),    // Light border / hairlines
+  GRAY_100: rgb(0.94, 0.95, 0.97),    // Very light bg
+  BG_SUBTLE: rgb(0.96, 0.97, 0.99),   // Alternating row background
 
   // Semantic
   GREEN: rgb(0.15, 0.68, 0.38),
-  GREEN_PALE: rgb(0.9, 0.97, 0.92),
-  RED: rgb(0.85, 0.25, 0.25),
-  RED_PALE: rgb(0.98, 0.92, 0.92),
-  AMBER: rgb(0.85, 0.55, 0.05),
-  AMBER_PALE: rgb(1, 0.96, 0.88),
+  GREEN_PALE: rgb(0.90, 0.97, 0.92),
+  RED: rgb(0.82, 0.22, 0.22),
+  RED_PALE: rgb(0.98, 0.91, 0.91),
+  AMBER: rgb(0.82, 0.52, 0.04),
+  AMBER_PALE: rgb(0.99, 0.95, 0.86),
 
   // Accent
   VIOLET: rgb(0.55, 0.33, 0.97),
-  VIOLET_PALE: rgb(0.93, 0.9, 1),
+  VIOLET_PALE: rgb(0.93, 0.90, 1.00),
 } as const;
 
 // ── Column layout shared between dpgf-pdf & devis-pdf ────────────────────────
@@ -501,26 +503,39 @@ export class PdfBuilder {
   }
 
   /**
-   * Draw a "lot" header bar (full-width blue band).
+   * Draw a "lot" header bar — navy band with left accent stripe.
    */
   drawLotHeader(title: string): void {
-    this.ensureSpace(60);
+    this.ensureSpace(65);
 
+    const barH = 26;
+
+    // Navy main bar
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
-      y: this.y - 4,
+      y: this.y - 5,
       width: PAGE.TEXT_WIDTH,
-      height: 22,
+      height: barH,
       color: C.BLUE,
     });
+
+    // Left accent stripe (medium blue, 5pt wide)
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: this.y - 5,
+      width: 5,
+      height: barH,
+      color: C.BLUE_MED,
+    });
+
     this.page.drawText(title, {
-      x: PAGE.MARGIN_X + 10,
+      x: PAGE.MARGIN_X + 14,
       y: this.y + 3,
       size: TYPO.LOT_TITLE,
       font: this.fontBold,
       color: C.WHITE,
     });
-    this.y -= 28;
+    this.y -= barH + 6;
   }
 
   /**
@@ -550,23 +565,51 @@ export class PdfBuilder {
   // ── Table helpers ────────────────────────────────────────────────────────
 
   /**
-   * Draw a table header row with blue background and white text.
+   * Draw a table header row with navy background, white text, and column separators.
    */
   drawTableHeader(cols: ColDef[], lang: Lang): void {
+    const rowY = this.y - 4;
+    const rowH = TABLE.HEADER_ROW_HEIGHT;
+
+    // Top outer border
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
-      y: this.y - 4,
+      y: rowY + rowH,
       width: PAGE.TEXT_WIDTH,
-      height: TABLE.HEADER_ROW_HEIGHT,
+      height: 0.75,
       color: C.BLUE,
     });
 
+    // Header background (full width)
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: rowY,
+      width: PAGE.TEXT_WIDTH,
+      height: rowH,
+      color: C.BLUE,
+    });
+
+    // Vertical column separators (medium blue, subtle on navy)
+    for (let i = 1; i < cols.length; i++) {
+      const prev = cols[i - 1];
+      const curr = cols[i];
+      const sepX = Math.round((prev.x + prev.width + curr.x) / 2);
+      this.page.drawRectangle({
+        x: sepX,
+        y: rowY,
+        width: 0.5,
+        height: rowH,
+        color: C.BLUE_MED,
+      });
+    }
+
+    // Column labels
     for (const col of cols) {
       const label = d(col.label, lang);
       const displayLabel = truncateText(label, col.width - 4, this.fontBold, TYPO.TABLE_HEADER);
       const textX = col.align === "right"
         ? col.x + col.width - this.fontBold.widthOfTextAtSize(displayLabel, TYPO.TABLE_HEADER)
-        : col.x;
+        : col.x + 2;
       this.page.drawText(displayLabel, {
         x: textX,
         y: this.y,
@@ -576,12 +619,12 @@ export class PdfBuilder {
       });
     }
 
-    this.y -= TABLE.HEADER_ROW_HEIGHT + 2;
+    this.y -= rowH + 2;
     this.rowIndex = 0;
   }
 
   /**
-   * Draw a single table data row with optional alternating background.
+   * Draw a single table data row with alternating bg, outer borders, and column separators.
    */
   drawTableRow(
     cols: ColDef[],
@@ -594,14 +637,49 @@ export class PdfBuilder {
   ): void {
     this.ensureSpace(TABLE.ROW_HEIGHT + 10);
 
+    const rowY = this.y - 4;
+    const rowH = TABLE.ROW_HEIGHT;
+
     // Alternating subtle background
     if (!opts?.skipAlternate && this.rowIndex % 2 === 0) {
       this.page.drawRectangle({
         x: PAGE.MARGIN_X,
-        y: this.y - 4,
+        y: rowY,
         width: PAGE.TEXT_WIDTH,
-        height: TABLE.ROW_HEIGHT,
+        height: rowH,
         color: C.BG_SUBTLE,
+      });
+    }
+
+    // Left outer border
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: rowY,
+      width: 0.75,
+      height: rowH,
+      color: C.GRAY_300,
+    });
+
+    // Right outer border
+    this.page.drawRectangle({
+      x: PAGE.W - PAGE.MARGIN_X - 0.75,
+      y: rowY,
+      width: 0.75,
+      height: rowH,
+      color: C.GRAY_300,
+    });
+
+    // Vertical column separators
+    for (let i = 1; i < cols.length; i++) {
+      const prev = cols[i - 1];
+      const curr = cols[i];
+      const sepX = Math.round((prev.x + prev.width + curr.x) / 2);
+      this.page.drawRectangle({
+        x: sepX,
+        y: rowY,
+        width: 0.4,
+        height: rowH,
+        color: C.GRAY_200,
       });
     }
 
@@ -610,10 +688,10 @@ export class PdfBuilder {
 
     for (const col of cols) {
       const val = values[col.key] ?? "";
-      const displayVal = truncateText(val, col.width - 2, f, TYPO.TABLE_CELL);
+      const displayVal = truncateText(val, col.width - 4, f, TYPO.TABLE_CELL);
       const textX = col.align === "right"
         ? col.x + col.width - f.widthOfTextAtSize(displayVal, TYPO.TABLE_CELL)
-        : col.x;
+        : col.x + 2;
       this.page.drawText(displayVal, {
         x: textX,
         y: this.y,
@@ -626,18 +704,18 @@ export class PdfBuilder {
     // Hairline separator at bottom of row
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
-      y: this.y - 4,
+      y: rowY,
       width: PAGE.TEXT_WIDTH,
       height: 0.3,
       color: C.GRAY_200,
     });
 
-    this.y -= TABLE.ROW_HEIGHT;
+    this.y -= rowH;
     this.rowIndex++;
   }
 
   /**
-   * Draw a total/subtotal row with pale background.
+   * Draw a total/subtotal row with pale background, outer borders, and column separators.
    */
   drawTableTotalRow(
     cols: ColDef[],
@@ -650,21 +728,57 @@ export class PdfBuilder {
     const color = opts?.color ?? C.BLUE;
 
     this.y -= 2;
+    const rowY = this.y - 5;
+    const rowH = TABLE.TOTAL_ROW_HEIGHT;
+
+    // Background
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
-      y: this.y - 5,
+      y: rowY,
       width: PAGE.TEXT_WIDTH,
-      height: TABLE.TOTAL_ROW_HEIGHT,
+      height: rowH,
       color: bg,
     });
+
+    // Left outer border
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: rowY,
+      width: 0.75,
+      height: rowH,
+      color: C.GRAY_300,
+    });
+
+    // Right outer border
+    this.page.drawRectangle({
+      x: PAGE.W - PAGE.MARGIN_X - 0.75,
+      y: rowY,
+      width: 0.75,
+      height: rowH,
+      color: C.GRAY_300,
+    });
+
+    // Vertical column separators
+    for (let i = 1; i < cols.length; i++) {
+      const prev = cols[i - 1];
+      const curr = cols[i];
+      const sepX = Math.round((prev.x + prev.width + curr.x) / 2);
+      this.page.drawRectangle({
+        x: sepX,
+        y: rowY,
+        width: 0.4,
+        height: rowH,
+        color: C.GRAY_300,
+      });
+    }
 
     for (const col of cols) {
       const val = values[col.key] ?? "";
       const f = this.fontBold;
-      const displayVal = truncateText(val, col.width - 2, f, TABLE.TOTAL_ROW_HEIGHT > 18 ? TYPO.TABLE_TOTAL : TYPO.TABLE_CELL);
+      const displayVal = truncateText(val, col.width - 4, f, TYPO.TABLE_TOTAL);
       const textX = col.align === "right"
         ? col.x + col.width - f.widthOfTextAtSize(displayVal, TYPO.TABLE_TOTAL)
-        : col.x;
+        : col.x + 2;
       this.page.drawText(displayVal, {
         x: textX,
         y: this.y,
@@ -674,7 +788,16 @@ export class PdfBuilder {
       });
     }
 
-    this.y -= TABLE.TOTAL_ROW_HEIGHT + 8;
+    // Bottom border for total row
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: rowY,
+      width: PAGE.TEXT_WIDTH,
+      height: 0.75,
+      color: C.GRAY_300,
+    });
+
+    this.y -= rowH + 8;
     this.rowIndex = 0;
   }
 
@@ -784,23 +907,37 @@ export class PdfBuilder {
   // ── Grand totals block (DPGF/Devis) ─────────────────────────────────────
 
   /**
-   * Draw the HT / TVA / TTC totals block.
+   * Draw the HT / TVA / TTC totals block with professional bordered box.
    */
   drawGrandTotals(totalHt: number, tvaRate: number, tvaAmount: number, totalTtc: number, lang: Lang): void {
-    this.ensureSpace(90);
+    this.ensureSpace(110);
 
-    // Separator line
+    const labelX = 360;
+    const rightEdge = PAGE.W - PAGE.MARGIN_X; // 547.28
+    const boxX = labelX - 16;
+    const boxW = rightEdge - boxX;
+
+    // Outer box (light gray background, medium border)
     this.page.drawRectangle({
-      x: PAGE.MARGIN_X,
-      y: this.y + 4,
-      width: PAGE.TEXT_WIDTH,
-      height: 1.5,
+      x: boxX,
+      y: this.y - 90,
+      width: boxW,
+      height: 96,
+      color: C.GRAY_100,
+      borderColor: C.GRAY_300,
+      borderWidth: 0.75,
+    });
+
+    // Navy top bar of the totals box
+    this.page.drawRectangle({
+      x: boxX,
+      y: this.y - 90 + 96 - 4,
+      width: boxW,
+      height: 4,
       color: C.BLUE,
     });
-    this.y -= 10;
 
-    const labelX = 390;
-    const rightEdge = PAGE.W - PAGE.MARGIN_X; // 547.28
+    this.y -= 14;
 
     // Total HT
     this.page.drawText(d("dpgf_total_ht", lang), {
@@ -827,7 +964,7 @@ export class PdfBuilder {
       y: this.y,
       size: 10,
       font: this.font,
-      color: C.GRAY_700,
+      color: C.GRAY_500,
     });
     const tvaText = fmtPrice(tvaAmount);
     this.page.drawText(tvaText, {
@@ -835,16 +972,26 @@ export class PdfBuilder {
       y: this.y,
       size: 10,
       font: this.font,
-      color: C.GRAY_700,
+      color: C.GRAY_500,
     });
-    this.y -= 22;
+    this.y -= 8;
 
-    // Total TTC (highlighted)
+    // Separator before TTC
     this.page.drawRectangle({
-      x: labelX - 10,
-      y: this.y - 6,
-      width: PAGE.W - PAGE.MARGIN_X - labelX + 10,
-      height: 28,
+      x: boxX + 8,
+      y: this.y,
+      width: boxW - 16,
+      height: 0.5,
+      color: C.GRAY_300,
+    });
+    this.y -= 14;
+
+    // Total TTC (highlighted row inside the box)
+    this.page.drawRectangle({
+      x: boxX,
+      y: this.y - 8,
+      width: boxW,
+      height: 32,
       color: C.BLUE_PALE,
     });
     this.page.drawText(d("dpgf_total_ttc", lang), {
@@ -862,7 +1009,7 @@ export class PdfBuilder {
       font: this.fontBold,
       color: C.BLUE,
     });
-    this.y -= 38;
+    this.y -= 40;
   }
 
   // ── Finalize ─────────────────────────────────────────────────────────────
