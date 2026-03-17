@@ -74,9 +74,31 @@ export default function MetrePanel({ result }: MetrePanelProps) {
   // ── CSV export ────────────────────────────────────────────────────────────────
   function exportCsv() {
     const BOM = "\uFEFF";
-    const header =
-      "Pièce;Type;Sol (m²);Périm (ml);Murs bruts (m²);Ouvertures (m²);Murs nets (m²);Plafond (m²);Plinthes (ml);Portes;Fenêtres\n";
+    const dateStr = new Date().toLocaleDateString("fr-FR");
     const rows: string[] = [];
+
+    // Metadata header
+    rows.push("# FloorScan -- Metre");
+    rows.push(`# ${d("metre_ceiling_height" as DTKey) || "Hauteur plafond"}: ${ceilingHeight.toFixed(2)} m`);
+    rows.push(`# Date: ${dateStr}`);
+    rows.push("");
+
+    // Column headers (i18n with units)
+    rows.push(
+      [
+        d("metre_room" as DTKey),
+        "Type",
+        `${d("metre_floor" as DTKey)} (m2)`,
+        `${d("metre_perim" as DTKey)} (ml)`,
+        `${d("metre_walls_gross" as DTKey)} (m2)`,
+        `${d("metre_openings" as DTKey)} (m2)`,
+        `${d("metre_walls_net" as DTKey)} (m2)`,
+        `${d("metre_ceiling" as DTKey)} (m2)`,
+        `${d("metre_plinth" as DTKey)} (ml)`,
+        d("metre_doors" as DTKey),
+        d("metre_windows" as DTKey),
+      ].join(";")
+    );
 
     for (const r of metre.rooms) {
       rows.push(
@@ -96,6 +118,9 @@ export default function MetrePanel({ result }: MetrePanelProps) {
       );
     }
 
+    // Blank line before totals
+    rows.push("");
+
     // Totals
     const t = metre.totals;
     rows.push(
@@ -114,12 +139,14 @@ export default function MetrePanel({ result }: MetrePanelProps) {
       ].join(";")
     );
 
-    const blob = new Blob([BOM + header + rows.join("\n")], {
+    const fileName = `floorscan_metre_${dateStr.replace(/\//g, "-")}.csv`;
+
+    const blob = new Blob([BOM + rows.join("\n")], {
       type: "text/csv;charset=utf-8",
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "floorscan_metre.csv";
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
   }

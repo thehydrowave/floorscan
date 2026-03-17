@@ -135,8 +135,27 @@ export default function DpgfPanel({
   // ── CSV export ──────────────────────────────────────────────────────────────
   function exportCsv() {
     const BOM = "\uFEFF";
-    const header = "Lot;D\u00E9signation;Quantit\u00E9;Unit\u00E9;P.U. HT;Total HT\n";
+    const dateStr = new Date().toLocaleDateString("fr-FR");
     const rows: string[] = [];
+
+    // Metadata header
+    rows.push("# FloorScan -- DPGF");
+    if (dpgf.project_name) rows.push(`# ${d("dpgf_project" as DTKey)}: ${dpgf.project_name}`);
+    if (dpgf.project_address) rows.push(`# ${d("dpgf_address" as DTKey)}: ${dpgf.project_address}`);
+    rows.push(`# Date: ${dateStr}`);
+    rows.push("");
+
+    // Column headers (i18n)
+    rows.push(
+      [
+        "Lot",
+        d("dpgf_desc" as DTKey),
+        d("dpgf_qty" as DTKey),
+        d("dpgf_unit" as DTKey),
+        d("dpgf_pu_ht" as DTKey),
+        d("dpgf_total_line" as DTKey),
+      ].join(";")
+    );
 
     for (const lot of dpgf.lots) {
       for (const item of lot.items) {
@@ -154,20 +173,22 @@ export default function DpgfPanel({
       rows.push(
         [
           `LOT ${lot.lot_number}`,
-          "Sous-total",
+          d("dpgf_subtotal" as DTKey),
           "",
           "",
           "",
           lot.subtotal_ht.toFixed(2),
         ].join(";")
       );
+      // Blank line between lots
+      rows.push("");
     }
 
-    rows.push(["", "Total HT", "", "", "", dpgf.total_ht.toFixed(2)].join(";"));
+    rows.push(["", d("dpgf_total_ht" as DTKey), "", "", "", dpgf.total_ht.toFixed(2)].join(";"));
     rows.push(
       [
         "",
-        `TVA ${(tvaRate * 100).toFixed(tvaRate === 0.055 ? 1 : 0)}%`,
+        `${d("dpgf_tva" as DTKey)} ${(tvaRate * 100).toFixed(tvaRate === 0.055 ? 1 : 0)}%`,
         "",
         "",
         "",
@@ -175,15 +196,18 @@ export default function DpgfPanel({
       ].join(";")
     );
     rows.push(
-      ["", "Total TTC", "", "", "", dpgf.total_ttc.toFixed(2)].join(";")
+      ["", d("dpgf_total_ttc" as DTKey), "", "", "", dpgf.total_ttc.toFixed(2)].join(";")
     );
 
-    const blob = new Blob([BOM + header + rows.join("\n")], {
+    const safeName = (dpgf.project_name || "dpgf").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "");
+    const fileName = `floorscan_dpgf_${safeName}_${dateStr.replace(/\//g, "-")}.csv`;
+
+    const blob = new Blob([BOM + rows.join("\n")], {
       type: "text/csv;charset=utf-8",
     });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "dpgf_estimation.csv";
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
   }
