@@ -115,15 +115,6 @@ const STEP_NAMES: Record<number, string> = {
   7: "Éditeur de masques",
 };
 
-// ─── GET /api/chat — check if server has OpenAI key ─────────────────────────
-
-export async function GET() {
-  return new Response(
-    JSON.stringify({ configured: !!process.env.OPENAI_API_KEY }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
-}
-
 // ─── POST /api/chat ─────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -137,7 +128,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { messages, analysisContext, apiKey, mode, currentStep } = body;
+  const { messages, analysisContext, mode, currentStep } = body;
 
   if (!messages?.length) {
     return new Response(JSON.stringify({ error: "No messages provided" }), {
@@ -146,11 +137,10 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Use provided key or env var (OPENAI_API_KEY)
-  const key = apiKey || process.env.OPENAI_API_KEY;
+  const key = process.env.OPENAI_API_KEY;
   if (!key) {
     return new Response(
-      JSON.stringify({ error: "No OpenAI API key configured. Set OPENAI_API_KEY in Vercel env vars or provide one in settings." }),
+      JSON.stringify({ error: "No OpenAI API key configured. Set OPENAI_API_KEY in Vercel env vars." }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
