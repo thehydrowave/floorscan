@@ -81,7 +81,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
 
   // Base plan image — always use overlay_openings_b64 (nice quality, colored rooms)
-  const basePlanB64 = result.overlay_openings_b64 || result.plan_b64;
+  const basePlanB64 = (result.overlay_openings_b64 || result.plan_b64) as string;
   const baseImageB64 = showInterior && result.overlay_interior_b64
     ? result.overlay_interior_b64
     : basePlanB64;
