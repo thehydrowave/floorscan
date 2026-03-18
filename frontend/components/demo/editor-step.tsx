@@ -302,15 +302,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const pts = useRef<[number, number][]>([]);
   const startPt = useRef({ x: 0, y: 0 });
 
-  // useRawPlan: only in BAR-1 manual toggle mode (no element selected) when a toggle is OFF.
-  // When any element layer is selected (door/window/french_door/rooms/interior/…),
-  // always use the high-quality pre-rendered overlay as base image.
-  const useRawPlan = layer === null && (!showDoors || !showWindows) && !!result.plan_b64;
-  const currentOverlay = (useRawPlan || layer === "wall" || layer === "cloison")
-    ? result.plan_b64!
-    : layer === "interior" && result.overlay_interior_b64
-      ? result.overlay_interior_b64
-      : result.overlay_openings_b64;
+  // Use plan_b64 (raw) for element layers where exclusive visibility must be respected:
+  // door/window/french_door have their own CSS masks — overlay_openings_b64 shows ALL openings
+  // so we can't use it when only one type should be visible.
+  const currentOverlay =
+    (layer === "door" || layer === "window" || layer === "french_door" || layer === "wall" || layer === "cloison")
+      ? result.plan_b64!
+      : layer === "interior" && result.overlay_interior_b64
+        ? result.overlay_interior_b64
+        : (layer === null && (!showDoors || !showWindows) && result.plan_b64)
+          ? result.plan_b64
+          : result.overlay_openings_b64 ?? result.plan_b64!;
 
   // Track natural image size for measure tool
   useEffect(() => {
