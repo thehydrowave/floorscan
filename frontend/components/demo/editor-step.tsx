@@ -1569,8 +1569,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
 
-              {/* Individual mask overlays — shown when toggle is ON */}
-              {showDoors && result.mask_doors_b64 && (
+              {/* Individual mask overlays — only in BAR-1 (layer=null), overlay_openings_b64 handles visuals in BAR-2 */}
+              {layer === null && showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00FF",
                   opacity: 0.35,
@@ -1582,7 +1582,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   zIndex: 1,
                 }} />
               )}
-              {showWindows && result.mask_windows_b64 && (
+              {layer === null && showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FFFF00",
                   opacity: 0.35,
