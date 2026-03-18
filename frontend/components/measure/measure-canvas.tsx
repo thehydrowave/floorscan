@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2 } from "lucide-react";
 import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
@@ -38,7 +38,7 @@ interface AngleMeasurement {
   b: { x: number; y: number };
 }
 
-const CLOSE_RADIUS = 12; // px screen-space
+const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -262,6 +262,14 @@ export default function MeasureCanvas({
     return Math.hypot(dx, dy) < CLOSE_RADIUS;
   }, [drawingPoints, toSvg]);
 
+  // Visual indicator: is the cursor hovering the first point close-zone?
+  const isNearFirst = useMemo(() => {
+    if (tool !== "polygon" || drawingPoints.length < 3 || !mouseNorm) return false;
+    const fs = toSvg(drawingPoints[0]);
+    const ms = toSvg(mouseNorm);
+    return Math.hypot(ms.x - fs.x, ms.y - fs.y) < CLOSE_RADIUS;
+  }, [tool, drawingPoints, mouseNorm, toSvg]);
+
   // ── Touch refs — synced after each render ──────────────────────────────────
   useEffect(() => { drawingPointsRef.current = drawingPoints; }, [drawingPoints]);
 
@@ -371,6 +379,7 @@ export default function MeasureCanvas({
       ...(isDeductionRef.current ? { isDeduction: true } : {}),
     };
     onZonesChange([...zones, newZone]);
+    drawingPointsRef.current = [];  // sync reset so dblclick handler sees [] immediately
     setDrawingPoints([]);
   }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
@@ -420,8 +429,14 @@ export default function MeasureCanvas({
     const pt: { x: number; y: number } =
       (tool === "polygon" && e.shiftKey && mouseNorm && drawingPoints.length > 0) ? mouseNorm : raw;
     if (tool === "polygon") {
+      // Skip the 2nd+ click in a double-click sequence (detail≥2) — they're handled by dblclick
+      if (e.detail >= 2) return;
       if (nearFirst(e.clientX, e.clientY)) { addZone(drawingPoints); return; }
-      setDrawingPoints(prev => [...prev, pt]);
+      setDrawingPoints(prev => {
+        const next = [...prev, pt];
+        drawingPointsRef.current = next; // sync ref so dblclick handler reads the latest value
+        return next;
+      });
     } else if (tool === "angle") {
       if (anglePts.length < 2) {
         setAnglePts(prev => [...prev, pt]);
@@ -487,9 +502,13 @@ export default function MeasureCanvas({
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool !== "polygon") return;
     e.preventDefault();
-    const pts = drawingPoints.length >= 3 ? drawingPoints.slice(0, -1) : drawingPoints;
-    addZone(pts);
-  }, [tool, drawingPoints, addZone]);
+    // Use the live ref: it was updated synchronously by the detail=1 click handler
+    // (React state may not have committed yet when dblclick fires in the same task).
+    // The detail=1 click added 1 extra point → remove it with slice(0, -1).
+    const latest = drawingPointsRef.current;
+    if (latest.length < 3) return;
+    addZone(latest.slice(0, -1));
+  }, [tool, addZone]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragVertex) return; // handled by global listener
@@ -564,15 +583,29 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { cancelDrawing(); return; }
+      // Enter → close the in-progress polygon
+      if (e.key === "Enter" && tool === "polygon") {
+        e.preventDefault();
+        const latest = drawingPointsRef.current;
+        if (latest.length >= 3) addZone(latest);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        if (drawingPoints.length > 0) { setDrawingPoints(p => p.slice(0, -1)); return; }
+        if (drawingPoints.length > 0) {
+          setDrawingPoints(p => {
+            const next = p.slice(0, -1);
+            drawingPointsRef.current = next; // keep ref in sync
+            return next;
+          });
+          return;
+        }
         if (anglePts.length > 0) { setAnglePts(p => p.slice(0, -1)); return; }
         onHistoryUndo?.();
         return;
@@ -584,7 +617,7 @@ export default function MeasureCanvas({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo]);
+  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo, tool, addZone]);
 
   const deleteZone = (id: string) => {
     onHistoryPush?.(zonesRef.current);
@@ -643,7 +676,8 @@ export default function MeasureCanvas({
         ? "Cliquez pour tracer · Glissez un ● pour déplacer · Clic droit ● pour supprimer · ＋ pour insérer"
         : "Cliquez pour placer le premier point"
       : drawingPoints.length < 2   ? "Continuez à cliquer · Maj pour contraindre à 45°"
-      : "Double-clic ou cliquez le 1er point pour fermer · Maj = snap 45°"
+      : isNearFirst ? "✓ Cliquez pour fermer le polygone"
+      : "Double-clic · Entrée · ou cliquez le 1er point ● pour fermer · Maj = snap 45°"
     : tool === "wall"
     ? wallStart
       ? `Relâchez pour valider le mur · épaisseur ${wallThicknessCm} ${ppm ? "cm" : "px"}`
@@ -843,11 +877,22 @@ export default function MeasureCanvas({
 
         {/* Zoom controls */}
         <div className="flex gap-1 ml-auto">
-          <button onClick={() => setZoom(z => Math.min(12, z * 1.3))} title="Zoom +"
+          <button onClick={() => setZoom(prevZ => {
+            const newZ = Math.min(12, prevZ * 1.3);
+            const ratio = newZ / prevZ;
+            // Adjust translate so zoom feels centered on the current view, not image origin
+            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
+            return newZ;
+          })} title="Zoom + (molette aussi)"
             className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
             <ZoomIn className="w-4 h-4" />
           </button>
-          <button onClick={() => setZoom(z => Math.max(1, z / 1.3))} title="Zoom -"
+          <button onClick={() => setZoom(prevZ => {
+            const newZ = Math.max(1, prevZ / 1.3);
+            const ratio = newZ / prevZ;
+            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
+            return newZ;
+          })} title="Zoom -"
             className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
             <ZoomOut className="w-4 h-4" />
           </button>
@@ -869,7 +914,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragVertex ? "move" : panCursor ? "grabbing" : "crosshair" }}
+        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragVertex ? "move" : panCursor ? "grabbing" : isNearFirst ? "pointer" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -1281,13 +1326,28 @@ export default function MeasureCanvas({
               {drawingPoints.map((p, i) => {
                 const s = toSvg(p);
                 const isFirst = i === 0;
+                const closeSnap = isFirst && isNearFirst;
                 return (
-                  <circle key={i}
-                    cx={s.x} cy={s.y}
-                    r={isFirst ? 5 : 3}
-                    fill={isFirst ? activeColor : "white"}
-                    stroke={activeColor} strokeWidth={1.5}
-                  />
+                  <g key={i}>
+                    {/* Pulsing close-zone ring on first point when cursor is near */}
+                    {closeSnap && (
+                      <circle
+                        cx={s.x} cy={s.y}
+                        r={CLOSE_RADIUS}
+                        fill={`${activeColor}18`}
+                        stroke={activeColor}
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                      />
+                    )}
+                    <circle
+                      cx={s.x} cy={s.y}
+                      r={isFirst ? (closeSnap ? 8 : 6) : 3}
+                      fill={isFirst ? activeColor : "white"}
+                      stroke={isFirst ? "white" : activeColor}
+                      strokeWidth={1.5}
+                    />
+                  </g>
                 );
               })}
             </>
