@@ -1012,6 +1012,72 @@ export class PdfBuilder {
     this.y -= 40;
   }
 
+  // ── Conditions block (Devis) ─────────────────────────────────────────────
+
+  /**
+   * Draw a list of label/value condition rows (payment terms, validity, etc.).
+   */
+  drawConditionsBlock(rows: [string, string][]): void {
+    const labelW = 155;
+    for (const [label, value] of rows) {
+      this.page.drawText(safeTxt(`${label} :`), {
+        x: PAGE.MARGIN_X,
+        y: this.y,
+        size: TYPO.BODY,
+        font: this.fontBold,
+        color: C.DARK,
+      });
+      this.page.drawText(safeTxt(value), {
+        x: PAGE.MARGIN_X + labelW,
+        y: this.y,
+        size: TYPO.BODY,
+        font: this.font,
+        color: C.DARK,
+      });
+      this.y -= 14;
+    }
+  }
+
+  // ── Signature pair (Devis) ───────────────────────────────────────────────
+
+  /**
+   * Draw two side-by-side signature boxes (client left, company right).
+   */
+  drawSignaturePair(leftLabel: string, rightLabel: string, rightSubLabel?: string): void {
+    const sigW = (PAGE.TEXT_WIDTH - 30) / 2;
+    const entries: [number, string, string | undefined][] = [
+      [PAGE.MARGIN_X, leftLabel, undefined],
+      [PAGE.MARGIN_X + sigW + 30, rightLabel, rightSubLabel],
+    ];
+
+    for (const [x, label, sub] of entries) {
+      this.page.drawRectangle({
+        x,
+        y: this.y - 80,
+        width: sigW,
+        height: 90,
+        color: C.WHITE,
+        borderColor: C.GRAY_200,
+        borderWidth: TABLE.BORDER_WIDTH,
+      });
+      this.page.drawText(safeTxt(label), {
+        x: x + 10, y: this.y - 2, size: TYPO.BODY, font: this.fontBold, color: C.DARK,
+      });
+      if (sub) {
+        this.page.drawText(safeTxt(sub), {
+          x: x + 10, y: this.y - 16, size: TYPO.TABLE_CELL, font: this.font, color: C.GRAY_700,
+        });
+      }
+      this.page.drawText("Date:", {
+        x: x + 10, y: this.y - 40, size: TYPO.TABLE_CELL, font: this.font, color: C.GRAY_700,
+      });
+      this.page.drawText("Signature:", {
+        x: x + 10, y: this.y - 55, size: TYPO.TABLE_CELL, font: this.font, color: C.GRAY_700,
+      });
+    }
+    this.y -= 90;
+  }
+
   // ── Finalize ─────────────────────────────────────────────────────────────
 
   /**
