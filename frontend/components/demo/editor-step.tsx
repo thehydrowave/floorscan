@@ -1582,18 +1582,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   zIndex: 1,
                 }} />
               )}
-              {layer === null && showWindows && result.mask_windows_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#FFFF00",
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  WebkitMaskSize: "100% 100%",
-                  maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
-                  zIndex: 1,
-                }} />
-              )}
+              {/* Windows: no CSS mask — overlay_openings_b64 already shows them in cyan */}
 
               {/* French Doors RGBA overlay (orange) */}
               {showFrenchDoors && result.mask_french_doors_b64 && (
