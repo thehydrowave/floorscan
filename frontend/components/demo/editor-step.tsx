@@ -1572,8 +1572,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
 
-              {/* Individual mask overlays when using raw plan (independent door/window toggles) */}
-              {useRawPlan && showDoors && result.mask_doors_b64 && (
+              {/* Individual mask overlays — always shown when toggle is ON, regardless of base image */}
+              {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00FF",
                   opacity: 0.35,
@@ -1585,7 +1585,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   zIndex: 1,
                 }} />
               )}
-              {useRawPlan && showWindows && result.mask_windows_b64 && (
+              {showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FFFF00",
                   opacity: 0.35,
