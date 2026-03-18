@@ -314,20 +314,10 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p>{error}</p>
-                  {(error.includes("serveur") || error.includes("server") || error.includes("backend")) && (
-                    <p className="text-xs text-red-400/70 mt-1">
-                      {d("up_backend_error")}
-                    </p>
-                  )}
                 </div>
               </div>
             )}
 
-            {!loading && (
-              <p className="text-center text-xs text-slate-600 mt-6">
-                {d("up_backend_hint")}
-              </p>
-            )}
           </motion.div>
         )}
       </AnimatePresence>

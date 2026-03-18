@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { KeyRound, Link2, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOff, Info } from "lucide-react";
+import { KeyRound, Link2, ArrowRight, CheckCircle2, XCircle, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoboflowConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ type Status = "idle" | "testing" | "ok" | "error";
 export default function ConnectStep({ onConnected }: ConnectStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
-  const [apiKey, setApiKey] = useState("Kh56un5foPflRVreiNOM");
-  const [modelId, setModelId] = useState("cubicasa5k-2-qpmsa-1gd2e/1");
+  const [apiKey, setApiKey] = useState("");
+  const [modelId, setModelId] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [msg, setMsg] = useState("");
@@ -138,12 +138,6 @@ export default function ConnectStep({ onConnected }: ConnectStepProps) {
             <p className="font-medium">{status === "testing" ? d("co_testing_connection") : msg}</p>
           </motion.div>
         )}
-
-        {/* Info backend */}
-        <div className="flex items-start gap-2 text-xs text-slate-600 bg-white/[0.02] rounded-xl p-3 border border-white/5">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-500" />
-          <span>{d("co_backend")}</span>
-        </div>
 
         <div className="flex gap-3 pt-1">
           <Button variant="outline" className="flex-1" onClick={handleTest} disabled={!canTest || status === "testing"}>

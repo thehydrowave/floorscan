@@ -1826,7 +1826,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       const bboxW = selRoom.bbox_norm.w * imgDisplaySize.w;
                       const bboxH = selRoom.bbox_norm.h * imgDisplaySize.h;
                       const minDim = Math.min(bboxW, bboxH);
-                      const fs = Math.max(7, Math.min(12, minDim * 0.14));
+                      const fs = Math.max(2, Math.min(4, minDim * 0.047));
                       const rcx = selRoom.centroid_norm.x * imgDisplaySize.w;
                       const rcy = selRoom.centroid_norm.y * imgDisplaySize.h;
 

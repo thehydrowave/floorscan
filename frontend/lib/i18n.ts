@@ -258,11 +258,11 @@ export const DEMO_T = {
   co_key:         { fr:"Clé API",                        en:"API Key",                      es:"Clave API",                     de:"API-Schlüssel",                 it:"Chiave API"                      },
   co_key_hint:    { fr:"Clé fournie par votre accès FloorScan.", en:"Key provided by your FloorScan access.", es:"Clave proporcionada por FloorScan.", de:"Schlüssel aus Ihrem FloorScan-Zugang.", it:"Chiave fornita dal vostro accesso FloorScan." },
   co_model:       { fr:"Model ID",                       en:"Model ID",                     es:"ID del modelo",                 de:"Modell-ID",                     it:"ID modello"                      },
-  co_test:        { fr:"Tester le backend",              en:"Test backend",                 es:"Probar backend",                de:"Backend testen",                it:"Testa il backend"                },
+  co_test:        { fr:"Tester la connexion",             en:"Test connection",               es:"Probar conexión",               de:"Verbindung testen",             it:"Testa connessione"               },
   co_testing:     { fr:"Test en cours…",                 en:"Testing…",                     es:"Probando…",                     de:"Teste…",                        it:"Test in corso…"                  },
-  co_ok:          { fr:"Backend connecté ! Prêt pour l'analyse.", en:"Backend connected! Ready to analyze.", es:"¡Backend conectado! Listo para analizar.", de:"Backend verbunden! Bereit zur Analyse.", it:"Backend connesso! Pronto per l'analisi." },
-  co_err:         { fr:"Backend inaccessible. Vérifiez que START.bat tourne.", en:"Backend unreachable. Check that START.bat is running.", es:"Backend inaccesible. Verifique que START.bat esté corriendo.", de:"Backend nicht erreichbar. Prüfen Sie START.bat.", it:"Backend non raggiungibile. Verificare START.bat." },
-  co_backend:     { fr:"Le backend Python doit tourner sur http://localhost:8000 (START.bat).", en:"The Python backend must run on http://localhost:8000 (START.bat).", es:"El backend Python debe correr en http://localhost:8000 (START.bat).", de:"Das Python-Backend muss auf http://localhost:8000 laufen (START.bat).", it:"Il backend Python deve girare su http://localhost:8000 (START.bat)." },
+  co_ok:          { fr:"Connexion réussie ! Prêt pour l'analyse.", en:"Connection successful! Ready to analyze.", es:"¡Conexión exitosa! Listo para analizar.", de:"Verbindung hergestellt! Bereit zur Analyse.", it:"Connessione riuscita! Pronto per l'analisi." },
+  co_err:         { fr:"Service inaccessible. Veuillez réessayer.", en:"Service unreachable. Please try again.", es:"Servicio inaccesible. Por favor, inténtelo de nuevo.", de:"Dienst nicht erreichbar. Bitte erneut versuchen.", it:"Servizio non raggiungibile. Riprovare." },
+  co_backend:     { fr:"Connexion sécurisée au service d'analyse.", en:"Secure connection to analysis service.", es:"Conexión segura al servicio de análisis.", de:"Sichere Verbindung zum Analysedienst.", it:"Connessione sicura al servizio di analisi." },
 
   // ── Measure flow ─────────────────────────────────────────────────────────
   me_title:       { fr:"Outil de métré",                 en:"Measurement Tool",             es:"Herramienta de medición",       de:"Messtool",                      it:"Strumento di rilievo"            },
@@ -435,10 +435,10 @@ export const DEMO_T = {
   rt_laundry:     { fr:"Buanderie",                  en:"Laundry",            es:"Lavandería",              de:"Waschküche",              it:"Lavanderia"          },
 
   // ── Upload step — additional ──────────────────────────────────────────────
-  up_sending:     { fr:"Envoi au backend...",         en:"Sending to backend...", es:"Enviando al backend...", de:"An Backend senden...",  it:"Invio al backend..."  },
-  up_sending_hint:{ fr:"Rendu ×3 en cours, patientez", en:"Rendering ×3, please wait", es:"Procesando ×3, espere", de:"Rendering ×3, bitte warten", it:"Rendering ×3, attendere" },
+  up_sending:     { fr:"Analyse en cours…",            en:"Processing…",          es:"Procesando…",           de:"Verarbeitung…",          it:"Elaborazione…"        },
+  up_sending_hint:{ fr:"Chargement en cours, veuillez patienter", en:"Loading, please wait", es:"Cargando, espere", de:"Laden, bitte warten", it:"Caricamento, attendere" },
   up_success:     { fr:"Chargé avec succès",          en:"Loaded successfully", es:"Cargado con éxito",      de:"Erfolgreich geladen",     it:"Caricato con successo" },
-  up_backend_hint:{ fr:"Le backend Python doit être actif sur localhost:8000", en:"The Python backend must be running on localhost:8000", es:"El backend Python debe estar activo en localhost:8000", de:"Python-Backend muss auf localhost:8000 laufen.", it:"Il backend Python deve essere attivo su localhost:8000." },
+  up_backend_hint:{ fr:"",                            en:"",                     es:"",                      de:"",                        it:""                     },
   up_pdf_loaded:  { fr:"PDF chargé",                 en:"PDF loaded",         es:"PDF cargado",             de:"PDF geladen",             it:"PDF caricato"         },
   up_err_upload:  { fr:"Erreur upload",              en:"Upload error",       es:"Error de carga",          de:"Upload-Fehler",           it:"Errore upload"        },
   up_img_loaded:  { fr:"Image chargée",              en:"Image loaded",       es:"Imagen cargada",          de:"Bild geladen",            it:"Immagine caricata"    },
@@ -1296,7 +1296,7 @@ export const DEMO_T = {
   up_file_too_large:       { fr:"Fichier trop volumineux",                en:"File too large",                    es:"Archivo demasiado grande",            de:"Datei zu groß",                       it:"File troppo grande"                   },
   up_file_empty:           { fr:"Le fichier est vide.",                   en:"The file is empty.",                es:"El archivo está vacío.",              de:"Die Datei ist leer.",                 it:"Il file è vuoto."                     },
   up_file_read_error:      { fr:"Impossible de lire le fichier",          en:"Could not read file",               es:"No se pudo leer el archivo",          de:"Datei konnte nicht gelesen werden",   it:"Impossibile leggere il file"          },
-  up_backend_error:        { fr:"Erreur backend — réessayez dans quelques secondes.", en:"Backend error — try again in a few seconds.", es:"Error del servidor — intente de nuevo en unos segundos.", de:"Backend-Fehler — versuchen Sie es in einigen Sekunden erneut.", it:"Errore backend — riprovare tra qualche secondo." },
+  up_backend_error:        { fr:"Veuillez réessayer dans quelques secondes.", en:"Please try again in a few seconds.", es:"Por favor, inténtelo de nuevo en unos segundos.", de:"Bitte versuchen Sie es in einigen Sekunden erneut.", it:"Riprovare tra qualche secondo." },
   up_cancel:               { fr:"Annuler",                                en:"Cancel",                            es:"Cancelar",                            de:"Abbrechen",                           it:"Annulla"                              },
   up_loading:              { fr:"Chargement…",                            en:"Loading…",                          es:"Cargando…",                           de:"Laden…",                              it:"Caricamento…"                         },
   up_analyze_page:         { fr:"Analyser la page",                       en:"Analyze page",                      es:"Analizar página",                     de:"Seite analysieren",                   it:"Analizza pagina"                      },
@@ -1304,7 +1304,7 @@ export const DEMO_T = {
 
   // ── Connect extras ──────────────────────────────────────────────────────
   co_invalid_model_id:     { fr:"Format de Model ID invalide. Attendu : workspace/model/version", en:"Invalid Model ID format. Expected: workspace/model/version", es:"Formato de Model ID inválido. Esperado: workspace/model/version", de:"Ungültiges Model-ID-Format. Erwartet: workspace/model/version", it:"Formato Model ID non valido. Atteso: workspace/model/version" },
-  co_testing_connection:   { fr:"Test de la connexion Roboflow…",         en:"Testing Roboflow connection…",      es:"Probando conexión Roboflow…",         de:"Roboflow-Verbindung testen…",         it:"Test connessione Roboflow…"           },
+  co_testing_connection:   { fr:"Test de la connexion en cours…",          en:"Testing connection…",               es:"Probando la conexión…",               de:"Verbindung wird getestet…",           it:"Test connessione in corso…"           },
 
   // ── Chat extras ─────────────────────────────────────────────────────────
   chat_welcome_help:       { fr:"Bonjour ! Je suis votre assistant FloorScan.", en:"Hello! I'm your FloorScan assistant.", es:"¡Hola! Soy su asistente FloorScan.", de:"Hallo! Ich bin Ihr FloorScan-Assistent.", it:"Ciao! Sono il vostro assistente FloorScan." },
