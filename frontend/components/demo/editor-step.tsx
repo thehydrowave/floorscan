@@ -1659,14 +1659,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     (vertexEditActive ? room.id !== selectedRoomId : true)
                     && (selectedRoomId === null || room.id === selectedRoomId)
                   ).map(room => {
-                    const rcx = room.centroid_norm.x * imgDisplaySize.w;
-                    const rcy = room.centroid_norm.y * imgDisplaySize.h;
                     const rcolor = getRoomColor(room.type);
                     const isSelected = selectedRoomId === room.id;
-                    const bboxW = room.bbox_norm.w * imgDisplaySize.w;
-                    const bboxH = room.bbox_norm.h * imgDisplaySize.h;
-                    const minDim = Math.min(bboxW, bboxH);
-                    const fs = Math.max(7, Math.min(12, minDim * 0.14));
 
                     // Polygon SVG points
                     const polyPoints = room.polygon_norm
@@ -1675,45 +1669,33 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           .join(" ")
                       : null;
 
-                    // Perimeter
-                    const perimM = room.perimeter_m != null ? room.perimeter_m
-                      : (room.polygon_norm && ppm && imageNatural.w > 0
-                        ? polygonPerimeterM(room.polygon_norm, imageNatural.w, imageNatural.h, ppm)
-                        : null);
-
-                    // Label 2-line : room name (large) + measurements (small)
-                    const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m²` : "";
-                    const perimStr = perimM != null ? `P ${perimM.toFixed(1)} m` : "";
-                    const measLine = areaStr && perimStr ? `${areaStr} · ${perimStr}` : areaStr;
-                    const nameFontSize = isSelected ? fs + 2 : fs + 1;
-                    const measFontSize = Math.max(6, fs - 2);
-                    const hasMeas = measLine.length > 0;
-                    const nameWidth = Math.max(50, room.label_fr.length * (nameFontSize * 0.62));
-                    const measWidth = hasMeas ? Math.max(40, measLine.length * (measFontSize * 0.6)) : 0;
-                    const pw = Math.max(nameWidth, measWidth) + 12;
-                    const ph = hasMeas ? nameFontSize + measFontSize + 8 : nameFontSize + 6;
-
                     return (
-                      <g key={room.id} opacity={isSelected ? 1 : 0.85}>
-                        {/* Polygone rempli semi-transparent */}
+                      <g key={room.id}>
+                        {/* Invisible polygon for click detection */}
                         {polyPoints && (
                           <polygon
                             points={polyPoints}
-                            fill={rcolor + "30"}
-                            stroke={rcolor}
-                            strokeWidth={isSelected ? 2.5 : 1.2}
-                            strokeLinejoin="round"
+                            fill="transparent"
+                            stroke="none"
+                            style={{ pointerEvents: "all", cursor: "pointer" }}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedRoomId(id => id === room.id ? null : room.id);
+                              setEditingRoomId(room.id);
+                              setActiveRoomType(room.type);
+                            }}
                           />
                         )}
-                        {/* Surbrillance sélection */}
+                        {/* Selection border (no fill, no label) */}
                         {isSelected && polyPoints && (
                           <polygon
                             points={polyPoints}
-                            fill={rcolor + "18"}
+                            fill={rcolor + "22"}
                             stroke={rcolor}
                             strokeWidth={3}
                             strokeDasharray="6 3"
                             strokeLinejoin="round"
+                            style={{ pointerEvents: "none" }}
                           />
                         )}
                         {/* Edge dimension annotations (selected room only) */}
@@ -1722,12 +1704,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           const x1 = p.x * imgDisplaySize.w, y1 = p.y * imgDisplaySize.h;
                           const x2 = next.x * imgDisplaySize.w, y2 = next.y * imgDisplaySize.h;
                           const edgeLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-                          if (edgeLen < 30) return null; // too short
+                          if (edgeLen < 30) return null;
                           const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
                           const lenM = edgeLengthM(p, next, imageNatural.w, imageNatural.h, ppm);
                           const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
                           const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
-                          // Offset perpendicular to edge
                           const nx = -(y2 - y1) / edgeLen * 8;
                           const ny = (x2 - x1) / edgeLen * 8;
                           const tx = mx + nx, ty = my + ny;
@@ -1753,38 +1734,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             </g>
                           );
                         })}
-                        {/* Label fond 2 lignes */}
-                        <rect
-                          x={rcx - pw / 2} y={rcy - ph / 2}
-                          width={pw} height={ph} rx={4}
-                          fill={isSelected ? "rgba(10,16,32,0.92)" : "rgba(10,16,32,0.80)"}
-                          stroke={rcolor}
-                          strokeWidth={isSelected ? 1.5 : 0.8}
-                        />
-                        {/* Room name — large, bold, colored */}
-                        <text
-                          x={rcx} y={hasMeas ? rcy - ph / 2 + nameFontSize + 2 : rcy + nameFontSize * 0.35}
-                          textAnchor="middle"
-                          fill={rcolor}
-                          fontSize={nameFontSize}
-                          fontWeight="700"
-                          fontFamily="system-ui,sans-serif"
-                        >
-                          {room.label_fr}
-                        </text>
-                        {/* Measurements — small, dimmer */}
-                        {hasMeas && (
-                          <text
-                            x={rcx} y={rcy - ph / 2 + nameFontSize + measFontSize + 5}
-                            textAnchor="middle"
-                            fill="#94a3b8"
-                            fontSize={measFontSize}
-                            fontWeight="500"
-                            fontFamily="monospace"
-                          >
-                            {measLine}
-                          </text>
-                        )}
                       </g>
                     );
                   })}

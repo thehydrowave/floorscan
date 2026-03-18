@@ -1031,6 +1031,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onVsMatchesChange={setVsMatches}
                   customDetections={customDetections}
                   onSaveDetection={saveDetection}
+                  onPpmChange={setPpm}
                 />
               </div>
               <div className="lg:w-64 shrink-0">

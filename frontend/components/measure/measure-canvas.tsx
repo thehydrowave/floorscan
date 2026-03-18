@@ -27,9 +27,10 @@ interface MeasureCanvasProps {
   onVsMatchesChange?: (matches: VisualSearchMatch[]) => void;
   customDetections?: CustomDetection[];
   onSaveDetection?: (label: string, matches: VisualSearchMatch[]) => void;
+  onPpmChange?: (ppm: number) => void;
 }
 
-type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search";
+type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale";
 
 interface AngleMeasurement {
   id: string;
@@ -79,6 +80,7 @@ export default function MeasureCanvas({
   zones, activeTypeId, surfaceTypes, ppm, onZonesChange,
   onHistoryPush, onHistoryUndo, onHistoryRedo, canUndo = false, canRedo = false,
   sessionId, onEnsureSession, vsMatches = [], onVsMatchesChange, customDetections = [], onSaveDetection,
+  onPpmChange,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
@@ -96,6 +98,11 @@ export default function MeasureCanvas({
   // Wall tool state
   const [wallStart, setWallStart]       = useState<{ x: number; y: number } | null>(null);
   const [wallThicknessCm, setWallThicknessCm] = useState(15);
+
+  // Scale calibration tool state
+  const [scalePts, setScalePts] = useState<{ x: number; y: number }[]>([]);
+  const [scaleInputOpen, setScaleInputOpen] = useState(false);
+  const [scaleRealDist, setScaleRealDist] = useState("1");
 
   // Zoom / pan state
   const [zoom, setZoom]         = useState(1);
@@ -496,8 +503,13 @@ export default function MeasureCanvas({
           onVsMatchesChange(vsMatches.filter((_, i) => i !== bestIdx));
         }
       }
+    } else if (tool === "scale") {
+      if (scaleInputOpen) return; // already waiting for input
+      const next = [...scalePts, pt];
+      setScalePts(next);
+      if (next.length === 2) setScaleInputOpen(true);
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool !== "polygon") return;
@@ -583,7 +595,7 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
@@ -623,6 +635,20 @@ export default function MeasureCanvas({
     onHistoryPush?.(zonesRef.current);
     onZonesChange(zones.filter(z => z.id !== id));
   };
+
+  const confirmScale = useCallback(() => {
+    if (scalePts.length < 2) return;
+    const realM = parseFloat(scaleRealDist);
+    if (!realM || realM <= 0) return;
+    const dx = (scalePts[1].x - scalePts[0].x) * naturalSize.w;
+    const dy = (scalePts[1].y - scalePts[0].y) * naturalSize.h;
+    const pixelLen = Math.sqrt(dx * dx + dy * dy);
+    if (pixelLen < 1) return;
+    onPpmChange?.(pixelLen / realM);
+    setScalePts([]);
+    setScaleInputOpen(false);
+    setTool("polygon");
+  }, [scalePts, scaleRealDist, naturalSize, onPpmChange]);
   const undoLast = () => {
     if (drawingPoints.length > 0) { setDrawingPoints(p => p.slice(0, -1)); return; }
     onHistoryUndo?.();
@@ -662,7 +688,7 @@ export default function MeasureCanvas({
         })()
       : null;
 
-  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null;
+  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0;
   const activeColor = getColor(activeTypeId);
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
@@ -691,6 +717,10 @@ export default function MeasureCanvas({
     : vsEditMode === "search" ? "Dessinez un rectangle autour du motif à rechercher"
     : vsEditMode === "add" ? "Cliquez pour ajouter un résultat manuellement"
     : "Cliquez sur un résultat pour le supprimer"
+    : tool === "scale"
+    ? scalePts.length === 0 ? "Cliquez un 1er point du segment de référence"
+    : scalePts.length === 1 ? "Cliquez le 2e point du segment, puis entrez la longueur réelle"
+    : "Entrez la longueur réelle ci-dessous et confirmez"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -736,6 +766,21 @@ export default function MeasureCanvas({
           >
             <Ruler className="w-3.5 h-3.5" /> Mur
           </button>
+          {onPpmChange && (
+            <button
+              onClick={() => { setTool("scale"); setScalePts([]); setScaleInputOpen(false); cancelDrawing(); }}
+              title={ppm ? `Recalibrer l'échelle (actuelle : ${ppm.toFixed(1)} px/m)` : "Calibrer l'échelle pour afficher les m²"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                tool === "scale"
+                  ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300"
+                  : !ppm
+                  ? "text-yellow-400 hover:text-yellow-300"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Ruler className="w-3.5 h-3.5" /> Échelle
+            </button>
+          )}
           <button
             onClick={() => { setTool("split"); cancelDrawing(); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -1304,6 +1349,24 @@ export default function MeasureCanvas({
             </>
           )}
 
+          {/* Scale calibration line preview */}
+          {tool === "scale" && (
+            <>
+              {scalePts.length >= 1 && (mouseNorm || scalePts.length === 2) && (
+                <line
+                  x1={toSvg(scalePts[0]).x} y1={toSvg(scalePts[0]).y}
+                  x2={scalePts.length === 2 ? toSvg(scalePts[1]).x : toSvg(mouseNorm!).x}
+                  y2={scalePts.length === 2 ? toSvg(scalePts[1]).y : toSvg(mouseNorm!).y}
+                  stroke="#FCD34D" strokeWidth={2} strokeDasharray="8 4"
+                />
+              )}
+              {scalePts.map((p, i) => {
+                const s = toSvg(p);
+                return <circle key={i} cx={s.x} cy={s.y} r={5} fill="#FCD34D" stroke="white" strokeWidth={1.5} />;
+              })}
+            </>
+          )}
+
           {/* Polygon in progress */}
           {drawingPoints.length > 0 && (
             <>
@@ -1361,6 +1424,45 @@ export default function MeasureCanvas({
             </text>
           )}
         </svg>
+
+        {/* Scale calibration input dialog */}
+        {tool === "scale" && scaleInputOpen && scalePts.length === 2 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 glass border border-yellow-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 min-w-64 pointer-events-auto">
+            <p className="text-sm text-yellow-300 font-semibold">Calibrage de l'échelle</p>
+            <p className="text-xs text-slate-400">Longueur réelle du segment tracé :</p>
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                type="number"
+                min={0.01}
+                step={0.01}
+                value={scaleRealDist}
+                onChange={e => setScaleRealDist(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") confirmScale();
+                  if (e.key === "Escape") { setScalePts([]); setScaleInputOpen(false); setTool("polygon"); }
+                }}
+                onClick={e => e.stopPropagation()}
+                className="flex-1 bg-transparent border-b border-yellow-500/50 text-yellow-200 text-sm font-mono text-center focus:outline-none focus:border-yellow-400"
+              />
+              <span className="text-xs text-slate-400 shrink-0">m</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={e => { e.stopPropagation(); confirmScale(); }}
+                className="flex-1 py-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 text-xs rounded-lg hover:bg-yellow-500/30 transition-colors"
+              >
+                Confirmer
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); setScalePts([]); setScaleInputOpen(false); setTool("polygon"); }}
+                className="px-3 py-1.5 glass border border-white/10 text-slate-400 text-xs rounded-lg hover:text-white transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Controls hint */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
