@@ -18,8 +18,8 @@ type Status = "idle" | "testing" | "ok" | "error";
 export default function ConnectStep({ onConnected }: ConnectStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
-  const [apiKey, setApiKey] = useState("");
-  const [modelId, setModelId] = useState("");
+  const [apiKey, setApiKey] = useState("Kh56un5foPflRVreiNOM");
+  const [modelId, setModelId] = useState("cubicasa5k-2-qpmsa-1gd2e/1");
   const [showKey, setShowKey] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [msg, setMsg] = useState("");

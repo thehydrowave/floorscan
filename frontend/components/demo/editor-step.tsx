@@ -305,7 +305,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // When either door/window toggle is OFF, use raw plan + individual mask overlays
   // When both are ON, use the pre-rendered annotated overlay (includes emprise, doors, windows)
   // Exception: interior layer must always use overlay_interior_b64 (ignore door/window toggles)
-  const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64 && layer !== "interior";
+  const useRawPlan = (!showDoors || !showWindows) && !!result.plan_b64 && layer !== "interior" && layer !== "rooms";
   const currentOverlay = (useRawPlan || layer === "wall" || layer === "cloison")
     ? result.plan_b64!
     : layer === "interior" && result.overlay_interior_b64
@@ -1671,6 +1671,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
                     return (
                       <g key={room.id}>
+                        {/* Colored fill for all rooms (visible overlay) */}
+                        {polyPoints && !isSelected && (
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "28"}
+                            stroke={rcolor}
+                            strokeWidth={1.5}
+                            strokeLinejoin="round"
+                            opacity={0.85}
+                            style={{ pointerEvents: "none" }}
+                          />
+                        )}
                         {/* Invisible polygon for click detection */}
                         {polyPoints && (
                           <polygon
