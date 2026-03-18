@@ -80,8 +80,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportOpen, setExportOpen] = useState(false);
   const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
 
-  // Base plan image — always use overlay_openings_b64 (nice quality, colored rooms)
-  const basePlanB64 = (result.overlay_openings_b64 || result.plan_b64) as string;
+  // Use overlay_openings_b64 only when at least one opening type is visible (has baked-in openings).
+  // When nothing is toggled, fall back to plan_b64 so no openings appear by default.
+  const useOpeningsOverlay = showDoors || showWindows || showFrenchDoors;
+  const basePlanB64 = (useOpeningsOverlay
+    ? (result.overlay_openings_b64 || result.plan_b64)
+    : (result.plan_b64 || result.overlay_openings_b64)) as string;
   const baseImageB64 = showInterior && result.overlay_interior_b64
     ? result.overlay_interior_b64
     : basePlanB64;
