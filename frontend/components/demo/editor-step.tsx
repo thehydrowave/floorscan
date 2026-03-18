@@ -302,17 +302,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const pts = useRef<[number, number][]>([]);
   const startPt = useRef({ x: 0, y: 0 });
 
-  // Use plan_b64 (raw) for element layers where exclusive visibility must be respected:
-  // door/window/french_door have their own CSS masks — overlay_openings_b64 shows ALL openings
-  // so we can't use it when only one type should be visible.
+  // overlay_openings_b64 is always the base (nice quality, colored rooms).
+  // Non-selected elements are erased via "cover" layers below (plan_b64 through element mask).
   const currentOverlay =
-    (layer === "door" || layer === "window" || layer === "french_door" || layer === "wall" || layer === "cloison")
+    (layer === "wall" || layer === "cloison")
       ? result.plan_b64!
       : layer === "interior" && result.overlay_interior_b64
         ? result.overlay_interior_b64
-        : (layer === null && (!showDoors || !showWindows) && result.plan_b64)
-          ? result.plan_b64
-          : result.overlay_openings_b64 ?? result.plan_b64!;
+        : result.overlay_openings_b64 ?? result.plan_b64!;
+
+  // Cover layers active when overlay_openings_b64 is the base (not wall/interior layers)
+  const usingOpeningsOverlay = currentOverlay === result.overlay_openings_b64;
 
   // Track natural image size for measure tool
   useEffect(() => {
@@ -1574,7 +1574,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
 
-              {/* Individual mask overlays — always shown when toggle is ON, regardless of base image */}
+              {/* Erase non-selected elements from overlay_openings_b64 using plan_b64 as "eraser".
+                  When windows are hidden: paint plan_b64 pixels over the cyan AI windows.
+                  When doors are hidden: paint plan_b64 pixels over the colored AI doors. */}
+              {usingOpeningsOverlay && !showWindows && result.plan_b64 && result.mask_windows_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundImage: `url(data:image/png;base64,${result.plan_b64})`,
+                  backgroundSize: "100% 100%",
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
+                  zIndex: 0,
+                }} />
+              )}
+              {usingOpeningsOverlay && !showDoors && result.plan_b64 && result.mask_doors_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundImage: `url(data:image/png;base64,${result.plan_b64})`,
+                  backgroundSize: "100% 100%",
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
+                  zIndex: 0,
+                }} />
+              )}
+
+              {/* Individual mask overlays — shown when toggle is ON */}
               {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00FF",
