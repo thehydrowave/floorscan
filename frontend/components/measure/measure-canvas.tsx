@@ -1068,7 +1068,7 @@ export default function MeasureCanvas({
                         onZonesChange(zones.map(z => z.id !== zone.id ? z : { ...z, points: newPts }));
                       }}
                     >
-                      <circle r={9} fill="white" stroke={color} strokeWidth={1.5} opacity={0.85} />
+                      <circle r={9} className="svg-handle" fill="white" stroke={color} strokeWidth={1.5} opacity={0.85} />
                       <text textAnchor="middle" dominantBaseline="middle" fontSize={13} fontWeight="700"
                         fill={color} style={{ userSelect: "none", pointerEvents: "none" }}>+</text>
                     </g>
@@ -1298,7 +1298,7 @@ export default function MeasureCanvas({
               {mouseNorm && (
                 <circle
                   cx={toSvg(mouseNorm).x} cy={toSvg(mouseNorm).y}
-                  r={4} fill="white" stroke="#EF4444" strokeWidth={1.5}
+                  r={4} className="svg-handle" fill="white" stroke="#EF4444" strokeWidth={1.5}
                 />
               )}
             </>

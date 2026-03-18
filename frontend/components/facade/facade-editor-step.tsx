@@ -399,7 +399,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                           {[
                             [x, y], [x + w, y], [x, y + h], [x + w, y + h],
                           ].map(([hx, hy], i) => (
-                            <circle key={i} cx={hx} cy={hy} r="4" fill="white" stroke={color} strokeWidth="2" />
+                            <circle key={i} cx={hx} cy={hy} r="4" className="svg-handle" fill="white" stroke={color} strokeWidth="2" />
                           ))}
                         </>
                       )}

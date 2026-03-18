@@ -2059,6 +2059,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             cx={mx * imgDisplaySize.w}
                             cy={my * imgDisplaySize.h}
                             r={6}
+                            className="svg-handle"
                             fill="white"
                             stroke={rcolor}
                             strokeWidth={1.5}

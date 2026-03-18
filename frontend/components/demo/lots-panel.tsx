@@ -196,7 +196,7 @@ export default function LotsPanel({ result }: LotsPanelProps) {
                               x={(room.bbox_norm.x + room.bbox_norm.w / 2) * imgNatural.w}
                               y={(room.bbox_norm.y + room.bbox_norm.h / 2) * imgNatural.h}
                               textAnchor="middle" dominantBaseline="central"
-                              fill="white" fontSize={Math.max(10, imgNatural.w * 0.012)}
+                              className="svg-plan-label" fill="white" fontSize={Math.max(10, imgNatural.w * 0.012)}
                               fontWeight="bold" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
                             >
                               L{lot.id}
