@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, Eye, EyeOff, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -11,7 +11,6 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/use-auth";
 import MaterialsPanel from "@/components/demo/materials-panel";
-import MetrePanel from "@/components/demo/metre-panel";
 import DpgfPanel from "@/components/demo/dpgf-panel";
 import CctpPanel from "@/components/demo/cctp-panel";
 import GanttPanel from "@/components/demo/gantt-panel";
@@ -78,8 +77,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [measureActive, setMeasureActive] = useState(false);
   const [rapportOpen, setRapportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [roofTakeOffOpen, setRoofTakeOffOpen] = useState(false);
-
   // Use overlay_openings_b64 only when at least one opening type is visible (has baked-in openings).
   // When nothing is toggled, fall back to plan_b64 so no openings appear by default.
   const useOpeningsOverlay = showDoors || showWindows || showFrenchDoors;
@@ -746,22 +743,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           onDetectionsChange={onDetectionsChange}
         />
       )}
-
-      {/* ── Métré détaillé par pièce (collapsible, collapsed by default) ── */}
-      <div className="mt-8 glass rounded-xl border border-white/10">
-        <button
-          onClick={() => setRoofTakeOffOpen(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
-        >
-          <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("metre_title" as DTKey)}</p>
-          {roofTakeOffOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
-        </button>
-        {roofTakeOffOpen && (
-          <div className="px-0 pb-0">
-            <MetrePanel result={result} />
-          </div>
-        )}
-      </div>
 
       {/* ── DPGF estimatif panel ── */}
       <DpgfPanel result={result} customDetections={customDetections} />

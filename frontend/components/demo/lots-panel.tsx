@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2, ChevronDown, ChevronUp, Download, RefreshCw,
@@ -32,17 +32,25 @@ export default function LotsPanel({ result }: LotsPanelProps) {
   const d = (key: DTKey) => dt(key, lang);
 
   const [expanded, setExpanded] = useState(false);
-  const [threshold, setThreshold] = useState(0.02);
+  const [threshold, setThreshold] = useState(0.01);
   const [showOverlay, setShowOverlay] = useState(true);
   const [selectedLotId, setSelectedLotId] = useState<number | null>(null);
   const [mergeTarget, setMergeTarget] = useState<number | null>(null);
 
   const rooms = result.rooms ?? [];
 
-  // Auto-detect lots
+  // Auto-detect lots (re-runs when rooms change)
   const [coproResult, setCoproResult] = useState<CoproResult>(() =>
-    detectLots(rooms, threshold)
+    detectLots(rooms, 0.01)
   );
+
+  // Re-sync when result.rooms changes (e.g. after editor edits)
+  useEffect(() => {
+    setCoproResult(detectLots(rooms, threshold));
+    setSelectedLotId(null);
+    setMergeTarget(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.rooms]);
 
   // Re-detect when threshold changes
   const handleRedetect = useCallback(() => {
@@ -113,6 +121,9 @@ export default function LotsPanel({ result }: LotsPanelProps) {
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-indigo-300">
           <Building2 className="w-4 h-4" /> {d("lt_title")}
+          <span className="text-[10px] bg-sky-500/20 border border-sky-500/30 rounded px-1.5 py-0.5 font-semibold text-sky-400 uppercase tracking-wider">
+            {d("lt_wip" as DTKey)}
+          </span>
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-white/40 hidden sm:inline">
@@ -232,6 +243,13 @@ export default function LotsPanel({ result }: LotsPanelProps) {
                       ))}
                     </svg>
                   )}
+                </div>
+              )}
+
+              {/* ── Single unit warning ── */}
+              {coproResult.lots.length === 1 && (
+                <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300/80">
+                  ⚠️ {d("lt_single_unit" as DTKey)}
                 </div>
               )}
 

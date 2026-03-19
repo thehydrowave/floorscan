@@ -307,7 +307,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       ? result.plan_b64!
       : layer === "interior" && result.overlay_interior_b64
         ? result.overlay_interior_b64
-        : result.overlay_openings_b64 ?? result.plan_b64!;
+        : result.plan_b64 ?? result.overlay_openings_b64!;
 
   // Track natural image size for measure tool
   useEffect(() => {
@@ -1359,6 +1359,48 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <X className="w-3 h-3" />
               </button>
             )}
+            {/* ── Recherche visuelle (toujours accessible dans Éléments) ── */}
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+            <button onClick={() => { setTool(tool === "visual_search" ? (layer === "rooms" ? "select" : "add_rect") : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
+              title={d("ed_tt_vs")}
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Search className="w-3 h-3" /> {d("ed_vs_search")}
+            </button>
+            {tool === "visual_search" && (
+              <div className="flex items-center gap-1.5">
+                {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
+                {!vsSearching && vsMatches.length === 0 && <span className="text-[10px] text-slate-500 italic">{d("vs_select")}</span>}
+                {vsMatches.length > 0 && (
+                  <>
+                    {(["search", "add", "remove"] as const).map((m) => (
+                      <button key={m} onClick={() => setVsEditMode(m)}
+                        className={cn("px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                          vsEditMode === m ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                        {m === "search" ? d("vs_search") : m === "add" ? d("vs_add") : d("vs_remove")}
+                      </button>
+                    ))}
+                    <span className="text-[10px] font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
+                    {!vsSaveOpen ? (
+                      <button onClick={() => setVsSaveOpen(true)}
+                        className="px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-0.5">
+                        <Save className="w-3 h-3" /> {d("vs_save")}
+                      </button>
+                    ) : (
+                      <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); saveVsAsDetection(vsSaveLabel); }}>
+                        <input type="text" value={vsSaveLabel} onChange={(e) => setVsSaveLabel(e.target.value)}
+                          placeholder={d("vs_save_ph")}
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-white placeholder:text-slate-600 w-28 focus:outline-none focus:border-emerald-500/40" autoFocus />
+                        <button type="submit" disabled={!vsSaveLabel.trim()} className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 disabled:opacity-30">OK</button>
+                        <button type="button" onClick={() => { setVsSaveOpen(false); setVsSaveLabel(""); }} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
+                      </form>
+                    )}
+                    <button onClick={() => { setVsMatches([]); setVsCrop(null); setVsSaveOpen(false); }}
+                      className="text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
 {/* ══ BAR 3 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
@@ -1451,47 +1493,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   </button>
                 </>
               )}
-              {/* Recherche visuelle */}
-              <button onClick={() => { setTool(tool === "visual_search" ? (layer === "rooms" ? "select" : "add_rect") : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
-                title={d("ed_tt_vs")}
-                className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
-                  tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                <Search className="w-3 h-3" /> {d("ed_vs_search")}
-              </button>
-              {tool === "visual_search" && (
-                <div className="flex items-center gap-1.5 ml-1">
-                  {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
-                  {!vsSearching && vsMatches.length === 0 && <span className="text-[10px] text-slate-500 italic">{d("vs_select")}</span>}
-                  {vsMatches.length > 0 && (
-                    <>
-                      {(["search", "add", "remove"] as const).map((m) => (
-                        <button key={m} onClick={() => setVsEditMode(m)}
-                          className={cn("px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                            vsEditMode === m ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                          {m === "search" ? d("vs_search") : m === "add" ? d("vs_add") : d("vs_remove")}
-                        </button>
-                      ))}
-                      <span className="text-[10px] font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
-                      {!vsSaveOpen ? (
-                        <button onClick={() => setVsSaveOpen(true)}
-                          className="px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-0.5">
-                          <Save className="w-3 h-3" /> {d("vs_save")}
-                        </button>
-                      ) : (
-                        <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); saveVsAsDetection(vsSaveLabel); }}>
-                          <input type="text" value={vsSaveLabel} onChange={(e) => setVsSaveLabel(e.target.value)}
-                            placeholder={d("vs_save_ph")}
-                            className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 text-white placeholder:text-slate-600 w-28 focus:outline-none focus:border-emerald-500/40" autoFocus />
-                          <button type="submit" disabled={!vsSaveLabel.trim()} className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 disabled:opacity-30">OK</button>
-                          <button type="button" onClick={() => { setVsSaveOpen(false); setVsSaveLabel(""); }} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
-                        </form>
-                      )}
-                      <button onClick={() => { setVsMatches([]); setVsCrop(null); setVsSaveOpen(false); }}
-                        className="text-slate-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
-                    </>
-                  )}
-                </div>
-              )}
               <div className="flex-1" />
               <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
               {/* Annuler / Rétablir */}
@@ -1569,11 +1570,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 draggable={false}
                 onLoad={updateImgDisplaySize} />
 
-              {/* Individual mask overlays — only in BAR-1 (layer=null), overlay_openings_b64 handles visuals in BAR-2 */}
-              {layer === null && showDoors && result.mask_doors_b64 && (
+              {/* Masques ouvertures dissociables — portes (fuchsia), fenêtres (cyan) */}
+              {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#FF00FF",
-                  opacity: 0.35,
+                  backgroundColor: "#FF00CC",
+                  opacity: 0.55,
                   WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
                   WebkitMaskSize: "100% 100%",
@@ -1582,7 +1583,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   zIndex: 1,
                 }} />
               )}
-              {/* Windows: no CSS mask — overlay_openings_b64 already shows them in cyan */}
+              {showWindows && result.mask_windows_b64 && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#00CCFF",
+                  opacity: 0.55,
+                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                  WebkitMaskSize: "100% 100%",
+                  maskSize: "100% 100%",
+                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as React.CSSProperties),
+                  zIndex: 1,
+                }} />
+              )}
 
               {/* French Doors RGBA overlay (orange) */}
               {showFrenchDoors && result.mask_french_doors_b64 && (

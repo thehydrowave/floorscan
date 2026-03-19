@@ -635,6 +635,9 @@ export default function ToolkitPanel({ result }: ToolkitPanelProps) {
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-amber-300">
           <Wrench className="w-4 h-4" /> {d("tk_title")}
+          <span className="text-[10px] bg-sky-500/20 border border-sky-500/30 rounded px-1.5 py-0.5 font-semibold text-sky-400 uppercase tracking-wider">
+            {d("tk_wip" as DTKey)}
+          </span>
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-white/40 hidden sm:inline">{d("tk_subtitle")}</span>

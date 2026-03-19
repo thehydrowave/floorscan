@@ -132,6 +132,9 @@ export default function HousingPanel({ result }: HousingPanelProps) {
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-blue-300">
           <Home className="w-4 h-4" /> {d("hsg_title" as DTKey)}
+          <span className="text-[10px] bg-sky-500/20 border border-sky-500/30 rounded px-1.5 py-0.5 font-semibold text-sky-400 uppercase tracking-wider">
+            {d("hsg_wip" as DTKey)}
+          </span>
         </span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-white/40 hidden sm:inline">
