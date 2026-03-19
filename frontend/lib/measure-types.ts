@@ -1,3 +1,11 @@
+export interface AssemblyItem {
+  ref: string;       // référence article / SKU
+  label: string;     // description
+  unitLabel: string; // "m²", "ml", "U", "kg"…
+  qtyPerM2: number;  // quantité par m² de surface
+  pricePerUnit?: number; // €/unité
+}
+
 export interface SurfaceType {
   id: string;
   name: string;
@@ -5,7 +13,85 @@ export interface SurfaceType {
   pricePerM2?: number;   // €/m²
   wastePercent?: number; // % chute (ex: 10 = 10%)
   boxSizeM2?: number;    // m² par boîte/rouleau (0 = non défini)
+  assembly?: AssemblyItem[]; // template matériaux par m²
 }
+
+// ── Outil linéaire (longueur / ml) ───────────────────────────────────────────
+
+export interface LinearCategory {
+  id: string;
+  name: string;
+  color: string;       // hex
+  pricePerM?: number;  // €/ml
+}
+
+export interface LinearMeasure {
+  id: string;
+  categoryId: string;
+  points: { x: number; y: number }[]; // normalized 0-1, open polyline
+}
+
+export const DEFAULT_LINEAR_CATEGORIES: LinearCategory[] = [
+  { id: "lin_plinthe",    name: "Plinthe",              color: "#F97316" },
+  { id: "lin_joint",      name: "Joint de dilatation",  color: "#8B5CF6" },
+  { id: "lin_cimaise",    name: "Cimaise",              color: "#10B981" },
+  { id: "lin_baguette",   name: "Baguette d'angle",     color: "#06B6D4" },
+];
+
+/** Longueur en mètres d'une mesure linéaire */
+export function linearLengthM(
+  points: { x: number; y: number }[],
+  imageW: number,
+  imageH: number,
+  ppm: number
+): number {
+  if (points.length < 2 || ppm <= 0) return 0;
+  let len = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = (points[i + 1].x - points[i].x) * imageW;
+    const dy = (points[i + 1].y - points[i].y) * imageH;
+    len += Math.sqrt(dx * dx + dy * dy);
+  }
+  return len / ppm;
+}
+
+/** Longueur totale en mètres pour toutes les mesures d'une catégorie */
+export function aggregateLinearByCategory(
+  measures: LinearMeasure[],
+  imageW: number,
+  imageH: number,
+  ppm: number | null
+): Record<string, number> {
+  if (!ppm) return {};
+  const result: Record<string, number> = {};
+  for (const m of measures) {
+    result[m.categoryId] = (result[m.categoryId] ?? 0) + linearLengthM(m.points, imageW, imageH, ppm);
+  }
+  return result;
+}
+
+// ── Outil comptage (count tool) ───────────────────────────────────────────────
+
+export interface CountGroup {
+  id: string;
+  name: string;
+  color: string;        // hex
+  pricePerUnit?: number; // €/unité
+}
+
+export interface CountPoint {
+  id: string;
+  groupId: string;
+  x: number; // normalized 0-1
+  y: number; // normalized 0-1
+}
+
+export const DEFAULT_COUNT_GROUPS: CountGroup[] = [
+  { id: "cnt_prise",        name: "Prise électrique", color: "#F59E0B" },
+  { id: "cnt_interrupteur", name: "Interrupteur",      color: "#06B6D4" },
+  { id: "cnt_luminaire",    name: "Luminaire",         color: "#EC4899" },
+  { id: "cnt_siphon",       name: "Siphon",            color: "#10B981" },
+];
 
 export interface MeasureZone {
   id: string;

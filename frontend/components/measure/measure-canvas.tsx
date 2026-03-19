@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2 } from "lucide-react";
-import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
@@ -28,9 +28,19 @@ interface MeasureCanvasProps {
   customDetections?: CustomDetection[];
   onSaveDetection?: (label: string, matches: VisualSearchMatch[]) => void;
   onPpmChange?: (ppm: number) => void;
+  // Linear tool props
+  linearMeasures?: LinearMeasure[];
+  onLinearMeasuresChange?: (measures: LinearMeasure[]) => void;
+  linearCategories?: LinearCategory[];
+  activeLinearCategoryId?: string;
+  // Count tool props
+  countPoints?: CountPoint[];
+  onCountPointsChange?: (pts: CountPoint[]) => void;
+  countGroups?: CountGroup[];
+  activeCountGroupId?: string;
 }
 
-type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale";
+type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count";
 
 interface AngleMeasurement {
   id: string;
@@ -81,6 +91,8 @@ export default function MeasureCanvas({
   onHistoryPush, onHistoryUndo, onHistoryRedo, canUndo = false, canRedo = false,
   sessionId, onEnsureSession, vsMatches = [], onVsMatchesChange, customDetections = [], onSaveDetection,
   onPpmChange,
+  linearMeasures = [], onLinearMeasuresChange, linearCategories = [], activeLinearCategoryId = "",
+  countPoints = [], onCountPointsChange, countGroups = [], activeCountGroupId = "",
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
@@ -123,6 +135,10 @@ export default function MeasureCanvas({
 
   // Split tool state
   const [splitPts, setSplitPts] = useState<{ x: number; y: number }[]>([]);
+
+  // Linear tool in-progress points
+  const [linearDrawingPts, setLinearDrawingPts] = useState<{ x: number; y: number }[]>([]);
+  const linearDrawingPtsRef = useRef<{ x: number; y: number }[]>([]);
 
   // Visual search state
   const [vsCropStart, setVsCropStart] = useState<{ x: number; y: number } | null>(null);
@@ -508,19 +524,47 @@ export default function MeasureCanvas({
       const next = [...scalePts, pt];
       setScalePts(next);
       if (next.length === 2) setScaleInputOpen(true);
+    } else if (tool === "linear") {
+      // linear: click adds points, double-click finishes (handled in dblclick)
+      if (e.detail >= 2) return; // handled by dblclick
+      const next = [...linearDrawingPts, pt];
+      linearDrawingPtsRef.current = next;
+      setLinearDrawingPts(next);
+    } else if (tool === "count" && activeCountGroupId) {
+      // count: click places a dot
+      if (onCountPointsChange) {
+        const newPt: CountPoint = {
+          id: crypto.randomUUID(),
+          groupId: activeCountGroupId,
+          x: pt.x,
+          y: pt.y,
+        };
+        onCountPointsChange([...countPoints, newPt]);
+      }
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (tool !== "polygon") return;
-    e.preventDefault();
-    // Use the live ref: it was updated synchronously by the detail=1 click handler
-    // (React state may not have committed yet when dblclick fires in the same task).
-    // The detail=1 click added 1 extra point → remove it with slice(0, -1).
-    const latest = drawingPointsRef.current;
-    if (latest.length < 3) return;
-    addZone(latest.slice(0, -1));
-  }, [tool, addZone]);
+    if (tool === "polygon") {
+      e.preventDefault();
+      const latest = drawingPointsRef.current;
+      if (latest.length < 3) return;
+      addZone(latest.slice(0, -1));
+    } else if (tool === "linear") {
+      e.preventDefault();
+      // The detail=1 click added the last point → remove it (dblclick fires after 2 click events)
+      const latest = linearDrawingPtsRef.current.slice(0, -1);
+      if (latest.length < 2 || !onLinearMeasuresChange || !activeLinearCategoryId) return;
+      const newMeasure: LinearMeasure = {
+        id: crypto.randomUUID(),
+        categoryId: activeLinearCategoryId,
+        points: latest,
+      };
+      onLinearMeasuresChange([...linearMeasures, newMeasure]);
+      linearDrawingPtsRef.current = [];
+      setLinearDrawingPts([]);
+    }
+  }, [tool, addZone, linearDrawingPts, linearMeasures, onLinearMeasuresChange, activeLinearCategoryId]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragVertex) return; // handled by global listener
@@ -595,17 +639,28 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { cancelDrawing(); return; }
-      // Enter → close the in-progress polygon
+      // Enter → close the in-progress polygon OR finish linear
       if (e.key === "Enter" && tool === "polygon") {
         e.preventDefault();
         const latest = drawingPointsRef.current;
         if (latest.length >= 3) addZone(latest);
+        return;
+      }
+      if (e.key === "Enter" && tool === "linear") {
+        e.preventDefault();
+        const latest = linearDrawingPtsRef.current;
+        if (latest.length >= 2 && onLinearMeasuresChange && activeLinearCategoryId) {
+          const newMeasure: LinearMeasure = { id: crypto.randomUUID(), categoryId: activeLinearCategoryId, points: latest };
+          onLinearMeasuresChange([...linearMeasures, newMeasure]);
+          linearDrawingPtsRef.current = [];
+          setLinearDrawingPts([]);
+        }
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -688,7 +743,7 @@ export default function MeasureCanvas({
         })()
       : null;
 
-  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0;
+  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0 || linearDrawingPts.length > 0;
   const activeColor = getColor(activeTypeId);
 
   const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
@@ -721,6 +776,14 @@ export default function MeasureCanvas({
     ? scalePts.length === 0 ? "Cliquez un 1er point du segment de référence"
     : scalePts.length === 1 ? "Cliquez le 2e point du segment, puis entrez la longueur réelle"
     : "Entrez la longueur réelle ci-dessous et confirmez"
+    : tool === "linear"
+    ? linearDrawingPts.length === 0
+      ? "Cliquez pour démarrer une mesure linéaire"
+      : linearDrawingPts.length === 1
+        ? "Cliquez pour ajouter des points · Entrée ou double-clic pour terminer"
+        : `${linearDrawingPts.length} pts · Entrée ou double-clic pour terminer · Échap pour annuler`
+    : tool === "count"
+    ? `Cliquez pour placer un point de comptage${activeCountGroupId ? "" : " — sélectionnez un groupe d'abord"}`
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -801,6 +864,30 @@ export default function MeasureCanvas({
           >
             <Search className="w-3.5 h-3.5" /> Recherche
           </button>
+          {onLinearMeasuresChange && (
+            <button
+              onClick={() => { setTool("linear"); cancelDrawing(); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                tool === "linear"
+                  ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Ruler className="w-3.5 h-3.5" /> Linéaire
+            </button>
+          )}
+          {onCountPointsChange && (
+            <button
+              onClick={() => { setTool("count"); cancelDrawing(); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                tool === "count"
+                  ? "bg-pink-500/20 border border-pink-500/40 text-pink-300"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <span className="font-bold text-xs">#</span> Comptage
+            </button>
+          )}
         </div>
 
         {/* Wall thickness control — shown only when wall tool is active */}
@@ -1415,6 +1502,98 @@ export default function MeasureCanvas({
               })}
             </>
           )}
+
+          {/* ── Linear measures (completed) ── */}
+          {linearMeasures.map(lm => {
+            const cat = linearCategories.find(c => c.id === lm.categoryId);
+            const color = cat?.color ?? "#10B981";
+            if (lm.points.length < 2) return null;
+            const svgPts = lm.points.map(p => toSvg(p));
+            const pathD = svgPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+            // Total length label at midpoint of line
+            const midIdx = Math.floor((svgPts.length - 1) / 2);
+            const lx = (svgPts[midIdx].x + svgPts[midIdx + 1 < svgPts.length ? midIdx + 1 : midIdx].x) / 2;
+            const ly = (svgPts[midIdx].y + svgPts[midIdx + 1 < svgPts.length ? midIdx + 1 : midIdx].y) / 2;
+            let totalM = 0;
+            if (ppm && naturalSize.w > 0) {
+              for (let i = 0; i < lm.points.length - 1; i++) {
+                const dx = (lm.points[i + 1].x - lm.points[i].x) * naturalSize.w;
+                const dy = (lm.points[i + 1].y - lm.points[i].y) * naturalSize.h;
+                totalM += Math.sqrt(dx * dx + dy * dy) / ppm;
+              }
+            }
+            const label = ppm ? (totalM >= 1 ? `${totalM.toFixed(2)} m` : `${(totalM * 100).toFixed(0)} cm`) : `${lm.points.length - 1} seg.`;
+            const lw = label.length * 5.5 + 12;
+            return (
+              <g key={lm.id}>
+                <path d={pathD} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+                {/* Endpoint dots */}
+                {svgPts.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === 0 || i === svgPts.length - 1 ? 4 : 3}
+                    fill={color} stroke="white" strokeWidth={1.5} style={{ pointerEvents: "all", cursor: "pointer" }}
+                    onContextMenu={e => {
+                      e.stopPropagation(); e.preventDefault();
+                      onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== lm.id));
+                    }}
+                  />
+                ))}
+                {/* Length label */}
+                <rect x={lx - lw / 2} y={ly - 9} width={lw} height={16} rx={3} fill="rgba(0,0,0,0.70)" />
+                <text x={lx} y={ly + 1} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={8.5} fill={color} fontFamily="ui-monospace, monospace">{label}</text>
+              </g>
+            );
+          })}
+
+          {/* ── Linear in-progress ── */}
+          {tool === "linear" && linearDrawingPts.length > 0 && (() => {
+            const activeCat = linearCategories.find(c => c.id === activeLinearCategoryId);
+            const color = activeCat?.color ?? "#10B981";
+            const allPts = [...linearDrawingPts, ...(mouseNorm ? [mouseNorm] : [])];
+            const svgPts = allPts.map(p => toSvg(p));
+            const pathD = svgPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+            return (
+              <g>
+                <path d={pathD} fill="none" stroke={color} strokeWidth={2} strokeDasharray="6 3"
+                  strokeLinejoin="round" strokeLinecap="round" />
+                {svgPts.slice(0, -1).map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={i === 0 ? 5 : 3}
+                    fill={i === 0 ? color : "white"} stroke={color} strokeWidth={1.5} />
+                ))}
+              </g>
+            );
+          })()}
+
+          {/* ── Count points (completed) ── */}
+          {countPoints.map((cp, idx) => {
+            const grp = countGroups.find(g => g.id === cp.groupId);
+            const color = grp?.color ?? "#EC4899";
+            const s = toSvg({ x: cp.x, y: cp.y });
+            // Number within same group
+            const num = countPoints.filter(p => p.groupId === cp.groupId).findIndex(p => p.id === cp.id) + 1;
+            const label = String(num);
+            return (
+              <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                onContextMenu={e => {
+                  e.stopPropagation(); e.preventDefault();
+                  onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id));
+                }}>
+                <circle cx={s.x} cy={s.y} r={10} fill={color} stroke="white" strokeWidth={1.5} />
+                <text x={s.x} y={s.y + 1} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={9} fontWeight="700" fill="white" fontFamily="system-ui, sans-serif">
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Count tool cursor dot */}
+          {tool === "count" && mouseNorm && (() => {
+            const activeCG = countGroups.find(g => g.id === activeCountGroupId);
+            const color = activeCG?.color ?? "#EC4899";
+            const s = toSvg(mouseNorm);
+            return <circle cx={s.x} cy={s.y} r={8} fill={hexToRgba(color, 0.5)} stroke={color} strokeWidth={1.5} strokeDasharray="3 2" />;
+          })()}
 
           {/* Empty state hint */}
           {zones.length === 0 && !isDrawing && (

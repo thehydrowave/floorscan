@@ -192,18 +192,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [zones, setZones] = useState<MeasureZone[]>([]);
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
-  const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
   const [exportOpen, setExportOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
   );
-  const handlePanelModeChange = useCallback((mode: "metre" | "rooms") => {
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count") => {
     setPanelMode(mode);
     if (mode === "rooms") {
       setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
-    } else {
+    } else if (mode === "metre") {
       setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
     }
   }, [surfaceTypes]);

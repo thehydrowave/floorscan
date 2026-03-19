@@ -9,7 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -159,19 +159,29 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
 
   // Room panel mode
-  const [panelMode, setPanelMode] = useState<"metre" | "rooms">("metre");
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
   const allTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
   );
-  const handlePanelModeChange = useCallback((mode: "metre" | "rooms") => {
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count") => {
     setPanelMode(mode);
     if (mode === "rooms") {
       setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
-    } else {
+    } else if (mode === "metre") {
       setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
     }
   }, [surfaceTypes]);
+
+  // Linear tool state
+  const [linearCategories, setLinearCategories] = useState<LinearCategory[]>(DEFAULT_LINEAR_CATEGORIES);
+  const [linearMeasures, setLinearMeasures]     = useState<LinearMeasure[]>([]);
+  const [activeLinearCategoryId, setActiveLinearCategoryId] = useState(DEFAULT_LINEAR_CATEGORIES[0].id);
+
+  // Count tool state
+  const [countGroups, setCountGroups]   = useState<CountGroup[]>(DEFAULT_COUNT_GROUPS);
+  const [countPoints, setCountPoints]   = useState<CountPoint[]>([]);
+  const [activeCountGroupId, setActiveCountGroupId] = useState(DEFAULT_COUNT_GROUPS[0].id);
 
   // Undo / Redo history
   const historyRef  = useRef<MeasureZone[][]>([]);
@@ -1032,6 +1042,14 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   customDetections={customDetections}
                   onSaveDetection={saveDetection}
                   onPpmChange={setPpm}
+                  linearMeasures={linearMeasures}
+                  onLinearMeasuresChange={setLinearMeasures}
+                  linearCategories={linearCategories}
+                  activeLinearCategoryId={activeLinearCategoryId}
+                  countPoints={countPoints}
+                  onCountPointsChange={setCountPoints}
+                  countGroups={countGroups}
+                  activeCountGroupId={activeCountGroupId}
                 />
               </div>
               <div className="lg:w-64 shrink-0">
@@ -1049,6 +1067,18 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   panelMode={panelMode}
                   onPanelModeChange={handlePanelModeChange}
                   roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
+                  linearCategories={linearCategories}
+                  linearMeasures={linearMeasures}
+                  onLinearCategoriesChange={setLinearCategories}
+                  onLinearMeasuresChange={setLinearMeasures}
+                  activeLinearCategoryId={activeLinearCategoryId}
+                  onActiveLinearCategoryChange={setActiveLinearCategoryId}
+                  countGroups={countGroups}
+                  countPoints={countPoints}
+                  onCountGroupsChange={setCountGroups}
+                  onCountPointsChange={setCountPoints}
+                  activeCountGroupId={activeCountGroupId}
+                  onActiveCountGroupChange={setActiveCountGroupId}
                 />
               </div>
             </div>
