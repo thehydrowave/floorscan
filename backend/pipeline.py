@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "model_id": "cubicasa5k-2-qpmsa-1gd2e/1",
     "assumed_door_width_m": 0.80,
     "wall_thickness_m": 0.20,
+    "infer_workers": 8,        # threads parallèles pour inférence tiles (0 = séquentiel)
     "wall_thickness_px_fallback": 10,
     "door_len_px_min": 25,
     "door_len_px_max": 90,
@@ -976,115 +977,134 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
     rows = []
     tile_count = kept_doors = kept_wins = kept_walls = pred_count = 0
 
-    with tempfile.TemporaryDirectory() as td:
-        for (x0, y0, x1, y1) in iter_tiles(W, H, tile_size, overlap):
-            tile_count += 1
-            tile = img_pil.crop((x0, y0, x1, y1))
-            tw, th = tile.size
-            tile_path = f"{td}/tile_{tile_size}_{x0}_{y0}.png"
-            tile.save(tile_path)
+    # ── 1. Préparer toutes les tuiles (crop → JPEG base64 en mémoire) ──────────
+    max_workers = int(cfg.get("infer_workers", 8))
+    tile_jobs = []  # (x0, y0, tw, th, tile_b64)
+    for (x0, y0, x1, y1) in iter_tiles(W, H, tile_size, overlap):
+        tile = img_pil.crop((x0, y0, x1, y1))
+        tw, th = tile.size
+        buf = io.BytesIO()
+        tile.save(buf, format="JPEG", quality=92)
+        tile_b64 = base64.b64encode(buf.getvalue()).decode()
+        tile_jobs.append((x0, y0, tw, th, tile_b64))
+    tile_count = len(tile_jobs)
 
-            try:
-                res = client.infer(tile_path, model_id=model_id)
-            except Exception as e:
-                logger.warning("Tile inference failed: %s", e)
-                continue
-
+    # ── 2. Inférence parallèle via ThreadPoolExecutor ─────────────────────────
+    #    Chaque worker envoie sa tuile à Roboflow et retourne les prédictions brutes.
+    #    L'écriture dans les masques numpy reste séquentielle → résultats identiques.
+    def _infer_one(job):
+        jx0, jy0, jtw, jth, jb64 = job
+        try:
+            res = client.infer(jb64, model_id=model_id)
             preds = res.get("predictions", []) or res.get("data", [])
             if isinstance(preds, dict) and "predictions" in preds:
                 preds = preds["predictions"]
-            if not isinstance(preds, list) or not preds:
-                continue
+            return jx0, jy0, jtw, jth, (preds if isinstance(preds, list) else [])
+        except Exception as exc:
+            logger.warning("Tile (%d,%d) inference failed: %s", jx0, jy0, exc)
+            return jx0, jy0, jtw, jth, []
 
-            pred_count += len(preds)
+    if max_workers > 1 and tile_count > 1:
+        with ThreadPoolExecutor(max_workers=min(max_workers, tile_count)) as executor:
+            futures = [executor.submit(_infer_one, job) for job in tile_jobs]
+            tile_results = [f.result() for f in futures]  # même ordre que soumission
+    else:
+        tile_results = [_infer_one(job) for job in tile_jobs]
 
-            for p in preds:
-                lbl = str(p.get("class", "")).lower()
-                conf = float(p.get("confidence", 1.0))
+    # ── 3. Traitement séquentiel des prédictions → masques numpy ─────────────
+    for (x0, y0, tw, th, preds) in tile_results:
+        if not preds:
+            continue
 
-                is_door   = any(k in lbl for k in ["door","doors","porte","portes","doorway"])
-                is_window = any(k in lbl for k in ["window","windows","fen","fenetre","fenetres"])
+        pred_count += len(preds)
 
-                if is_door and conf < conf_min_door: continue
-                if is_window and conf < conf_min_win: continue
+        for p in preds:
+            lbl = str(p.get("class", "")).lower()
+            conf = float(p.get("confidence", 1.0))
 
-                # Polygon
-                if "points" in p and isinstance(p["points"], list) and len(p["points"]) >= 3:
-                    raw_pts = p["points"]
-                    pts = None
-                    if isinstance(raw_pts[0], dict) and "x" in raw_pts[0]:
-                        try:
-                            pts = np.array([[float(pt["x"]), float(pt["y"])] for pt in raw_pts], dtype=np.float32)
-                        except Exception as e:
-                            logger.warning("Failed to parse dict polygon points: %s", e)
-                    elif isinstance(raw_pts[0], (list, tuple)) and len(raw_pts[0]) >= 2:
-                        try:
-                            pts = np.array([[float(pt[0]), float(pt[1])] for pt in raw_pts], dtype=np.float32)
-                        except Exception as e:
-                            logger.warning("Failed to parse list polygon points: %s", e)
+            is_door   = any(k in lbl for k in ["door","doors","porte","portes","doorway"])
+            is_window = any(k in lbl for k in ["window","windows","fen","fenetre","fenetres"])
 
-                    if pts is None or pts.shape[0] < 3:
-                        continue
+            if is_door and conf < conf_min_door: continue
+            if is_window and conf < conf_min_win: continue
 
-                    if is_normalized_coords(pts):
-                        pts[:, 0] *= tw; pts[:, 1] *= th
+            # Polygon
+            if "points" in p and isinstance(p["points"], list) and len(p["points"]) >= 3:
+                raw_pts = p["points"]
+                pts = None
+                if isinstance(raw_pts[0], dict) and "x" in raw_pts[0]:
+                    try:
+                        pts = np.array([[float(pt["x"]), float(pt["y"])] for pt in raw_pts], dtype=np.float32)
+                    except Exception as e:
+                        logger.warning("Failed to parse dict polygon points: %s", e)
+                elif isinstance(raw_pts[0], (list, tuple)) and len(raw_pts[0]) >= 2:
+                    try:
+                        pts = np.array([[float(pt[0]), float(pt[1])] for pt in raw_pts], dtype=np.float32)
+                    except Exception as e:
+                        logger.warning("Failed to parse list polygon points: %s", e)
 
-                    pts[:, 0] = np.clip(pts[:, 0], 0, tw - 1)
-                    pts[:, 1] = np.clip(pts[:, 1], 0, th - 1)
-                    pts[:, 0] += x0; pts[:, 1] += y0
+                if pts is None or pts.shape[0] < 3:
+                    continue
 
-                    poly = pts.astype(np.int32)
-                    xmn, ymn = float(poly[:, 0].min()), float(poly[:, 1].min())
-                    xmx, ymx = float(poly[:, 0].max()), float(poly[:, 1].max())
-                    cxc, cyc = (xmn+xmx)/2.0, (ymn+ymx)/2.0
+                if is_normalized_coords(pts):
+                    pts[:, 0] *= tw; pts[:, 1] *= th
 
-                    is_wall = lbl.startswith("wall")
+                pts[:, 0] = np.clip(pts[:, 0], 0, tw - 1)
+                pts[:, 1] = np.clip(pts[:, 1], 0, th - 1)
+                pts[:, 0] += x0; pts[:, 1] += y0
 
-                    if is_door:
-                        cv2.fillPoly(m_doors, [poly], 255); kept_doors += 1
-                    elif is_window:
-                        cv2.fillPoly(m_wins, [poly], 255); kept_wins += 1
-                    else:
-                        if is_wall:
-                            cv2.fillPoly(m_walls, [poly], 255); kept_walls += 1
-                        if write_rooms and rooms_index is not None:
-                            cv2.fillPoly(rooms_index, [poly], rid_for(lbl))
+                poly = pts.astype(np.int32)
+                xmn, ymn = float(poly[:, 0].min()), float(poly[:, 1].min())
+                xmx, ymx = float(poly[:, 0].max()), float(poly[:, 1].max())
+                cxc, cyc = (xmn+xmx)/2.0, (ymn+ymx)/2.0
 
-                    rows.append({"label": lbl, "type": "polygon",
-                                 "x_px": cxc, "y_px": cyc,
-                                 "width_px": xmx-xmn, "height_px": ymx-ymn,
-                                 "confidence": conf, "pass_tile": tile_size})
+                is_wall = lbl.startswith("wall")
 
-                elif all(k in p for k in ("x","y","width","height")):
-                    cx, cy = float(p["x"]), float(p["y"])
-                    bw, bh = float(p["width"]), float(p["height"])
-                    if max(cx, cy, bw, bh) <= 1.5:
-                        cx *= tw; cy *= th; bw *= tw; bh *= th
+                if is_door:
+                    cv2.fillPoly(m_doors, [poly], 255); kept_doors += 1
+                elif is_window:
+                    cv2.fillPoly(m_wins, [poly], 255); kept_wins += 1
+                else:
+                    if is_wall:
+                        cv2.fillPoly(m_walls, [poly], 255); kept_walls += 1
+                    if write_rooms and rooms_index is not None:
+                        cv2.fillPoly(rooms_index, [poly], rid_for(lbl))
 
-                    x1t = int(cx-bw/2); y1t = int(cy-bh/2)
-                    x2t = int(cx+bw/2); y2t = int(cy+bh/2)
-                    x1t, y1t, x2t, y2t = clamp_box(x1t, y1t, x2t, y2t, tw, th)
-                    x1g, y1g = x1t+x0, y1t+y0
-                    x2g, y2g = x2t+x0, y2t+y0
-                    x1g, y1g, x2g, y2g = clamp_box(x1g, y1g, x2g, y2g, W, H)
-                    cxc, cyc = (x1g+x2g)/2, (y1g+y2g)/2
+                rows.append({"label": lbl, "type": "polygon",
+                             "x_px": cxc, "y_px": cyc,
+                             "width_px": xmx-xmn, "height_px": ymx-ymn,
+                             "confidence": conf, "pass_tile": tile_size})
 
-                    is_wall_bb = lbl.startswith("wall")
+            elif all(k in p for k in ("x","y","width","height")):
+                cx, cy = float(p["x"]), float(p["y"])
+                bw, bh = float(p["width"]), float(p["height"])
+                if max(cx, cy, bw, bh) <= 1.5:
+                    cx *= tw; cy *= th; bw *= tw; bh *= th
 
-                    if is_door:
-                        cv2.rectangle(m_doors, (x1g,y1g), (x2g,y2g), 255, -1); kept_doors += 1
-                    elif is_window:
-                        cv2.rectangle(m_wins, (x1g,y1g), (x2g,y2g), 255, -1); kept_wins += 1
-                    else:
-                        if is_wall_bb:
-                            cv2.rectangle(m_walls, (x1g,y1g), (x2g,y2g), 255, -1); kept_walls += 1
-                        if write_rooms and rooms_index is not None:
-                            cv2.rectangle(rooms_index, (x1g,y1g), (x2g,y2g), rid_for(lbl), -1)
+                x1t = int(cx-bw/2); y1t = int(cy-bh/2)
+                x2t = int(cx+bw/2); y2t = int(cy+bh/2)
+                x1t, y1t, x2t, y2t = clamp_box(x1t, y1t, x2t, y2t, tw, th)
+                x1g, y1g = x1t+x0, y1t+y0
+                x2g, y2g = x2t+x0, y2t+y0
+                x1g, y1g, x2g, y2g = clamp_box(x1g, y1g, x2g, y2g, W, H)
+                cxc, cyc = (x1g+x2g)/2, (y1g+y2g)/2
 
-                    rows.append({"label": lbl, "type": "bbox",
-                                 "x_px": cxc, "y_px": cyc,
-                                 "width_px": x2g-x1g, "height_px": y2g-y1g,
-                                 "confidence": conf, "pass_tile": tile_size})
+                is_wall_bb = lbl.startswith("wall")
+
+                if is_door:
+                    cv2.rectangle(m_doors, (x1g,y1g), (x2g,y2g), 255, -1); kept_doors += 1
+                elif is_window:
+                    cv2.rectangle(m_wins, (x1g,y1g), (x2g,y2g), 255, -1); kept_wins += 1
+                else:
+                    if is_wall_bb:
+                        cv2.rectangle(m_walls, (x1g,y1g), (x2g,y2g), 255, -1); kept_walls += 1
+                    if write_rooms and rooms_index is not None:
+                        cv2.rectangle(rooms_index, (x1g,y1g), (x2g,y2g), rid_for(lbl), -1)
+
+                rows.append({"label": lbl, "type": "bbox",
+                             "x_px": cxc, "y_px": cyc,
+                             "width_px": x2g-x1g, "height_px": y2g-y1g,
+                             "confidence": conf, "pass_tile": tile_size})
 
     if rooms_index is None:
         rooms_index = np.zeros((H, W), np.int32)
