@@ -1316,36 +1316,18 @@ def get_image(session_id: str, image_type: str):
 
 
 # ============================================================
-# ROUTE — ANALYSE DE FAÇADE v2 (elevation drawings)
-# Admin-only — nécessite admin_key == ADMIN_KEY (env var)
-# Améliorations vs v1 :
-#   • Tiling (même pattern que pipeline plan archi)
-#   • NMS post-tiling pour dédupliquer les détections chevauchantes
-#   • Détection périmètre bâtiment par contour OpenCV (hull convexe)
-#   • Surface façade calculée sur hull (pas W×H)
-#   • GroundingDINO comme fallback optionnel (use_grounding_dino=True)
-#   • model_id overrideable pour tests A/B
+# ROUTE — ANALYSE DE FAÇADE (elevation drawings)
+# Utilise le modèle Roboflow "elevation-24mp4/1" (door, window, building, roof, floor)
 # ============================================================
-
-FACADE_MODEL_ID    = "elevation-24mp4/1"            # modèle principal
-FACADE_MODEL_ALT   = "building-door-gate-window/1"  # modèle alternatif à tester
-
-FACADE_TILE_SIZE    = 1024   # px — tuile carrée
-FACADE_TILE_OVERLAP = 200    # px — chevauchement entre tuiles
-
-# Clé admin depuis env var (à définir dans .env / Dockerfile)
-_ADMIN_KEY = os.environ.get("ADMIN_KEY", "floorscan-admin-2025")
+FACADE_MODEL_ID = "elevation-24mp4/1"
 
 # Mapping classes Roboflow → types façade internes
 FACADE_CLASS_MAP = {
-    "door":          "door",
-    "window":        "window",
-    "building":      "other",      # contour global
-    "roof":          "roof",
-    "floor":         "floor_line",
-    # classes du modèle alternatif
-    "gate":          "door",
-    "building-door": "door",
+    "door":     "door",
+    "window":   "window",
+    "building": "other",      # contour global → on le garde comme "other"
+    "roof":     "roof",
+    "floor":    "floor_line",
 }
 
 FACADE_LABELS_FR = {
@@ -1356,112 +1338,15 @@ FACADE_LABELS_FR = {
     "other":      "Bâtiment",
 }
 
-TYPE_COLORS_BGR_FACADE = {
-    "window":     (250, 164,  96),
-    "door":       (180, 114, 244),
-    "roof":       (250, 139, 167),
-    "floor_line": ( 60, 146, 251),
-    "other":      ( 36, 187, 251),
-}
-
-
-def _detect_facade_perimeter(img_rgb: np.ndarray):
-    """Détecte le périmètre du bâtiment via contour OpenCV + hull convexe.
-
-    Fonctionne bien sur dessins CAD 2D (lignes noires sur fond blanc).
-    Retourne (hull_contour | None, area_px2 | None).
-    """
-    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-    # Seuillage OTSU adaptatif (idéal plans fond blanc / lignes sombres)
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    # Fermer les interruptions créées par fenêtres / portes / dimensions
-    k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, k_close, iterations=3)
-    # Supprimer le bruit fin (texte, cotes, hachures)
-    k_open = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
-    # Contours externes uniquement
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None, None
-    largest = max(contours, key=cv2.contourArea)
-    hull = cv2.convexHull(largest)
-    area_px2 = float(cv2.contourArea(hull))
-    if area_px2 < 500:           # trop petit → probablement un artefact
-        return None, None
-    return hull, area_px2
-
-
-def _infer_facade_tiled(
-    client,
-    img_rgb: np.ndarray,
-    model_id: str,
-    confidence: float,
-    tile_size: int,
-    tile_overlap: int,
-) -> list:
-    """Inférence Roboflow avec tiling (même pattern que pipeline plan archi).
-
-    Retourne les prédictions brutes avec coordonnées traduites en full-image.
-    """
-    H, W = img_rgb.shape[:2]
-    raw_preds = []
-    for x0, y0, x1, y1 in pipeline.iter_tiles(W, H, tile_size, tile_overlap):
-        tile_img = img_rgb[y0:y1, x0:x1]
-        buf = io.BytesIO()
-        Image.fromarray(tile_img).save(buf, format="JPEG", quality=92)
-        tile_b64 = base64.b64encode(buf.getvalue()).decode()
-        try:
-            resp = client.infer(tile_b64, model_id=model_id)
-            for pred in resp.get("predictions", []):
-                if pred.get("confidence", 0) < confidence:
-                    continue
-                # Traduire coordonnées tuile → image complète
-                raw_preds.append({
-                    **pred,
-                    "x": pred["x"] + x0,
-                    "y": pred["y"] + y0,
-                })
-        except Exception as exc:
-            logger.warning("Façade tile (%d,%d,%d,%d) failed: %s", x0, y0, x1, y1, exc)
-    return raw_preds
-
-
-def _nms_facade(raw_preds: list, overlap_thresh: float = 0.35) -> list:
-    """NMS pour dédupliquer les détections issues des tuiles qui se chevauchent."""
-    if not raw_preds:
-        return []
-    boxes = np.array(
-        [[p["x"] - p["width"] / 2, p["y"] - p["height"] / 2, p["width"], p["height"]]
-         for p in raw_preds],
-        dtype=np.float32,
-    )
-    scores = np.array([p.get("confidence", 0.0) for p in raw_preds], dtype=np.float32)
-    keep = _nms_boxes(boxes, scores, overlap_thresh)
-    return [raw_preds[i] for i in keep]
-
-
 class AnalyzeFacadeRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
-    admin_key: str                              # clé admin obligatoire
     roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
     pixels_per_meter: Optional[float] = None
-    confidence: float = 0.20
-    model_id: str = FACADE_MODEL_ID            # overrideable pour tests A/B
-    use_tiling: bool = True                    # désactivable pour debug/perf
-    use_opencv_perimeter: bool = True          # hull OpenCV pour facade_area
-    use_grounding_dino: bool = False           # fallback GroundingDINO (expérimental)
-    tile_size: int = FACADE_TILE_SIZE
-    tile_overlap: int = FACADE_TILE_OVERLAP
-
+    confidence: float = 0.25
 
 @app.post("/analyze-facade")
 def analyze_facade(req: AnalyzeFacadeRequest):
-    # ── Vérification admin ──────────────────────────────────────────────────
-    if not _ADMIN_KEY or req.admin_key != _ADMIN_KEY:
-        raise HTTPException(403, "Accès refusé — clé admin requise")
-
     s = sessions.get(req.session_id)
     if s is None:
         raise HTTPException(404, "Session introuvable")
@@ -1470,168 +1355,143 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     H, W = img_rgb.shape[:2]
     ppm = req.pixels_per_meter or s.get("pixels_per_meter")
 
-    # ── Client Roboflow ──────────────────────────────────────────────────────
+    # ── Appel Roboflow inference ──
     from inference_sdk import InferenceHTTPClient
     client = InferenceHTTPClient(
         api_url="https://serverless.roboflow.com",
         api_key=req.roboflow_api_key,
     )
 
-    # ── Inférence principale (avec ou sans tiling) ───────────────────────────
+    # Encode image for inference
+    img_pil = Image.fromarray(img_rgb).convert("RGB")
+    buf = io.BytesIO()
+    img_pil.save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+    img_b64_for_infer = base64.b64encode(buf.read()).decode()
+
     try:
-        if req.use_tiling:
-            raw_preds = _infer_facade_tiled(
-                client, img_rgb, req.model_id, req.confidence,
-                req.tile_size, req.tile_overlap,
-            )
-            raw_preds = _nms_facade(raw_preds, overlap_thresh=0.35)
-        else:
-            # Full-image (mode debug / petites images)
-            buf = io.BytesIO()
-            Image.fromarray(img_rgb).save(buf, format="JPEG", quality=95)
-            img_b64 = base64.b64encode(buf.getvalue()).decode()
-            resp = client.infer(img_b64, model_id=req.model_id)
-            raw_preds = [
-                p for p in resp.get("predictions", [])
-                if p.get("confidence", 0) >= req.confidence
-            ]
+        resp = client.infer(img_b64_for_infer, model_id=FACADE_MODEL_ID)
     except Exception as e:
         raise HTTPException(500, f"Erreur inférence façade : {e}")
 
-    # ── GroundingDINO fallback (si peu de fenêtres et option activée) ────────
-    windows_primary = sum(
-        1 for p in raw_preds
-        if FACADE_CLASS_MAP.get(p.get("class", "").lower()) == "window"
-    )
-    if req.use_grounding_dino and windows_primary < 2:
-        try:
-            buf = io.BytesIO()
-            Image.fromarray(img_rgb).save(buf, format="JPEG", quality=92)
-            img_b64 = base64.b64encode(buf.getvalue()).decode()
-            gdino_resp = client.infer(img_b64, model_id="grounding-dino/1")
-            for pred in gdino_resp.get("predictions", []):
-                cls = pred.get("class", "").lower()
-                if cls in ("window", "door") and pred.get("confidence", 0) >= req.confidence:
-                    raw_preds.append({**pred, "_source": "grounding_dino"})
-            raw_preds = _nms_facade(raw_preds, overlap_thresh=0.35)
-        except Exception as exc:
-            logger.warning("GroundingDINO fallback failed: %s", exc)
+    predictions = resp.get("predictions", [])
 
-    # ── Détection périmètre bâtiment (OpenCV hull convexe) ───────────────────
-    facade_hull = None
-    facade_area_px2 = None
-    if req.use_opencv_perimeter:
-        facade_hull, facade_area_px2 = _detect_facade_perimeter(img_rgb)
-    # Fallback : W×H si le hull OpenCV échoue
-    if facade_area_px2 is None or facade_area_px2 < 500:
-        facade_area_px2 = float(W * H)
-        logger.info("Périmètre OpenCV non trouvé → fallback W×H")
-
-    # ── Convertir prédictions brutes → FacadeElements ────────────────────────
+    # ── Convertir les détections en FacadeElement ──
     elements = []
-    for i, pred in enumerate(raw_preds):
+    for i, pred in enumerate(predictions):
         cls_name = pred.get("class", "").lower()
-        facade_type = FACADE_CLASS_MAP.get(cls_name)
-        if facade_type is None:
+        if cls_name not in FACADE_CLASS_MAP:
+            continue
+        if pred.get("confidence", 0) < req.confidence:
             continue
 
-        cx, cy = float(pred["x"]), float(pred["y"])
-        pw, ph = float(pred["width"]), float(pred["height"])
+        facade_type = FACADE_CLASS_MAP[cls_name]
 
-        x_norm = max(0.0, min(1.0, (cx - pw / 2) / W))
-        y_norm = max(0.0, min(1.0, (cy - ph / 2) / H))
-        w_norm = min(pw / W, 1.0 - x_norm)
-        h_norm = min(ph / H, 1.0 - y_norm)
+        # Roboflow retourne x_center, y_center, width, height en pixels
+        cx = pred["x"]
+        cy = pred["y"]
+        pw = pred["width"]
+        ph = pred["height"]
 
-        area_m2 = round((pw * ph) / (ppm * ppm), 3) if (ppm and ppm > 0) else None
+        # Convertir en bbox normalisée (top-left x, y, w, h)
+        x_norm = (cx - pw / 2) / W
+        y_norm = (cy - ph / 2) / H
+        w_norm = pw / W
+        h_norm = ph / H
+
+        # Clamp
+        x_norm = max(0, min(1, x_norm))
+        y_norm = max(0, min(1, y_norm))
+        w_norm = min(w_norm, 1 - x_norm)
+        h_norm = min(h_norm, 1 - y_norm)
+
+        # Calcul surface
+        area_m2 = None
+        if ppm and ppm > 0:
+            area_px2 = pw * ph
+            area_m2 = area_px2 / (ppm * ppm)
 
         elements.append({
-            "id":       i,
-            "type":     facade_type,
+            "id": i,
+            "type": facade_type,
             "label_fr": FACADE_LABELS_FR.get(facade_type, cls_name),
-            "bbox_norm": {
-                "x": round(x_norm, 5), "y": round(y_norm, 5),
-                "w": round(w_norm, 5), "h": round(h_norm, 5),
-            },
-            "area_m2":    area_m2,
-            "confidence": round(pred.get("confidence", 0.0), 3),
-            "source":     pred.get("_source", "roboflow"),
+            "bbox_norm": {"x": round(x_norm, 5), "y": round(y_norm, 5),
+                          "w": round(w_norm, 5), "h": round(h_norm, 5)},
+            "area_m2": round(area_m2, 3) if area_m2 is not None else None,
+            "confidence": round(pred.get("confidence", 0), 3),
         })
 
-    # ── Floor levels par position Y (haut = étage le plus haut) ─────────────
+    # ── Assigner les floor_level par position Y (haut = étage le plus haut) ──
     floor_lines = sorted(
         [e for e in elements if e["type"] == "floor_line"],
-        key=lambda e: e["bbox_norm"]["y"],
+        key=lambda e: e["bbox_norm"]["y"]
     )
+    # Créer des seuils d'étage à partir des floor_lines
     floor_thresholds = [fl["bbox_norm"]["y"] + fl["bbox_norm"]["h"] / 2 for fl in floor_lines]
 
     for el in elements:
         if el["type"] == "floor_line":
             continue
         cy_norm = el["bbox_norm"]["y"] + el["bbox_norm"]["h"] / 2
+        # Compter combien de floor_lines sont au-dessus du centre
         lines_above = sum(1 for t in floor_thresholds if t < cy_norm)
         el["floor_level"] = max(0, len(floor_thresholds) - lines_above)
 
-    # ── Comptages ─────────────────────────────────────────────────────────────
-    windows   = [e for e in elements if e["type"] == "window"]
-    doors     = [e for e in elements if e["type"] == "door"]
+    # ── Comptages ──
+    windows = [e for e in elements if e["type"] == "window"]
+    doors   = [e for e in elements if e["type"] == "door"]
     balconies = [e for e in elements if e["type"] == "balcony"]
     floors_count = max(1, len(floor_lines) + 1)
 
-    # ── Surfaces (hull OpenCV pour facade_area — plus précis que W×H) ────────
+    # ── Surfaces ──
     openings = [e for e in elements if e["type"] in ("window", "door", "balcony")]
-    openings_area_m2 = (
-        sum(e["area_m2"] for e in openings if e["area_m2"]) if ppm else None
-    )
-    facade_area_m2  = (facade_area_px2 / (ppm * ppm)) if (ppm and facade_area_px2) else None
-    ratio_openings  = (
-        (openings_area_m2 / facade_area_m2)
-        if (facade_area_m2 and openings_area_m2 and facade_area_m2 > 0) else None
-    )
+    openings_area_m2 = sum(e["area_m2"] for e in openings if e["area_m2"]) if ppm else None
+    facade_area_m2 = (W * H) / (ppm * ppm) if ppm else None
+    ratio_openings = (openings_area_m2 / facade_area_m2) if (facade_area_m2 and openings_area_m2) else None
 
-    # ── Overlay annoté ────────────────────────────────────────────────────────
+    # ── Image brute en b64 ──
+    plan_b64 = pipeline._np_to_b64(img_rgb)
+
+    # ── Overlay annoté ──
     overlay = img_rgb.copy()
-    # Périmètre bâtiment en vert (si hull détecté)
-    if facade_hull is not None:
-        cv2.polylines(
-            overlay, [facade_hull], isClosed=True,
-            color=(46, 204, 113), thickness=2, lineType=cv2.LINE_AA,
-        )
+    TYPE_COLORS_BGR = {
+        "window":     (250, 164, 96),
+        "door":       (180, 114, 244),
+        "roof":       (250, 139, 167),
+        "floor_line": (60, 146, 251),
+        "other":      (36, 187, 251),
+    }
     for el in elements:
-        bx   = el["bbox_norm"]
-        x1p  = int(bx["x"] * W)
-        y1p  = int(bx["y"] * H)
-        x2p  = int((bx["x"] + bx["w"]) * W)
-        y2p  = int((bx["y"] + bx["h"]) * H)
-        color = TYPE_COLORS_BGR_FACADE.get(el["type"], (180, 180, 180))
+        bx = el["bbox_norm"]
+        x1 = int(bx["x"] * W)
+        y1 = int(bx["y"] * H)
+        x2 = int((bx["x"] + bx["w"]) * W)
+        y2 = int((bx["y"] + bx["h"]) * H)
+        color = TYPE_COLORS_BGR.get(el["type"], (180, 180, 180))
+        thickness = 2
         if el["type"] == "floor_line":
-            cv2.line(overlay, (x1p, (y1p + y2p) // 2), (x2p, (y1p + y2p) // 2),
-                     color, 2, cv2.LINE_AA)
+            cv2.line(overlay, (x1, (y1 + y2) // 2), (x2, (y1 + y2) // 2), color, 2, cv2.LINE_AA)
         else:
-            cv2.rectangle(overlay, (x1p, y1p), (x2p, y2p), color, 2, cv2.LINE_AA)
-            cv2.putText(overlay, el["label_fr"], (x1p, max(0, y1p - 5)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
+            label = el["label_fr"]
+            cv2.putText(overlay, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
-    plan_b64    = pipeline._np_to_b64(img_rgb)
     overlay_b64 = pipeline._np_to_b64(overlay)
 
     return {
-        "session_id":       req.session_id,
-        "windows_count":    len(windows),
-        "doors_count":      len(doors),
-        "balconies_count":  len(balconies),
-        "floors_count":     floors_count,
-        "elements":         elements,
-        "facade_area_m2":   round(facade_area_m2,   2) if facade_area_m2   else None,
+        "session_id": req.session_id,
+        "windows_count": len(windows),
+        "doors_count": len(doors),
+        "balconies_count": len(balconies),
+        "floors_count": floors_count,
+        "elements": elements,
+        "facade_area_m2": round(facade_area_m2, 2) if facade_area_m2 else None,
         "openings_area_m2": round(openings_area_m2, 2) if openings_area_m2 else None,
-        "ratio_openings":   round(ratio_openings,   4) if ratio_openings   else None,
+        "ratio_openings": round(ratio_openings, 4) if ratio_openings else None,
         "pixels_per_meter": ppm,
-        "model_used":       req.model_id,
-        "tiling_used":      req.use_tiling,
-        "opencv_perimeter": facade_hull is not None,
-        "overlay_b64":      overlay_b64,
-        "plan_b64":         plan_b64,
-        "is_mock":          False,
+        "overlay_b64": overlay_b64,
+        "plan_b64": plan_b64,
+        "is_mock": False,
     }
 
 

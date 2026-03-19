@@ -189,7 +189,6 @@ export default function FacadeAnalyzeStep({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionId,
-          admin_key: process.env.NEXT_PUBLIC_FACADE_ADMIN_KEY ?? "",
           roboflow_api_key: apiKey,
           pixels_per_meter: ppm ?? null,
         }),
