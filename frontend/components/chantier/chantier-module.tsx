@@ -105,14 +105,43 @@ function PieceCard({ piece, expanded, onToggle, onUpdatePiece, onDeletePiece }: 
   );
 }
 
-function PlanOverlay({ planB64, planMime, pieces, reserves, onSelectPiece, selectedPieceId }: { planB64: string; planMime: string; pieces: ChantierPiece[]; reserves: Reserve[]; onSelectPiece: (id: string) => void; selectedPieceId: string | null }) {
+const OPENING_STATUT_COLOR: Record<TacheStatut, string> = {
+  a_faire: "#EF4444", en_cours: "#F59E0B", termine: "#10B981", bloque: "#DC2626",
+};
+
+function PlanOverlay({ planB64, planMime, pieces, reserves, imgWidth=0, imgHeight=0, onSelectPiece, onToggleTache, selectedPieceId }: {
+  planB64: string; planMime: string; pieces: ChantierPiece[]; reserves: Reserve[];
+  imgWidth?: number; imgHeight?: number;
+  onSelectPiece: (id: string) => void;
+  onToggleTache: (pieceId: string, tacheId: string) => void;
+  selectedPieceId: string | null;
+}) {
   const [size,setSize]=useState({w:1,h:1}); const imgRef=useRef<HTMLImageElement>(null);
   const onLoad=()=>{if(imgRef.current)setSize({w:imgRef.current.offsetWidth,h:imgRef.current.offsetHeight});};
+  const openingTasks=pieces.flatMap(piece=>piece.taches.filter(t=>t.sourceDetection?.openingRef&&t.sourceDetection.openingRef.x_px!=null).map(t=>({piece,tache:t,ref:t.sourceDetection!.openingRef})));
+  const W=imgWidth||1; const H=imgHeight||1;
   return (
     <div className="relative rounded-xl overflow-hidden border border-white/10 bg-white/5">
       <img ref={imgRef} src={`data:${planMime};base64,${planB64}`} className="w-full" alt="plan" onLoad={onLoad}/>
+      <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
+        {([["a_faire","À faire"],["en_cours","En cours"],["termine","Fait"]] as [TacheStatut,string][]).map(([s,l])=>(
+          <div key={s} className="flex items-center gap-1 bg-black/60 rounded px-1.5 py-0.5 text-[9px] font-semibold" style={{color:OPENING_STATUT_COLOR[s]}}>
+            <div className="w-2 h-2 rounded-sm shrink-0" style={{background:OPENING_STATUT_COLOR[s]}}/>{l}
+          </div>
+        ))}
+      </div>
       <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
         {pieces.map(piece=>{if(!piece.polygonNorm||piece.polygonNorm.length<3)return null;const pts=piece.polygonNorm.map(p=>`${p.x*size.w},${p.y*size.h}`).join(" ");const pct=progressionPiece(piece);const fill=pct===100?"#10B98155":pct>50?"#3B82F655":pct>0?"#F59E0B44":"#94A3B822";const stk=selectedPieceId===piece.id?"#06B6D4":pct===100?"#10B981":"#94A3B866";const cx=piece.polygonNorm.reduce((s,p)=>s+p.x,0)/piece.polygonNorm.length*size.w;const cy=piece.polygonNorm.reduce((s,p)=>s+p.y,0)/piece.polygonNorm.length*size.h;return(<g key={piece.id} onClick={()=>onSelectPiece(piece.id)} className="cursor-pointer"><polygon points={pts} fill={fill} stroke={stk} strokeWidth={selectedPieceId===piece.id?2.5:1.5} className="transition-all hover:opacity-80"/><text x={cx} y={cy-6} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="white" className="pointer-events-none select-none drop-shadow">{piece.nom.slice(0,12)}</text><text x={cx} y={cy+8} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill={pct===100?"#10B981":"#94A3B8"} className="pointer-events-none select-none">{pct}%</text></g>);})}
+        {openingTasks.map(({piece,tache,ref})=>{
+          const cx=(ref.x_px/W)*size.w; const cy=(ref.y_px/H)*size.h;
+          const rw=Math.max(8,(ref.width_px/W)*size.w*0.9); const rh=Math.max(8,(ref.height_px/H)*size.h*0.9);
+          const col=OPENING_STATUT_COLOR[tache.statut]; const done=tache.statut==="termine";
+          return(<g key={tache.id} onClick={e=>{e.stopPropagation();onToggleTache(piece.id,tache.id);}} className="cursor-pointer">
+            <rect x={cx-rw/2} y={cy-rh/2} width={rw} height={rh} fill={col+(done?"99":"44")} stroke={col} strokeWidth={done?2.5:1.5} rx="2" className="transition-all hover:opacity-80"/>
+            {done&&<line x1={cx-rw*0.25} y1={cy} x2={cx} y2={cy+rh*0.2} stroke="white" strokeWidth="1.5" strokeLinecap="round" className="pointer-events-none"/>}
+            {done&&<line x1={cx} y1={cy+rh*0.2} x2={cx+rw*0.3} y2={cy-rh*0.2} stroke="white" strokeWidth="1.5" strokeLinecap="round" className="pointer-events-none"/>}
+          </g>);
+        })}
         {reserves.filter(r=>r.position&&r.statut!=="levee").map(r=>{const cx=r.position!.x*size.w;const cy=r.position!.y*size.h;const col=RESERVE_NIVEAU_COLORS[r.niveau];return(<g key={r.id} className="cursor-pointer"><circle cx={cx} cy={cy} r="10" fill={col+"cc"} stroke={col} strokeWidth="1.5"/><text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize="8" fill="white" fontWeight="bold" className="pointer-events-none select-none">{r.numero}</text></g>);})}
       </svg>
     </div>
@@ -301,7 +330,7 @@ export default function ChantierModule({ rooms, openings, imgWidth=0, imgHeight=
 
       {onglet==="avancement"&&(
         <>
-          {view==="plan"&&hasPlan?(<div className="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-4"><PlanOverlay planB64={projet.planImageB64!} planMime={projet.planImageMime!} pieces={projet.pieces} reserves={projet.reserves} onSelectPiece={id=>{setSelectedId(id);setExpandedIds(prev=>new Set([...prev,id]));setView("liste");}} selectedPieceId={selectedId}/><StatsBar projet={projet}/></div>):<StatsBar projet={projet}/>}
+          {view==="plan"&&hasPlan?(<div className="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-4"><PlanOverlay planB64={projet.planImageB64!} planMime={projet.planImageMime!} pieces={projet.pieces} reserves={projet.reserves} imgWidth={imgWidth} imgHeight={imgHeight} onSelectPiece={id=>{setSelectedId(id);setExpandedIds(prev=>new Set([...prev,id]));setView("liste");}} onToggleTache={(pieceId,tacheId)=>{const updated={...projet,pieces:projet.pieces.map(p=>p.id!==pieceId?p:{...p,taches:p.taches.map(t=>t.id!==tacheId?t:{...t,statut:(t.statut==="termine"?"a_faire":"termine") as TacheStatut,updatedAt:new Date().toISOString()})}),updatedAt:new Date().toISOString()};save(updated);}} selectedPieceId={selectedId}/><StatsBar projet={projet}/></div>):<StatsBar projet={projet}/>}
           <div className="flex items-center justify-between mb-3"><span className="text-sm text-slate-400">{projet.pieces.length} pièce{projet.pieces.length>1?"s":""}</span><div className="flex gap-2"><button onClick={()=>setExpandedIds(new Set(projet.pieces.map(p=>p.id)))} className="text-xs text-slate-500 hover:text-white transition-colors">Tout ouvrir</button><span className="text-slate-700">·</span><button onClick={()=>setExpandedIds(new Set())} className="text-xs text-slate-500 hover:text-white transition-colors">Tout fermer</button></div></div>
           <div className="space-y-3">{projet.pieces.map(piece=><PieceCard key={piece.id} piece={piece} expanded={expandedIds.has(piece.id)} onToggle={()=>setExpandedIds(prev=>{const n=new Set(prev);n.has(piece.id)?n.delete(piece.id):n.add(piece.id);return n;})} onUpdatePiece={updated=>save({...projet,pieces:projet.pieces.map(p=>p.id===piece.id?updated:p),updatedAt:new Date().toISOString()})} onDeletePiece={()=>{if(!confirm("Supprimer cette pièce ?"))return;save({...projet,pieces:projet.pieces.filter(p=>p.id!==piece.id),updatedAt:new Date().toISOString()});}}/>)}</div>
           {addingPiece?(<div className="mt-3 flex gap-2"><input value={newPieceNom} onChange={e=>setNewPieceNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPieceManuelle()} placeholder="Nom de la pièce..." autoFocus className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-accent"/><button onClick={addPieceManuelle} className="text-emerald-400 hover:text-emerald-300 px-3"><Save className="w-4 h-4"/></button><button onClick={()=>setAddingPiece(false)} className="text-slate-500 hover:text-white px-2"><X className="w-4 h-4"/></button></div>):<button onClick={()=>setAddingPiece(true)} className="mt-3 w-full flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-white border border-dashed border-white/10 hover:border-white/30 rounded-2xl py-3 transition-colors"><Plus className="w-4 h-4"/> Ajouter une pièce</button>}
