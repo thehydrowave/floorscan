@@ -13,7 +13,7 @@ interface ComparisonPanelProps {
   ppm: number | null;
 }
 
-const PIPELINE_ORDER = ["G", "F", "A", "B", "C", "D", "E"];
+const PIPELINE_ORDER = ["H", "G", "F", "A", "B", "C", "D", "E"];
 
 export default function ComparisonPanel({ result, basePlanB64, ppm }: ComparisonPanelProps) {
   const { lang } = useLang();
