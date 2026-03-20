@@ -141,7 +141,45 @@ def reconstruct_walls_from_lines(segments: list, H: int, W: int,
 
 
 # ============================================================
-# STEP 4 — SEGMENTATION PIÈCES POUR MURS INCLINÉS
+# STEP 4 — EMPREINTE ADAPTÉE AUX MURS INCLINÉS
+# ============================================================
+
+def _compute_footprint_diagonal(walls: np.ndarray, m_doors: np.ndarray,
+                                 m_windows: np.ndarray,
+                                 H: int, W: int):
+    """Calcul de l'empreinte du bâtiment adapté aux murs diagonaux.
+
+    Différences vs _compute_footprint (pipeline.py) :
+    - Kernel ELLIPTIQUE au lieu de rectangulaire → ferme mieux les coins à 45°
+    - Kernel plus grand (15×15) + plus d'itérations (5)
+      → évite que le flood fill fuie à travers les angles non fermés
+    """
+    try:
+        walls_for_outline = cv2.bitwise_or(
+            walls, cv2.bitwise_or(m_doors, m_windows))
+
+        # Elliptique (15×15) × 5 iter vs rectangulaire (11×11) × 3 iter en prod
+        kernel_e = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE,
+                                  kernel_e, iterations=5)
+
+        inv = cv2.bitwise_not(closed)
+        flood = np.zeros((H + 2, W + 2), np.uint8)
+        cv2.floodFill(inv, flood, (0, 0), 255)
+        filled = cv2.bitwise_not(inv)
+
+        cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+        if cnts:
+            cnt = max(cnts, key=cv2.contourArea)
+            return cnt, filled
+    except Exception as e:
+        logger.warning("_compute_footprint_diagonal failed: %s", e)
+    return None, None
+
+
+# ============================================================
+# STEP 5 — SEGMENTATION PIÈCES POUR MURS INCLINÉS
 # ============================================================
 
 def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
@@ -345,12 +383,12 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         # Hough final sur le masque fusionné pour les stats complètes
         wall_segments_all = extract_wall_lines_hough(m_walls, (H, W))
 
-        # ── 6. Empreinte ───────────────────────────────────────────────────────
-        cnt, footprint_mask = pip._compute_footprint(m_walls, m_doors, m_wins, H, W)
+        # ── 6. Empreinte (version diagonale : kernel elliptique, évite la fuite) ─
+        cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
         if cnt is not None and ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
-        # ── 7. Surface habitable ───────────────────────────────────────────────
+        # ── 7. Surface habitable ──────────────────────────────────────────────
         if cnt is not None:
             building = np.zeros((H, W), np.uint8)
             cv2.fillPoly(building, [cnt], 255)
