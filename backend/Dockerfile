@@ -18,5 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY main.py .
 COPY pipeline.py .
+COPY pipeline_diagonal.py .
 
 CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
