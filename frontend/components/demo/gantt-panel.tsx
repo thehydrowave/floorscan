@@ -251,17 +251,15 @@ export default function GanttPanel({
                 <Users className="w-4 h-4" />
                 {d("gantt_team_size" as DTKey)}
                 <input
-                  type="range"
+                  type="number"
                   min={1}
-                  max={3}
-                  step={1}
+                  max={50}
                   value={teamSize}
-                  onChange={(e) => setTeamSize(parseInt(e.target.value))}
-                  className="w-20 accent-rose-500"
+                  onChange={(e) =>
+                    setTeamSize(Math.max(1, parseInt(e.target.value) || 1))
+                  }
+                  className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs text-center focus:outline-none focus:ring-1 focus:ring-rose-500"
                 />
-                <span className="font-mono text-white text-sm w-6 text-center">
-                  {teamSize}
-                </span>
                 <span className="text-[10px] text-slate-600">
                   {teamSize === 1
                     ? d("gantt_person" as DTKey)

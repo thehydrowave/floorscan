@@ -1329,6 +1329,7 @@ export const DEMO_T = {
 export type DTKey = keyof typeof DEMO_T;
 
 export function dt(key: DTKey, lang: Lang): string {
-  const entry = DEMO_T[key] as Record<string, string>;
+  const entry = DEMO_T[key] as Record<string, string> | undefined;
+  if (!entry) return key as string; // clé custom (tâche créée par l'utilisateur)
   return entry[lang] ?? entry["fr"];
 }
