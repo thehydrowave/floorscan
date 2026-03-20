@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarRange,
@@ -9,8 +9,11 @@ import {
   Download,
   AlertTriangle,
   Users,
+  Plus,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
-import type { AnalysisResult, CustomDetection, DpgfState } from "@/lib/types";
+import type { AnalysisResult, CustomDetection } from "@/lib/types";
 import { buildDefaultDpgf } from "@/lib/dpgf-defaults";
 import { buildGanttTasks, totalDuration, GanttTask } from "@/lib/gantt-builder";
 import { useLang } from "@/lib/lang-context";
@@ -25,12 +28,25 @@ interface GanttPanelProps {
 
 // ── Layout constants ────────────────────────────────────────────────────────────
 
-const LABEL_WIDTH = 180;
+const LABEL_WIDTH = 188;
 const ROW_HEIGHT = 36;
 const BAR_HEIGHT = 22;
 const HEADER_HEIGHT = 32;
 const DAY_WIDTH = 18;
 const MIN_CHART_WIDTH = 400;
+
+// Palette for user-added tasks
+const DEFAULT_COLORS = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e",
+  "#06b6d4", "#6366f1", "#a855f7", "#ec4899",
+];
+
+// ── Input style ─────────────────────────────────────────────────────────────────
+
+const inputCls =
+  "w-full bg-transparent border border-transparent hover:border-white/10 " +
+  "focus:border-rose-500/50 rounded px-1.5 py-0.5 text-white text-xs " +
+  "focus:outline-none focus:bg-white/5 transition-colors";
 
 // ── Component ───────────────────────────────────────────────────────────────────
 
@@ -42,41 +58,83 @@ export default function GanttPanel({
   const d = (key: DTKey) => dt(key, lang);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // ── State ─────────────────────────────────────────────────────────────────────
+  // ── UI state ───────────────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState(false);
   const [teamSize, setTeamSize] = useState(1);
   const [startDate, setStartDate] = useState(
     () => new Date().toISOString().slice(0, 10)
   );
 
-  // ── Build DPGF + Gantt tasks ──────────────────────────────────────────────────
-  const dpgf = useMemo<DpgfState>(
-    () => buildDefaultDpgf(result, customDetections, { ceilingHeight: 2.5 }),
-    [result, customDetections]
-  );
+  // ── Editable tasks state ───────────────────────────────────────────────────
+  const [tasks, setTasks] = useState<GanttTask[]>(() => {
+    const dpgf = buildDefaultDpgf(result, customDetections, {
+      ceilingHeight: 2.5,
+    });
+    return buildGanttTasks(dpgf, { teamSize: 1 });
+  });
 
-  const tasks = useMemo<GanttTask[]>(
-    () => buildGanttTasks(dpgf, { teamSize }),
-    [dpgf, teamSize]
-  );
+  // Re-init on new analysis result
+  useEffect(() => {
+    const dpgf = buildDefaultDpgf(result, customDetections, {
+      ceilingHeight: 2.5,
+    });
+    setTasks(buildGanttTasks(dpgf, { teamSize: 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
+  // ── Derived values ─────────────────────────────────────────────────────────
   const total = useMemo(() => totalDuration(tasks), [tasks]);
-
-  // ── SVG dimensions ────────────────────────────────────────────────────────────
   const chartWidth = Math.max(MIN_CHART_WIDTH, total * DAY_WIDTH);
   const svgWidth = LABEL_WIDTH + chartWidth + 20;
   const svgHeight = HEADER_HEIGHT + tasks.length * ROW_HEIGHT + 10;
 
-  // ── Week markers ──────────────────────────────────────────────────────────────
   const weekLines = useMemo(() => {
     const lines: number[] = [];
-    for (let day = 7; day <= total; day += 7) {
-      lines.push(day);
-    }
+    for (let day = 7; day <= total; day += 7) lines.push(day);
     return lines;
   }, [total]);
 
-  // ── Export PNG ─────────────────────────────────────────────────────────────────
+  // ── Task handlers ──────────────────────────────────────────────────────────
+
+  function updateTask(
+    lotNumber: number,
+    changes: Partial<Pick<GanttTask, "title_key" | "start_day" | "duration_days">>
+  ) {
+    setTasks((prev) =>
+      prev.map((t) => (t.lot_number === lotNumber ? { ...t, ...changes } : t))
+    );
+  }
+
+  function addTask() {
+    const id = Date.now();
+    const colorIdx = tasks.length % DEFAULT_COLORS.length;
+    setTasks((prev) => [
+      ...prev,
+      {
+        lot_number: id,
+        title_key: "Nouvelle tâche",
+        color: DEFAULT_COLORS[colorIdx],
+        icon: "🔧",
+        start_day: total > 0 ? total : 0,
+        duration_days: 1,
+        depends_on: [],
+      },
+    ]);
+  }
+
+  function deleteTask(lotNumber: number) {
+    setTasks((prev) => prev.filter((t) => t.lot_number !== lotNumber));
+  }
+
+  // Re-build from DPGF productivity rates
+  function autoFill() {
+    const dpgf = buildDefaultDpgf(result, customDetections, {
+      ceilingHeight: 2.5,
+    });
+    setTasks(buildGanttTasks(dpgf, { teamSize }));
+  }
+
+  // ── Export PNG ─────────────────────────────────────────────────────────────
   const exportPng = useCallback(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -89,7 +147,7 @@ export default function GanttPanel({
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      const scale = 2; // Retina
+      const scale = 2;
       canvas.width = svgWidth * scale;
       canvas.height = svgHeight * scale;
       const ctx = canvas.getContext("2d");
@@ -99,7 +157,6 @@ export default function GanttPanel({
       ctx.fillRect(0, 0, svgWidth, svgHeight);
       ctx.drawImage(img, 0, 0, svgWidth, svgHeight);
       URL.revokeObjectURL(url);
-
       canvas.toBlob((pngBlob) => {
         if (!pngBlob) return;
         const a = document.createElement("a");
@@ -109,11 +166,13 @@ export default function GanttPanel({
         URL.revokeObjectURL(a.href);
       }, "image/png");
     };
-    img.onerror = () => { URL.revokeObjectURL(url); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+    };
     img.src = url;
   }, [svgWidth, svgHeight]);
 
-  // ── Format date helper ────────────────────────────────────────────────────────
+  // ── Date helper ────────────────────────────────────────────────────────────
   function addDays(dateStr: string, days: number): string {
     const date = new Date(dateStr);
     date.setDate(date.getDate() + days);
@@ -123,7 +182,7 @@ export default function GanttPanel({
     });
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="glass rounded-2xl border border-white/10 overflow-hidden mt-4">
       {/* ── Header toggle ──────────────────────────────────────────────────── */}
@@ -174,9 +233,20 @@ export default function GanttPanel({
               </div>
             )}
 
-            {/* Parameters row */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 px-5 mb-4">
-              {/* Team size slider */}
+            {/* ── Controls row ─────────────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-4 px-5 mb-4">
+              {/* Start date */}
+              <label className="text-xs text-slate-500 flex items-center gap-2">
+                {d("gantt_start_date" as DTKey)}
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:outline-none focus:ring-1 focus:ring-rose-500"
+                />
+              </label>
+
+              {/* Team size — used only for auto-fill */}
               <label className="text-xs text-slate-500 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 {d("gantt_team_size" as DTKey)}
@@ -199,29 +269,138 @@ export default function GanttPanel({
                 </span>
               </label>
 
-              {/* Start date */}
-              <label className="text-xs text-slate-500 flex items-center gap-2">
-                {d("gantt_start_date" as DTKey)}
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:outline-none focus:ring-1 focus:ring-rose-500"
-                />
-              </label>
+              {/* Auto-fill button */}
+              <button
+                type="button"
+                onClick={autoFill}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white rounded-lg text-xs font-semibold transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Recalculer depuis DPGF
+              </button>
 
-              {/* Total duration badge */}
-              <div className="flex items-center">
-                <span className="text-xs text-rose-400 font-semibold">
-                  {(d("gantt_total_days" as DTKey) as string).replace(
-                    "{n}",
-                    String(total)
-                  )}
-                </span>
-              </div>
+              {/* Total duration */}
+              <span className="text-xs text-rose-400 font-semibold ml-auto">
+                {(d("gantt_total_days" as DTKey) as string).replace(
+                  "{n}",
+                  String(total)
+                )}
+              </span>
             </div>
 
-            {/* ── SVG Gantt Chart ──────────────────────────────────────────── */}
+            {/* ── Editable tasks table ──────────────────────────────────────── */}
+            <div className="mx-5 mb-4 rounded-lg border border-white/10 overflow-hidden">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-white/5 text-slate-400 text-left">
+                    <th className="px-3 py-2 w-6 font-semibold" />
+                    <th className="px-3 py-2 font-semibold">Nom de la tâche</th>
+                    <th className="px-3 py-2 w-24 font-semibold text-right">
+                      Début&nbsp;(j)
+                    </th>
+                    <th className="px-3 py-2 w-24 font-semibold text-right">
+                      Durée&nbsp;(j)
+                    </th>
+                    <th className="px-3 py-2 w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((task) => {
+                    // Display name: try i18n lookup, fallback to raw key (custom tasks)
+                    const displayName = dt(task.title_key as DTKey, lang);
+
+                    return (
+                      <tr
+                        key={task.lot_number}
+                        className="group border-t border-white/5 hover:bg-white/[0.02] transition-colors"
+                      >
+                        {/* Color dot */}
+                        <td className="px-3 py-1.5">
+                          <span
+                            className="block w-2.5 h-2.5 rounded-full"
+                            style={{ background: task.color }}
+                          />
+                        </td>
+
+                        {/* Task name */}
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="text"
+                            value={displayName}
+                            onChange={(e) =>
+                              updateTask(task.lot_number, {
+                                title_key: e.target.value,
+                              })
+                            }
+                            className={inputCls}
+                          />
+                        </td>
+
+                        {/* Start day */}
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="number"
+                            value={task.start_day}
+                            min={0}
+                            onChange={(e) =>
+                              updateTask(task.lot_number, {
+                                start_day: Math.max(
+                                  0,
+                                  parseInt(e.target.value) || 0
+                                ),
+                              })
+                            }
+                            className={`${inputCls} text-right`}
+                          />
+                        </td>
+
+                        {/* Duration */}
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="number"
+                            value={task.duration_days}
+                            min={1}
+                            onChange={(e) =>
+                              updateTask(task.lot_number, {
+                                duration_days: Math.max(
+                                  1,
+                                  parseInt(e.target.value) || 1
+                                ),
+                              })
+                            }
+                            className={`${inputCls} text-right`}
+                          />
+                        </td>
+
+                        {/* Delete */}
+                        <td className="px-3 py-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => deleteTask(task.lot_number)}
+                            title="Supprimer"
+                            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Add task button */}
+              <button
+                type="button"
+                onClick={addTask}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 text-xs text-slate-500 hover:text-slate-300 hover:bg-white/5 border-t border-white/5 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Ajouter une tâche
+              </button>
+            </div>
+
+            {/* ── SVG Gantt chart ───────────────────────────────────────────── */}
             <div className="mx-5 mb-4 overflow-x-auto rounded-lg border border-white/5 bg-white/[0.02]">
               <svg
                 ref={svgRef}
@@ -238,8 +417,7 @@ export default function GanttPanel({
                   fill="transparent"
                 />
 
-                {/* ── Day/Week axis ── */}
-                {/* Week vertical lines */}
+                {/* Week vertical lines + labels */}
                 {weekLines.map((day) => (
                   <g key={`week-${day}`}>
                     <line
@@ -263,7 +441,10 @@ export default function GanttPanel({
                 ))}
 
                 {/* Day ticks (every 5 days) */}
-                {Array.from({ length: Math.ceil(total / 5) }, (_, i) => (i + 1) * 5)
+                {Array.from(
+                  { length: Math.ceil(total / 5) },
+                  (_, i) => (i + 1) * 5
+                )
                   .filter((day) => day % 7 !== 0 && day <= total)
                   .map((day) => (
                     <text
@@ -274,11 +455,12 @@ export default function GanttPanel({
                       fontSize={8}
                       textAnchor="middle"
                     >
-                      {d("gantt_day_short" as DTKey)}{day}
+                      {d("gantt_day_short" as DTKey)}
+                      {day}
                     </text>
                   ))}
 
-                {/* ── Task rows ── */}
+                {/* Task rows */}
                 {tasks.map((task, idx) => {
                   const rowY = HEADER_HEIGHT + idx * ROW_HEIGHT;
                   const barX = LABEL_WIDTH + task.start_day * DAY_WIDTH;
@@ -287,12 +469,14 @@ export default function GanttPanel({
                     task.duration_days * DAY_WIDTH
                   );
                   const barY = rowY + (ROW_HEIGHT - BAR_HEIGHT) / 2;
-                  const labelText = d(task.title_key as DTKey);
-                  const durationLabel = `${task.duration_days}${d("gantt_day_short" as DTKey)}`;
+                  const labelText = dt(task.title_key as DTKey, lang);
+                  const durationLabel = `${task.duration_days}${d(
+                    "gantt_day_short" as DTKey
+                  )}`;
 
                   return (
                     <g key={task.lot_number}>
-                      {/* Row background (alternating) */}
+                      {/* Alternating row bg */}
                       {idx % 2 === 0 && (
                         <rect
                           x={0}
@@ -303,18 +487,25 @@ export default function GanttPanel({
                         />
                       )}
 
+                      {/* Color indicator */}
+                      <rect
+                        x={10}
+                        y={rowY + (ROW_HEIGHT - 8) / 2}
+                        width={8}
+                        height={8}
+                        rx={2}
+                        fill={task.color}
+                      />
+
                       {/* Label */}
                       <text
-                        x={10}
+                        x={24}
                         y={rowY + ROW_HEIGHT / 2 + 4}
                         fill="rgba(255,255,255,0.7)"
                         fontSize={10}
                       >
-                        <tspan fill="rgba(255,255,255,0.35)" fontSize={9}>
-                          L{task.lot_number}{" "}
-                        </tspan>
-                        {labelText.length > 18
-                          ? labelText.slice(0, 18) + "…"
+                        {labelText.length > 17
+                          ? labelText.slice(0, 17) + "…"
                           : labelText}
                       </text>
 
@@ -343,7 +534,7 @@ export default function GanttPanel({
                         </text>
                       )}
 
-                      {/* Date label after bar */}
+                      {/* Date range after bar */}
                       <text
                         x={barX + barW + 6}
                         y={barY + BAR_HEIGHT / 2 + 3}
