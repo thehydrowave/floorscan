@@ -147,7 +147,7 @@ export default function PipelinesPage() {
     finally{setComparing(false);}
   };
 
-  const gridOrder=["H","G","A","D","F","E","B","C"];
+  const gridOrder=["I","H","G","A","D","F","E","B","C"];
 
   return(
     <div className="min-h-screen bg-ink">
