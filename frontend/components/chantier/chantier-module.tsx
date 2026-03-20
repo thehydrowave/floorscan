@@ -118,7 +118,7 @@ function PlanOverlay({ planB64, planMime, pieces, reserves, imgWidth=0, imgHeigh
 }) {
   const [size,setSize]=useState({w:1,h:1}); const imgRef=useRef<HTMLImageElement>(null);
   const onLoad=()=>{if(imgRef.current)setSize({w:imgRef.current.offsetWidth,h:imgRef.current.offsetHeight});};
-  const openingTasks=pieces.flatMap(piece=>piece.taches.filter(t=>t.sourceDetection?.openingRef&&t.sourceDetection.openingRef.x_px!=null).map(t=>({piece,tache:t,ref:t.sourceDetection!.openingRef})));
+  const openingTasks=pieces.flatMap(piece=>piece.taches.filter(t=>t.sourceDetection?.openingRef&&t.sourceDetection.openingRef.x_px!=null).map(t=>({piece,tache:t,ref:t.sourceDetection!.openingRef as OpeningRef})));
   const W=imgWidth||1; const H=imgHeight||1;
   return (
     <div className="relative rounded-xl overflow-hidden border border-white/10 bg-white/5">

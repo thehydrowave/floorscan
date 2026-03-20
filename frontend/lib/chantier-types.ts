@@ -62,6 +62,7 @@ export interface ChantierTache {
     width_m?: number;
     height_m?: number;
     confidence?: number;
+    openingRef?: OpeningRef;
   };
   updatedAt: string;
 }
@@ -590,7 +591,7 @@ export function tachesFromOpenings(openings: OpeningRef[]): ChantierTache[] {
     taches.push({
       id: crypto.randomUUID(), categorie, label, statut: "a_faire",
       quantite: 1, unite: "U",
-      sourceDetection: { type: o.class, index: o.class === "door" ? di : o.class === "french_door" ? fi : wi, width_m: o.width_m, height_m: o.height_m, confidence: o.confidence },
+      sourceDetection: { type: o.class, index: o.class === "door" ? di : o.class === "french_door" ? fi : wi, width_m: o.width_m, height_m: o.height_m, confidence: o.confidence, openingRef: o },
       updatedAt: new Date().toISOString(),
     });
   }
