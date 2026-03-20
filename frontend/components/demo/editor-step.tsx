@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -267,6 +267,22 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     window.addEventListener("resize", updateImgDisplaySize);
     return () => window.removeEventListener("resize", updateImgDisplaySize);
   }, [updateImgDisplaySize]);
+
+  // Auto-fit : calcule le zoom qui remplit le canvas à ~90 % sans dépasser
+  const fitToView = useCallback(() => {
+    requestAnimationFrame(() => {
+      const container = zoomContainerRef.current;
+      const img = imgRef.current;
+      if (!container || !img || img.offsetWidth === 0 || img.offsetHeight === 0) return;
+      const pad = 40;
+      const fitZoom = Math.min(
+        (container.clientWidth  - pad * 2) / img.offsetWidth,
+        (container.clientHeight - pad * 2) / img.offsetHeight,
+      );
+      setZoom(Math.max(0.3, Math.min(3, fitZoom)));
+      setTranslate({ x: 0, y: 0 });
+    });
+  }, []);
 
   // ── Wheel zoom centered on cursor (same behavior as Survey canvas) ──
   const handleWheelZoom = useCallback((e: WheelEvent) => {
@@ -1524,8 +1540,14 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
             <div
               ref={zoomContainerRef}
-              className="flex-1 glass rounded-xl border border-white/10 bg-white relative overflow-hidden"
-              style={{ cursor: panCursor ? "grabbing" : "default" }}
+              className="flex-1 rounded-xl border border-white/10 relative overflow-hidden"
+              style={{
+                cursor: panCursor ? "grabbing" : "default",
+                background: "#0d1117",
+                backgroundImage:
+                  "radial-gradient(circle, rgba(148,163,184,0.13) 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
+              }}
               onContextMenu={e => e.preventDefault()}
               onMouseDown={e => {
                 if (e.button === 2) {
@@ -1545,17 +1567,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <button onClick={() => setZoom(z => Math.min(12, z * 1.3))}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                   title="Zoom +"><ZoomIn className="w-3.5 h-3.5" /></button>
-                <button onClick={() => setZoom(z => { const nz = Math.max(1, z * 0.75); if (nz <= 1.02) { setTranslate({ x: 0, y: 0 }); return 1; } return nz; })}
+                <button onClick={() => setZoom(z => { const nz = Math.max(0.3, z * 0.75); if (nz <= 0.32) { fitToView(); return nz; } return nz; })}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
                   title="Zoom −"><ZoomOut className="w-3.5 h-3.5" /></button>
-                {zoom > 1.05 && (
-                  <>
-                    <div className="w-px h-5 bg-white/10" />
-                    <button onClick={() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }}
-                      className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                      title="Reset"><RotateCcw className="w-3 h-3" /></button>
-                    <span className="text-[9px] text-slate-500 font-mono">{zoom.toFixed(1)}x</span>
-                  </>
+                <div className="w-px h-5 bg-white/10" />
+                <button onClick={fitToView}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                  title="Ajuster à la fenêtre"><Maximize2 className="w-3 h-3" /></button>
+                {Math.abs(zoom - 1) > 0.05 && (
+                  <span className="text-[9px] text-slate-500 font-mono pl-0.5">{zoom.toFixed(1)}x</span>
                 )}
               </div>
               <div style={{
@@ -1566,9 +1586,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               }}>
               <div className="relative">
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                style={{ display: "block", maxWidth: "calc(100vw - 380px)", maxHeight: "calc(100vh - 12rem)" }}
+                style={{ display: "block", maxWidth: "calc(100vw - 380px)", maxHeight: "calc(100vh - 10rem)" }}
                 draggable={false}
-                onLoad={updateImgDisplaySize} />
+                onLoad={() => { updateImgDisplaySize(); fitToView(); }} />
 
               {/* Masques ouvertures dissociables — portes (fuchsia), fenêtres (cyan) */}
               {showDoors && result.mask_doors_b64 && (
@@ -2224,12 +2244,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <div className="glass rounded-xl border border-white/10 p-4">
                     <p className="text-xs font-mono text-accent uppercase tracking-widest mb-3">{d("ed_ia_results")}</p>
                     <div className="flex flex-col gap-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">🚪 {d("ed_doors")}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="flex items-center gap-1.5 text-slate-400">
+                          <DoorOpen className="w-3.5 h-3.5 text-purple-400" />{d("ed_doors")}
+                        </span>
                         <span className="font-700 text-purple-400">{result.doors_count}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">🪟 {d("ed_windows")}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="flex items-center gap-1.5 text-slate-400">
+                          <AppWindow className="w-3.5 h-3.5 text-cyan-400" />{d("ed_windows")}
+                        </span>
                         <span className="font-700 text-cyan-400">{result.windows_count}</span>
                       </div>
                       <div className="border-t border-white/5 my-1" />
