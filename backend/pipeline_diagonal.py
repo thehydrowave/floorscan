@@ -6,15 +6,26 @@ Stratégie simplifiée :
   1. Portes/fenêtres  → modèle principal (même que A), 2 passes
   2. Murs             → wall-detection-xi9ox/1 (même que prod D/G), 2 passes
                         masque utilisé DIRECTEMENT sans post-traitement
-  3. Empreinte        → pip._compute_footprint standard
+  3. Empreinte        → _compute_footprint_diagonal (kernel elliptique)
+                        FIX: kernel rectangulaire standard ne ferme pas
+                        les coins diagonaux → brèches → floodFill déborde
   4. Surface          → calcul standard
-  5. Pièces           → segment_rooms_diagonal (kernels elliptiques + croisé 45°)
-                        → seule vraie différence vs G pour les plans inclinés
+  5. Pièces           → segment_rooms_diagonal (kernel elliptique adaptatif)
+                        FIX: double dilatation 5×5 cross+ellipse trop agressive
+                        → couloirs/SDB entièrement bouchés → 0 pièce
   6. Stats diagonales → Hough sur le masque IA, pour info/overlay uniquement
                         (ne modifie PAS le masque murs)
 
 Ce module est importé par pipeline.py et exécuté uniquement en mode admin
 via la route /compare (pipeline_id="H").
+
+CHANGELOG
+---------
+- _compute_footprint_diagonal : kernel MORPH_ELLIPSE au lieu de MORPH_RECT,
+  iterations adaptatives selon densité murs, fallback convex hull
+- segment_rooms_diagonal : taille kernel adaptée au ppm, une seule passe
+  de dilatation elliptique, seuil surface min abaissé pour petites pièces
+- logging amélioré pour diagnostiquer les plans sans empreinte
 """
 
 import math
@@ -25,6 +36,84 @@ import cv2
 logger = logging.getLogger(__name__)
 
 MODEL_H_WALLS = "wall-detection-xi9ox/1"
+
+
+# ============================================================
+# FOOTPRINT DIAGONAL — kernel elliptique pour fermer les coins obliques
+# ============================================================
+
+def _compute_footprint_diagonal(walls: np.ndarray, m_doors: np.ndarray,
+                                 m_windows: np.ndarray, H: int, W: int):
+    """Calcule l'empreinte du bâtiment en gérant les murs diagonaux.
+
+    Différence clé vs pip._compute_footprint :
+      - Kernel MORPH_ELLIPSE au lieu de MORPH_RECT → ferme les coins obliques
+      - Taille du kernel adaptée à la densité de murs (plus grand si peu de pixels)
+      - Fallback convex hull si floodFill ne produit pas de contour valide
+
+    Retourne (cnt, footprint_mask) ou (None, None).
+    """
+    try:
+        walls_density = cv2.countNonZero(walls) / max(H * W, 1)
+
+        # Adapter la taille du kernel à la densité des murs :
+        # plans peu denses (murs fins ou espaces entre segments) → fermeture plus large
+        if walls_density < 0.03:
+            k_size = 19
+            iterations = 4
+        elif walls_density < 0.07:
+            k_size = 13
+            iterations = 3
+        else:
+            k_size = 9
+            iterations = 2
+
+        walls_for_outline = cv2.bitwise_or(walls, cv2.bitwise_or(m_doors, m_windows))
+
+        # Kernel elliptique → ferme mieux les jonctions diagonales
+        kernel_e = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
+        closed = cv2.morphologyEx(walls_for_outline, cv2.MORPH_CLOSE, kernel_e,
+                                   iterations=iterations)
+
+        # Dilater légèrement pour combler les micro-brèches restantes
+        k_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        closed = cv2.dilate(closed, k_small, iterations=1)
+
+        inv = cv2.bitwise_not(closed)
+        flood = np.zeros((H + 2, W + 2), np.uint8)
+        cv2.floodFill(inv, flood, (0, 0), 255)
+        filled = cv2.bitwise_not(inv)
+
+        cnts, _ = cv2.findContours(filled, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if cnts:
+            cnt = max(cnts, key=cv2.contourArea)
+            area_ratio = cv2.contourArea(cnt) / (H * W)
+            if area_ratio > 0.01:   # contour crédible (> 1% de l'image)
+                logger.info("[H-fp] Empreinte OK : k=%d iter=%d area=%.1f%%",
+                            k_size, iterations, area_ratio * 100)
+                return cnt, filled
+
+        # ── Fallback : convex hull de tous les pixels de murs ────────────────
+        logger.warning("[H-fp] floodFill a échoué (k=%d iter=%d) → fallback convex hull",
+                       k_size, iterations)
+        pts = cv2.findNonZero(walls_for_outline)
+        if pts is not None and len(pts) >= 4:
+            hull = cv2.convexHull(pts)
+            hull_mask = np.zeros((H, W), np.uint8)
+            cv2.fillPoly(hull_mask, [hull], 255)
+            cnts_h, _ = cv2.findContours(hull_mask, cv2.RETR_EXTERNAL,
+                                          cv2.CHAIN_APPROX_SIMPLE)
+            if cnts_h:
+                cnt_h = max(cnts_h, key=cv2.contourArea)
+                logger.info("[H-fp] Convex hull : %d pts, area=%.1f%%",
+                            len(hull), cv2.contourArea(cnt_h) / (H * W) * 100)
+                return cnt_h, hull_mask
+
+    except Exception as e:
+        logger.warning("[H-fp] Erreur empreinte : %s", e)
+
+    return None, None
 
 
 # ============================================================
@@ -88,34 +177,60 @@ def _hough_stats(walls_mask: np.ndarray, H: int, W: int) -> tuple:
 def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
                             m_windows: np.ndarray, building_cnt,
                             H: int, W: int, ppm) -> list:
-    """Segmentation pièces avec kernels elliptiques + croisé 45°.
+    """Segmentation pièces avec kernel elliptique adaptatif.
 
-    Ferme mieux les jonctions diagonales que le kernel rectangulaire (prod).
+    FIX vs version précédente :
+    - Une seule passe de dilatation (pas cross + ellipse) → évite de boucher
+      les pièces étroites sur les plans avec murs épais/diagonaux
+    - Taille du kernel calculée depuis ppm (ou image size) : proportionnelle
+      à l'épaisseur réelle attendue des murs (~15 cm)
+    - Seuil surface min abaissé pour capturer les petites pièces (SDB, WC)
     """
     building = np.zeros((H, W), np.uint8)
     if building_cnt is not None:
         cv2.fillPoly(building, [building_cnt], 255)
     else:
         building[:] = 255
+        logger.warning("[ROOMS-H] Pas d'empreinte — segmentation sur image entière")
 
     boundaries = walls.copy()
 
-    # Fermeture croisée (45°) puis elliptique
-    k_cross = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
-    b1 = cv2.dilate(boundaries, k_cross, iterations=1)
-    k_ellipse = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    boundaries_closed = cv2.dilate(b1, k_ellipse, iterations=1)
+    # Taille de fermeture adaptée au ppm
+    # Objectif : fermer des gaps de ~10 cm dans les murs
+    if ppm is not None:
+        gap_px = max(3, int(round(0.10 * ppm)))   # 10 cm en pixels
+    else:
+        # Heuristique : ~0.8% de la plus petite dimension
+        gap_px = max(3, int(round(min(H, W) * 0.008)))
+
+    # Une seule passe elliptique (pas de double dilatation)
+    k_size = 2 * gap_px + 1
+    k_ellipse = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))
+    boundaries_closed = cv2.dilate(boundaries, k_ellipse, iterations=1)
 
     interior = cv2.subtract(building, boundaries_closed)
 
-    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # Nettoyage léger — kernel plus petit que précédemment pour préserver les petites pièces
+    k_clean_size = max(3, gap_px)
+    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_clean_size, k_clean_size))
     interior = cv2.morphologyEx(interior, cv2.MORPH_OPEN, k_clean, iterations=1)
 
-    logger.info("[ROOMS-H] walls_px=%d, interior_px=%d, H=%d, W=%d",
-                cv2.countNonZero(walls), cv2.countNonZero(interior), H, W)
+    walls_px   = cv2.countNonZero(walls)
+    interior_px = cv2.countNonZero(interior)
+    logger.info("[ROOMS-H] walls_px=%d interior_px=%d gap_px=%d k_size=%d H=%d W=%d ppm=%s",
+                walls_px, interior_px, gap_px, k_size, H, W, ppm)
 
-    min_area_px = max(200, int(0.3 * ppm ** 2)) if ppm else 500
+    if interior_px == 0:
+        logger.warning("[ROOMS-H] Intérieur vide après soustraction — "
+                       "murs trop épais ou empreinte manquante")
+        return []
+
+    # Seuil surface min : 0.15 m² (plus permissif que le 0.3 m² de prod)
+    # pour capturer WC et petites SDB sur plans compacts
+    min_area_px = max(150, int(0.15 * ppm ** 2)) if ppm else 300
+
     num_labels, labels_map = cv2.connectedComponents(interior, connectivity=8)
+    logger.info("[ROOMS-H] composantes=%d min_area_px=%d", num_labels - 1, min_area_px)
 
     from pipeline import _classify_room_by_area
 
@@ -130,6 +245,8 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
         if not cnts_i:
             continue
         cnt_i = max(cnts_i, key=cv2.contourArea)
+        # Simplification légèrement plus fine (0.001 vs 0.002 prod) pour
+        # préserver la forme des murs diagonaux
         epsilon = 0.001 * cv2.arcLength(cnt_i, True)
         cnt_i = cv2.approxPolyDP(cnt_i, epsilon, True)
         x, y, w, h = cv2.boundingRect(cnt_i)
@@ -151,6 +268,7 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
         })
 
     rooms_raw.sort(key=lambda r: r["area_px2"], reverse=True)
+    logger.info("[ROOMS-H] %d pièces gardées après filtre surface", len(rooms_raw))
 
     label_counters: dict = {}
     rooms = []
@@ -179,8 +297,9 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     """Pipeline H : murs IA directs + segmentation pièces diagonale.
 
     Identique à G pour la détection (même modèle murs, même footprint),
-    mais avec une segmentation pièces adaptée aux murs inclinés
-    (kernels elliptiques + croisé 45° au lieu de rectangulaires).
+    mais avec :
+    - _compute_footprint_diagonal : kernel elliptique pour les coins obliques
+    - segment_rooms_diagonal : kernel adaptatif ppm, une seule passe
     Les stats Hough + overlay orange restent disponibles pour comparaison.
     """
     import time
@@ -195,6 +314,11 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     rooms_list = []
     error = None
     all_segs = diag_segs = h_segs = v_segs = []
+    doors_count = windows_count = 0
+    diagonal_pct = 0.0
+    mask_doors_b64 = mask_windows_b64 = mask_walls_b64 = None
+    mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = None
+    mask_diagonal_b64 = None
 
     try:
         model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
@@ -232,7 +356,6 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
             cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
             conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
         )
-        # Masque IA utilisé directement — pas de Hough, pas d'OTSU
         m_walls = cv2.bitwise_or(_ww1, _ww2)
 
         logger.info("[H] walls_ai=%d px, doors=%d px, windows=%d px",
@@ -240,9 +363,13 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
                     cv2.countNonZero(m_doors),
                     cv2.countNonZero(m_wins))
 
-        # ── 3. Empreinte : standard (même que tous les autres pipelines) ──────
-        cnt, footprint_mask = pip._compute_footprint(m_walls, m_doors, m_wins, H, W)
-        if cnt is not None and ppm is not None:
+        # ── 3. Empreinte : version diagonale (kernel elliptique) ──────────────
+        # FIX: le kernel rectangulaire standard ne ferme pas les coins obliques
+        cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
+
+        if cnt is None:
+            logger.warning("[H] Empreinte non trouvée — footprint_area et hab_area = None")
+        elif ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
         # ── 4. Surface habitable ───────────────────────────────────────────────
@@ -266,7 +393,7 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
                 walls_area_m2 = round(cv2.countNonZero(walls_thick) / ppm ** 2, 2)
                 hab_area_m2   = round(cv2.countNonZero(interior_mask) / ppm ** 2, 2)
 
-        # ── 5. Pièces : segmentation diagonale (kernels elliptiques) ──────────
+        # ── 5. Pièces : segmentation diagonale (kernel adaptatif) ──────────────
         rooms_list = segment_rooms_diagonal(m_walls, m_doors, m_wins,
                                             cnt, H, W, ppm)
 
@@ -306,12 +433,6 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     except Exception as e:
         error = str(e)
         logger.error("Pipeline H failed: %s", e, exc_info=True)
-        doors_count = windows_count = 0
-        diagonal_pct = 0.0
-        all_segs = diag_segs = h_segs = v_segs = []
-        mask_doors_b64 = mask_windows_b64 = mask_walls_b64 = None
-        mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = None
-        mask_diagonal_b64 = None
 
     elapsed = time.time() - t0
 
