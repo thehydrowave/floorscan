@@ -16,6 +16,16 @@ Stratégie simplifiée :
   6. Stats diagonales → Hough sur le masque IA, pour info/overlay uniquement
                         (ne modifie PAS le masque murs)
 
+Pipeline I (spécifique) :
+  - Murs OTSU (_detect_walls_pixel) : pas de biais H/V, aucune IA
+  - Portes/fenêtres : modèle A (IA)
+  - Empreinte : _rebuild_walls_for_footprint (Hough maxLineGap ~80 cm)
+                puis _compute_footprint_diagonal
+                FIX: les murs OTSU ont des brèches aux portes → flood fill
+                déborde sur plan diagonal.  Le Hough ponte les brèches SANS
+                détecter explicitement les ouvertures.  Utilisé UNIQUEMENT
+                pour l'empreinte, m_walls original intact pour les pièces.
+
 Ce module est importé par pipeline.py et exécuté uniquement en mode admin
 via la route /compare (pipeline_id="H").
 
@@ -26,6 +36,9 @@ CHANGELOG
 - segment_rooms_diagonal : taille kernel adaptée au ppm, une seule passe
   de dilatation elliptique, seuil surface min abaissé pour petites pièces
 - logging amélioré pour diagnostiquer les plans sans empreinte
+- _rebuild_walls_for_footprint (Pipeline I) : Hough maxLineGap ~80 cm pour
+  reconstituer les lignes de murs et ponte les brèches (portes/fenêtres)
+  avant le calcul d'empreinte — masque m_walls original conservé intact
 """
 
 import math
@@ -168,6 +181,69 @@ def _hough_stats(walls_mask: np.ndarray, H: int, W: int) -> tuple:
                 v_segs.append(seg)
 
     return all_segs, diag_segs, h_segs, v_segs
+
+
+# ============================================================
+# RECONSTRUCTION MURS POUR EMPREINTE — Hough avec maxLineGap ~80 cm
+# ============================================================
+
+def _rebuild_walls_for_footprint(walls_mask: np.ndarray, H: int, W: int,
+                                  ppm: float = None) -> np.ndarray:
+    """Reconstruit les lignes de murs via HoughLinesP pour fermer l'empreinte.
+
+    Problème : les murs OTSU (Pipeline I) ont des BRÈCHES là où sont les
+    portes/fenêtres.  Sur un plan orthogonal, `_compute_footprint_diagonal`
+    les comble avec sa fermeture morphologique (k ≤ 19 px).  Mais sur un
+    plan avec portes/fenêtres DIAGONALES la brèche est plus large et oblique
+    → le flood fill déborde → empreinte absente → hab_area = None.
+
+    Solution : HoughLinesP avec maxLineGap calibré à ~80 cm (largeur standard
+    d'une porte).  Les segments Hough sont tracés sur une COPIE du masque ;
+    cela reconstitue les lignes de murs en traversant les ouvertures sans
+    modifier le masque original (utilisé pour les pièces et les surfaces).
+
+    Paramètres
+    ----------
+    walls_mask : masque OTSU des murs (uint8, 0/255)
+    H, W       : dimensions image
+    ppm        : pixels par mètre (peut être None)
+
+    Retourne
+    --------
+    Un nouveau masque uint8 = walls_mask + segments Hough pontant les brèches.
+    """
+    # Calibrer maxLineGap à ~80 cm en pixels
+    if ppm is not None:
+        max_gap = max(30, int(ppm * 0.85))   # 85 cm → porte + épaisseur mur
+    else:
+        # Heuristique : 2 % de la plus petite dimension
+        max_gap = max(30, int(min(H, W) * 0.02))
+
+    logger.info("[I-fp-rebuild] maxLineGap=%d px (ppm=%s)", max_gap, ppm)
+
+    # Légère dilatation pour renforcer les segments fins avant Hough
+    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    src = cv2.dilate(walls_mask, k2, iterations=1)
+
+    lines = cv2.HoughLinesP(
+        src,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=15,          # seuil bas → capte murs courts
+        minLineLength=12,      # ignorer les artefacts < 12 px
+        maxLineGap=max_gap,    # ponte les portes/fenêtres
+    )
+
+    rebuilt = walls_mask.copy()
+    if lines is not None:
+        for line in lines:
+            x1, y1, x2, y2 = map(int, line[0])
+            cv2.line(rebuilt, (x1, y1), (x2, y2), 255, 3)
+        logger.info("[I-fp-rebuild] %d segments Hough tracés", len(lines))
+    else:
+        logger.warning("[I-fp-rebuild] Hough n'a trouvé aucun segment")
+
+    return rebuilt
 
 
 # ============================================================
@@ -549,10 +625,18 @@ def run_pipeline_i(img_rgb: np.ndarray, img_pil,
         logger.info("[I] doors=%d px, windows=%d px",
                     cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
-        # ── 3. Empreinte : version diagonale (kernel elliptique) ─────────────
-        cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
+        # ── 3. Empreinte : reconstruction Hough + kernel elliptique ─────────
+        # Les murs OTSU ont des brèches aux portes/fenêtres.  Sur un plan
+        # diagonal les brèches sont obliques et trop larges pour la fermeture
+        # morphologique seule → on reconstitue d'abord les lignes de murs avec
+        # un maxLineGap ≈ 80 cm, UNIQUEMENT pour le calcul d'empreinte.
+        # Le masque m_walls original est conservé intact pour les pièces.
+        m_walls_for_fp = _rebuild_walls_for_footprint(m_walls, H, W, ppm)
+        cnt, footprint_mask = _compute_footprint_diagonal(
+            m_walls_for_fp, m_doors, m_wins, H, W
+        )
         if cnt is None:
-            logger.warning("[I] Empreinte non trouvée")
+            logger.warning("[I] Empreinte non trouvée même après reconstruction Hough")
         elif ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
