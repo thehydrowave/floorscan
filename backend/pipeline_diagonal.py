@@ -1,20 +1,18 @@
 """
-pipeline_diagonal.py — Pipeline H : Murs IA spécialiste + fix inclinaison
+pipeline_diagonal.py — Pipeline H : IA murs + complément diagonal pixel
 ==========================================================================
 
-Stratégie (mise à jour) :
-  1. Murs : modèle IA spécialiste wall-detection-xi9ox/1
-     → même modèle que la prod (G/D), meilleure précision de base
-  2. Post-traitement Hough multi-angles sur le masque IA
-     → vectorise + préserve les segments inclinés déjà détectés par l'IA
-     → comble les petites interruptions dans les diagonales
-  3. Segmentation pièces avec kernels elliptiques (vs rectangulaires en prod)
-     → ferme mieux les jonctions diagonales
-
-Différences vs Pipeline G (prod) :
-  - Hough Lines probabilistes tous angles appliqué sur le masque murs IA
-  - Segmentation pièces avec kernels elliptiques (pas rectangulaires)
-  - Overlay orange des murs diagonaux détectés
+Stratégie hybride :
+  1. Murs IA : wall-detection-xi9ox/1 (même que prod D/G)
+     → haute précision sur les murs horizontaux / verticaux
+  2. Complément diagonal : OTSU + Canny + morphologie elliptique sur l'image brute
+     → détecte les pixels sombres inclinés que l'IA manque car peu représentés
+       dans ses données d'entraînement
+  3. Hough multi-angles sur le masque pixel diagonal
+     → extrait uniquement les segments is_diagonal=True
+     → les redessine proprement et les fusionne avec le masque IA
+  4. Résultat final = IA (H/V) ∪ Hough-diagonal (inclinés)
+  5. Segmentation pièces avec kernels elliptiques + kernel croisé 45°
 
 Ce module est importé par pipeline.py et exécuté uniquement en mode admin
 via la route /compare (pipeline_id="H").
@@ -32,34 +30,70 @@ MODEL_H_WALLS = "wall-detection-xi9ox/1"
 
 
 # ============================================================
-# STEP 1 — HOUGH LINES ADAPTATIF (tous angles)
+# STEP 1 — DÉTECTION PIXEL POUR LES MURS DIAGONAUX
+# ============================================================
+
+def detect_walls_diagonal(img_rgb: np.ndarray) -> np.ndarray:
+    """Détecte les murs par pixels avec morphologie adaptative.
+
+    Utilisé uniquement pour récupérer les murs inclinés que l'IA manque.
+    Kernels elliptiques → moins d'érosion des diagonales vs rectangulaires.
+    Double passe : murs épais (OTSU) + murs fins (Canny).
+    """
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    # Passe 1 : murs épais (béton, porteurs) — seuillage OTSU
+    _, binary_thick = cv2.threshold(gray, 0, 255,
+                                    cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    walls_thick = cv2.morphologyEx(binary_thick, cv2.MORPH_OPEN,
+                                   k_open, iterations=1)
+
+    # Passe 2 : murs fins + détails (Canny)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(blurred, 30, 100, apertureSize=3)
+    k_dil = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    edges_dilated = cv2.dilate(edges, k_dil, iterations=1)
+
+    # Union des deux passes
+    walls_combined = cv2.bitwise_or(walls_thick, edges_dilated)
+
+    # Fermeture avec kernel croisé → préserve les directions diagonales
+    k_close = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
+    walls_final = cv2.morphologyEx(walls_combined, cv2.MORPH_CLOSE,
+                                   k_close, iterations=2)
+
+    # Nettoyage final
+    k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    walls_final = cv2.morphologyEx(walls_final, cv2.MORPH_OPEN,
+                                   k_clean, iterations=1)
+    return walls_final
+
+
+# ============================================================
+# STEP 2 — HOUGH LINES ADAPTATIF (tous angles)
 # ============================================================
 
 def extract_wall_lines_hough(walls_mask: np.ndarray, img_shape: tuple) -> list:
     """Extrait les segments de murs à tous les angles via HoughLinesP.
 
-    Contrairement à vectorize_walls (qui filtre H/V), cette version
-    conserve tous les angles et est donc adaptée aux murs inclinés.
-
-    Retourne une liste de segments avec coordonnées normalisées.
+    Contrairement à vectorize_walls (qui filtre H/V), conserve tous les angles.
     """
     H, W = img_shape[:2]
 
     if cv2.countNonZero(walls_mask) == 0:
         return []
 
-    # Légère dilatation pour relier les segments proches avant Hough
     k = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
     mask_dilated = cv2.dilate(walls_mask, k, iterations=1)
 
-    # HoughLinesP : résolution 1°, seuil bas pour capter les diagonales courtes
     lines = cv2.HoughLinesP(
         mask_dilated,
         rho=1,
-        theta=np.pi / 180,   # résolution angulaire : 1°
-        threshold=20,         # seuil de votes bas → détecte plus de segments
-        minLineLength=15,     # longueur minimale (px)
-        maxLineGap=8,         # gap maximal pour relier des segments
+        theta=np.pi / 180,
+        threshold=20,
+        minLineLength=15,
+        maxLineGap=8,
     )
 
     segments = []
@@ -87,16 +121,12 @@ def extract_wall_lines_hough(walls_mask: np.ndarray, img_shape: tuple) -> list:
 
 
 # ============================================================
-# STEP 2 — RECONSTRUCTION MASQUE DEPUIS SEGMENTS HOUGH
+# STEP 3 — RECONSTRUCTION MASQUE DEPUIS SEGMENTS HOUGH
 # ============================================================
 
 def reconstruct_walls_from_lines(segments: list, H: int, W: int,
                                   line_thickness: int = 3) -> np.ndarray:
-    """Reconstruit un masque de murs propre à partir des segments Hough.
-
-    Chaque segment est redessiné avec épaisseur uniforme (LINE_AA).
-    Une fermeture elliptique finale comble les micro-interruptions.
-    """
+    """Reconstruit un masque de murs à partir d'une liste de segments."""
     mask = np.zeros((H, W), np.uint8)
 
     for seg in segments:
@@ -105,15 +135,13 @@ def reconstruct_walls_from_lines(segments: list, H: int, W: int,
                  (seg["x2"], seg["y2"]),
                  255, line_thickness, cv2.LINE_AA)
 
-    # Fermeture finale pour combler les petites interruptions
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=1)
-
     return mask
 
 
 # ============================================================
-# STEP 3 — SEGMENTATION PIÈCES POUR MURS INCLINÉS
+# STEP 4 — SEGMENTATION PIÈCES POUR MURS INCLINÉS
 # ============================================================
 
 def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
@@ -121,44 +149,32 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
                             H: int, W: int, ppm) -> list:
     """Segmentation des pièces améliorée pour les murs inclinés.
 
-    Différences clés vs segment_rooms_from_walls (prod) :
-    1. Fermeture croisée (45°) avant fermeture elliptique
-       → couvre les jonctions en diagonale que le kernel rect manque
-    2. Nettoyage par ouverture elliptique (vs rectangulaire)
-    3. Epsilon adaptatif plus fin pour des contours plus précis
+    Fermeture croisée (45°) + elliptique au lieu de rectangulaire → ferme
+    mieux les jonctions diagonales.
     """
-    # 1. Masque bâtiment
     building = np.zeros((H, W), np.uint8)
     if building_cnt is not None:
         cv2.fillPoly(building, [building_cnt], 255)
     else:
         building[:] = 255
 
-    # 2. Frontières = murs uniquement
     boundaries = walls.copy()
 
-    # 3. Fermeture multi-direction
-    #    a) Kernel croisé pour les jonctions à 45°
+    # Fermeture multi-direction : croisée puis elliptique
     k_cross = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
     b1 = cv2.dilate(boundaries, k_cross, iterations=1)
-    #    b) Kernel elliptique pour les courbes et arrondis
     k_ellipse = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     boundaries_closed = cv2.dilate(b1, k_ellipse, iterations=1)
 
-    # 4. Espace navigable
     interior = cv2.subtract(building, boundaries_closed)
 
-    # 5. Nettoyage (kernel elliptique — préserve les coins diagonaux)
     k_clean = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     interior = cv2.morphologyEx(interior, cv2.MORPH_OPEN, k_clean, iterations=1)
 
     logger.info("[ROOMS-H] walls_px=%d, interior_px=%d, H=%d, W=%d",
                 cv2.countNonZero(walls), cv2.countNonZero(interior), H, W)
 
-    # 6. Surface minimale
     min_area_px = max(200, int(0.3 * ppm ** 2)) if ppm else 500
-
-    # 7. Composantes connexes
     num_labels, labels_map = cv2.connectedComponents(interior, connectivity=8)
 
     from pipeline import _classify_room_by_area
@@ -176,13 +192,11 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
             continue
         cnt_i = max(cnts_i, key=cv2.contourArea)
 
-        # Epsilon plus fin → contours plus précis pour les diagonales
         epsilon = 0.001 * cv2.arcLength(cnt_i, True)
         cnt_i = cv2.approxPolyDP(cnt_i, epsilon, True)
 
         x, y, w, h = cv2.boundingRect(cnt_i)
-        cx = float(x + w / 2)
-        cy = float(y + h / 2)
+        cx, cy = float(x + w / 2), float(y + h / 2)
         area_m2 = area_px / (ppm ** 2) if ppm else None
         label, label_fr = _classify_room_by_area(area_m2)
 
@@ -206,7 +220,6 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
 
     rooms_raw.sort(key=lambda r: r["area_px2"], reverse=True)
 
-    # Labeling final avec compteurs par type
     label_counters: dict = {}
     rooms = []
     for r in rooms_raw:
@@ -231,22 +244,25 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
 
 
 # ============================================================
-# STEP 4 — PIPELINE H COMPLET
+# STEP 5 — PIPELINE H COMPLET
 # ============================================================
 
 def run_pipeline_h(img_rgb: np.ndarray, img_pil,
                    client, ppm: float, cfg: dict) -> dict:
-    """Pipeline H : murs IA spécialiste + post-traitement diagonal.
+    """Pipeline H : stratégie hybride IA + pixel pour les murs inclinés.
 
-    Stratégie :
-    1. Portes/fenêtres : inférence 2 passes avec le modèle principal (même que A)
-    2. Murs : modèle IA wall-detection-xi9ox/1 (même que la prod D/G),
-       2 passes union — meilleure base de détection
-    3. Post-traitement Hough multi-angles sur le masque murs IA :
-       → vectorise tous les segments (y compris inclinés)
-       → reconstruction masque propre depuis segments → union avec IA
-    4. Segmentation pièces avec kernels elliptiques (ferme mieux les diagonales)
-    5. Overlay orange des murs diagonaux pour comparaison visuelle
+    Le modèle IA wall-detection-xi9ox/1 est entraîné majoritairement sur des
+    plans orthogonaux → il manque les murs diagonaux. On le complète par une
+    détection pixel (OTSU + Canny + morphologie elliptique) qui fonctionne
+    directement sur les pixels sombres de l'image.
+
+    Flux :
+    1. Portes / fenêtres  → modèle principal (même que A), 2 passes
+    2. Murs IA            → wall-detection-xi9ox/1, 2 passes
+    3. Murs pixel diag    → detect_walls_diagonal(img_rgb) → OTSU + Canny
+    4. Hough sur pixel    → garder uniquement is_diagonal=True
+    5. Murs final         → IA ∪ segments_diagonaux_Hough
+    6. Pièces             → segment_rooms_diagonal (kernels elliptiques)
     """
     import time
     import pipeline as pip
@@ -270,7 +286,7 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     try:
         model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
 
-        # ── 1. Portes/fenêtres : modèle principal 2 passes (identique à A) ───
+        # ── 1. Portes/fenêtres : modèle principal 2 passes ────────────────────
         _, _, md1, mw1, _, _, _ = pip.infer_pass(
             img_pil, client, model_id,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -292,7 +308,7 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         m_doors = cv2.bitwise_or(md1, md2)
         m_wins  = cv2.bitwise_or(mw1, mw2)
 
-        # ── 2. Murs : modèle IA spécialiste (même que la prod D/G) ───────────
+        # ── 2. Murs IA : modèle spécialiste (haute qualité H/V) ──────────────
         _, _, _, _, _ww1, _, _ = pip.infer_pass(
             img_pil, client, MODEL_H_WALLS,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -305,31 +321,36 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         )
         m_walls_ai = cv2.bitwise_or(_ww1, _ww2)
 
-        logger.info("[H] walls_ai=%d px, doors=%d px, windows=%d px",
+        # ── 3. Murs pixel : OTSU + Canny + morphologie elliptique ─────────────
+        #    Détecte les pixels sombres à tout angle → bonne couverture diagonale
+        m_walls_pixel = detect_walls_diagonal(img_rgb)
+
+        # ── 4. Hough sur le masque pixel → extraire segments diagonaux ────────
+        segments_pixel = extract_wall_lines_hough(m_walls_pixel, (H, W))
+        diagonal_segs = [s for s in segments_pixel if s["is_diagonal"]]
+
+        logger.info("[H] walls_ai=%d px, walls_pixel=%d px, diagonal_segs=%d",
                     cv2.countNonZero(m_walls_ai),
-                    cv2.countNonZero(m_doors),
-                    cv2.countNonZero(m_wins))
+                    cv2.countNonZero(m_walls_pixel),
+                    len(diagonal_segs))
 
-        # ── 3. Post-traitement diagonal sur le masque IA ──────────────────────
-        # Hough vectorise les segments à tous les angles (y compris inclinés)
-        segments = extract_wall_lines_hough(m_walls_ai, (H, W))
-        wall_segments_all = segments
-
-        if segments:
-            # Reconstruction masque depuis les segments Hough (épaisseur uniforme)
-            m_walls_hough = reconstruct_walls_from_lines(segments, H, W,
-                                                         line_thickness=3)
-            # Union : garde tout ce que l'IA a détecté + segments Hough vectorisés
-            m_walls = cv2.bitwise_or(m_walls_ai, m_walls_hough)
+        # ── 5. Fusion : IA (H/V) + segments diagonaux Hough ──────────────────
+        if diagonal_segs:
+            m_walls_diag = reconstruct_walls_from_lines(diagonal_segs, H, W,
+                                                        line_thickness=4)
+            m_walls = cv2.bitwise_or(m_walls_ai, m_walls_diag)
         else:
             m_walls = m_walls_ai
 
-        # ── 4. Empreinte (footprint) ───────────────────────────────────────────
+        # Hough final sur le masque fusionné pour les stats complètes
+        wall_segments_all = extract_wall_lines_hough(m_walls, (H, W))
+
+        # ── 6. Empreinte ───────────────────────────────────────────────────────
         cnt, footprint_mask = pip._compute_footprint(m_walls, m_doors, m_wins, H, W)
         if cnt is not None and ppm is not None:
             footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
 
-        # ── 5. Surface habitable ───────────────────────────────────────────────
+        # ── 7. Surface habitable ───────────────────────────────────────────────
         if cnt is not None:
             building = np.zeros((H, W), np.uint8)
             cv2.fillPoly(building, [cnt], 255)
@@ -353,21 +374,21 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
                 hab_area_m2 = round(
                     float(cv2.countNonZero(interior_mask)) / (ppm ** 2), 2)
 
-        # ── 6. Segmentation pièces (kernels elliptiques) ──────────────────────
+        # ── 8. Segmentation pièces (kernels elliptiques) ──────────────────────
         rooms_list = segment_rooms_diagonal(m_walls, m_doors, m_wins,
                                             cnt, H, W, ppm)
 
-        # ── 7. Comptages ───────────────────────────────────────────────────────
+        # ── 9. Comptages ───────────────────────────────────────────────────────
         doors_count   = pip._count_connected_components(m_doors)
         windows_count = pip._count_connected_components(m_wins)
 
-        # ── 8. Statistiques murs diagonaux ────────────────────────────────────
-        diagonal_segments = [s for s in segments if s.get("is_diagonal")]
-        h_segments        = [s for s in segments if s.get("is_horizontal")]
-        v_segments        = [s for s in segments if s.get("is_vertical")]
-        diagonal_pct = len(diagonal_segments) / max(len(segments), 1) * 100
+        # ── 10. Statistiques murs diagonaux ───────────────────────────────────
+        all_diagonal = [s for s in wall_segments_all if s.get("is_diagonal")]
+        all_horiz    = [s for s in wall_segments_all if s.get("is_horizontal")]
+        all_vert     = [s for s in wall_segments_all if s.get("is_vertical")]
+        diagonal_pct = len(all_diagonal) / max(len(wall_segments_all), 1) * 100
 
-        # ── 9. Overlays RGBA ───────────────────────────────────────────────────
+        # ── 11. Overlays RGBA ─────────────────────────────────────────────────
         mask_doors_b64 = (
             pip._np_to_b64(pip._mask_to_rgba(m_doors, (217, 70, 239), 90))
             if cv2.countNonZero(m_doors) > 0 else None
@@ -395,9 +416,9 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
             and cv2.countNonZero(interior_mask) > 0 else None
         )
 
-        # Overlay spécial : murs diagonaux en orange
+        # Overlay orange : murs diagonaux uniquement
         mask_diagonal_walls = np.zeros((H, W), np.uint8)
-        for seg in diagonal_segments:
+        for seg in all_diagonal:
             cv2.line(mask_diagonal_walls,
                      (seg["x1"], seg["y1"]), (seg["x2"], seg["y2"]),
                      255, 3, cv2.LINE_AA)
@@ -412,14 +433,13 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         logger.error("Pipeline H failed: %s", e, exc_info=True)
         doors_count = windows_count = 0
         diagonal_pct = 0.0
-        diagonal_segments = h_segments = v_segments = []
+        all_diagonal = all_horiz = all_vert = []
         mask_doors_b64 = mask_windows_b64 = mask_walls_b64 = None
         mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = None
         mask_diagonal_b64 = None
 
     elapsed = time.time() - t0
 
-    # Sérialiser les segments pour le JSON
     wall_segments_json = [
         {
             "x1_norm": s["x1_norm"], "y1_norm": s["y1_norm"],
@@ -434,8 +454,8 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     return {
         "id": "H",
         "name": "Diagonal (H)",
-        "description": "Murs IA (wall-detection-xi9ox) + Hough multi-angles → murs inclinés",
-        "color": "#06B6D4",  # cyan
+        "description": "Murs IA (wall-detection-xi9ox) + Hough diagonal pixel → murs inclinés",
+        "color": "#06B6D4",
         "doors_count": doors_count,
         "windows_count": windows_count,
         "mask_doors_b64": mask_doors_b64,
@@ -452,18 +472,16 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         "mask_rooms_b64": mask_rooms_b64,
         "timing_seconds": round(elapsed, 2),
         "error": error,
-        # Champs spécifiques Pipeline H
         "is_diagonal": True,
         "mask_diagonal_walls_b64": mask_diagonal_b64,
         "wall_segments": wall_segments_json,
         "diagonal_stats": {
             "total_segments": len(wall_segments_all),
-            "diagonal_segments": len(diagonal_segments),
-            "horizontal_segments": len(h_segments),
-            "vertical_segments": len(v_segments),
+            "diagonal_segments": len(all_diagonal),
+            "horizontal_segments": len(all_horiz),
+            "vertical_segments": len(all_vert),
             "diagonal_pct": round(diagonal_pct, 1),
         },
-        # Raw masks pour consensus éventuel
         "_m_doors_raw": m_doors,
         "_m_windows_raw": m_wins,
         "_m_walls_raw": m_walls,
