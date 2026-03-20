@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -279,20 +279,35 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       )}
 
       {/* KPIs */}
-      <div className={`grid grid-cols-2 ${result.french_doors_count ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 mb-6`}>
-        {[
-          { label: `🚪 ${d("re_doors")}`, value: result.doors_count, color: "#D946EF" },
-          { label: `🪟 ${d("re_windows")}`, value: result.windows_count, color: "#22D3EE" },
-          ...(result.french_doors_count ? [{ label: "🚪🪟 Portes-fenêtres", value: result.french_doors_count, color: "#F97316" }] : []),
-          { label: `🏠 ${d("re_living")}`, value: fmt(sf.area_hab_m2, 1, " m²"), color: "#34D399" },
-          { label: `⬜ ${d("re_walls_area")}`, value: fmt(sf.area_walls_m2, 1, " m²"), color: "#60A5FA" },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="glass rounded-xl border border-white/10 p-4">
-            <p className="text-xs text-slate-500 mb-2">{label}</p>
-            <p className="text-2xl font-display font-700" style={{ color }}>{value}</p>
+      {(() => {
+        const kpis = [
+          { Icon: DoorOpen,      label: d("re_doors" as DTKey),      value: result.doors_count,                        color: "#a78bfa" },
+          { Icon: AppWindow,     label: d("re_windows" as DTKey),    value: result.windows_count,                      color: "#38bdf8" },
+          ...(result.french_doors_count ? [{ Icon: ArrowLeftRight, label: "Portes-fenêtres",            value: result.french_doors_count,             color: "#fb923c" }] : []),
+          { Icon: Home,          label: d("re_living" as DTKey),     value: fmt(sf.area_hab_m2, 1, " m²"),             color: "#34d399" },
+          { Icon: Ruler,         label: d("re_walls_area" as DTKey), value: fmt(sf.area_walls_m2, 1, " m²"),           color: "#60a5fa" },
+        ];
+        return (
+          <div className={`grid grid-cols-2 ${result.french_doors_count ? "sm:grid-cols-3 md:grid-cols-5" : "sm:grid-cols-2 md:grid-cols-4"} gap-3 mb-6`}>
+            {kpis.map(({ Icon, label, value, color }) => (
+              <div key={label} className="relative glass rounded-2xl border border-white/[0.07] p-4 overflow-hidden">
+                {/* ambient glow */}
+                <div className="absolute -top-6 -right-6 w-20 h-20 rounded-full blur-2xl pointer-events-none opacity-20" style={{ background: color }} />
+                {/* icon bubble */}
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-3" style={{ background: `${color}22` }}>
+                  <Icon className="w-4 h-4" style={{ color }} />
+                </div>
+                {/* value */}
+                <div className="text-[1.6rem] font-display font-bold text-white leading-none mb-1.5 tracking-tight">{value}</div>
+                {/* label */}
+                <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">{label}</div>
+                {/* bottom accent */}
+                <div className="absolute bottom-0 left-0 h-[2px] w-2/5 rounded-full" style={{ background: `linear-gradient(to right, ${color}99, transparent)` }} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Custom detections KPIs (visual search) — only when detections exist */}
       {hasDetections && (
