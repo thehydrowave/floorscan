@@ -2481,6 +2481,26 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_bestof": True,
         }
 
+    # ── Pipeline H: diagonal wall detection ──
+    try:
+        logger.info("Building diagonal pipeline H...")
+        from pipeline_diagonal import run_pipeline_h
+        results["H"] = run_pipeline_h(img_rgb, img_pil, client, ppm, cfg)
+        logger.info("Pipeline H built: doors=%d, windows=%d, diagonal_pct=%.1f%%",
+                     results["H"].get("doors_count", 0), results["H"].get("windows_count", 0),
+                     (results["H"].get("diagonal_stats") or {}).get("diagonal_pct", 0))
+    except Exception as e:
+        logger.error("Pipeline H failed: %s", e, exc_info=True)
+        results["H"] = {
+            "id": "H", "name": "Diagonal (H)", "description": "Morphologie adaptative + Hough multi-angles",
+            "color": "#06B6D4",
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_diagonal": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2490,7 +2510,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
     total_time = round(time.time() - t0, 2)
 
     # ── Build comparison table (G first = recommended) ──
-    ordered = ["G", "F", "A", "B", "C", "D", "E"]
+    ordered = ["H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
