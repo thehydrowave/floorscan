@@ -143,6 +143,7 @@ function generateMockFacadeResult(
     openings_area_m2,
     ratio_openings,
     pixels_per_meter: ppm,
+    building_roi: roi ?? { x: 0, y: 0, w: 1, h: 1 },
     overlay_b64: imageB64,
     plan_b64: imageB64,
     is_mock: true,

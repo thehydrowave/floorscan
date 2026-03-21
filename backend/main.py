@@ -1554,6 +1554,12 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         "openings_area_m2": round(openings_area_m2, 2) if openings_area_m2 else None,
         "ratio_openings": round(ratio_openings, 4) if ratio_openings else None,
         "pixels_per_meter": ppm,
+        "building_roi": {
+            "x": round(roi_x1 / W, 5),
+            "y": round(roi_y1 / H, 5),
+            "w": round((roi_x2 - roi_x1) / W, 5),
+            "h": round((roi_y2 - roi_y1) / H, 5),
+        },
         "overlay_b64": overlay_b64,
         "plan_b64": plan_b64,
         "is_mock": False,

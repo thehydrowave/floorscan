@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  BarChart3, ArrowRight, RotateCcw, Download, Eye, EyeOff,
+  ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
-  LayoutPanelTop, Columns2, Frame, Box, HelpCircle,
+  LayoutPanelTop, Columns2, Frame, Box, HelpCircle, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -16,18 +16,15 @@ import { dt, DTKey } from "@/lib/i18n";
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:     "#60a5fa",   // blue-400
-  door:       "#f472b6",   // pink-400
-  balcony:    "#34d399",   // emerald-400
-  floor_line: "#fb923c",   // orange-400
-  roof:       "#a78bfa",   // violet-400
-  column:     "#94a3b8",   // slate-400
-  other:      "#fbbf24",   // amber-400
+  window:     "#60a5fa",
+  door:       "#f472b6",
+  balcony:    "#34d399",
+  floor_line: "#fb923c",
+  roof:       "#a78bfa",
+  column:     "#94a3b8",
+  other:      "#fbbf24",
 };
-
-function getColor(type: string) {
-  return TYPE_COLORS[type] ?? "#94a3b8";
-}
+function getColor(t: string) { return TYPE_COLORS[t] ?? "#94a3b8"; }
 
 /* ── Lucide icon per element type ── */
 type IconComp = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
@@ -40,12 +37,9 @@ const TYPE_ICONS: Record<string, IconComp> = {
   column:     Columns2,
   other:      HelpCircle,
 };
+function getIcon(t: string): IconComp { return TYPE_ICONS[t] ?? Box; }
 
-function getIcon(type: string): IconComp {
-  return TYPE_ICONS[type] ?? Box;
-}
-
-/* ── i18n key for element type ── */
+/* ── i18n key per element type ── */
 const TYPE_I18N: Record<string, DTKey> = {
   window:     "fa_window",
   door:       "fa_door",
@@ -56,13 +50,26 @@ const TYPE_I18N: Record<string, DTKey> = {
   other:      "fa_other",
 };
 
-/* ── KPI icons + colors ── */
+/* ── KPI icons + Tailwind colors ── */
 const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
   windows:  { Icon: AppWindow,      color: "text-blue-400" },
   doors:    { Icon: DoorOpen,       color: "text-pink-400" },
   balconies:{ Icon: LayoutPanelTop, color: "text-emerald-400" },
   floors:   { Icon: Layers,         color: "text-orange-400" },
 };
+
+/* ── Mask layer definitions (Masques tab) ── */
+interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
+const MASK_LAYERS: MaskLayerDef[] = [
+  { id: "surface_murale", label: "Surface murale", icon: Building2,      color: "#64748b", isSurface: true },
+  { id: "window",         label: "Fenêtres",        icon: AppWindow,      color: "#60a5fa" },
+  { id: "door",           label: "Portes",           icon: DoorOpen,       color: "#f472b6" },
+  { id: "balcony",        label: "Balcons",          icon: LayoutPanelTop, color: "#34d399" },
+  { id: "column",         label: "Colonnes",         icon: Columns2,       color: "#94a3b8" },
+  { id: "roof",           label: "Toit",             icon: Frame,          color: "#a78bfa" },
+  { id: "floor_line",     label: "Lignes d'étage",   icon: Layers,         color: "#fb923c" },
+  { id: "other",          label: "Autres",           icon: HelpCircle,     color: "#fbbf24" },
+];
 
 interface FacadeResultsStepProps {
   result: FacadeAnalysisResult;
@@ -74,28 +81,56 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
-  // Image view tab: "svg" = SVG overlay, "ia" = backend-annotated image
-  // In mock/demo mode, "ia" is unavailable (overlay_b64 = raw image, no annotations)
-  const [viewTab, setViewTab] = useState<"svg" | "ia">(() => result.is_mock ? "svg" : "ia");
+  /* ── View tab ── */
+  const [viewTab, setViewTab] = useState<"ia" | "svg" | "masks">(() =>
+    result.is_mock ? "svg" : "ia"
+  );
 
-  // Dynamic toggles per element type present in the result
+  /* ── SVG tab: per-type visibility toggles ── */
   const presentTypes = [...new Set(result.elements.map(e => e.type))];
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
-  const toggleType = (type: string) =>
-    setHiddenTypes(prev => {
-      const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
-      return next;
-    });
+  const toggleType = (t: string) =>
+    setHiddenTypes(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n; });
 
-  // Image natural dimensions (for SVG overlay)
+  /* ── Image natural dimensions + SVG hover tooltip (svg tab) ── */
   const [imgNat, setImgNat] = useState({ w: 800, h: 600 });
-
-  // SVG hover tooltip
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredEl, setHoveredEl] = useState<FacadeElement | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
+  /* ── Masques tab: layer + element state ── */
+  const [hiddenLayers,   setHiddenLayers]   = useState<Set<string>>(new Set());
+  const [hiddenElements, setHiddenElements] = useState<Set<number>>(new Set());
+  const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
+
+  /* ── Surface murale SVG path (ROI rect − opening holes, evenodd) ── */
+  const wallSvgPath = useMemo(() => {
+    const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
+    const W = imgNat.w, H = imgNat.h;
+    const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
+    // Outer rectangle (clockwise winding)
+    let p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
+    // Overlap with opening rects → evenodd cancels those pixels (= holes)
+    result.elements
+      .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
+      .forEach(e => {
+        const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
+        const w = e.bbox_norm.w * W, h = e.bbox_norm.h * H;
+        p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
+      });
+    return p;
+  }, [result, hiddenElements, imgNat]);
+
+  /* ── Surface murale area (live, excludes hidden elements) ── */
+  const wallAreaM2 = useMemo(() => {
+    if (!result.facade_area_m2) return null;
+    const openings = result.elements
+      .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
+      .reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+    return Math.max(0, result.facade_area_m2 - openings);
+  }, [result, hiddenElements]);
+
+  /* ── Seed imgNat from plan_b64 ── */
   useEffect(() => {
     if (!result.plan_b64) return;
     const img = new Image();
@@ -103,44 +138,59 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     img.src = `data:image/png;base64,${result.plan_b64}`;
   }, [result.plan_b64]);
 
-  // Group elements by floor level
-  const floorLevels = [...new Set(result.elements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
+  /* ── Keyboard: Delete/Backspace removes selected element from mask ── */
+  useEffect(() => {
+    if (viewTab !== "masks") return;
+    const handle = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedEl !== null) {
+        setHiddenElements(prev => new Set([...prev, selectedEl]));
+        setSelectedEl(null);
+      } else if (e.key === "Escape") {
+        setSelectedEl(null);
+      }
+    };
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [viewTab, selectedEl]);
 
+  /* ── Derived: per-floor breakdown ── */
+  const floorLevels = [...new Set(result.elements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
   const floorData = floorLevels.map(level => {
     const els = result.elements.filter(e => (e.floor_level ?? 0) === level);
     return {
       level,
-      label: level === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${level}`,
-      windows:  els.filter(e => e.type === "window").length,
-      doors:    els.filter(e => e.type === "door").length,
-      balconies:els.filter(e => e.type === "balcony").length,
+      label:     level === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${level}`,
+      windows:   els.filter(e => e.type === "window").length,
+      doors:     els.filter(e => e.type === "door").length,
+      balconies: els.filter(e => e.type === "balcony").length,
     };
   });
 
-  // Filter visible elements for SVG overlay
   const visibleElements = result.elements.filter(e => !hiddenTypes.has(e.type));
 
-  // CSV export
+  /* ── CSV export ── */
   const exportCSV = () => {
     const BOM = "\uFEFF";
     const header = `${d("fa_element")};${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;${d("fa_facade_area")} (m²)`;
     const rows = result.elements.map(e =>
-      `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
+      `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};` +
+      `${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};` +
+      `${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
     );
     const csv = BOM + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "facade_analysis.csv";
-    a.click();
+    a.href = url; a.download = "facade_analysis.csv"; a.click();
     URL.revokeObjectURL(url);
     toast({ title: d("fa_export_csv"), variant: "success" });
   };
 
+  /* ═══════════════════════════════════════════════ render ══ */
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-5xl mx-auto">
-      {/* Mock warning */}
+
+      {/* Mock banner */}
       {result.is_mock && (
         <div className="mb-6 glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
@@ -167,155 +217,128 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         })}
       </div>
 
-      {/* View tab + dynamic toggles */}
+      {/* ── Tab bar + SVG toggles ── */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {/* Tab switcher — "Vue IA" hidden in mock/demo mode (overlay has no annotations) */}
+        {/* Tabs: Vue IA | Vue SVG | Masques */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5 mr-2">
-          {(["ia", "svg"] as const)
+          {(["ia", "svg", "masks"] as const)
             .filter(tab => !(tab === "ia" && result.is_mock))
             .map(tab => (
-              <button key={tab} onClick={() => { setViewTab(tab); setHoveredEl(null); }}
+              <button key={tab}
+                onClick={() => { setViewTab(tab); setHoveredEl(null); setSelectedEl(null); }}
                 className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
                   viewTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
-                {tab === "ia" ? "Vue IA" : "Vue SVG"}
+                {tab === "ia" ? "Vue IA" : tab === "svg" ? "Vue SVG" : "Masques"}
               </button>
             ))}
         </div>
 
-        {/* Dynamic type toggles (only visible in SVG mode) */}
+        {/* Per-type toggles: SVG mode only */}
         {viewTab === "svg" && presentTypes.map(type => {
           const hidden = hiddenTypes.has(type);
-          const color = getColor(type);
-          const Icon = getIcon(type);
+          const color  = getColor(type);
+          const Icon   = getIcon(type);
           return (
             <button key={type} onClick={() => toggleType(type)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                hidden
-                  ? "border-white/5 bg-transparent text-slate-600"
-                  : "border-white/20 bg-white/5 text-white"
+                hidden ? "border-white/5 text-slate-600" : "border-white/20 bg-white/5 text-white"
               )}>
               <Icon className="w-3 h-3" style={{ color: hidden ? "#475569" : color }} />
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hidden ? "#475569" : color }} />
               {d(TYPE_I18N[type] ?? "fa_other")}
-              {hidden ? <EyeOff className="w-3 h-3 text-slate-600" /> : <Eye className="w-3 h-3" style={{ color }} />}
+              {hidden
+                ? <EyeOff className="w-3 h-3 text-slate-600" />
+                : <Eye className="w-3 h-3" style={{ color }} />}
             </button>
           );
         })}
       </div>
 
-      {/* Image view */}
-      <div className="glass rounded-2xl border border-white/10 p-2 mb-8 relative overflow-hidden">
-        {viewTab === "ia" ? (
-          /* Backend-annotated overlay image */
+      {/* ── Image panel ── */}
+      <div className="glass rounded-2xl border border-white/10 p-2 mb-8 overflow-hidden">
+
+        {/* ────────── Vue IA ────────── */}
+        {viewTab === "ia" && (
           <img
             src={`data:image/png;base64,${result.overlay_b64}`}
             alt="Facade IA overlay"
             className="w-full rounded-xl"
           />
-        ) : (
-          /* SVG overlay on plan */
+        )}
+
+        {/* ────────── Vue SVG ────────── */}
+        {viewTab === "svg" && (
           <div className="relative" ref={imgContainerRef} onMouseLeave={() => setHoveredEl(null)}>
             {result.is_mock && (
-              <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                <AlertTriangle className="w-3 h-3" />
-                Démo — positions simulées
+              <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
+                bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
+                <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
               </div>
             )}
             <img
               src={`data:image/png;base64,${result.plan_b64}`}
-              alt="Facade plan"
-              className="w-full rounded-xl"
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
+              alt="Facade plan" className="w-full rounded-xl"
+              onLoad={e => {
+                const i = e.currentTarget;
+                setImgNat({ w: i.naturalWidth, h: i.naturalHeight });
               }}
             />
-            <svg
-              className="absolute inset-0 w-full h-full"
-              viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
-              preserveAspectRatio="xMidYMid meet"
-            >
+            <svg className="absolute inset-0 w-full h-full"
+              viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
               {visibleElements.map(el => {
-                const x = el.bbox_norm.x * imgNat.w;
-                const y = el.bbox_norm.y * imgNat.h;
-                const w = el.bbox_norm.w * imgNat.w;
-                const h = el.bbox_norm.h * imgNat.h;
+                const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
                 const color = getColor(el.type);
-
-                const handleEnter = (e: React.MouseEvent<SVGGElement>) => {
-                  const c = imgContainerRef.current;
-                  if (!c) return;
+                const onEnter = (e: React.MouseEvent<SVGGElement>) => {
+                  const c = imgContainerRef.current; if (!c) return;
                   const r = c.getBoundingClientRect();
-                  setHoveredEl(el);
-                  setTooltipPos({ x: e.clientX - r.left, y: e.clientY - r.top });
+                  setHoveredEl(el); setTooltipPos({ x: e.clientX - r.left, y: e.clientY - r.top });
                 };
-                const handleMove = (e: React.MouseEvent<SVGGElement>) => {
-                  const c = imgContainerRef.current;
-                  if (!c) return;
+                const onMove = (e: React.MouseEvent<SVGGElement>) => {
+                  const c = imgContainerRef.current; if (!c) return;
                   const r = c.getBoundingClientRect();
                   setTooltipPos({ x: e.clientX - r.left, y: e.clientY - r.top });
                 };
-
                 if (el.type === "floor_line") {
                   return (
                     <g key={el.id} className="cursor-pointer"
-                      onMouseEnter={handleEnter} onMouseMove={handleMove}
-                      onMouseLeave={() => setHoveredEl(null)}>
-                      <line
-                        x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
-                        stroke={color} strokeWidth="2" strokeDasharray="8 4"
-                        opacity="0.8"
-                      />
+                      onMouseEnter={onEnter} onMouseMove={onMove} onMouseLeave={() => setHoveredEl(null)}>
+                      <line x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                        stroke={color} strokeWidth="2" strokeDasharray="8 4" opacity="0.8" />
                     </g>
                   );
                 }
-
                 return (
                   <g key={el.id} className="cursor-pointer"
-                    onMouseEnter={handleEnter} onMouseMove={handleMove}
-                    onMouseLeave={() => setHoveredEl(null)}>
-                    <rect
-                      x={x} y={y} width={w} height={h}
-                      fill={`${color}20`} stroke={color} strokeWidth="1.5"
-                      rx="2"
-                    />
-                    <text
-                      x={x + w / 2} y={y - 4}
-                      textAnchor="middle" fill={color}
+                    onMouseEnter={onEnter} onMouseMove={onMove} onMouseLeave={() => setHoveredEl(null)}>
+                    <rect x={x} y={y} width={w} height={h}
+                      fill={`${color}20`} stroke={color} strokeWidth="1.5" rx="2" />
+                    <text x={x + w / 2} y={y - 4} textAnchor="middle" fill={color}
                       fontSize={Math.max(8, Math.min(12, imgNat.w * 0.012))}
-                      fontFamily="monospace" fontWeight="bold"
-                    >
+                      fontFamily="monospace" fontWeight="bold">
                       {d(TYPE_I18N[el.type] ?? "fa_other")}
                     </text>
                   </g>
                 );
               })}
             </svg>
-
             {/* Hover tooltip */}
             {hoveredEl && (() => {
-              const TIcon = getIcon(hoveredEl.type);
+              const TIcon  = getIcon(hoveredEl.type);
               const tColor = getColor(hoveredEl.type);
-              const containerW = imgContainerRef.current?.offsetWidth ?? 9999;
-              const flipX = tooltipPos.x > containerW / 2;
+              const cw   = imgContainerRef.current?.offsetWidth ?? 9999;
+              const flip = tooltipPos.x > cw / 2;
               return (
-                <div
-                  className="absolute z-50 pointer-events-none glass rounded-xl border border-white/20 p-3 min-w-[148px] shadow-xl"
-                  style={{
-                    left:  flipX ? tooltipPos.x - 14 : tooltipPos.x + 14,
-                    top:   tooltipPos.y - 10,
-                    transform: flipX ? "translateX(-100%)" : "none",
-                  }}
-                >
-                  {/* Type header */}
+                <div className="absolute z-50 pointer-events-none glass rounded-xl border border-white/20 p-3 min-w-[148px] shadow-xl"
+                  style={{ left: flip ? tooltipPos.x - 14 : tooltipPos.x + 14, top: tooltipPos.y - 10,
+                    transform: flip ? "translateX(-100%)" : "none" }}>
                   <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-white/10">
                     <TIcon className="w-3.5 h-3.5 shrink-0" style={{ color: tColor }} />
                     <span className="text-xs font-semibold" style={{ color: tColor }}>
                       {d(TYPE_I18N[hoveredEl.type] ?? "fa_other")}
                     </span>
                   </div>
-                  {/* Details */}
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between gap-4">
                       <span className="text-slate-500">{d("fa_floor_level")}</span>
@@ -337,6 +360,215 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ────────── Masques ────────── */}
+        {viewTab === "masks" && (
+          <div className="flex flex-col lg:flex-row gap-3">
+
+            {/* Left: base image + SVG mask overlays */}
+            <div className="relative flex-1 min-w-0">
+              <img
+                src={`data:image/png;base64,${result.plan_b64}`}
+                alt="Facade plan" className="w-full rounded-xl"
+                onLoad={e => {
+                  const i = e.currentTarget;
+                  setImgNat({ w: i.naturalWidth, h: i.naturalHeight });
+                }}
+              />
+
+              {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
+              {!hiddenLayers.has("surface_murale") && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+                  <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
+                </svg>
+              )}
+
+              {/* Per-type mask layers: interactive (click to select) */}
+              <svg className="absolute inset-0 w-full h-full"
+                viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+
+                {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
+                  const layerEls = result.elements.filter(
+                    e => e.type === layer.id && !hiddenElements.has(e.id)
+                  );
+                  return (
+                    <g key={layer.id}>
+                      {layerEls.map(el => {
+                        const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                        const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
+                        const sel = selectedEl === el.id;
+                        if (el.type === "floor_line") {
+                          return (
+                            <line key={el.id}
+                              x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                              stroke={layer.color} strokeWidth={sel ? 5 : 3}
+                              strokeOpacity={sel ? 1 : 0.75}
+                              className="cursor-pointer"
+                              onClick={() => setSelectedEl(sel ? null : el.id)}
+                            />
+                          );
+                        }
+                        return (
+                          <rect key={el.id}
+                            x={x} y={y} width={w} height={h}
+                            fill={layer.color} fillOpacity={sel ? 0.65 : 0.42}
+                            stroke={layer.color} strokeWidth={sel ? 2.5 : 1.5}
+                            strokeOpacity={sel ? 1 : 0.85}
+                            rx="2"
+                            className="cursor-pointer"
+                            onClick={() => setSelectedEl(sel ? null : el.id)}
+                          />
+                        );
+                      })}
+                    </g>
+                  );
+                })}
+
+                {/* White dashed outline on selected element */}
+                {selectedEl !== null && (() => {
+                  const el = result.elements.find(e => e.id === selectedEl);
+                  if (!el) return null;
+                  const x = el.bbox_norm.x * imgNat.w - 5, y = el.bbox_norm.y * imgNat.h - 5;
+                  const w = el.bbox_norm.w * imgNat.w + 10, h = el.bbox_norm.h * imgNat.h + 10;
+                  return (
+                    <rect x={x} y={y} width={w} height={h}
+                      fill="none" stroke="white" strokeWidth={2}
+                      strokeDasharray="5 3" opacity={0.9} rx="4"
+                      style={{ pointerEvents: "none" }} />
+                  );
+                })()}
+              </svg>
+
+              {/* Action bar for selected element */}
+              {selectedEl !== null && (() => {
+                const el = result.elements.find(e => e.id === selectedEl);
+                if (!el) return null;
+                const Icon  = getIcon(el.type);
+                const color = getColor(el.type);
+                return (
+                  <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between
+                    bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 text-xs border border-white/10">
+                    {/* Info */}
+                    <span className="flex items-center gap-1.5 text-slate-300 min-w-0">
+                      <Icon className="w-3 h-3 shrink-0" style={{ color }} />
+                      <span className="truncate" style={{ color }}>{d(TYPE_I18N[el.type] ?? "fa_other")}</span>
+                      {el.confidence != null && (
+                        <span className="text-slate-500 shrink-0">{(el.confidence * 100).toFixed(0)}%</span>
+                      )}
+                      {el.area_m2 != null && (
+                        <span className="text-slate-500 shrink-0 hidden sm:inline">· {el.area_m2.toFixed(2)} m²</span>
+                      )}
+                    </span>
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 ml-2 shrink-0">
+                      <span className="text-slate-600 hidden sm:inline">⌫</span>
+                      <button
+                        onClick={() => {
+                          setHiddenElements(prev => new Set([...prev, selectedEl!]));
+                          setSelectedEl(null);
+                        }}
+                        className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors
+                          px-2 py-0.5 rounded border border-red-500/30 hover:border-red-400/50">
+                        <Trash2 className="w-3 h-3" /> Retirer
+                      </button>
+                      <button onClick={() => setSelectedEl(null)}
+                        className="text-slate-500 hover:text-slate-300 px-1">✕</button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Demo badge */}
+              {result.is_mock && (
+                <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
+                  bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
+                  <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
+                </div>
+              )}
+            </div>
+
+            {/* Right: layer panel */}
+            <div className="lg:w-56 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Couches</div>
+
+              <div className="space-y-0.5">
+                {MASK_LAYERS.map(layer => {
+                  const hasAny = layer.isSurface || result.elements.some(e => e.type === layer.id);
+                  if (!hasAny) return null;
+
+                  const totalCount   = layer.isSurface ? undefined : result.elements.filter(e => e.type === layer.id).length;
+                  const activeCount  = layer.isSurface ? undefined : result.elements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
+                  const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
+                  const layerHidden  = hiddenLayers.has(layer.id);
+                  const Icon = layer.icon;
+
+                  return (
+                    <button key={layer.id}
+                      onClick={() => {
+                        setHiddenLayers(prev => {
+                          const n = new Set(prev);
+                          if (!n.has(layer.id)) {
+                            n.add(layer.id);
+                            // Deselect if selected element belongs to this layer
+                            if (selectedEl !== null) {
+                              const sel = result.elements.find(e => e.id === selectedEl);
+                              if (sel?.type === layer.id) setSelectedEl(null);
+                            }
+                          } else { n.delete(layer.id); }
+                          return n;
+                        });
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        layerHidden ? "opacity-40" : "opacity-100"
+                      )}>
+                      <div className="w-3 h-3 rounded-sm shrink-0"
+                        style={{ background: layer.color, opacity: 0.75 }} />
+                      <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
+                      <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
+                      {activeCount != null && (
+                        <span className="font-mono text-slate-500 shrink-0 text-[10px]">
+                          {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
+                        </span>
+                      )}
+                      {layerHidden
+                        ? <EyeOff className="w-3 h-3 shrink-0 text-slate-600" />
+                        : <Eye    className="w-3 h-3 shrink-0 text-slate-400" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Surface murale stats */}
+              {!hiddenLayers.has("surface_murale") && (
+                <div className="border-t border-white/5 pt-3 space-y-1">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Surface murale</div>
+                  <div className="text-sm font-mono font-semibold text-slate-200">
+                    {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
+                  </div>
+                  {result.facade_area_m2 && wallAreaM2 != null && (
+                    <div className="text-xs text-slate-500">
+                      {((wallAreaM2 / result.facade_area_m2) * 100).toFixed(0)}% de la façade
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Restore removed elements */}
+              {hiddenElements.size > 0 && (
+                <button
+                  onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
+                  className="mt-auto flex items-center justify-center gap-1.5 text-xs text-slate-500
+                    hover:text-slate-300 transition-colors py-1.5 rounded-lg border border-white/5
+                    hover:border-white/10">
+                  <RotateCcw className="w-3 h-3" /> Restaurer ({hiddenElements.size})
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -403,7 +635,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 ? `${(result.facade_area_m2 - result.openings_area_m2).toFixed(1)} m²`
                 : "—"}
               {result.ratio_openings != null && (
-                <span className="text-sm text-slate-500 ml-1">({((1 - result.ratio_openings) * 100).toFixed(0)}%)</span>
+                <span className="text-sm text-slate-500 ml-1">
+                  ({((1 - result.ratio_openings) * 100).toFixed(0)}%)
+                </span>
               )}
             </div>
           </div>

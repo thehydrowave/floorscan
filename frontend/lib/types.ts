@@ -96,8 +96,9 @@ export interface FacadeAnalysisResult {
   elements: FacadeElement[];
   facade_area_m2: number | null; openings_area_m2: number | null; ratio_openings: number | null;
   pixels_per_meter: number | null;
+  /** ROI used for inference, normalized 0-1. Full image when absent. */
+  building_roi?: { x: number; y: number; w: number; h: number };
   overlay_b64: string; plan_b64: string;
-  mask_windows_b64?: string; mask_doors_b64?: string; mask_balconies_b64?: string;
   is_mock?: boolean;
 }
 
