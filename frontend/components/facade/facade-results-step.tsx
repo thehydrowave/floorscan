@@ -90,6 +90,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   // Image natural dimensions (for SVG overlay)
   const [imgNat, setImgNat] = useState({ w: 800, h: 600 });
 
+  // SVG hover tooltip
+  const imgContainerRef = useRef<HTMLDivElement>(null);
+  const [hoveredEl, setHoveredEl] = useState<FacadeElement | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     if (!result.plan_b64) return;
     const img = new Image();
@@ -166,7 +171,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         {/* Tab switcher */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5 mr-2">
           {(["ia", "svg"] as const).map(tab => (
-            <button key={tab} onClick={() => setViewTab(tab)}
+            <button key={tab} onClick={() => { setViewTab(tab); setHoveredEl(null); }}
               className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
                 viewTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
               {tab === "ia" ? "Vue IA" : "SVG"}
@@ -207,7 +212,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
           />
         ) : (
           /* SVG overlay on plan */
-          <div className="relative">
+          <div className="relative" ref={imgContainerRef} onMouseLeave={() => setHoveredEl(null)}>
             <img
               src={`data:image/png;base64,${result.plan_b64}`}
               alt="Facade plan"
@@ -218,7 +223,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
               }}
             />
             <svg
-              className="absolute inset-0 w-full h-full pointer-events-none"
+              className="absolute inset-0 w-full h-full"
               viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
               preserveAspectRatio="xMidYMid meet"
             >
@@ -229,9 +234,25 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 const h = el.bbox_norm.h * imgNat.h;
                 const color = getColor(el.type);
 
+                const handleEnter = (e: React.MouseEvent<SVGGElement>) => {
+                  const c = imgContainerRef.current;
+                  if (!c) return;
+                  const r = c.getBoundingClientRect();
+                  setHoveredEl(el);
+                  setTooltipPos({ x: e.clientX - r.left, y: e.clientY - r.top });
+                };
+                const handleMove = (e: React.MouseEvent<SVGGElement>) => {
+                  const c = imgContainerRef.current;
+                  if (!c) return;
+                  const r = c.getBoundingClientRect();
+                  setTooltipPos({ x: e.clientX - r.left, y: e.clientY - r.top });
+                };
+
                 if (el.type === "floor_line") {
                   return (
-                    <g key={el.id}>
+                    <g key={el.id} className="cursor-pointer"
+                      onMouseEnter={handleEnter} onMouseMove={handleMove}
+                      onMouseLeave={() => setHoveredEl(null)}>
                       <line
                         x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
                         stroke={color} strokeWidth="2" strokeDasharray="8 4"
@@ -242,7 +263,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 }
 
                 return (
-                  <g key={el.id}>
+                  <g key={el.id} className="cursor-pointer"
+                    onMouseEnter={handleEnter} onMouseMove={handleMove}
+                    onMouseLeave={() => setHoveredEl(null)}>
                     <rect
                       x={x} y={y} width={w} height={h}
                       fill={`${color}20`} stroke={color} strokeWidth="1.5"
@@ -260,6 +283,51 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 );
               })}
             </svg>
+
+            {/* Hover tooltip */}
+            {hoveredEl && (() => {
+              const TIcon = getIcon(hoveredEl.type);
+              const tColor = getColor(hoveredEl.type);
+              const containerW = imgContainerRef.current?.offsetWidth ?? 9999;
+              const flipX = tooltipPos.x > containerW / 2;
+              return (
+                <div
+                  className="absolute z-50 pointer-events-none glass rounded-xl border border-white/20 p-3 min-w-[148px] shadow-xl"
+                  style={{
+                    left:  flipX ? tooltipPos.x - 14 : tooltipPos.x + 14,
+                    top:   tooltipPos.y - 10,
+                    transform: flipX ? "translateX(-100%)" : "none",
+                  }}
+                >
+                  {/* Type header */}
+                  <div className="flex items-center gap-1.5 mb-2 pb-2 border-b border-white/10">
+                    <TIcon className="w-3.5 h-3.5 shrink-0" style={{ color: tColor }} />
+                    <span className="text-xs font-semibold" style={{ color: tColor }}>
+                      {d(TYPE_I18N[hoveredEl.type] ?? "fa_other")}
+                    </span>
+                  </div>
+                  {/* Details */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-slate-500">{d("fa_floor_level")}</span>
+                      <span className="text-white font-mono">{hoveredEl.floor_level ?? 0}</span>
+                    </div>
+                    {hoveredEl.confidence != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-slate-500">Conf.</span>
+                        <span className="text-white font-mono">{(hoveredEl.confidence * 100).toFixed(0)}%</span>
+                      </div>
+                    )}
+                    {hoveredEl.area_m2 != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-slate-500">Surface</span>
+                        <span className="font-mono" style={{ color: tColor }}>{hoveredEl.area_m2.toFixed(2)} m²</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
