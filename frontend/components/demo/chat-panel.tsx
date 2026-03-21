@@ -7,7 +7,7 @@ import {
   Sparkles, Trash2, Loader2, Bot, User,
   HelpCircle, ScanLine,
 } from "lucide-react";
-import { AnalysisResult } from "@/lib/types";
+import { AnalysisResult, FacadeAnalysisResult } from "@/lib/types";
 import { useLang } from "@/lib/lang-context";
 import { dt } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ interface ChatMsg {
 
 interface ChatPanelProps {
   result?: AnalysisResult | null;
+  facadeResult?: FacadeAnalysisResult | null;
   currentStep?: number;
   autoOpen?: boolean;
   dpgf?: any;
@@ -42,6 +43,20 @@ const ANALYSIS_SUGGESTIONS_EN = [
   "Break down the painting costs",
   "Are the rooms PMR compliant?",
   "What optimizations to reduce the budget?",
+];
+
+const FACADE_SUGGESTIONS_FR = [
+  "Quelle est la surface murale nette ?",
+  "Mon ratio vitrage est-il conforme RE2020 ?",
+  "Quel budget pour le ravalement de façade ?",
+  "Combien de menuiseries par étage ?",
+];
+
+const FACADE_SUGGESTIONS_EN = [
+  "What is the net wall area?",
+  "Is my glazing ratio RE2020 compliant?",
+  "What is the budget for facade renovation?",
+  "How many openings per floor?",
 ];
 
 const HELP_SUGGESTIONS_FR = [
@@ -80,11 +95,12 @@ function AvatarIcon({ size = 28 }: { size?: number }) {
 
 /* ── Component ──────────────────────────────────────────────────────────── */
 
-export default function ChatPanel({ result, currentStep, autoOpen, dpgf, compliance }: ChatPanelProps) {
+export default function ChatPanel({ result, facadeResult, currentStep, autoOpen, dpgf, compliance }: ChatPanelProps) {
   const { lang } = useLang();
   const d = (k: Parameters<typeof dt>[0]) => dt(k, lang);
 
   const hasAnalysis = !!result;
+  const hasFacade = !!facadeResult && !result;
 
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -98,6 +114,22 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
 
   // Build context (no base64 images — just structured data)
   const buildCtx = useCallback(() => {
+    if (facadeResult && !result) {
+      // Facade mode context
+      return {
+        windows_count: facadeResult.windows_count,
+        doors_count: facadeResult.doors_count,
+        balconies_count: facadeResult.balconies_count,
+        floors_count: facadeResult.floors_count,
+        facade_area_m2: facadeResult.facade_area_m2,
+        openings_area_m2: facadeResult.openings_area_m2,
+        ratio_openings: facadeResult.ratio_openings,
+        pixels_per_meter: facadeResult.pixels_per_meter,
+        elements: facadeResult.elements.map((e) => ({
+          type: e.type, floor_level: e.floor_level, area_m2: e.area_m2,
+        })),
+      };
+    }
     if (!result) return null;
     return {
       surfaces: result.surfaces,
@@ -113,7 +145,7 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
       ...(dpgf ? { dpgf } : {}),
       ...(compliance ? { compliance } : {}),
     };
-  }, [result, dpgf, compliance]);
+  }, [result, facadeResult, dpgf, compliance]);
 
   // Auto-open once when autoOpen becomes true
   useEffect(() => {
@@ -149,13 +181,15 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
     abortRef.current = abort;
 
     try {
+      const ctx = buildCtx();
+      const chatMode = hasFacade ? "facade" : hasAnalysis ? "analysis" : "help";
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: allMsgs.map((m) => ({ role: m.role, content: m.content })),
-          analysisContext: buildCtx(),
-          mode: hasAnalysis ? "analysis" : "help",
+          analysisContext: ctx,
+          mode: chatMode,
           currentStep: currentStep ?? null,
         }),
         signal: abort.signal,
@@ -207,12 +241,16 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
   };
 
   // Contextual suggestions
-  const suggestions = hasAnalysis
-    ? (lang === "fr" ? ANALYSIS_SUGGESTIONS_FR : ANALYSIS_SUGGESTIONS_EN)
-    : (lang === "fr" ? HELP_SUGGESTIONS_FR : HELP_SUGGESTIONS_EN);
+  const suggestions = hasFacade
+    ? (lang === "fr" ? FACADE_SUGGESTIONS_FR : FACADE_SUGGESTIONS_EN)
+    : hasAnalysis
+      ? (lang === "fr" ? ANALYSIS_SUGGESTIONS_FR : ANALYSIS_SUGGESTIONS_EN)
+      : (lang === "fr" ? HELP_SUGGESTIONS_FR : HELP_SUGGESTIONS_EN);
 
-  const welcomeMsg = hasAnalysis ? d("chat_welcome") : d("chat_welcome_help");
-  const welcomeSub = hasAnalysis ? d("chat_welcome_sub") : d("chat_welcome_help_sub");
+  const welcomeMsg = hasFacade ? d("chat_welcome") : hasAnalysis ? d("chat_welcome") : d("chat_welcome_help");
+  const welcomeSub = hasFacade
+    ? (lang === "fr" ? "Surfaces, ratio vitrage, travaux — demandez-moi tout" : "Areas, glazing ratio, works — ask me anything")
+    : hasAnalysis ? d("chat_welcome_sub") : d("chat_welcome_help_sub");
 
   /* ── Closed: floating button with avatar ─────────────────────────── */
 
@@ -315,14 +353,19 @@ export default function ChatPanel({ result, currentStep, autoOpen, dpgf, complia
           <div>
             <h3 className="text-sm font-semibold text-white flex items-center gap-1.5">
               {d("chat_title")}
-              {hasAnalysis && (
+              {hasFacade && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">
+                  Façade
+                </span>
+              )}
+              {hasAnalysis && !hasFacade && (
                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium">
                   {d("chat_data_badge")}
                 </span>
               )}
             </h3>
             <p className="text-[10px] text-slate-400">
-              {hasAnalysis ? d("chat_subtitle") : d("chat_subtitle_help")}
+              {hasFacade ? (lang === "fr" ? "Posez vos questions sur la façade" : "Ask questions about the facade") : hasAnalysis ? d("chat_subtitle") : d("chat_subtitle_help")}
             </p>
           </div>
         </div>

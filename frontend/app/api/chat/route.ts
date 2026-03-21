@@ -2,6 +2,58 @@ import { NextRequest } from "next/server";
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 
+// ─── Build facade context string from FacadeAnalysisResult ──────────────────
+
+function buildFacadeContext(data: any): string {
+  const lines: string[] = [];
+
+  lines.push("## Analyse de façade");
+  lines.push(`- Fenêtres : ${data.windows_count ?? 0}`);
+  lines.push(`- Portes : ${data.doors_count ?? 0}`);
+  lines.push(`- Balcons : ${data.balconies_count ?? 0}`);
+  lines.push(`- Niveaux / étages : ${data.floors_count ?? 0}`);
+
+  if (data.facade_area_m2 != null) lines.push(`- Surface façade totale : ${data.facade_area_m2.toFixed(1)} m²`);
+  if (data.openings_area_m2 != null) lines.push(`- Surface ouvertures : ${data.openings_area_m2.toFixed(1)} m²`);
+  if (data.ratio_openings != null) lines.push(`- Ratio vitrage : ${(data.ratio_openings * 100).toFixed(1)}%`);
+  if (data.pixels_per_meter != null) lines.push(`- Échelle : ${data.pixels_per_meter} px/m`);
+
+  // Wall area
+  if (data.facade_area_m2 != null && data.openings_area_m2 != null) {
+    const wall = data.facade_area_m2 - data.openings_area_m2;
+    lines.push(`- Surface murale nette : ${wall.toFixed(1)} m²`);
+  }
+
+  // Per-floor breakdown
+  if (data.elements?.length) {
+    lines.push("\n## Détail par étage");
+    const floors: Record<number, { windows: number; doors: number; balconies: number }> = {};
+    for (const el of data.elements) {
+      const lvl = el.floor_level ?? 0;
+      if (!floors[lvl]) floors[lvl] = { windows: 0, doors: 0, balconies: 0 };
+      if (el.type === "window") floors[lvl].windows++;
+      else if (el.type === "door") floors[lvl].doors++;
+      else if (el.type === "balcony") floors[lvl].balconies++;
+    }
+    for (const [lvl, counts] of Object.entries(floors).sort((a, b) => Number(b[0]) - Number(a[0]))) {
+      const label = Number(lvl) === 0 ? "RDC" : `Étage ${lvl}`;
+      lines.push(`- ${label} : ${counts.windows} fenêtres, ${counts.doors} portes, ${counts.balconies} balcons`);
+    }
+
+    // Area summary per type
+    lines.push("\n## Surfaces par type");
+    const areas: Record<string, number> = {};
+    for (const el of data.elements) {
+      if (el.area_m2) areas[el.type] = (areas[el.type] ?? 0) + el.area_m2;
+    }
+    for (const [type, area] of Object.entries(areas)) {
+      lines.push(`- ${type} : ${(area as number).toFixed(2)} m²`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 // ─── Build context string from AnalysisResult ───────────────────────────────
 
 function buildContext(data: any): string {
@@ -71,6 +123,19 @@ function buildContext(data: any): string {
 
   return lines.join("\n");
 }
+
+const FACADE_SYSTEM_PROMPT = `Tu es l'assistant IA de FloorScan, spécialisé dans l'analyse de façades de bâtiments.
+Tu as accès aux données complètes d'une façade analysée (fenêtres, portes, balcons, étages, surfaces, ratios).
+
+Règles :
+- Réponds TOUJOURS en français, sauf si l'utilisateur parle dans une autre langue
+- Sois précis avec les chiffres : cite les valeurs exactes de l'analyse
+- Formate tes réponses en markdown clair (listes, gras, tableaux si utile)
+- Tu es expert en façades, ravalement, menuiseries extérieures, isolation thermique (ITE/RE2020)
+- Pour les travaux, cite les prix au m² habituels du marché (peinture façade : 20-40€/m², ITE : 100-200€/m²)
+- Si une donnée n'est pas disponible, dis-le clairement
+- Sois concis mais complet — maximum 300 mots par réponse
+- Règlementation : ratio vitrage recommandé 15-25% pour résidentiel (RE2020)`;
 
 const ANALYSIS_SYSTEM_PROMPT = `Tu es l'assistant IA de FloorScan, un outil d'analyse de plans architecturaux.
 Tu as accès aux données complètes d'un plan analysé (pièces, surfaces, ouvertures, chiffrage DPGF, conformité).
@@ -147,9 +212,13 @@ export async function POST(request: NextRequest) {
 
   // Build system prompt based on mode
   const isAnalysis = mode === "analysis" && analysisContext;
+  const isFacade = mode === "facade" && analysisContext;
   let fullSystem: string;
 
-  if (isAnalysis) {
+  if (isFacade) {
+    const contextStr = buildFacadeContext(analysisContext);
+    fullSystem = `${FACADE_SYSTEM_PROMPT}\n\n--- DONNÉES DE LA FAÇADE ANALYSÉE ---\n${contextStr}`;
+  } else if (isAnalysis) {
     const contextStr = buildContext(analysisContext);
     fullSystem = `${ANALYSIS_SYSTEM_PROMPT}\n\n--- DONNÉES DU PLAN ANALYSÉ ---\n${contextStr}`;
   } else {

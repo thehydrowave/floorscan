@@ -13,6 +13,10 @@ import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import Facade3dPanel from "./facade-3d-panel";
+import FacadeMaterialsPanel from "./facade-materials-panel";
+import FacadeDpgfPanel from "./facade-dpgf-panel";
+import FacadeCompliancePanel from "./facade-compliance-panel";
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<string, string> = {
@@ -642,6 +646,26 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── 3D Facade View ── */}
+      <div className="mb-4">
+        <Facade3dPanel result={result} />
+      </div>
+
+      {/* ── Materials Estimation ── */}
+      <div className="mb-4">
+        <FacadeMaterialsPanel result={result} />
+      </div>
+
+      {/* ── DPGF Ravalement ── */}
+      <div className="mb-4">
+        <FacadeDpgfPanel result={result} />
+      </div>
+
+      {/* ── Compliance ── */}
+      <div className="mb-8">
+        <FacadeCompliancePanel result={result} />
       </div>
 
       {/* Actions */}
