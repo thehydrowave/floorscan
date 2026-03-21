@@ -1503,15 +1503,17 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     plan_b64 = pipeline._np_to_b64(img_rgb)
 
     # ── Overlay annoté ──
+    # NOTE: img_rgb est en RGB ; Image.fromarray (dans _np_to_b64) l'encode en RGB.
+    # Les couleurs ci-dessous sont donc des triplets (R, G, B) directs.
     overlay = img_rgb.copy()
-    TYPE_COLORS_BGR = {
-        "window":     (250, 164, 96),    # bleu-orange CSS #60a5fa → BGR inverse
-        "door":       (180, 114, 244),   # fuchsia
-        "balcony":    (153, 211, 52),    # vert emeraude
-        "roof":       (250, 139, 167),   # violet
-        "floor_line": (60, 146, 251),    # orange
-        "column":     (184, 163, 148),   # slate
-        "other":      (36, 187, 251),    # jaune-ambre
+    TYPE_COLORS_RGB = {
+        "window":     (96,  165, 250),   # #60a5fa blue-400
+        "door":       (244, 114, 182),   # #f472b6 pink-400
+        "balcony":    (52,  211, 153),   # #34d399 emerald-400
+        "roof":       (167, 139, 250),   # #a78bfa violet-400
+        "floor_line": (251, 146,  60),   # #fb923c orange-400
+        "column":     (148, 163, 184),   # #94a3b8 slate-400
+        "other":      (251, 191,  36),   # #fbbf24 amber-400
     }
     for el in elements:
         bx = el["bbox_norm"]
@@ -1519,14 +1521,18 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         y1 = int(bx["y"] * H)
         x2 = int((bx["x"] + bx["w"]) * W)
         y2 = int((bx["y"] + bx["h"]) * H)
-        color = TYPE_COLORS_BGR.get(el["type"], (180, 180, 180))
-        thickness = 2
+        color = TYPE_COLORS_RGB.get(el["type"], (180, 180, 180))
         if el["type"] == "floor_line":
             cv2.line(overlay, (x1, (y1 + y2) // 2), (x2, (y1 + y2) // 2), color, 2, cv2.LINE_AA)
         else:
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
-            label = el["label_fr"]
-            cv2.putText(overlay, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+            # Remplissage semi-transparent (25 %)
+            tmp = overlay.copy()
+            cv2.rectangle(tmp, (x1, y1), (x2, y2), color, cv2.FILLED)
+            cv2.addWeighted(tmp, 0.22, overlay, 0.78, 0, overlay)
+            # Bordure pleine + label
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2, cv2.LINE_AA)
+            cv2.putText(overlay, el["label_fr"], (x1, max(y1 - 5, 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
     # ── Dessiner la ROI sur l'overlay si elle était définie ──
     if req.building_roi:

@@ -75,7 +75,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const d = (key: DTKey) => dt(key, lang);
 
   // Image view tab: "svg" = SVG overlay, "ia" = backend-annotated image
-  const [viewTab, setViewTab] = useState<"svg" | "ia">("ia");
+  // In mock/demo mode, "ia" is unavailable (overlay_b64 = raw image, no annotations)
+  const [viewTab, setViewTab] = useState<"svg" | "ia">(() => result.is_mock ? "svg" : "ia");
 
   // Dynamic toggles per element type present in the result
   const presentTypes = [...new Set(result.elements.map(e => e.type))];
@@ -168,15 +169,17 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
 
       {/* View tab + dynamic toggles */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {/* Tab switcher */}
+        {/* Tab switcher — "Vue IA" hidden in mock/demo mode (overlay has no annotations) */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5 mr-2">
-          {(["ia", "svg"] as const).map(tab => (
-            <button key={tab} onClick={() => { setViewTab(tab); setHoveredEl(null); }}
-              className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
-                viewTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
-              {tab === "ia" ? "Vue IA" : "SVG"}
-            </button>
-          ))}
+          {(["ia", "svg"] as const)
+            .filter(tab => !(tab === "ia" && result.is_mock))
+            .map(tab => (
+              <button key={tab} onClick={() => { setViewTab(tab); setHoveredEl(null); }}
+                className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                  viewTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+                {tab === "ia" ? "Vue IA" : "Vue SVG"}
+              </button>
+            ))}
         </div>
 
         {/* Dynamic type toggles (only visible in SVG mode) */}
@@ -213,6 +216,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         ) : (
           /* SVG overlay on plan */
           <div className="relative" ref={imgContainerRef} onMouseLeave={() => setHoveredEl(null)}>
+            {result.is_mock && (
+              <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
+                <AlertTriangle className="w-3 h-3" />
+                Démo — positions simulées
+              </div>
+            )}
             <img
               src={`data:image/png;base64,${result.plan_b64}`}
               alt="Facade plan"
