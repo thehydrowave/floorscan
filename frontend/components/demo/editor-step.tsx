@@ -1315,17 +1315,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_visibility")}</span>
             {([
-              { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
-              { key: "windows",      Icon: AppWindow,        active: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",          show: showWindows,      set: setShowWindows,      title: d("ed_windows") },
-              { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10 text-orange-400",   show: showFrenchDoors,  set: setShowFrenchDoors,  title: "Portes-fenêtres" },
-              { key: "walls",        Icon: BrickWall,        active: "border-amber-500/30 bg-amber-500/10 text-amber-400",      show: showWalls,        set: setShowWalls,        title: d("ed_concrete") },
-              { key: "rooms",        Icon: LayoutGrid,       active: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",show: showRooms,        set: setShowRooms,        title: d("ed_rooms") },
-            ] as const).map(({ key, Icon, active, show, set, title }) => (
+              { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
+              { key: "windows",      Icon: AppWindow,        active: "border-cyan-500/30 bg-cyan-500/10",       iconColor: "text-cyan-400",    show: showWindows,      set: setShowWindows,      title: d("ed_windows") },
+              { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10",  iconColor: "text-orange-400",  show: showFrenchDoors,  set: setShowFrenchDoors,  title: "Portes-fenêtres" },
+              { key: "walls",        Icon: BrickWall,        active: "border-amber-500/30 bg-amber-500/10",    iconColor: "text-amber-400",   show: showWalls,        set: setShowWalls,        title: d("ed_concrete") },
+              { key: "rooms",        Icon: LayoutGrid,       active: "border-emerald-500/30 bg-emerald-500/10",iconColor: "text-emerald-400", show: showRooms,        set: setShowRooms,        title: d("ed_rooms") },
+            ] as const).map(({ key, Icon, active, iconColor, show, set, title }) => (
               <button key={key} onClick={() => set((v: boolean) => !v)} title={title}
                 className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                  show ? active : "border-white/5 text-slate-600 hover:text-slate-400")}>
-                <Icon size={10} />
-                {show ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                  show ? cn(active, iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                <Icon size={10} className={iconColor} />
+                {show ? <Eye className={cn("w-2.5 h-2.5", iconColor)} /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
               </button>
             ))}
             <button onClick={() => setShowOpeningOverlay(v => !v)} title="Numéros d'ouvertures"
@@ -1339,22 +1339,22 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms"] as const).map(l => {
-              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { Icon: ElementType; label: string; active: string }> = {
-                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
-                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
-                french_door: { Icon: Columns2,          label: "P-Fenêtres",       active: "border-orange-500/40 bg-orange-500/10 text-orange-400" },
-                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
-                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
-                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10 text-accent" },
-                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
+              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { Icon: ElementType; label: string; active: string; iconColor: string }> = {
+                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400" },
+                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400" },
+                french_door: { Icon: Columns2,          label: "P-Fenêtres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400" },
+                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400" },
+                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400" },
+                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent" },
+                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400" },
               };
               const m = layerMeta[l];
               return (
                 <button key={l} onClick={() => setLayer(layer === l ? null : l)} title={m.label}
                   className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
-                    layer === l ? m.active : "border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10")}>
-                  <m.Icon className="w-3 h-3 shrink-0" />
-                  <span>{m.label}</span>
+                    layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                  <m.Icon className={cn("w-3 h-3 shrink-0", m.iconColor)} />
+                  <span className={layer === l ? "" : "text-slate-400"}>{m.label}</span>
                 </button>
               );
             })}

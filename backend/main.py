@@ -1359,6 +1359,9 @@ class AnalyzeFacadeRequest(BaseModel):
     roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
     pixels_per_meter: Optional[float] = None
     confidence: float = 0.25
+    # ROI optionnel : délimite le bâtiment avant inférence
+    # {x, y, w, h} normalisés [0-1] dans l'image originale
+    building_roi: Optional[dict] = None
 
 @app.post("/analyze-facade")
 def analyze_facade(req: AnalyzeFacadeRequest):
@@ -1370,17 +1373,39 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     H, W = img_rgb.shape[:2]
     ppm = req.pixels_per_meter or s.get("pixels_per_meter")
 
-    # ── Appel Roboflow inference ──
+    # ── Crop ROI si spécifié ──────────────────────────────────────────────────
+    # Le modèle travaille sur le crop ; les coordonnées sont ensuite remappées
+    # vers l'image originale pour que l'overlay soit cohérent.
+    roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
+    if req.building_roi:
+        r = req.building_roi
+        rx = float(r.get("x", 0.0))
+        ry = float(r.get("y", 0.0))
+        rw = float(r.get("w", 1.0))
+        rh = float(r.get("h", 1.0))
+        roi_x1 = max(0, int(rx * W))
+        roi_y1 = max(0, int(ry * H))
+        roi_x2 = min(W, int((rx + rw) * W))
+        roi_y2 = min(H, int((ry + rh) * H))
+        if roi_x2 <= roi_x1 or roi_y2 <= roi_y1:
+            # ROI invalide → on ignore et on prend l'image entière
+            roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
+
+    img_for_infer = img_rgb[roi_y1:roi_y2, roi_x1:roi_x2]
+    H_inf, W_inf = img_for_infer.shape[:2]
+    roi_scale_x = (roi_x2 - roi_x1) / W   # fraction largeur occupée par le ROI
+    roi_scale_y = (roi_y2 - roi_y1) / H
+
+    # ── Appel Roboflow inference ──────────────────────────────────────────────
     from inference_sdk import InferenceHTTPClient
     client = InferenceHTTPClient(
         api_url="https://serverless.roboflow.com",
         api_key=req.roboflow_api_key,
     )
 
-    # Encode image for inference
-    img_pil = Image.fromarray(img_rgb).convert("RGB")
+    img_pil_inf = Image.fromarray(img_for_infer).convert("RGB")
     buf = io.BytesIO()
-    img_pil.save(buf, format="JPEG", quality=95)
+    img_pil_inf.save(buf, format="JPEG", quality=95)
     buf.seek(0)
     img_b64_for_infer = base64.b64encode(buf.read()).decode()
 
@@ -1401,34 +1426,42 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         # Classes inconnues → "other" (on ne filtre plus silencieusement)
         facade_type = FACADE_CLASS_MAP.get(cls_name, "other")
 
-        # Roboflow retourne x_center, y_center, width, height en pixels
-        cx = pred["x"]
-        cy = pred["y"]
-        pw = pred["width"]
-        ph = pred["height"]
+        # Roboflow retourne x_center, y_center, width, height en pixels du CROP
+        cx_inf = pred["x"]
+        cy_inf = pred["y"]
+        pw_inf = pred["width"]
+        ph_inf = pred["height"]
 
-        # Convertir en bbox normalisée (top-left x, y, w, h)
-        x_norm = (cx - pw / 2) / W
-        y_norm = (cy - ph / 2) / H
-        w_norm = pw / W
-        h_norm = ph / H
+        # Convertir d'abord en normalisé dans le crop
+        x_in_roi = (cx_inf - pw_inf / 2) / W_inf
+        y_in_roi = (cy_inf - ph_inf / 2) / H_inf
+        w_in_roi = pw_inf / W_inf
+        h_in_roi = ph_inf / H_inf
+
+        # Remapper vers l'image originale
+        x_norm = roi_x1 / W + x_in_roi * roi_scale_x
+        y_norm = roi_y1 / H + y_in_roi * roi_scale_y
+        w_norm = w_in_roi * roi_scale_x
+        h_norm = h_in_roi * roi_scale_y
 
         # Clamp
-        x_norm = max(0, min(1, x_norm))
-        y_norm = max(0, min(1, y_norm))
-        w_norm = min(w_norm, 1 - x_norm)
-        h_norm = min(h_norm, 1 - y_norm)
+        x_norm = max(0.0, min(1.0, x_norm))
+        y_norm = max(0.0, min(1.0, y_norm))
+        w_norm = min(w_norm, 1.0 - x_norm)
+        h_norm = min(h_norm, 1.0 - y_norm)
 
-        # Calcul surface
+        # Calcul surface (en m², basé sur les pixels du crop proportionnellement)
         area_m2 = None
         if ppm and ppm > 0:
-            area_px2 = pw * ph
-            area_m2 = area_px2 / (ppm * ppm)
+            pw_orig = pw_inf * roi_scale_x  # largeur en px dans l'image originale
+            ph_orig = ph_inf * roi_scale_y
+            area_m2 = (pw_orig * ph_orig) / (ppm * ppm)
 
         elements.append({
             "id": i,
             "type": facade_type,
             "label_fr": FACADE_LABELS_FR.get(facade_type, cls_name),
+            "raw_class": cls_name,
             "bbox_norm": {"x": round(x_norm, 5), "y": round(y_norm, 5),
                           "w": round(w_norm, 5), "h": round(h_norm, 5)},
             "area_m2": round(area_m2, 3) if area_m2 is not None else None,
@@ -1460,7 +1493,10 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     # ── Surfaces ──
     openings = [e for e in elements if e["type"] in ("window", "door", "balcony")]
     openings_area_m2 = sum(e["area_m2"] for e in openings if e["area_m2"]) if ppm else None
-    facade_area_m2 = (W * H) / (ppm * ppm) if ppm else None
+    # Use ROI area if a ROI was specified, otherwise full image
+    roi_w_px = roi_x2 - roi_x1
+    roi_h_px = roi_y2 - roi_y1
+    facade_area_m2 = (roi_w_px * roi_h_px) / (ppm * ppm) if ppm else None
     ratio_openings = (openings_area_m2 / facade_area_m2) if (facade_area_m2 and openings_area_m2) else None
 
     # ── Image brute en b64 ──
@@ -1469,11 +1505,13 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     # ── Overlay annoté ──
     overlay = img_rgb.copy()
     TYPE_COLORS_BGR = {
-        "window":     (250, 164, 96),
-        "door":       (180, 114, 244),
-        "roof":       (250, 139, 167),
-        "floor_line": (60, 146, 251),
-        "other":      (36, 187, 251),
+        "window":     (250, 164, 96),    # bleu-orange CSS #60a5fa → BGR inverse
+        "door":       (180, 114, 244),   # fuchsia
+        "balcony":    (153, 211, 52),    # vert emeraude
+        "roof":       (250, 139, 167),   # violet
+        "floor_line": (60, 146, 251),    # orange
+        "column":     (184, 163, 148),   # slate
+        "other":      (36, 187, 251),    # jaune-ambre
     }
     for el in elements:
         bx = el["bbox_norm"]
@@ -1489,6 +1527,13 @@ def analyze_facade(req: AnalyzeFacadeRequest):
             cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
             label = el["label_fr"]
             cv2.putText(overlay, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+    # ── Dessiner la ROI sur l'overlay si elle était définie ──
+    if req.building_roi:
+        roi_color = (0, 255, 200)  # cyan-vert
+        cv2.rectangle(overlay, (roi_x1, roi_y1), (roi_x2, roi_y2), roi_color, 2, cv2.LINE_AA)
+        cv2.putText(overlay, "ROI", (roi_x1 + 4, roi_y1 + 16),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, roi_color, 1, cv2.LINE_AA)
 
     overlay_b64 = pipeline._np_to_b64(overlay)
 

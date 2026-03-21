@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   BarChart3, ArrowRight, RotateCcw, Download, Eye, EyeOff,
-  AlertTriangle, Building2,
+  AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
+  LayoutPanelTop, Columns2, Frame, Box, HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -15,17 +16,33 @@ import { dt, DTKey } from "@/lib/i18n";
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:     "#60a5fa",
-  door:       "#f472b6",
-  balcony:    "#34d399",
-  floor_line: "#fb923c",
-  roof:       "#a78bfa",
-  column:     "#94a3b8",
-  other:      "#fbbf24",
+  window:     "#60a5fa",   // blue-400
+  door:       "#f472b6",   // pink-400
+  balcony:    "#34d399",   // emerald-400
+  floor_line: "#fb923c",   // orange-400
+  roof:       "#a78bfa",   // violet-400
+  column:     "#94a3b8",   // slate-400
+  other:      "#fbbf24",   // amber-400
 };
 
 function getColor(type: string) {
   return TYPE_COLORS[type] ?? "#94a3b8";
+}
+
+/* ── Lucide icon per element type ── */
+type IconComp = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+const TYPE_ICONS: Record<string, IconComp> = {
+  window:     AppWindow,
+  door:       DoorOpen,
+  balcony:    LayoutPanelTop,
+  floor_line: Layers,
+  roof:       Frame,
+  column:     Columns2,
+  other:      HelpCircle,
+};
+
+function getIcon(type: string): IconComp {
+  return TYPE_ICONS[type] ?? Box;
 }
 
 /* ── i18n key for element type ── */
@@ -39,6 +56,14 @@ const TYPE_I18N: Record<string, DTKey> = {
   other:      "fa_other",
 };
 
+/* ── KPI icons + colors ── */
+const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
+  windows:  { Icon: AppWindow,      color: "text-blue-400" },
+  doors:    { Icon: DoorOpen,       color: "text-pink-400" },
+  balconies:{ Icon: LayoutPanelTop, color: "text-emerald-400" },
+  floors:   { Icon: Layers,         color: "text-orange-400" },
+};
+
 interface FacadeResultsStepProps {
   result: FacadeAnalysisResult;
   onGoEditor: () => void;
@@ -49,15 +74,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
-  // Overlay toggles
-  const [showWindows, setShowWindows] = useState(true);
-  const [showDoors, setShowDoors] = useState(true);
-  const [showBalconies, setShowBalconies] = useState(true);
-  const [showFloorLines, setShowFloorLines] = useState(true);
+  // Image view tab: "svg" = SVG overlay, "ia" = backend-annotated image
+  const [viewTab, setViewTab] = useState<"svg" | "ia">("ia");
 
-  // Image natural dimensions
+  // Dynamic toggles per element type present in the result
+  const presentTypes = [...new Set(result.elements.map(e => e.type))];
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
+  const toggleType = (type: string) =>
+    setHiddenTypes(prev => {
+      const next = new Set(prev);
+      next.has(type) ? next.delete(type) : next.add(type);
+      return next;
+    });
+
+  // Image natural dimensions (for SVG overlay)
   const [imgNat, setImgNat] = useState({ w: 800, h: 600 });
-  const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     if (!result.plan_b64) return;
@@ -74,20 +105,14 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     return {
       level,
       label: level === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${level}`,
-      windows: els.filter(e => e.type === "window").length,
-      doors: els.filter(e => e.type === "door").length,
-      balconies: els.filter(e => e.type === "balcony").length,
+      windows:  els.filter(e => e.type === "window").length,
+      doors:    els.filter(e => e.type === "door").length,
+      balconies:els.filter(e => e.type === "balcony").length,
     };
   });
 
-  // Filter visible elements
-  const visibleElements = result.elements.filter(e => {
-    if (e.type === "window" && !showWindows) return false;
-    if (e.type === "door" && !showDoors) return false;
-    if (e.type === "balcony" && !showBalconies) return false;
-    if (e.type === "floor_line" && !showFloorLines) return false;
-    return true;
-  });
+  // Filter visible elements for SVG overlay
+  const visibleElements = result.elements.filter(e => !hiddenTypes.has(e.type));
 
   // CSV export
   const exportCSV = () => {
@@ -120,102 +145,123 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: "🪟", value: result.windows_count, label: d("fa_windows"), color: "text-blue-400" },
-          { icon: "🚪", value: result.doors_count, label: d("fa_doors"), color: "text-pink-400" },
-          { icon: "🏗️", value: result.balconies_count, label: d("fa_balconies"), color: "text-emerald-400" },
-          { icon: "📐", value: result.floors_count, label: d("fa_floors"), color: "text-orange-400" },
-        ].map(({ icon, value, label, color }) => (
-          <div key={label} className="glass rounded-xl border border-white/10 p-4 text-center">
-            <span className="text-2xl">{icon}</span>
-            <div className={cn("text-2xl font-display font-700 mt-1", color)}>{value}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{label}</div>
-          </div>
-        ))}
+          { k: "windows",   value: result.windows_count,   label: d("fa_windows") },
+          { k: "doors",     value: result.doors_count,     label: d("fa_doors") },
+          { k: "balconies", value: result.balconies_count, label: d("fa_balconies") },
+          { k: "floors",    value: result.floors_count,    label: d("fa_floors") },
+        ].map(({ k, value, label }) => {
+          const { Icon, color } = KPI_ICONS[k];
+          return (
+            <div key={k} className="glass rounded-xl border border-white/10 p-4 text-center">
+              <Icon className={cn("w-6 h-6 mx-auto", color)} />
+              <div className={cn("text-2xl font-display font-700 mt-1", color)}>{value}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Toggle buttons */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {[
-          { key: "fa_toggle_windows" as DTKey, on: showWindows, set: setShowWindows, color: "#60a5fa" },
-          { key: "fa_toggle_doors" as DTKey, on: showDoors, set: setShowDoors, color: "#f472b6" },
-          { key: "fa_toggle_balconies" as DTKey, on: showBalconies, set: setShowBalconies, color: "#34d399" },
-          { key: "fa_toggle_floors" as DTKey, on: showFloorLines, set: setShowFloorLines, color: "#fb923c" },
-        ].map(({ key, on, set, color }) => (
-          <button
-            key={key}
-            onClick={() => set(!on)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
-              on
-                ? "border-white/20 bg-white/5 text-white"
-                : "border-white/5 bg-transparent text-slate-600"
-            )}
-          >
-            {on ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: on ? color : "#475569" }} />
-            {d(key)}
-          </button>
-        ))}
+      {/* View tab + dynamic toggles */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Tab switcher */}
+        <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5 mr-2">
+          {(["ia", "svg"] as const).map(tab => (
+            <button key={tab} onClick={() => setViewTab(tab)}
+              className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                viewTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+              {tab === "ia" ? "Vue IA" : "SVG"}
+            </button>
+          ))}
+        </div>
+
+        {/* Dynamic type toggles (only visible in SVG mode) */}
+        {viewTab === "svg" && presentTypes.map(type => {
+          const hidden = hiddenTypes.has(type);
+          const color = getColor(type);
+          const Icon = getIcon(type);
+          return (
+            <button key={type} onClick={() => toggleType(type)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                hidden
+                  ? "border-white/5 bg-transparent text-slate-600"
+                  : "border-white/20 bg-white/5 text-white"
+              )}>
+              <Icon className="w-3 h-3" style={{ color: hidden ? "#475569" : color }} />
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hidden ? "#475569" : color }} />
+              {d(TYPE_I18N[type] ?? "fa_other")}
+              {hidden ? <EyeOff className="w-3 h-3 text-slate-600" /> : <Eye className="w-3 h-3" style={{ color }} />}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Image + SVG overlay */}
+      {/* Image view */}
       <div className="glass rounded-2xl border border-white/10 p-2 mb-8 relative overflow-hidden">
-        <div className="relative">
+        {viewTab === "ia" ? (
+          /* Backend-annotated overlay image */
           <img
-            ref={imgRef}
-            src={`data:image/png;base64,${result.plan_b64}`}
-            alt="Facade plan"
+            src={`data:image/png;base64,${result.overlay_b64}`}
+            alt="Facade IA overlay"
             className="w-full rounded-xl"
-            onLoad={(e) => {
-              const img = e.currentTarget;
-              setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
-            }}
           />
-          {/* SVG overlay */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
-            preserveAspectRatio="xMidYMid meet"
-          >
-            {visibleElements.map(el => {
-              const x = el.bbox_norm.x * imgNat.w;
-              const y = el.bbox_norm.y * imgNat.h;
-              const w = el.bbox_norm.w * imgNat.w;
-              const h = el.bbox_norm.h * imgNat.h;
-              const color = getColor(el.type);
+        ) : (
+          /* SVG overlay on plan */
+          <div className="relative">
+            <img
+              src={`data:image/png;base64,${result.plan_b64}`}
+              alt="Facade plan"
+              className="w-full rounded-xl"
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
+              }}
+            />
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              {visibleElements.map(el => {
+                const x = el.bbox_norm.x * imgNat.w;
+                const y = el.bbox_norm.y * imgNat.h;
+                const w = el.bbox_norm.w * imgNat.w;
+                const h = el.bbox_norm.h * imgNat.h;
+                const color = getColor(el.type);
 
-              if (el.type === "floor_line") {
+                if (el.type === "floor_line") {
+                  return (
+                    <g key={el.id}>
+                      <line
+                        x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                        stroke={color} strokeWidth="2" strokeDasharray="8 4"
+                        opacity="0.8"
+                      />
+                    </g>
+                  );
+                }
+
                 return (
                   <g key={el.id}>
-                    <line
-                      x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
-                      stroke={color} strokeWidth="2" strokeDasharray="8 4"
-                      opacity="0.8"
+                    <rect
+                      x={x} y={y} width={w} height={h}
+                      fill={`${color}20`} stroke={color} strokeWidth="1.5"
+                      rx="2"
                     />
+                    <text
+                      x={x + w / 2} y={y - 4}
+                      textAnchor="middle" fill={color}
+                      fontSize={Math.max(8, Math.min(12, imgNat.w * 0.012))}
+                      fontFamily="monospace" fontWeight="bold"
+                    >
+                      {d(TYPE_I18N[el.type] ?? "fa_other")}
+                    </text>
                   </g>
                 );
-              }
-
-              return (
-                <g key={el.id}>
-                  <rect
-                    x={x} y={y} width={w} height={h}
-                    fill={`${color}20`} stroke={color} strokeWidth="1.5"
-                    rx="2"
-                  />
-                  <text
-                    x={x + w / 2} y={y - 4}
-                    textAnchor="middle" fill={color}
-                    fontSize={Math.max(8, Math.min(12, imgNat.w * 0.012))}
-                    fontFamily="monospace" fontWeight="bold"
-                  >
-                    {d(TYPE_I18N[el.type] ?? "fa_other")}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
+              })}
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Per-floor table */}
@@ -229,9 +275,15 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
             <thead>
               <tr className="text-slate-500 text-xs border-b border-white/5">
                 <th className="text-left py-2 px-3 font-medium">{d("fa_floor_level")}</th>
-                <th className="text-center py-2 px-3 font-medium">{d("fa_windows")}</th>
-                <th className="text-center py-2 px-3 font-medium">{d("fa_doors")}</th>
-                <th className="text-center py-2 px-3 font-medium">{d("fa_balconies")}</th>
+                <th className="text-center py-2 px-3 font-medium">
+                  <AppWindow className="w-3.5 h-3.5 text-blue-400 inline" />
+                </th>
+                <th className="text-center py-2 px-3 font-medium">
+                  <DoorOpen className="w-3.5 h-3.5 text-pink-400 inline" />
+                </th>
+                <th className="text-center py-2 px-3 font-medium">
+                  <LayoutPanelTop className="w-3.5 h-3.5 text-emerald-400 inline" />
+                </th>
               </tr>
             </thead>
             <tbody>
