@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo, type ElementType } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2 } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2, Sparkles, Check, Columns2, BrickWall, SeparatorVertical, Home, Hash, PenOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -1314,35 +1314,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ BAR 1 : VISIBILITÉ ══ */}
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_visibility")}</span>
-            <button onClick={() => setShowDoors(v => !v)}
+            {([
+              { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
+              { key: "windows",      Icon: AppWindow,        active: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",          show: showWindows,      set: setShowWindows,      title: d("ed_windows") },
+              { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10 text-orange-400",   show: showFrenchDoors,  set: setShowFrenchDoors,  title: "Portes-fenêtres" },
+              { key: "walls",        Icon: BrickWall,        active: "border-amber-500/30 bg-amber-500/10 text-amber-400",      show: showWalls,        set: setShowWalls,        title: d("ed_concrete") },
+              { key: "rooms",        Icon: LayoutGrid,       active: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",show: showRooms,        set: setShowRooms,        title: d("ed_rooms") },
+            ] as const).map(({ key, Icon, active, show, set, title }) => (
+              <button key={key} onClick={() => set((v: boolean) => !v)} title={title}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  show ? active : "border-white/5 text-slate-600 hover:text-slate-400")}>
+                <Icon size={10} />
+                {show ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+              </button>
+            ))}
+            <button onClick={() => setShowOpeningOverlay(v => !v)} title="Numéros d'ouvertures"
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                showDoors ? "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              🚪 {showDoors ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-            </button>
-            <button onClick={() => setShowWindows(v => !v)}
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                showWindows ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              🪟 {showWindows ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-            </button>
-            <button onClick={() => setShowFrenchDoors(v => !v)}
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                showFrenchDoors ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              🚪🪟 {showFrenchDoors ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-            </button>
-            <button onClick={() => setShowWalls(v => !v)}
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                showWalls ? "border-orange-500/30 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              <Layers size={10} /> {showWalls ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-            </button>
-            <button onClick={() => setShowRooms(v => !v)}
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                showRooms ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              <LayoutGrid size={10} /> {showRooms ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-            </button>
-            <button onClick={() => setShowOpeningOverlay(v => !v)}
-              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-all",
                 showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
-              N°
+              <Hash size={10} />
             </button>
           </div>
 
@@ -1350,21 +1339,21 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms"] as const).map(l => {
-              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { emoji: string; label: string; active: string }> = {
-                door:        { emoji: "🚪", label: d("ed_doors"),    active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
-                window:      { emoji: "🪟", label: d("ed_windows"),  active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
-                french_door: { emoji: "🚪🪟", label: "P-Fenêtres",  active: "border-orange-500/40 bg-orange-500/10 text-orange-400" },
-                wall:        { emoji: "🧱", label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
-                cloison:     { emoji: "🔲", label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
-                interior:    { emoji: "🏠", label: d("ed_living_s"), active: "border-accent/40 bg-accent/10 text-accent" },
-                rooms:       { emoji: "🏘️", label: d("ed_rooms"),   active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
+              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { Icon: ElementType; label: string; active: string }> = {
+                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400" },
+                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" },
+                french_door: { Icon: Columns2,          label: "P-Fenêtres",       active: "border-orange-500/40 bg-orange-500/10 text-orange-400" },
+                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10 text-red-400" },
+                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10 text-blue-400" },
+                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10 text-accent" },
+                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" },
               };
               const m = layerMeta[l];
               return (
                 <button key={l} onClick={() => setLayer(layer === l ? null : l)} title={m.label}
                   className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                     layer === l ? m.active : "border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10")}>
-                  <span>{m.emoji}</span>
+                  <m.Icon className="w-3 h-3 shrink-0" />
                   <span>{m.label}</span>
                 </button>
               );
@@ -1447,21 +1436,21 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     title={d("ed_tt_erase_free")}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <X className="w-3 h-3" /> {d("ed_erase_free")}
+                    <PenOff className="w-3 h-3" /> {d("ed_erase_free")}
                   </button>
                   {(layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
                       title={d("ed_tt_ia_auto")}
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                         tool === "sam" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                      ✨ {d("ed_ia_auto")}
+                      <Sparkles className="w-3 h-3" /> {d("ed_ia_auto")}
                     </button>
                   )}
                   {(tool === "add_poly" || tool === "erase_poly") && (
                     <button onClick={finishPoly}
                       title={d("ed_tt_validate")}
                       className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
-                      ✓ {d("ed_validate")}
+                      <Check className="w-3 h-3" /> {d("ed_validate")}
                     </button>
                   )}
                 </>
