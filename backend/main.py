@@ -1317,25 +1317,40 @@ def get_image(session_id: str, image_type: str):
 
 # ============================================================
 # ROUTE — ANALYSE DE FAÇADE (elevation drawings)
-# Utilise le modèle Roboflow "elevation-24mp4/1" (door, window, building, roof, floor)
+# Utilise le modèle Roboflow "my-first-project-utanq/7"
+# Ancien modèle : "elevation-24mp4/1"
 # ============================================================
-FACADE_MODEL_ID = "elevation-24mp4/1"
+FACADE_MODEL_ID = "my-first-project-utanq/7"
 
 # Mapping classes Roboflow → types façade internes
+# Les classes inconnues sont mappées à "other" (voir code ci-dessous)
+# pour ne pas filtrer les détections si le modèle utilise des noms différents.
 FACADE_CLASS_MAP = {
-    "door":     "door",
-    "window":   "window",
-    "building": "other",      # contour global → on le garde comme "other"
-    "roof":     "roof",
-    "floor":    "floor_line",
+    # Classes modèle original
+    "door":       "door",
+    "window":     "window",
+    "building":   "other",
+    "roof":       "roof",
+    "floor":      "floor_line",
+    # Alias FR (au cas où le modèle utilise des labels français)
+    "porte":      "door",
+    "fenetre":    "window",
+    "fenêtre":    "window",
+    "toiture":    "roof",
+    "balcony":    "balcony",
+    "balcon":     "balcony",
+    # Générique
+    "facade":     "other",
+    "wall":       "other",
 }
 
 FACADE_LABELS_FR = {
     "door":       "Porte",
     "window":     "Fenêtre",
+    "balcony":    "Balcon",
     "roof":       "Toiture",
     "floor_line": "Ligne d'étage",
-    "other":      "Bâtiment",
+    "other":      "Élément",
 }
 
 class AnalyzeFacadeRequest(BaseModel):
@@ -1380,12 +1395,11 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     elements = []
     for i, pred in enumerate(predictions):
         cls_name = pred.get("class", "").lower()
-        if cls_name not in FACADE_CLASS_MAP:
-            continue
         if pred.get("confidence", 0) < req.confidence:
             continue
 
-        facade_type = FACADE_CLASS_MAP[cls_name]
+        # Classes inconnues → "other" (on ne filtre plus silencieusement)
+        facade_type = FACADE_CLASS_MAP.get(cls_name, "other")
 
         # Roboflow retourne x_center, y_center, width, height en pixels
         cx = pred["x"]
