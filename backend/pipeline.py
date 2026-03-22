@@ -81,11 +81,25 @@ PIPELINE_DEFINITIONS = [
         "color": "#F43F5E",  # rose
     },
     {
+        "id": "H", "name": "Diagonal (H)",
+        "model_ids": ["wall-detection-xi9ox/1"],
+        "type": "diagonal",
+        "description": "Morphologie adaptative + Hough multi-angles + passes ±45°",
+        "color": "#F97316",  # orange
+    },
+    {
         "id": "I", "name": "Pixel+IA (I)",
         "model_ids": [],
         "type": "pixel_ia_mix",
         "description": "Murs OTSU pixel (E) + portes/fenêtres IA (A) + segmentation diagonale",
         "color": "#84cc16",  # lime
+    },
+    {
+        "id": "J", "name": "Diagonal J (universe)",
+        "model_ids": ["architecture-plan/wall-detection-qpxun/2"],
+        "type": "diagonal",
+        "description": "Identique à H — murs via architecture-plan/wall-detection-qpxun/2",
+        "color": "#A855F7",  # purple
     },
     {
         "id": "F", "name": "Consensus (F)",
@@ -2528,6 +2542,26 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_diagonal": True,
         }
 
+    # ── Pipeline J: Diagonal (universe model wall-detection-qpxun/2) ──
+    try:
+        logger.info("Building diagonal pipeline J (universe model)...")
+        from pipeline_diagonal import run_pipeline_j
+        results["J"] = run_pipeline_j(img_rgb, img_pil, client, ppm, cfg)
+        logger.info("Pipeline J built: doors=%d, windows=%d, diagonal_pct=%.1f%%",
+                     results["J"].get("doors_count", 0), results["J"].get("windows_count", 0),
+                     (results["J"].get("diagonal_stats") or {}).get("diagonal_pct", 0))
+    except Exception as e:
+        logger.error("Pipeline J failed: %s", e, exc_info=True)
+        results["J"] = {
+            "id": "J", "name": "Diagonal J (universe)", "description": "Murs architecture-plan/wall-detection-qpxun/2",
+            "color": "#A855F7",
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_diagonal": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2536,8 +2570,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
 
     total_time = round(time.time() - t0, 2)
 
-    # ── Build comparison table (G first = recommended) ──
-    ordered = ["I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    # ── Build comparison table (J first = latest test) ──
+    ordered = ["J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
