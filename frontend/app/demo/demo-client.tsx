@@ -34,7 +34,7 @@ import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 
-const DEFAULT_CONFIG: RoboflowConfig = { apiKey: "Kh56un5foPflRVreiNOM", modelName: "cubicasa5k-2-qpmsa-1gd2e/1" };
+const DEFAULT_CONFIG: RoboflowConfig = { apiKey: "tyCM9PZp8cs3KtifPUaQ", modelName: "cubicasa5k-2-qpmsa-1gd2e/1" };
 const SESSION_STORAGE_KEY = "floorscan_ia_session_v1";
 
 interface SavedSession { step: number; demoMode: "ia"|"measure"|"facade"; config: RoboflowConfig|null; sessionId: string|null; uploadedImageB64: string|null; ppm: number|null; analysisResult: AnalysisResult|null; savedAt: number; }
