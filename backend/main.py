@@ -1326,31 +1326,60 @@ FACADE_MODEL_ID = "my-first-project-utanq/7"
 # Les classes inconnues sont mappées à "other" (voir code ci-dessous)
 # pour ne pas filtrer les détections si le modèle utilise des noms différents.
 FACADE_CLASS_MAP = {
-    # Classes modèle original
-    "door":       "door",
-    "window":     "window",
-    "building":   "other",
-    "roof":       "roof",
-    "floor":      "floor_line",
+    # Classes modèle original (singular + plural)
+    "door":        "door",
+    "doors":       "door",
+    "window":      "window",
+    "windows":     "window",
+    "building":    "other",
+    "roof":        "roof",
+    "rooftop":     "roof",
+    "floor":       "floor_line",
+    "floor_line":  "floor_line",
+    "floor-line":  "floor_line",
+    "floorline":   "floor_line",
+    "storey":      "floor_line",
+    "story":       "floor_line",
+    "column":      "column",
+    "columns":     "column",
+    "pillar":      "column",
+    "pillars":     "column",
+    "pilaster":    "column",
+    "pilasters":   "column",
+    "balcony":     "balcony",
+    "balconies":   "balcony",
     # Alias FR (au cas où le modèle utilise des labels français)
-    "porte":      "door",
-    "fenetre":    "window",
-    "fenêtre":    "window",
-    "toiture":    "roof",
-    "balcony":    "balcony",
-    "balcon":     "balcony",
+    "porte":       "door",
+    "portes":      "door",
+    "fenetre":     "window",
+    "fenetres":    "window",
+    "fenêtre":     "window",
+    "fenêtres":    "window",
+    "toiture":     "roof",
+    "balcon":      "balcony",
+    "balcons":     "balcony",
+    "colonne":     "column",
+    "colonnes":    "column",
+    "etage":       "floor_line",
+    "étage":       "floor_line",
     # Générique
-    "facade":     "other",
-    "wall":       "other",
+    "facade":      "other",
+    "facade-element": "other",
+    "wall":        "other",
+    "other":       "other",
 }
 
+# NOTE: cv2.putText (polices Hershey) ne supporte que les caractères ASCII (32-126).
+# Tout caractère accentué (é, ê, É...) s'affiche en "?" dans l'overlay.
+# → Toutes les valeurs ici doivent être en ASCII pur.
 FACADE_LABELS_FR = {
     "door":       "Porte",
-    "window":     "Fenêtre",
+    "window":     "Fenetre",
     "balcony":    "Balcon",
     "roof":       "Toiture",
-    "floor_line": "Ligne d'étage",
-    "other":      "Élément",
+    "floor_line": "Etage",
+    "column":     "Colonne",
+    "other":      "Element",
 }
 
 class AnalyzeFacadeRequest(BaseModel):
