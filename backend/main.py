@@ -270,7 +270,7 @@ def _decompress_mask(data: bytes, shape: tuple) -> np.ndarray:
 class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
-    roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
+    roboflow_api_key: str = "tyCM9PZp8cs3KtifPUaQ"
     model_id: str = "cubicasa5k-2-qpmsa-1gd2e/1"
     pixels_per_meter: Optional[float] = None
     conf_min_door: float = 0.05
@@ -336,7 +336,7 @@ def analyze(req: AnalyzeRequest):
 class CompareRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
-    roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
+    roboflow_api_key: str = "tyCM9PZp8cs3KtifPUaQ"
 
 @app.post("/compare")
 def compare(req: CompareRequest):
@@ -1385,7 +1385,7 @@ FACADE_LABELS_FR = {
 class AnalyzeFacadeRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     session_id: str
-    roboflow_api_key: str = "Kh56un5foPflRVreiNOM"
+    roboflow_api_key: str = "tyCM9PZp8cs3KtifPUaQ"
     pixels_per_meter: Optional[float] = None
     confidence: float = 0.25
     # ROI optionnel : délimite le bâtiment avant inférence

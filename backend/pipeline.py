@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # CONFIG (peut être surchargée depuis les paramètres API)
 # ============================================================
 DEFAULT_CONFIG = {
-    "api_key": "Kh56un5foPflRVreiNOM",
+    "api_key": "tyCM9PZp8cs3KtifPUaQ",
     "model_id": "cubicasa5k-2-qpmsa-1gd2e/1",
     "assumed_door_width_m": 0.80,
     "wall_thickness_m": 0.20,
