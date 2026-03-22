@@ -49,7 +49,6 @@ import cv2
 logger = logging.getLogger(__name__)
 
 MODEL_H_WALLS = "wall-detection-xi9ox/1"
-MODEL_J_WALLS = "architecture-plan/wall-detection-qpxun/2"  # modèle test universe
 
 
 # ============================================================
@@ -366,95 +365,18 @@ def segment_rooms_diagonal(walls: np.ndarray, m_doors: np.ndarray,
 
 
 # ============================================================
-# DÉTECTION DIAGONALE PORTES / FENÊTRES — rotation ±45°
-# ============================================================
-
-def _infer_diagonal_openings(img_rgb: np.ndarray, img_pil,
-                              client, model_id: str,
-                              angles: list,
-                              conf_min_door: float,
-                              conf_min_win: float,
-                              cfg: dict) -> tuple:
-    """Détecte les portes/fenêtres sur des versions pivotées de l'image.
-
-    Stratégie :
-      Pour chaque angle θ dans `angles` :
-        1. Pivoter l'image de θ degrés autour du centre
-        2. Lancer infer_pass sur l'image pivotée → masques m_doors_rot / m_wins_rot
-        3. Appliquer la rotation INVERSE (-θ) aux masques pour les ramener dans
-           les coordonnées originales
-        4. Seuillage binaire pour supprimer les artefacts d'interpolation bilinéaire
-      Fusionner (bitwise_or) les résultats de toutes les passes.
-
-    Avantage : les portes/fenêtres inclinées à ~45° deviennent alignées dans
-    l'image pivotée → le modèle les détecte mieux que dans l'orientation
-    originale où elles apparaissent comme des formes obliques non canoniques.
-    """
-    from PIL import Image as PILImage
-    import pipeline as pip
-
-    H, W = img_rgb.shape[:2]
-    cx, cy = W / 2.0, H / 2.0
-
-    m_doors_total = np.zeros((H, W), np.uint8)
-    m_wins_total  = np.zeros((H, W), np.uint8)
-
-    for angle_deg in angles:
-        try:
-            # 1. Rotation de l'image
-            M     = cv2.getRotationMatrix2D((cx, cy), angle_deg, 1.0)
-            rotated = cv2.warpAffine(img_rgb, M, (W, H),
-                                     flags=cv2.INTER_LINEAR,
-                                     borderMode=cv2.BORDER_REPLICATE)
-            img_pil_rot = PILImage.fromarray(rotated)
-
-            # 2. Inférence sur l'image pivotée (une seule passe, grande tuile)
-            _, _, md_rot, mw_rot, _, _, _ = pip.infer_pass(
-                img_pil_rot, client, model_id,
-                cfg["pass1_tile"], cfg["pass1_over"],
-                write_rooms=False,
-                conf_min_door=conf_min_door,
-                conf_min_win=conf_min_win,
-                cfg=cfg,
-            )
-
-            # 3. Rotation inverse des masques → coordonnées originales
-            M_inv    = cv2.getRotationMatrix2D((cx, cy), -angle_deg, 1.0)
-            md_back  = cv2.warpAffine(md_rot, M_inv, (W, H))
-            mw_back  = cv2.warpAffine(mw_rot, M_inv, (W, H))
-
-            # 4. Seuillage binaire (éliminer les artéfacts d'interpolation)
-            _, md_back = cv2.threshold(md_back, 127, 255, cv2.THRESH_BINARY)
-            _, mw_back = cv2.threshold(mw_back, 127, 255, cv2.THRESH_BINARY)
-
-            m_doors_total = cv2.bitwise_or(m_doors_total, md_back)
-            m_wins_total  = cv2.bitwise_or(m_wins_total,  mw_back)
-
-            logger.info("[diag-passes] angle=%+d°  doors_px=%d  wins_px=%d",
-                        angle_deg,
-                        cv2.countNonZero(md_back),
-                        cv2.countNonZero(mw_back))
-
-        except Exception as e:
-            logger.warning("[diag-passes] angle=%+d° échoué : %s", angle_deg, e)
-
-    return m_doors_total, m_wins_total
-
-
-# ============================================================
 # PIPELINE H
 # ============================================================
 
 def run_pipeline_h(img_rgb: np.ndarray, img_pil,
                    client, ppm: float, cfg: dict) -> dict:
-    """Pipeline H : murs IA directs + détection portes/fenêtres diagonale.
+    """Pipeline H : murs IA directs + segmentation pièces diagonale.
 
-    Améliorations vs G :
+    Identique à G pour la détection (même modèle murs, même footprint),
+    mais avec :
     - _compute_footprint_diagonal : kernel elliptique pour les coins obliques
     - segment_rooms_diagonal : kernel adaptatif ppm, une seule passe
-    - _infer_diagonal_openings : passes ±45° pour capter les portes/fenêtres
-      inclinées (plans d'archi avec ouvertures non orthogonales)
-    - Stats Hough + overlay orange disponibles pour comparaison
+    Les stats Hough + overlay orange restent disponibles pour comparaison.
     """
     import time
     import pipeline as pip
@@ -498,31 +420,6 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
             pip.clean_mask(mw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
             pip.clean_mask(mw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
         )
-
-        # ── 1b. Passes diagonales portes/fenêtres : ±45° ─────────────────────
-        # Complète les 2 passes orthogonales précédentes.  Sur un plan avec
-        # portes/fenêtres inclinées à ~45°, le modèle les manque souvent car
-        # l'image d'entraînement montre des ouvertures axiales.  En pivotant
-        # l'image de ±45° on les remet dans leur orientation canonique.
-        md_diag, mw_diag = _infer_diagonal_openings(
-            img_rgb, img_pil, client, model_id,
-            angles=[-45, 45],
-            conf_min_door=cfg["conf_min_door"],
-            conf_min_win=cfg["conf_min_win"],
-            cfg=cfg,
-        )
-        if cv2.countNonZero(md_diag) > 0:
-            m_doors = cv2.bitwise_or(
-                m_doors,
-                pip.clean_mask(md_diag, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
-            )
-        if cv2.countNonZero(mw_diag) > 0:
-            m_wins = cv2.bitwise_or(
-                m_wins,
-                pip.clean_mask(mw_diag, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
-            )
-        logger.info("[H] après passes diag : doors=%d px, wins=%d px",
-                    cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
         # ── 2. Murs : modèle IA spécialiste (identique à D/G) ────────────────
         _, _, _, _, _ww1, _, _ = pip.infer_pass(
@@ -618,7 +515,7 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
     return {
         "id": "H",
         "name": "Diagonal (H)",
-        "description": "Murs IA (xi9ox) + portes/fenêtres ±45° + segmentation diagonale",
+        "description": "Murs IA directs (wall-detection-xi9ox) + segmentation pièces diagonale",
         "color": "#06B6D4",
         "doors_count": doors_count,
         "windows_count": windows_count,
@@ -660,218 +557,6 @@ def run_pipeline_h(img_rgb: np.ndarray, img_pil,
         "_m_walls_raw": m_walls,
     }
 
-
-# ============================================================
-# PIPELINE J — Modèle test : wall-detection-qpxun/2 (universe)
-#              + détection portes/fenêtres diagonale (±45°)
-# ============================================================
-
-def run_pipeline_j(img_rgb: np.ndarray, img_pil,
-                   client, ppm: float, cfg: dict) -> dict:
-    """Pipeline J : test du modèle wall-detection-qpxun/2 (architecture-plan).
-
-    Identique à H mais utilise MODEL_J_WALLS pour les murs.
-    Permet de comparer directement wall-detection-xi9ox/1 (H) vs
-    wall-detection-qpxun/2 (J) avec exactement la même chaîne de traitement.
-    Inclut la détection diagonale portes/fenêtres (±45°) comme H.
-    """
-    import time
-    import pipeline as pip
-
-    t0 = time.time()
-    H, W = img_rgb.shape[:2]
-
-    m_doors = m_wins = m_walls = np.zeros((H, W), np.uint8)
-    interior_mask = cnt = footprint_mask = None
-    footprint_area_m2 = walls_area_m2 = hab_area_m2 = None
-    rooms_list = []
-    error = None
-    all_segs = diag_segs = h_segs = v_segs = []
-    doors_count = windows_count = 0
-    diagonal_pct = 0.0
-    mask_doors_b64 = mask_windows_b64 = mask_walls_b64 = None
-    mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = None
-    mask_diagonal_b64 = None
-
-    try:
-        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
-
-        # ── 1. Portes / fenêtres : modèle principal (identique à H) ──────────
-        _, _, md1, mw1, _, _, _ = pip.infer_pass(
-            img_pil, client, model_id,
-            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=cfg["conf_min_door"],
-            conf_min_win=cfg["conf_min_win"], cfg=cfg,
-        )
-        _, _, md2, mw2, _, _, _ = pip.infer_pass(
-            img_pil, client, model_id,
-            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=cfg["conf_min_door"],
-            conf_min_win=cfg["conf_min_win"], cfg=cfg,
-        )
-        m_doors = cv2.bitwise_or(
-            pip.clean_mask(md1, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
-            pip.clean_mask(md2, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
-        )
-        m_wins = cv2.bitwise_or(
-            pip.clean_mask(mw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
-            pip.clean_mask(mw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
-        )
-
-        # ── 1b. Passes diagonales portes/fenêtres : ±45° ─────────────────────
-        md_diag, mw_diag = _infer_diagonal_openings(
-            img_rgb, img_pil, client, model_id,
-            angles=[-45, 45],
-            conf_min_door=cfg["conf_min_door"],
-            conf_min_win=cfg["conf_min_win"],
-            cfg=cfg,
-        )
-        if cv2.countNonZero(md_diag) > 0:
-            m_doors = cv2.bitwise_or(
-                m_doors,
-                pip.clean_mask(md_diag, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
-            )
-        if cv2.countNonZero(mw_diag) > 0:
-            m_wins = cv2.bitwise_or(
-                m_wins,
-                pip.clean_mask(mw_diag, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
-            )
-        logger.info("[J] après passes diag : doors=%d px, wins=%d px",
-                    cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
-
-        # ── 2. Murs : modèle test wall-detection-qpxun/2 ──────────────────────
-        _, _, _, _, _ww1, _, _ = pip.infer_pass(
-            img_pil, client, MODEL_J_WALLS,
-            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
-        )
-        _, _, _, _, _ww2, _, _ = pip.infer_pass(
-            img_pil, client, MODEL_J_WALLS,
-            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
-        )
-        m_walls = cv2.bitwise_or(_ww1, _ww2)
-
-        logger.info("[J] walls_ai=%d px (qpxun), doors=%d px, windows=%d px",
-                    cv2.countNonZero(m_walls),
-                    cv2.countNonZero(m_doors),
-                    cv2.countNonZero(m_wins))
-
-        # ── 3. Empreinte : version diagonale ──────────────────────────────────
-        cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
-
-        if cnt is None:
-            logger.warning("[J] Empreinte non trouvée")
-        elif ppm is not None:
-            footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
-
-        # ── 4. Surface habitable ──────────────────────────────────────────────
-        if cnt is not None:
-            building = np.zeros((H, W), np.uint8)
-            cv2.fillPoly(building, [cnt], 255)
-            walls_bin = (m_walls > 0).astype(np.uint8) * 255
-            r_px = (max(1, int(round((cfg.get("wall_thickness_m", 0.20) * ppm) / 2.0)))
-                    if ppm is not None
-                    else max(1, cfg.get("wall_thickness_px_fallback", 10) // 2))
-            k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
-                                            (2 * r_px + 1, 2 * r_px + 1))
-            walls_thick = cv2.bitwise_and(cv2.dilate(walls_bin, k_w), building)
-            interior_mask = cv2.morphologyEx(
-                cv2.subtract(building, walls_thick),
-                cv2.MORPH_OPEN,
-                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
-                iterations=1,
-            )
-            if ppm is not None:
-                walls_area_m2 = round(cv2.countNonZero(walls_thick) / ppm ** 2, 2)
-                hab_area_m2   = round(cv2.countNonZero(interior_mask) / ppm ** 2, 2)
-
-        # ── 5. Pièces : segmentation diagonale ───────────────────────────────
-        rooms_list = segment_rooms_diagonal(m_walls, m_doors, m_wins,
-                                            cnt, H, W, ppm)
-
-        # ── 6. Comptages ──────────────────────────────────────────────────────
-        doors_count   = pip._count_connected_components(m_doors)
-        windows_count = pip._count_connected_components(m_wins)
-
-        # ── 7. Stats Hough ────────────────────────────────────────────────────
-        all_segs, diag_segs, h_segs, v_segs = _hough_stats(m_walls, H, W)
-        diagonal_pct = len(diag_segs) / max(len(all_segs), 1) * 100
-
-        # ── 8. Overlays ───────────────────────────────────────────────────────
-        def _ov(mask, color, alpha):
-            return (pip._np_to_b64(pip._mask_to_rgba(mask, color, alpha))
-                    if cv2.countNonZero(mask) > 0 else None)
-
-        mask_doors_b64     = _ov(m_doors,       (217, 70,  239), 90)
-        mask_windows_b64   = _ov(m_wins,         (34,  211, 238), 90)
-        mask_walls_b64     = _ov(m_walls,        (96,  165, 250), 90)
-        mask_rooms_b64     = (pip._np_to_b64(pip._build_rooms_color_mask(rooms_list, H, W))
-                              if rooms_list else None)
-        mask_footprint_b64 = (pip._np_to_b64(pip._mask_to_rgba(footprint_mask, (251, 191, 36), 50))
-                              if footprint_mask is not None
-                              and cv2.countNonZero(footprint_mask) > 0 else None)
-        mask_hab_b64       = (pip._np_to_b64(pip._mask_to_rgba(interior_mask, (74, 222, 128), 60))
-                              if interior_mask is not None
-                              and cv2.countNonZero(interior_mask) > 0 else None)
-
-        diag_overlay = np.zeros((H, W), np.uint8)
-        for seg in diag_segs:
-            cv2.line(diag_overlay,
-                     (seg["x1"], seg["y1"]), (seg["x2"], seg["y2"]),
-                     255, 3, cv2.LINE_AA)
-        mask_diagonal_b64 = _ov(diag_overlay, (249, 115, 22), 200)
-
-    except Exception as e:
-        error = str(e)
-        logger.error("Pipeline J failed: %s", e, exc_info=True)
-
-    elapsed = time.time() - t0
-
-    return {
-        "id": "J",
-        "name": "Test qpxun (J)",
-        "description": "Murs wall-detection-qpxun/2 + portes/fenetres ±45° + segmentation diagonale",
-        "color": "#f97316",   # orange
-        "doors_count": doors_count,
-        "windows_count": windows_count,
-        "mask_doors_b64": mask_doors_b64,
-        "mask_windows_b64": mask_windows_b64,
-        "mask_walls_b64": mask_walls_b64,
-        "mask_footprint_b64": mask_footprint_b64,
-        "mask_hab_b64": mask_hab_b64,
-        "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
-        "walls_area_m2": walls_area_m2,
-        "hab_area_m2": hab_area_m2,
-        "rooms_count": len(rooms_list),
-        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")}
-                  for r in rooms_list],
-        "mask_rooms_b64": mask_rooms_b64,
-        "timing_seconds": round(elapsed, 2),
-        "error": error,
-        "is_diagonal": True,
-        "mask_diagonal_walls_b64": mask_diagonal_b64,
-        "wall_segments": [
-            {
-                "x1_norm": s["x1_norm"], "y1_norm": s["y1_norm"],
-                "x2_norm": s["x2_norm"], "y2_norm": s["y2_norm"],
-                "length_m": round(s["length_px"] / ppm, 2) if ppm else None,
-                "angle_deg": s["angle_deg"],
-                "is_diagonal": s["is_diagonal"],
-            }
-            for s in all_segs
-        ],
-        "diagonal_stats": {
-            "total_segments": len(all_segs),
-            "diagonal_segments": len(diag_segs),
-            "horizontal_segments": len(h_segs),
-            "vertical_segments": len(v_segs),
-            "diagonal_pct": round(diagonal_pct, 1),
-        },
-        "_m_doors_raw": m_doors,
-        "_m_windows_raw": m_wins,
-        "_m_walls_raw": m_walls,
-    }
 
 # ============================================================
 # PIPELINE I — Pixel (OTSU) murs + IA portes/fenêtres + segmentation diagonale
