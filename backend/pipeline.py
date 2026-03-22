@@ -101,20 +101,6 @@ PIPELINE_DEFINITIONS = [
         "description": "Cherry-pick: murs D + portes A + fenêtres D",
         "color": "#EC4899",  # pink
     },
-    {
-        "id": "H", "name": "Diagonal (H)",
-        "model_ids": ["wall-detection-xi9ox/1"],
-        "type": "diagonal",
-        "description": "Murs xi9ox + portes/fenetres ±45° + segmentation diagonale",
-        "color": "#06B6D4",  # cyan
-    },
-    {
-        "id": "J", "name": "Test qpxun (J)",
-        "model_ids": ["architecture-plan/wall-detection-qpxun/2"],
-        "type": "diagonal",
-        "description": "Test wall-detection-qpxun/2 + portes/fenetres ±45° + segmentation diagonale",
-        "color": "#f97316",  # orange
-    },
 ]
 
 # Labels structurels à exclure des pièces détectées
@@ -1182,16 +1168,15 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
     print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
-    # === BEST-OF MODE: import windows from Model D specialist + french doors detection ===
-    # Note: wall-detection-xi9ox/1 supprimé (biaisé H/V → rate les diagonales)
-    # Les murs viennent du pixel OTSU calculé après cnt (pour clipping correct)
+    # === BEST-OF MODE: import walls/windows from Model D specialists ===
     m_french_doors = np.zeros((H, W), np.uint8)
     pipeline_mode = cfg.get("pipeline_mode", "bestof")
     if pipeline_mode == "bestof":
-        logger.info("Best-of mode: running Model D specialist for windows (OTSU walls)...")
+        logger.info("Best-of mode: running Model D specialists for walls + windows...")
         MODEL_D_DW = "floorplan-3xara/1"       # doors+windows specialist (95.8% mAP)
+        MODEL_D_W  = "wall-detection-xi9ox/1"   # walls specialist
 
-        # D: doors+windows specialist (2 passes) → on utilise uniquement les fenêtres
+        # D: doors+windows specialist (2 passes) → we only use windows from D
         _, _, _dd1, _dw1, _, _, _ = infer_pass(
             img_pil, client, MODEL_D_DW,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -1203,6 +1188,17 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         m_windows_D = cv2.bitwise_or(
             clean_mask(_dw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
             clean_mask(_dw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]))
+
+        # D: walls specialist (2 passes)
+        _, _, _, _, _ww1, _, _ = infer_pass(
+            img_pil, client, MODEL_D_W,
+            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+        _, _, _, _, _ww2, _, _ = infer_pass(
+            img_pil, client, MODEL_D_W,
+            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+        m_walls_D = cv2.bitwise_or(_ww1, _ww2)
 
         # ── Detect French doors: A doors that overlap D windows ──
         door_labels, door_comps = _extract_components_light(m_doors)
@@ -1227,22 +1223,25 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
             m_doors = m_doors_only
             m_windows = m_windows_only
 
-        logger.info("Best-of: D windows=%d px, french_doors=%d px, A doors=%d px",
-                     cv2.countNonZero(m_windows), cv2.countNonZero(m_french_doors),
-                     cv2.countNonZero(m_doors))
+        logger.info("Best-of: D walls=%d px, D windows=%d px, french_doors=%d px, A doors=%d px",
+                     cv2.countNonZero(m_walls_D), cv2.countNonZero(m_windows),
+                     cv2.countNonZero(m_french_doors), cv2.countNonZero(m_doors))
+
+        # Replace walls with D's (better detection)
+        m_walls_ai = m_walls_D
+        walls_bestof = m_walls_D
     else:
         m_windows_D = None
+        walls_bestof = None
 
-    # === WALLS pour footprint — priorité : modèle A > rooms_index > fallback image ===
-    # m_walls_ai = union passes A (déjà calculé, 0 appel API extra)
-    # OTSU calculé APRÈS cnt → utilisé pour la segmentation pièces uniquement
+    # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
     walls_rooms = _walls_from_rooms_index(rooms_index, H, W)
-    if cv2.countNonZero(m_walls_ai) > 0:
-        walls = m_walls_ai          # Murs modèle A — contours épais, bon footprint
+    if walls_bestof is not None and cv2.countNonZero(walls_bestof) > 0:
+        walls = walls_bestof  # Best-of: use D's walls
     elif cv2.countNonZero(walls_rooms) > 0:
-        walls = walls_rooms         # Frontières rooms_index — fallback
+        walls = walls_rooms   # Fallback: rooms_index boundaries
     else:
-        walls = detect_walls_from_image(img_rgb)  # Fallback image
+        walls = detect_walls_from_image(img_rgb)  # Fallback: image-based detection
 
     # === EMPRISE (contour extérieur) — include french doors for closing walls ===
     all_doors_for_fp = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
@@ -1284,12 +1283,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         df_openings["width_m"]  = df_openings["width_px"]  / ppm
         df_openings["height_m"] = df_openings["height_px"] / ppm
 
-    # === MURS PIXEL (OTSU) — calculé après cnt pour un clipping correct ===
-    # Utilisé pour : stats surfaces, cloisons, et segmentation pièces (angle-agnostique)
+    # === DÉTECTION MURS PAR PIXEL (OTSU) — compare avec IA ===
     m_walls_pixel = _detect_walls_pixel(img_rgb, cnt)
-
-    # Pipeline I logic : si OTSU donne des murs, on les utilise pour les pièces
-    walls_for_rooms = m_walls_pixel if cv2.countNonZero(m_walls_pixel) > 0 else walls
 
     # === SURFACES & PÉRIMÈTRES ===
     surfaces = _compute_surfaces(img_rgb, cnt, walls, ppm, cfg)
@@ -1306,10 +1301,10 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     overlay_openings = _build_overlay_openings(img_rgb, cnt, all_doors_overlay, m_windows)
     overlay_interior = _build_overlay_interior(img_rgb, surfaces.get("interior_mask"))
 
-    # === PIÈCES via flood fill — murs OTSU si dispo (angle-agnostique), sinon rooms_index ===
+    # === PIÈCES via flood fill (french doors = walkable like doors) ===
     all_doors_rooms = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
-    rooms_list    = segment_rooms_from_walls(walls_for_rooms, all_doors_rooms, m_windows, cnt, H, W, ppm)
-    wall_segments = vectorize_walls(walls_for_rooms, H, W, ppm)
+    rooms_list    = segment_rooms_from_walls(walls, all_doors_rooms, m_windows, cnt, H, W, ppm)
+    wall_segments = vectorize_walls(walls, H, W, ppm)
 
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
@@ -2533,29 +2528,6 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_diagonal": True,
         }
 
-    # ── Pipeline J: test wall-detection-qpxun/2 + diagonal doors/windows ──
-    try:
-        logger.info("Building test pipeline J (wall-detection-qpxun/2)...")
-        from pipeline_diagonal import run_pipeline_j
-        results["J"] = run_pipeline_j(img_rgb, img_pil, client, ppm, cfg)
-        logger.info("Pipeline J built: doors=%d, windows=%d, walls_px=%d, diagonal_pct=%.1f%%",
-                     results["J"].get("doors_count", 0), results["J"].get("windows_count", 0),
-                     cv2.countNonZero(results["J"].get("_m_walls_raw", np.zeros((1, 1), np.uint8))
-                                      if "_m_walls_raw" in results.get("J", {}) else np.zeros((1, 1), np.uint8)),
-                     (results["J"].get("diagonal_stats") or {}).get("diagonal_pct", 0))
-    except Exception as e:
-        logger.error("Pipeline J failed: %s", e, exc_info=True)
-        results["J"] = {
-            "id": "J", "name": "Test qpxun (J)",
-            "description": "Test wall-detection-qpxun/2 + portes/fenetres ±45°",
-            "color": "#f97316",
-            "doors_count": 0, "windows_count": 0,
-            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
-            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
-            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
-            "is_diagonal": True,
-        }
-
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2565,7 +2537,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
     total_time = round(time.time() - t0, 2)
 
     # ── Build comparison table (G first = recommended) ──
-    ordered = ["J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    ordered = ["I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
