@@ -1079,7 +1079,7 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
                 xmx, ymx = float(poly[:, 0].max()), float(poly[:, 1].max())
                 cxc, cyc = (xmn+xmx)/2.0, (ymn+ymx)/2.0
 
-                is_wall = lbl.startswith("wall")
+                is_wall = "wall" in lbl or lbl in ("partition","structure","masonry","cloison","mur")
 
                 if is_door:
                     cv2.fillPoly(m_doors, [poly], 255); kept_doors += 1
@@ -1110,7 +1110,7 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
                 x1g, y1g, x2g, y2g = clamp_box(x1g, y1g, x2g, y2g, W, H)
                 cxc, cyc = (x1g+x2g)/2, (y1g+y2g)/2
 
-                is_wall_bb = lbl.startswith("wall")
+                is_wall_bb = "wall" in lbl or lbl in ("partition","structure","masonry","cloison","mur")
 
                 if is_door:
                     cv2.rectangle(m_doors, (x1g,y1g), (x2g,y2g), 255, -1); kept_doors += 1
