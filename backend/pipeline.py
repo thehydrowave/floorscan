@@ -1182,15 +1182,20 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
     print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
-    # === BEST-OF MODE: import walls/windows from Model D specialists ===
+    # === MURS PIXEL (OTSU) — angle-agnostique, prioritaire sur les modèles IA ===
+    # Calculé tôt pour servir de source primaire de murs (Pipeline I logic)
+    m_walls_pixel_early = _detect_walls_pixel(img_rgb)
+
+    # === BEST-OF MODE: import windows from Model D specialist + french doors detection ===
+    # Note: on ne charge PLUS wall-detection-xi9ox/1 (biaisé H/V → rate les diagonales)
+    # Les murs viennent désormais du pixel OTSU (m_walls_pixel_early)
     m_french_doors = np.zeros((H, W), np.uint8)
     pipeline_mode = cfg.get("pipeline_mode", "bestof")
     if pipeline_mode == "bestof":
-        logger.info("Best-of mode: running Model D specialists for walls + windows...")
+        logger.info("Best-of mode: running Model D specialist for windows (OTSU walls)...")
         MODEL_D_DW = "floorplan-3xara/1"       # doors+windows specialist (95.8% mAP)
-        MODEL_D_W  = "wall-detection-xi9ox/1"   # walls specialist
 
-        # D: doors+windows specialist (2 passes) → we only use windows from D
+        # D: doors+windows specialist (2 passes) → on utilise uniquement les fenêtres
         _, _, _dd1, _dw1, _, _, _ = infer_pass(
             img_pil, client, MODEL_D_DW,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -1202,17 +1207,6 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         m_windows_D = cv2.bitwise_or(
             clean_mask(_dw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
             clean_mask(_dw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]))
-
-        # D: walls specialist (2 passes)
-        _, _, _, _, _ww1, _, _ = infer_pass(
-            img_pil, client, MODEL_D_W,
-            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
-        _, _, _, _, _ww2, _, _ = infer_pass(
-            img_pil, client, MODEL_D_W,
-            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
-        m_walls_D = cv2.bitwise_or(_ww1, _ww2)
 
         # ── Detect French doors: A doors that overlap D windows ──
         door_labels, door_comps = _extract_components_light(m_doors)
@@ -1237,25 +1231,20 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
             m_doors = m_doors_only
             m_windows = m_windows_only
 
-        logger.info("Best-of: D walls=%d px, D windows=%d px, french_doors=%d px, A doors=%d px",
-                     cv2.countNonZero(m_walls_D), cv2.countNonZero(m_windows),
+        logger.info("Best-of: OTSU walls=%d px, D windows=%d px, french_doors=%d px, A doors=%d px",
+                     cv2.countNonZero(m_walls_pixel_early), cv2.countNonZero(m_windows),
                      cv2.countNonZero(m_french_doors), cv2.countNonZero(m_doors))
-
-        # Replace walls with D's (better detection)
-        m_walls_ai = m_walls_D
-        walls_bestof = m_walls_D
     else:
         m_windows_D = None
-        walls_bestof = None
 
-    # === WALLS depuis rooms_index (frontières entre régions Roboflow) ===
+    # === WALLS — priorité : OTSU pixel > rooms_index > fallback image ===
     walls_rooms = _walls_from_rooms_index(rooms_index, H, W)
-    if walls_bestof is not None and cv2.countNonZero(walls_bestof) > 0:
-        walls = walls_bestof  # Best-of: use D's walls
+    if cv2.countNonZero(m_walls_pixel_early) > 0:
+        walls = m_walls_pixel_early   # Pipeline I: OTSU, angle-agnostique (diagonal OK)
     elif cv2.countNonZero(walls_rooms) > 0:
-        walls = walls_rooms   # Fallback: rooms_index boundaries
+        walls = walls_rooms           # Fallback: frontières rooms_index Roboflow
     else:
-        walls = detect_walls_from_image(img_rgb)  # Fallback: image-based detection
+        walls = detect_walls_from_image(img_rgb)  # Fallback: détection image
 
     # === EMPRISE (contour extérieur) — include french doors for closing walls ===
     all_doors_for_fp = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
@@ -1297,8 +1286,8 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         df_openings["width_m"]  = df_openings["width_px"]  / ppm
         df_openings["height_m"] = df_openings["height_px"] / ppm
 
-    # === DÉTECTION MURS PAR PIXEL (OTSU) — compare avec IA ===
-    m_walls_pixel = _detect_walls_pixel(img_rgb, cnt)
+    # === MURS PIXEL (OTSU) — déjà calculé plus haut, on réutilise ===
+    m_walls_pixel = m_walls_pixel_early
 
     # === SURFACES & PÉRIMÈTRES ===
     surfaces = _compute_surfaces(img_rgb, cnt, walls, ppm, cfg)
