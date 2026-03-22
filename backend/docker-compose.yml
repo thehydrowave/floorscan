@@ -4,7 +4,7 @@ services:
     ports:
       - "9001:9001"
     environment:
-      - ROBOFLOW_API_KEY=Kh56un5foPflRVreiNOM
+      - ROBOFLOW_API_KEY=vsFE5RCISwR0yitbIbDO
     volumes:
       - inference_models:/tmp/cache   # les poids sont cachés ici
     restart: unless-stopped
