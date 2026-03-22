@@ -13,7 +13,7 @@ import requests
 import zipfile
 import io
 
-API_KEY   = "tyCM9PZp8cs3KtifPUaQ"
+API_KEY   = "Kh56un5foPflRVreiNOM"
 WORKSPACE = "aza-9mqzq"
 OUT_DIR   = os.path.join(os.path.dirname(__file__), "models")
 

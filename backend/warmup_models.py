@@ -12,7 +12,7 @@ import requests
 import time
 
 LOCAL_URL = "http://localhost:9001"
-API_KEY   = "tyCM9PZp8cs3KtifPUaQ"
+API_KEY   = "Kh56un5foPflRVreiNOM"
 
 MODELS = [
     "cubicasa5k-2-qpmsa-1gd2e/1",
