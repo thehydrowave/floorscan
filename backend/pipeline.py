@@ -1182,13 +1182,9 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     m_walls_ai = cv2.bitwise_or(m_walls_1, m_walls_2)
     print(f"[DEBUG] m_walls_ai pixels: {cv2.countNonZero(m_walls_ai)} (direct Roboflow wall predictions)")
 
-    # === MURS PIXEL (OTSU) — angle-agnostique, prioritaire sur les modèles IA ===
-    # Calculé tôt pour servir de source primaire de murs (Pipeline I logic)
-    m_walls_pixel_early = _detect_walls_pixel(img_rgb)
-
     # === BEST-OF MODE: import windows from Model D specialist + french doors detection ===
-    # Note: on ne charge PLUS wall-detection-xi9ox/1 (biaisé H/V → rate les diagonales)
-    # Les murs viennent désormais du pixel OTSU (m_walls_pixel_early)
+    # Note: wall-detection-xi9ox/1 supprimé (biaisé H/V → rate les diagonales)
+    # Les murs viennent du pixel OTSU calculé après cnt (pour clipping correct)
     m_french_doors = np.zeros((H, W), np.uint8)
     pipeline_mode = cfg.get("pipeline_mode", "bestof")
     if pipeline_mode == "bestof":
@@ -1231,20 +1227,19 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
             m_doors = m_doors_only
             m_windows = m_windows_only
 
-        logger.info("Best-of: OTSU walls=%d px, D windows=%d px, french_doors=%d px, A doors=%d px",
-                     cv2.countNonZero(m_walls_pixel_early), cv2.countNonZero(m_windows),
-                     cv2.countNonZero(m_french_doors), cv2.countNonZero(m_doors))
+        logger.info("Best-of: D windows=%d px, french_doors=%d px, A doors=%d px",
+                     cv2.countNonZero(m_windows), cv2.countNonZero(m_french_doors),
+                     cv2.countNonZero(m_doors))
     else:
         m_windows_D = None
 
-    # === WALLS — priorité : OTSU pixel > rooms_index > fallback image ===
+    # === WALLS — depuis rooms_index pour le footprint initial ===
+    # OTSU sera calculé APRÈS cnt pour un clipping correct (évite footprint bruité)
     walls_rooms = _walls_from_rooms_index(rooms_index, H, W)
-    if cv2.countNonZero(m_walls_pixel_early) > 0:
-        walls = m_walls_pixel_early   # Pipeline I: OTSU, angle-agnostique (diagonal OK)
-    elif cv2.countNonZero(walls_rooms) > 0:
-        walls = walls_rooms           # Fallback: frontières rooms_index Roboflow
+    if cv2.countNonZero(walls_rooms) > 0:
+        walls = walls_rooms
     else:
-        walls = detect_walls_from_image(img_rgb)  # Fallback: détection image
+        walls = detect_walls_from_image(img_rgb)
 
     # === EMPRISE (contour extérieur) — include french doors for closing walls ===
     all_doors_for_fp = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
@@ -1286,8 +1281,12 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
         df_openings["width_m"]  = df_openings["width_px"]  / ppm
         df_openings["height_m"] = df_openings["height_px"] / ppm
 
-    # === MURS PIXEL (OTSU) — déjà calculé plus haut, on réutilise ===
-    m_walls_pixel = m_walls_pixel_early
+    # === MURS PIXEL (OTSU) — calculé après cnt pour un clipping correct ===
+    # Utilisé pour : stats surfaces, cloisons, et segmentation pièces (angle-agnostique)
+    m_walls_pixel = _detect_walls_pixel(img_rgb, cnt)
+
+    # Pipeline I logic : si OTSU donne des murs, on les utilise pour les pièces
+    walls_for_rooms = m_walls_pixel if cv2.countNonZero(m_walls_pixel) > 0 else walls
 
     # === SURFACES & PÉRIMÈTRES ===
     surfaces = _compute_surfaces(img_rgb, cnt, walls, ppm, cfg)
@@ -1304,10 +1303,10 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     overlay_openings = _build_overlay_openings(img_rgb, cnt, all_doors_overlay, m_windows)
     overlay_interior = _build_overlay_interior(img_rgb, surfaces.get("interior_mask"))
 
-    # === PIÈCES via flood fill (french doors = walkable like doors) ===
+    # === PIÈCES via flood fill — murs OTSU si dispo (angle-agnostique), sinon rooms_index ===
     all_doors_rooms = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
-    rooms_list    = segment_rooms_from_walls(walls, all_doors_rooms, m_windows, cnt, H, W, ppm)
-    wall_segments = vectorize_walls(walls, H, W, ppm)
+    rooms_list    = segment_rooms_from_walls(walls_for_rooms, all_doors_rooms, m_windows, cnt, H, W, ppm)
+    wall_segments = vectorize_walls(walls_for_rooms, H, W, ppm)
 
     # === MASQUE ROOMS coloré depuis les pièces segmentées ===
     mask_rooms_rgb = _build_rooms_color_mask(rooms_list, H, W)
