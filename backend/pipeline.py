@@ -1233,13 +1233,16 @@ def run_analysis(img_rgb: np.ndarray, pixels_per_meter: float = None,
     else:
         m_windows_D = None
 
-    # === WALLS — depuis rooms_index pour le footprint initial ===
-    # OTSU sera calculé APRÈS cnt pour un clipping correct (évite footprint bruité)
+    # === WALLS pour footprint — priorité : modèle A > rooms_index > fallback image ===
+    # m_walls_ai = union passes A (déjà calculé, 0 appel API extra)
+    # OTSU calculé APRÈS cnt → utilisé pour la segmentation pièces uniquement
     walls_rooms = _walls_from_rooms_index(rooms_index, H, W)
-    if cv2.countNonZero(walls_rooms) > 0:
-        walls = walls_rooms
+    if cv2.countNonZero(m_walls_ai) > 0:
+        walls = m_walls_ai          # Murs modèle A — contours épais, bon footprint
+    elif cv2.countNonZero(walls_rooms) > 0:
+        walls = walls_rooms         # Frontières rooms_index — fallback
     else:
-        walls = detect_walls_from_image(img_rgb)
+        walls = detect_walls_from_image(img_rgb)  # Fallback image
 
     # === EMPRISE (contour extérieur) — include french doors for closing walls ===
     all_doors_for_fp = cv2.bitwise_or(m_doors, m_french_doors) if cv2.countNonZero(m_french_doors) > 0 else m_doors
