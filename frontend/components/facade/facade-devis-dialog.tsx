@@ -1,0 +1,382 @@
+"use client";
+
+/**
+ * FacadeDevisDialog -- Quote/estimate generation dialog for facade renovation.
+ * Form: client name, project address, date.
+ * Auto-generated line items from FacadeAnalysisResult.
+ * Subtotal, TVA 10%, Total TTC. Copy-to-clipboard button.
+ */
+
+import { useState, useMemo } from "react";
+import {
+  X,
+  FileSignature,
+  Copy,
+  Check,
+} from "lucide-react";
+import { FacadeAnalysisResult } from "@/lib/types";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
+import { toast } from "@/components/ui/use-toast";
+
+/* ---- Props ---- */
+interface FacadeDevisDialogProps {
+  result: FacadeAnalysisResult;
+  onClose: () => void;
+}
+
+/* ---- Devis line item ---- */
+interface DevisLine {
+  label: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  totalHt: number;
+}
+
+/* ---- Helpers ---- */
+const fmtEur = (v: number) =>
+  v.toLocaleString("fr-FR", { maximumFractionDigits: 2, minimumFractionDigits: 2 }) +
+  " \u20AC";
+
+const fmtEurRound = (v: number) =>
+  v.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " \u20AC";
+
+const TVA_RATE = 0.10; // 10%
+
+/* ---- Component ---- */
+export default function FacadeDevisDialog({ result, onClose }: FacadeDevisDialogProps) {
+  const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
+  const isFr = lang === "fr";
+
+  /* Form state */
+  const [clientName, setClientName] = useState("");
+  const [projectAddress, setProjectAddress] = useState("");
+  const [devisDate, setDevisDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [copied, setCopied] = useState(false);
+
+  /* Computed line items */
+  const { lines, subtotalHt, tvaAmount, totalTtc } = useMemo(() => {
+    const facadeArea = result.facade_area_m2 ?? 0;
+    const openingsArea = result.openings_area_m2 ?? 0;
+    const solidArea = Math.max(0, facadeArea - openingsArea);
+    const winCount = result.windows_count;
+    const doorCount = result.doors_count;
+
+    const mkLine = (
+      label: string,
+      qty: number,
+      unit: string,
+      unitPrice: number
+    ): DevisLine => ({
+      label,
+      qty: Math.round(qty * 100) / 100,
+      unit,
+      unitPrice,
+      totalHt: Math.round(qty * unitPrice * 100) / 100,
+    });
+
+    const items: DevisLine[] = [
+      mkLine(
+        isFr ? "Echafaudage (montage / demontage)" : "Scaffolding (setup / removal)",
+        facadeArea,
+        "m\u00B2",
+        15
+      ),
+      mkLine(
+        isFr ? "Ravalement / peinture facade" : "Facade render / paint",
+        solidArea,
+        "m\u00B2",
+        45
+      ),
+      ...(winCount > 0
+        ? [
+            mkLine(
+              isFr ? "Menuiseries fenetres (PVC double vitrage)" : "Windows (PVC double glazing)",
+              winCount,
+              "u.",
+              600
+            ),
+          ]
+        : []),
+      ...(doorCount > 0
+        ? [
+            mkLine(
+              isFr ? "Menuiseries portes (exterieur)" : "Doors (exterior)",
+              doorCount,
+              "u.",
+              1200
+            ),
+          ]
+        : []),
+      mkLine(
+        isFr ? "ITE (isolation thermique exterieure)" : "ITE (external thermal insulation)",
+        solidArea,
+        "m\u00B2",
+        120
+      ),
+      mkLine(
+        isFr ? "Nettoyage de chantier" : "Site cleanup",
+        facadeArea,
+        "m\u00B2",
+        5
+      ),
+    ];
+
+    const subtotalHt = items.reduce((s, l) => s + l.totalHt, 0);
+    const tvaAmount = Math.round(subtotalHt * TVA_RATE * 100) / 100;
+    const totalTtc = Math.round((subtotalHt + tvaAmount) * 100) / 100;
+
+    return { lines: items, subtotalHt, tvaAmount, totalTtc };
+  }, [result, isFr]);
+
+  /* Build clipboard text */
+  const buildDevisText = (): string => {
+    const sep = "--------------------------------------------";
+    const out: string[] = [];
+    out.push(isFr ? "DEVIS RAVALEMENT FACADE" : "FACADE RENOVATION QUOTE");
+    out.push(sep);
+    if (clientName) out.push(`${isFr ? "Client" : "Client"}: ${clientName}`);
+    if (projectAddress) out.push(`${isFr ? "Adresse" : "Address"}: ${projectAddress}`);
+    out.push(`Date: ${devisDate}`);
+    out.push(sep);
+    out.push("");
+
+    const header = isFr
+      ? "Description | Qte | Unite | PU HT | Total HT"
+      : "Description | Qty | Unit | Unit Price | Total";
+    out.push(header);
+    out.push(sep);
+
+    for (const line of lines) {
+      out.push(
+        `${line.label} | ${line.qty} | ${line.unit} | ${fmtEur(line.unitPrice)} | ${fmtEur(line.totalHt)}`
+      );
+    }
+
+    out.push(sep);
+    out.push(
+      `${isFr ? "Sous-total HT" : "Subtotal excl. tax"}: ${fmtEur(subtotalHt)}`
+    );
+    out.push(`TVA (10%): ${fmtEur(tvaAmount)}`);
+    out.push(
+      `${isFr ? "TOTAL TTC" : "TOTAL incl. tax"}: ${fmtEur(totalTtc)}`
+    );
+    out.push("");
+    out.push(isFr ? "Genere par FloorScan" : "Generated by FloorScan");
+
+    return out.join("\n");
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(buildDevisText());
+      setCopied(true);
+      toast({
+        title: isFr ? "Devis copie" : "Quote copied",
+        variant: "success",
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({
+        title: isFr ? "Erreur de copie" : "Copy error",
+        variant: "error",
+      });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Dialog */}
+      <div className="relative glass rounded-2xl border border-white/10 w-full max-w-xl p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[90vh]">
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Title */}
+        <div>
+          <h3 className="font-display text-lg font-semibold text-white flex items-center gap-2">
+            <FileSignature className="w-5 h-5 text-sky-400" />
+            {isFr ? "Devis ravalement facade" : "Facade Renovation Quote"}
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {isFr
+              ? "Devis auto-genere a partir de l'analyse"
+              : "Auto-generated quote from analysis"}
+          </p>
+        </div>
+
+        {/* Form */}
+        <Section title={isFr ? "Informations projet" : "Project info"}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field
+              label={isFr ? "Nom du client" : "Client name"}
+              value={clientName}
+              onChange={setClientName}
+              placeholder="M. / Mme Dupont"
+            />
+            <Field
+              label={isFr ? "Adresse du chantier" : "Project address"}
+              value={projectAddress}
+              onChange={setProjectAddress}
+              placeholder="12 rue de la Paix, 75002 Paris"
+            />
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Date</label>
+              <input
+                type="date"
+                value={devisDate}
+                onChange={(e) => setDevisDate(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 transition-colors"
+              />
+            </div>
+          </div>
+        </Section>
+
+        {/* Line items table */}
+        <Section title={isFr ? "Postes de depenses" : "Line items"}>
+          <div className="overflow-x-auto -mx-1">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-white/10">
+                  <th className="py-2 pr-3 font-medium">Description</th>
+                  <th className="py-2 pr-2 font-medium text-right">
+                    {isFr ? "Qte" : "Qty"}
+                  </th>
+                  <th className="py-2 pr-2 font-medium text-right">
+                    {isFr ? "Unite" : "Unit"}
+                  </th>
+                  <th className="py-2 pr-2 font-medium text-right">PU HT</th>
+                  <th className="py-2 font-medium text-right">Total HT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                  >
+                    <td className="py-2 pr-3 text-slate-300">{line.label}</td>
+                    <td className="py-2 pr-2 text-right font-mono text-white">
+                      {line.qty}
+                    </td>
+                    <td className="py-2 pr-2 text-right text-slate-400">
+                      {line.unit}
+                    </td>
+                    <td className="py-2 pr-2 text-right text-slate-400">
+                      {fmtEurRound(line.unitPrice)}
+                    </td>
+                    <td className="py-2 text-right font-mono font-semibold text-white">
+                      {fmtEurRound(line.totalHt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+
+        {/* Totals */}
+        <div className="border border-white/10 rounded-xl overflow-hidden">
+          <div className="flex justify-between px-4 py-2.5 text-sm border-b border-white/5">
+            <span className="text-slate-400">
+              {isFr ? "Sous-total HT" : "Subtotal excl. tax"}
+            </span>
+            <span className="font-mono font-semibold text-white">
+              {fmtEurRound(subtotalHt)}
+            </span>
+          </div>
+          <div className="flex justify-between px-4 py-2.5 text-sm border-b border-white/5">
+            <span className="text-slate-400">TVA (10%)</span>
+            <span className="font-mono text-slate-300">
+              {fmtEurRound(tvaAmount)}
+            </span>
+          </div>
+          <div className="flex justify-between px-4 py-3 bg-sky-500/10">
+            <span className="font-semibold text-sky-300">
+              {isFr ? "Total TTC" : "Total incl. tax"}
+            </span>
+            <span className="font-display font-bold text-xl text-sky-400">
+              {fmtEurRound(totalTtc)}
+            </span>
+          </div>
+        </div>
+
+        {/* Copy button */}
+        <button
+          onClick={handleCopy}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-semibold text-sm transition-colors"
+        >
+          {copied ? (
+            <>
+              <Check className="w-4 h-4" />
+              {isFr ? "Copie !" : "Copied!"}
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              {isFr ? "Copier le devis" : "Copy quote"}
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---- Sub-components ---- */
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-sky-400 uppercase tracking-wider mb-2">
+        {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/30 transition-colors"
+      />
+    </div>
+  );
+}

@@ -584,46 +584,55 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 const poly = room.polygon_norm;
                 if (!poly || poly.length < 3) return null;
                 const color = getRoomColor(room.type);
-                const fs = Math.max(10, Math.min(18, imgNatural.w * 0.008));
+                const fs = Math.max(10, Math.min(16, imgNatural.w * 0.008));
+                const rcx = room.centroid_norm.x * imgNatural.w;
+                const rcy = room.centroid_norm.y * imgNatural.h;
+                const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m\u00B2` : "";
+                const measFontSize = Math.max(7, fs * 0.75);
+                const nameW = Math.max(50, room.label_fr.length * (fs * 0.62));
+                const measW = areaStr ? Math.max(40, areaStr.length * (measFontSize * 0.6)) : 0;
+                const pw = Math.max(nameW, measW) + 12;
+                const ph = areaStr ? fs + measFontSize + 8 : fs + 6;
+
                 return (
                   <g key={room.id}>
                     <polygon
                       points={poly.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ")}
-                      fill={color + "30"}
+                      fill={color + "28"}
                       stroke={color}
                       strokeWidth={Math.max(1.5, imgNatural.w * 0.001)}
+                      strokeLinejoin="round"
+                      opacity={0.85}
                     />
-                    {/* Background for label */}
+                    {/* Label background (editor-step style) */}
                     <rect
-                      x={room.centroid_norm.x * imgNatural.w - fs * 2.5}
-                      y={room.centroid_norm.y * imgNatural.h - fs * 0.8}
-                      width={fs * 5}
-                      height={room.area_m2 ? fs * 2.2 : fs * 1.4}
-                      rx={3}
-                      fill="rgba(0,0,0,0.7)"
+                      x={rcx - pw / 2} y={rcy - ph / 2}
+                      width={pw} height={ph} rx={4}
+                      fill="rgba(10,16,32,0.92)"
+                      stroke={color} strokeWidth={1.5}
                     />
                     <text
-                      x={room.centroid_norm.x * imgNatural.w}
-                      y={room.centroid_norm.y * imgNatural.h + fs * 0.15}
+                      x={rcx}
+                      y={areaStr ? rcy - ph / 2 + fs + 2 : rcy + fs * 0.35}
                       fontSize={fs}
-                      fill="white"
+                      fill={color}
                       textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontWeight="600"
+                      fontWeight="700"
+                      fontFamily="system-ui,sans-serif"
                     >
                       {room.label_fr}
                     </text>
-                    {room.area_m2 != null && (
+                    {areaStr && (
                       <text
-                        x={room.centroid_norm.x * imgNatural.w}
-                        y={room.centroid_norm.y * imgNatural.h + fs * 1.1}
-                        fontSize={fs * 0.75}
-                        fill={color}
+                        x={rcx}
+                        y={rcy - ph / 2 + fs + measFontSize + 5}
+                        fontSize={measFontSize}
+                        fill="#94a3b8"
                         textAnchor="middle"
-                        dominantBaseline="middle"
                         fontWeight="500"
+                        fontFamily="monospace"
                       >
-                        {room.area_m2.toFixed(1)} m²
+                        {areaStr}
                       </text>
                     )}
                   </g>

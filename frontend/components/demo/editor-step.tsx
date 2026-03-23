@@ -19,8 +19,6 @@ import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
 type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | null;
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
-type Mode = "editor" | "measure";
-
 // ── Constantes pièces ──────────────────────────────────────────────────────────
 const ROOM_TYPES: { type: string; i18nKey: DTKey }[] = [
   { type: "bedroom",      i18nKey: "rt_bedroom" },
@@ -101,7 +99,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const d = (key: DTKey) => dt(key, lang);
 
   const [result, setResult] = useState(initialResult);
-  const [mode, setMode] = useState<Mode>("editor");
   const [layer, setLayer] = useState<Layer>(null);
   const [tool, setTool] = useState<EditorTool>("add_rect");
   const [loading, setLoading] = useState(false);
@@ -451,9 +448,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Keyboard: Ctrl+Z/Y for undo/redo in editor mode ──
+  // ── Keyboard: Ctrl+Z/Y for undo/redo ──
   useEffect(() => {
-    if (mode !== "editor") return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
@@ -844,10 +840,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return; // ignore right-click (used for pan)
-    if (layer === null) return; // aucun élément sélectionné
     const mc = mouseToCanvas(e.clientX, e.clientY);
     const rx = scaleX(mc.x);
     const ry = scaleY(mc.y);
+    // Visual search & SAM work even without a layer selected
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
     // ── Visual search: search / add / remove ──
     if (tool === "visual_search") {
@@ -876,6 +872,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
       return;
     }
+    // For mask editing tools, require a layer to be selected
+    if (layer === null && tool !== "select" && tool !== "split") return;
     // ── Split tool: collect 2 points then submit ──
     if (tool === "split" && layer === "rooms") {
       pts.current.push([rx, ry]);
@@ -1246,16 +1244,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       {/* ── Compact Header ── */}
       <div className="flex items-center gap-2 h-11 mb-1.5">
+        {/* Undo / Redo (unified) */}
         <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setMode("editor")}
-            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              mode === "editor" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}>
-            <Layers className="w-3.5 h-3.5" /> {d("ed_ia_editor")}
+          <button onClick={undoHistory} disabled={historyLen === 0}
+            className="p-1.5 rounded-md text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+            title={d("hint_undo")}>
+            <Undo2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => setMode("measure")}
-            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              mode === "measure" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}>
-            <PenLine className="w-3.5 h-3.5" /> {d("me_step_survey")}
+          <button onClick={redoHistory} disabled={futureLen === 0}
+            className="p-1.5 rounded-md text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+            title={d("hint_redo")}>
+            <Redo2 className="w-3.5 h-3.5" />
           </button>
         </div>
         {error && (
@@ -1292,6 +1291,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
                     <FileDown className="w-3.5 h-3.5" /> DXF
                   </button>
+                  {/* Measure CSV export */}
+                  <button onClick={() => { exportMeasureCsv(); setExportOpen(false); }} disabled={zones.length === 0}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left">
+                    <FileDown className="w-3.5 h-3.5" /> CSV Métré
+                  </button>
+                  {/* Measure PDF export */}
+                  <button onClick={() => { exportMeasurePdf(); setExportOpen(false); }} disabled={exportingMeasurePdf || zones.length === 0}
+                    className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left">
+                    {exportingMeasurePdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} {d("ed_quote_pdf")}
+                  </button>
+                  <div className="h-px bg-white/5 my-0.5" />
                   {onAddPage && (
                     <button onClick={() => { onAddPage(); setExportOpen(false); }}
                       className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors w-full text-left">
@@ -1307,8 +1317,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         </div>
       </div>
 
-      {/* ── MODE ÉDITEUR ── */}
-      {mode === "editor" && (
+      {/* ── ÉDITEUR + MÉTRÉ (unifié) ── */}
+      {(
         <div className="flex flex-col gap-1" style={{ height: "calc(100vh - 7rem)" }}>
 
 {/* ══ BAR 1 : VISIBILITÉ ══ */}
@@ -2442,53 +2452,38 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   )}
                 </div>
               )}
+
+              {/* ── SurfacePanel (carrelage, parquet, peinture, etc.) ── */}
+              <div className="border-t border-white/5 pt-2 mt-2">
+                <SurfacePanel
+                  types={surfaceTypes}
+                  zones={zones}
+                  activeTypeId={activeTypeId}
+                  imageW={imageNatural.w}
+                  imageH={imageNatural.h}
+                  ppm={ppm}
+                  onTypesChange={setSurfaceTypes}
+                  onActiveTypeChange={setActiveTypeId}
+                  panelMode={panelMode}
+                  onPanelModeChange={handlePanelModeChange}
+                  roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
+                />
+              </div>
             </div>
           </div>
           </div>{/* /inner row canvas+sidebar */}
-        </div>
-      )}
 
-      {/* ── MODE MÉTRÉ ── */}
-      {mode === "measure" && (
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="flex-1 min-w-0">
-            {/* Toolbar mesure */}
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              {ppm ? (
-                <span className="glass border border-white/5 rounded-lg px-2.5 py-1 font-mono text-xs text-accent">
-                  {ppm.toFixed(1)} px/m — {d("ed_scale_ia")}
-                </span>
-              ) : (
-                <span className="text-xs text-orange-400/80 glass border border-orange-500/20 rounded-lg px-3 py-1.5">
-                  ⚠️ {d("ed_no_scale_warn")}
-                </span>
-              )}
-              <div className="ml-auto flex items-center gap-1.5">
-                <button onClick={undoHistory} disabled={historyLen === 0}
-                  className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("hint_undo")}>
-                  <Undo2 className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={redoHistory} disabled={futureLen === 0}
-                  className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-                  title={d("hint_redo")}>
-                  <Redo2 className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={exportMeasureCsv} disabled={zones.length === 0}
-                  className="flex items-center gap-1.5 glass border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
-                  title="CSV">
-                  <FileDown className="w-3.5 h-3.5" /> CSV
-                </button>
-                <button onClick={exportMeasurePdf} disabled={exportingMeasurePdf || zones.length === 0}
-                  className="flex items-center gap-1.5 glass border border-white/10 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:text-white disabled:opacity-40 transition-colors"
-                  title={d("ed_quote_pdf")}>
-                  {exportingMeasurePdf
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <FileDown className="w-3.5 h-3.5" />}
-                  {exportingMeasurePdf ? d("ed_gen_pdf") : d("ed_quote_pdf")}
-                </button>
-              </div>
-            </div>
+          {/* ── MeasureCanvas (zones carrelage/parquet/peinture) ── */}
+          <div className="mt-2">
+            {ppm ? (
+              <span className="inline-block glass border border-white/5 rounded-lg px-2.5 py-1 font-mono text-xs text-accent mb-2">
+                {ppm.toFixed(1)} px/m — {d("ed_scale_ia")}
+              </span>
+            ) : (
+              <span className="inline-block text-xs text-orange-400/80 glass border border-orange-500/20 rounded-lg px-3 py-1.5 mb-2">
+                {d("ed_no_scale_warn")}
+              </span>
+            )}
             <MeasureCanvas
               imageB64={currentOverlay}
               imageMime="image/png"
@@ -2502,22 +2497,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               onHistoryRedo={redoHistory}
               canUndo={historyLen > 0}
               canRedo={futureLen > 0}
-            />
-          </div>
-
-          <div className="lg:w-64 shrink-0">
-            <SurfacePanel
-              types={surfaceTypes}
-              zones={zones}
-              activeTypeId={activeTypeId}
-              imageW={imageNatural.w}
-              imageH={imageNatural.h}
-              ppm={ppm}
-              onTypesChange={setSurfaceTypes}
-              onActiveTypeChange={setActiveTypeId}
-              panelMode={panelMode}
-              onPanelModeChange={handlePanelModeChange}
-              roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
             />
           </div>
         </div>

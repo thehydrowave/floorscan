@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
-  ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff,
+  ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -12,6 +12,7 @@ import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
@@ -31,7 +32,44 @@ const TYPE_I18N: Record<string, DTKey> = {
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
-type EditorTool = "select" | "add_rect" | "erase";
+type EditorTool = "select" | "add_polygon" | "erase";
+
+/* ── Helpers ── */
+type Pt = { x: number; y: number };
+
+/** Get polygon points for an element (use polygon_norm if available, else create from bbox) */
+function getPolyPoints(el: FacadeElement): Pt[] {
+  if (el.polygon_norm && el.polygon_norm.length >= 3) return el.polygon_norm;
+  const { x, y, w, h } = el.bbox_norm;
+  return [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+}
+
+/** Compute centroid of a polygon */
+function centroid(pts: Pt[]): Pt {
+  if (pts.length === 0) return { x: 0.5, y: 0.5 };
+  const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  return { x: cx, y: cy };
+}
+
+/** Compute bounding box from polygon points */
+function bboxFromPoly(pts: Pt[]): { x: number; y: number; w: number; h: number } {
+  const xs = pts.map(p => p.x);
+  const ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/** Convert points to SVG polygon points string */
+function toSvgPoints(pts: Pt[], w: number, h: number): string {
+  return pts.map(p => `${p.x * w},${p.y * h}`).join(" ");
+}
+
+/** Distance between two points */
+function dist(a: Pt, b: Pt): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
 
 interface FacadeEditorStepProps {
   result: FacadeAnalysisResult;
@@ -60,10 +98,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const [imgNat, setImgNat] = useState({ w: 800, h: 600 });
   const [imgDisplay, setImgDisplay] = useState({ w: 800, h: 600 });
 
-  // Drawing new rect
-  const [drawing, setDrawing] = useState(false);
-  const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
-  const [drawCurrent, setDrawCurrent] = useState({ x: 0, y: 0 });
+  // Drawing polygon — array of normalized points being placed
+  const [drawingPoly, setDrawingPoly] = useState<Pt[]>([]);
+  const [hoverPoint, setHoverPoint] = useState<Pt | null>(null);
+
+  // Vertex dragging
+  const [dragVertex, setDragVertex] = useState<{ elId: number; idx: number } | null>(null);
+  const dragVertexRef = useRef<{ elId: number; idx: number } | null>(null);
 
   // Visibility toggles
   const [showWindows, setShowWindows] = useState(true);
@@ -106,8 +147,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     return () => window.removeEventListener("wheel", handler);
   }, []);
 
+  // Escape key to cancel drawing
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && drawingPoly.length > 0) {
+        setDrawingPoly([]);
+        setHoverPoint(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [drawingPoly.length]);
+
   // Convert mouse event to normalized coords
-  const toNorm = useCallback((e: React.MouseEvent): { x: number; y: number } => {
+  const toNorm = useCallback((e: React.MouseEvent): Pt => {
     const imgEl = containerRef.current?.querySelector("img");
     if (!imgEl) return { x: 0, y: 0 };
     const rect = imgEl.getBoundingClientRect();
@@ -116,45 +169,84 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }, []);
 
-  // Mouse handlers
+  /** Close the polygon being drawn → create a new element */
+  const closePolygon = useCallback((pts: Pt[]) => {
+    if (pts.length < 3) { setDrawingPoly([]); return; }
+    const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
+    const ppm = result.pixels_per_meter;
+    const bbox = bboxFromPoly(pts);
+    const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
+    const area_m2 = ppm ? areaPx / (ppm * ppm) : null;
+
+    setElements(prev => [...prev, {
+      id: newId,
+      type: addType,
+      label_fr: d(TYPE_I18N[addType] ?? "fa_other"),
+      bbox_norm: bbox,
+      polygon_norm: pts,
+      area_m2,
+      floor_level: 0,
+      confidence: 1.0,
+    }]);
+    setDrawingPoly([]);
+    setHoverPoint(null);
+    toast({ title: d("fa_add_element"), description: d(TYPE_I18N[addType] ?? "fa_other"), variant: "success" });
+  }, [elements, addType, imgNat, result.pixels_per_meter, d]);
+
+  // ── Mouse handlers ──
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      // Pan
       setIsPanning(true);
       panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
     }
 
-    if (tool === "add_rect") {
-      const p = toNorm(e);
-      setDrawing(true);
-      setDrawStart(p);
-      setDrawCurrent(p);
-      return;
-    }
-
     if (tool === "select") {
       const p = toNorm(e);
-      // Find element under click
-      const clicked = elements.find(el => {
+      // Find element under click using point-in-polygon
+      const clicked = [...elements].reverse().find(el => {
         if (el.type === "window" && !showWindows) return false;
         if (el.type === "door" && !showDoors) return false;
         if (el.type === "balcony" && !showBalconies) return false;
         if (el.type === "floor_line" && !showFloorLines) return false;
-        return (
-          p.x >= el.bbox_norm.x && p.x <= el.bbox_norm.x + el.bbox_norm.w &&
-          p.y >= el.bbox_norm.y && p.y <= el.bbox_norm.y + el.bbox_norm.h
-        );
+        const poly = getPolyPoints(el);
+        return pointInPolygon(p, poly);
       });
       setSelectedId(clicked?.id ?? null);
     }
 
     if (tool === "erase") {
       const p = toNorm(e);
-      setElements(prev => prev.filter(el => !(
-        p.x >= el.bbox_norm.x && p.x <= el.bbox_norm.x + el.bbox_norm.w &&
-        p.y >= el.bbox_norm.y && p.y <= el.bbox_norm.y + el.bbox_norm.h
-      )));
+      setElements(prev => prev.filter(el => {
+        const poly = getPolyPoints(el);
+        return !pointInPolygon(p, poly);
+      }));
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (tool !== "add_polygon" || isPanning) return;
+    const p = toNorm(e);
+
+    // If clicking near first point → close polygon
+    if (drawingPoly.length >= 3) {
+      const first = drawingPoly[0];
+      const threshold = 12 / (imgNat.w * zoom); // ~12px threshold
+      if (dist(p, first) < threshold) {
+        closePolygon(drawingPoly);
+        return;
+      }
+    }
+
+    setDrawingPoly(prev => [...prev, p]);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (tool !== "add_polygon") return;
+    e.preventDefault();
+    if (drawingPoly.length >= 3) {
+      closePolygon(drawingPoly);
     }
   };
 
@@ -166,40 +258,39 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       });
       return;
     }
-    if (drawing) {
-      setDrawCurrent(toNorm(e));
+
+    const p = toNorm(e);
+
+    // Hover preview for polygon drawing
+    if (tool === "add_polygon" && drawingPoly.length > 0) {
+      setHoverPoint(p);
+    }
+
+    // Vertex dragging
+    if (dragVertexRef.current) {
+      const { elId, idx } = dragVertexRef.current;
+      setElements(prev => prev.map(el => {
+        if (el.id !== elId) return el;
+        const poly = getPolyPoints(el);
+        const newPoly = [...poly];
+        newPoly[idx] = p;
+        return {
+          ...el,
+          polygon_norm: newPoly,
+          bbox_norm: bboxFromPoly(newPoly),
+          area_m2: result.pixels_per_meter
+            ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (result.pixels_per_meter ** 2)
+            : el.area_m2,
+        };
+      }));
     }
   };
 
   const handleMouseUp = () => {
-    if (isPanning) {
-      setIsPanning(false);
-      return;
-    }
-    if (drawing) {
-      setDrawing(false);
-      const x = Math.min(drawStart.x, drawCurrent.x);
-      const y = Math.min(drawStart.y, drawCurrent.y);
-      const w = Math.abs(drawCurrent.x - drawStart.x);
-      const h = Math.abs(drawCurrent.y - drawStart.y);
-      if (w > 0.01 && h > 0.01) {
-        const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
-        const ppm = result.pixels_per_meter;
-        setElements(prev => [...prev, {
-          id: newId,
-          type: addType,
-          label_fr: d(TYPE_I18N[addType] ?? "fa_other"),
-          bbox_norm: { x, y, w, h },
-          area_m2: ppm ? (w * h) / (ppm * ppm) * imgNat.w * imgNat.h : null,
-          floor_level: 0,
-          confidence: 1.0,
-        }]);
-        toast({
-          title: d("fa_add_element"),
-          description: d(TYPE_I18N[addType] ?? "fa_other"),
-          variant: "success",
-        });
-      }
+    if (isPanning) { setIsPanning(false); return; }
+    if (dragVertexRef.current) {
+      dragVertexRef.current = null;
+      setDragVertex(null);
     }
   };
 
@@ -219,11 +310,6 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
 
   // Build updated result and go back to results
   const goResults = () => {
-    const windows = elements.filter(e => e.type === "window");
-    const doors = elements.filter(e => e.type === "door");
-    const balconies = elements.filter(e => e.type === "balcony");
-    const floorLines = elements.filter(e => e.type === "floor_line");
-
     const openingElements = elements.filter(e => ["window", "door", "balcony"].includes(e.type));
     const openings_area_m2 = result.pixels_per_meter
       ? openingElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0)
@@ -232,9 +318,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     const updated: FacadeAnalysisResult = {
       ...result,
       elements,
-      windows_count: windows.length,
-      doors_count: doors.length,
-      balconies_count: balconies.length,
+      windows_count: elements.filter(e => e.type === "window").length,
+      doors_count: elements.filter(e => e.type === "door").length,
+      balconies_count: elements.filter(e => e.type === "balcony").length,
       floors_count: Math.max(1, new Set(elements.map(e => e.floor_level ?? 0)).size),
       openings_area_m2,
       ratio_openings: result.facade_area_m2 && openings_area_m2
@@ -247,7 +333,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   // CSV export
   const exportCSV = () => {
     const BOM = "\uFEFF";
-    const header = `ID;${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;Area (m²)`;
+    const header = `ID;${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;Area (m\u00B2)`;
     const rows = elements.map(e =>
       `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
     );
@@ -255,9 +341,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "facade_elements.csv";
-    a.click();
+    a.href = url; a.download = "facade_elements.csv"; a.click();
     URL.revokeObjectURL(url);
     toast({ title: d("fa_export_csv"), variant: "success" });
   };
@@ -270,6 +354,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     if (e.type === "floor_line" && !showFloorLines) return false;
     return true;
   });
+
+  const isDrawing = tool === "add_polygon" && drawingPoly.length > 0;
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
@@ -286,24 +372,23 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
         <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-2 mb-2 px-2 flex-wrap">
-            {/* Tools */}
             <div className="flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
               <button
-                onClick={() => setTool("select")}
+                onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "select" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}
                 title={d("fa_select")}
               >
                 <MousePointer2 className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setTool("add_rect")}
-                className={cn("p-1.5 rounded-md text-xs", tool === "add_rect" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
+                onClick={() => { setTool("add_polygon"); setSelectedId(null); }}
+                className={cn("p-1.5 rounded-md text-xs", tool === "add_polygon" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
                 title={d("fa_add_element")}
               >
-                <Plus className="w-4 h-4" />
+                <Pentagon className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setTool("erase")}
+                onClick={() => { setTool("erase"); setDrawingPoly([]); setHoverPoint(null); }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "erase" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
                 title={d("fa_delete")}
               >
@@ -312,7 +397,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             </div>
 
             {/* Add type selector */}
-            {tool === "add_rect" && (
+            {tool === "add_polygon" && (
               <select
                 value={addType}
                 onChange={e => setAddType(e.target.value as FacadeElementType)}
@@ -324,9 +409,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
               </select>
             )}
 
-            <div className="flex-1" />
+            {/* Drawing hint */}
+            {isDrawing && (
+              <span className="text-xs text-amber-300/70 animate-pulse">
+                {drawingPoly.length < 3 ? "Cliquez pour poser des points..." : "Double-clic ou clic sur le 1er point pour fermer"}
+              </span>
+            )}
 
-            {/* Zoom */}
+            <div className="flex-1" />
             <button onClick={handleZoomOut} className="p-1.5 text-slate-400 hover:text-white"><ZoomOut className="w-4 h-4" /></button>
             <span className="text-xs text-slate-500 font-mono w-12 text-center">{(zoom * 100).toFixed(0)}%</span>
             <button onClick={handleZoomIn} className="p-1.5 text-slate-400 hover:text-white"><ZoomIn className="w-4 h-4" /></button>
@@ -335,18 +425,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
           {/* Image area */}
           <div
             ref={containerRef}
-            className="relative overflow-hidden rounded-xl bg-slate-900 cursor-crosshair"
+            className={cn("relative overflow-hidden rounded-xl bg-slate-900", tool === "add_polygon" ? "cursor-crosshair" : "cursor-default")}
             style={{ minHeight: 400 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={() => { setIsPanning(false); }}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onMouseLeave={() => { setIsPanning(false); setHoverPoint(null); }}
           >
             <div
               style={{
                 transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transformOrigin: "center center",
-                transition: isPanning || drawing ? "none" : "transform 0.2s ease",
+                transition: isPanning || dragVertex ? "none" : "transform 0.2s ease",
               }}
             >
               <img
@@ -360,67 +452,270 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   setImgDisplay({ w: img.clientWidth, h: img.clientHeight });
                 }}
               />
-              {/* SVG overlay */}
+
+              {/* ── SVG overlay ── */}
               <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
+                className="absolute inset-0 w-full h-full"
                 viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                 preserveAspectRatio="xMidYMid meet"
+                style={{ pointerEvents: "none" }}
               >
+                {/* ── Existing elements ── */}
                 {visibleElements.map(el => {
-                  const x = el.bbox_norm.x * imgNat.w;
-                  const y = el.bbox_norm.y * imgNat.h;
-                  const w = el.bbox_norm.w * imgNat.w;
-                  const h = el.bbox_norm.h * imgNat.h;
                   const color = TYPE_COLORS[el.type] ?? "#94a3b8";
                   const isSelected = el.id === selectedId;
 
+                  // Floor line → special rendering
                   if (el.type === "floor_line") {
+                    const x = el.bbox_norm.x * imgNat.w;
+                    const y = (el.bbox_norm.y + el.bbox_norm.h / 2) * imgNat.h;
+                    const x2 = (el.bbox_norm.x + el.bbox_norm.w) * imgNat.w;
                     return (
                       <line key={el.id}
-                        x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                        x1={x} y1={y} x2={x2} y2={y}
                         stroke={color} strokeWidth={isSelected ? 3 : 2}
                         strokeDasharray="8 4" opacity={isSelected ? 1 : 0.7}
+                        style={{ pointerEvents: "none" }}
                       />
                     );
                   }
 
+                  const poly = getPolyPoints(el);
+                  const pts = toSvgPoints(poly, imgNat.w, imgNat.h);
+                  const c = centroid(poly);
+
                   return (
                     <g key={el.id}>
-                      <rect
-                        x={x} y={y} width={w} height={h}
-                        fill={isSelected ? `${color}40` : `${color}18`}
+                      {/* Filled polygon */}
+                      <polygon
+                        points={pts}
+                        fill={isSelected ? `${color}40` : `${color}28`}
                         stroke={color}
                         strokeWidth={isSelected ? 2.5 : 1.5}
-                        rx="2"
+                        strokeLinejoin="round"
+                        opacity={0.85}
+                        style={{ pointerEvents: "none" }}
                       />
+
+                      {/* Selection dashed border */}
                       {isSelected && (
-                        <>
-                          {/* Selection handles */}
-                          {[
-                            [x, y], [x + w, y], [x, y + h], [x + w, y + h],
-                          ].map(([hx, hy], i) => (
-                            <circle key={i} cx={hx} cy={hy} r="4" className="svg-handle" fill="white" stroke={color} strokeWidth="2" />
-                          ))}
-                        </>
+                        <polygon
+                          points={pts}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={3}
+                          strokeDasharray="6 3"
+                          strokeLinejoin="round"
+                          style={{ pointerEvents: "none" }}
+                        />
                       )}
+
+                      {/* Centroid label (name + area) */}
+                      {(() => {
+                        const cx = c.x * imgNat.w;
+                        const cy = c.y * imgNat.h;
+                        const label = el.label_fr || d(TYPE_I18N[el.type] ?? "fa_other");
+                        const areaStr = el.area_m2 != null ? `${el.area_m2.toFixed(2)} m\u00B2` : "";
+                        const fs = Math.max(10, Math.min(16, imgNat.w * 0.008));
+                        const pw = Math.max(50, Math.max(label.length, areaStr.length) * (fs * 0.6)) + 12;
+                        const ph = areaStr ? fs * 2.4 : fs * 1.5;
+
+                        return (
+                          <g>
+                            <rect
+                              x={cx - pw / 2} y={cy - ph / 2}
+                              width={pw} height={ph} rx={4}
+                              fill="rgba(10,16,32,0.92)"
+                              stroke={color} strokeWidth={1.5}
+                            />
+                            <text
+                              x={cx} y={areaStr ? cy - ph / 2 + fs + 2 : cy + fs * 0.35}
+                              textAnchor="middle" fill={color}
+                              fontSize={fs} fontWeight="700"
+                              fontFamily="system-ui,sans-serif"
+                            >
+                              {label}
+                            </text>
+                            {areaStr && (
+                              <text
+                                x={cx} y={cy - ph / 2 + fs * 2 + 4}
+                                textAnchor="middle" fill="#94a3b8"
+                                fontSize={fs * 0.75} fontWeight="500"
+                                fontFamily="monospace"
+                              >
+                                {areaStr}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      })()}
+
+                      {/* ── Vertex handles (selected only) ── */}
+                      {isSelected && poly.map((p, idx) => {
+                        const vx = p.x * imgNat.w;
+                        const vy = p.y * imgNat.h;
+                        const isDragging = dragVertex?.elId === el.id && dragVertex?.idx === idx;
+                        return (
+                          <g key={`v-${idx}`} className="group/vtx">
+                            {/* Invisible hit area */}
+                            <circle
+                              cx={vx} cy={vy} r={14}
+                              fill="transparent"
+                              style={{ cursor: dragVertex ? "grabbing" : "grab", pointerEvents: "all" }}
+                              onMouseDown={(ev) => {
+                                ev.stopPropagation();
+                                ev.preventDefault();
+                                dragVertexRef.current = { elId: el.id, idx };
+                                setDragVertex({ elId: el.id, idx });
+                              }}
+                              onContextMenu={(ev) => {
+                                ev.stopPropagation();
+                                ev.preventDefault();
+                                const polyPts = getPolyPoints(el);
+                                if (polyPts.length <= 3) return;
+                                const newPoly = polyPts.filter((_, i) => i !== idx);
+                                const newBbox = bboxFromPoly(newPoly);
+                                const ppm = result.pixels_per_meter;
+                                setElements(prev => prev.map(e => e.id !== el.id ? e : {
+                                  ...e,
+                                  polygon_norm: newPoly,
+                                  bbox_norm: newBbox,
+                                  area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
+                                }));
+                              }}
+                            />
+                            {/* Visible vertex circle */}
+                            <circle
+                              cx={vx} cy={vy}
+                              r={isDragging ? 9 : 7}
+                              fill={isDragging ? color : "white"}
+                              stroke={color} strokeWidth={isDragging ? 3 : 2}
+                              style={{ pointerEvents: "none", transition: "r 0.1s, fill 0.1s" }}
+                            />
+                            {/* Hover glow */}
+                            <circle
+                              cx={vx} cy={vy} r={11}
+                              fill="none" stroke={color} strokeWidth={1}
+                              opacity={0}
+                              style={{ pointerEvents: "none", transition: "opacity 0.15s" }}
+                              className="group-hover/vtx:opacity-40"
+                            />
+                          </g>
+                        );
+                      })}
+
+                      {/* ── Edge midpoint handles (click to insert vertex) ── */}
+                      {isSelected && !dragVertex && poly.map((p, idx) => {
+                        const next = poly[(idx + 1) % poly.length];
+                        const mx = (p.x + next.x) / 2;
+                        const my = (p.y + next.y) / 2;
+                        return (
+                          <g key={`mid-${idx}`} className="group/mid opacity-40 hover:opacity-100 transition-opacity">
+                            <circle
+                              cx={mx * imgNat.w} cy={my * imgNat.h} r={12}
+                              fill="transparent"
+                              style={{ cursor: "copy", pointerEvents: "all" }}
+                              onMouseDown={(ev) => {
+                                ev.stopPropagation();
+                                ev.preventDefault();
+                                const polyPts = getPolyPoints(el);
+                                const newPoly = [...polyPts];
+                                newPoly.splice(idx + 1, 0, { x: mx, y: my });
+                                const ppm = result.pixels_per_meter;
+                                setElements(prev => prev.map(e => e.id !== el.id ? e : {
+                                  ...e,
+                                  polygon_norm: newPoly,
+                                  bbox_norm: bboxFromPoly(newPoly),
+                                  area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
+                                }));
+                                // Start dragging the new vertex immediately
+                                dragVertexRef.current = { elId: el.id, idx: idx + 1 };
+                                setDragVertex({ elId: el.id, idx: idx + 1 });
+                              }}
+                            />
+                            <circle
+                              cx={mx * imgNat.w} cy={my * imgNat.h} r={6}
+                              fill="white" stroke={color} strokeWidth={1.5}
+                              style={{ pointerEvents: "none" }}
+                            />
+                            <text
+                              x={mx * imgNat.w} y={my * imgNat.h + 0.5}
+                              textAnchor="middle" dominantBaseline="central"
+                              fontSize={9} fill={color} fontWeight="bold"
+                              style={{ pointerEvents: "none" }}
+                            >
+                              +
+                            </text>
+                          </g>
+                        );
+                      })}
                     </g>
                   );
                 })}
 
-                {/* Drawing preview */}
-                {drawing && (
-                  <rect
-                    x={Math.min(drawStart.x, drawCurrent.x) * imgNat.w}
-                    y={Math.min(drawStart.y, drawCurrent.y) * imgNat.h}
-                    width={Math.abs(drawCurrent.x - drawStart.x) * imgNat.w}
-                    height={Math.abs(drawCurrent.y - drawStart.y) * imgNat.h}
-                    fill={`${TYPE_COLORS[addType]}30`}
-                    stroke={TYPE_COLORS[addType]}
-                    strokeWidth="2"
-                    strokeDasharray="6 3"
-                    rx="2"
-                  />
-                )}
+                {/* ── Drawing preview polygon (live fill) ── */}
+                {isDrawing && (() => {
+                  const previewPts = hoverPoint ? [...drawingPoly, hoverPoint] : drawingPoly;
+                  const color = TYPE_COLORS[addType] ?? "#fbbf24";
+
+                  return (
+                    <g>
+                      {/* Filled polygon preview */}
+                      {previewPts.length >= 3 && (
+                        <polygon
+                          points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
+                          fill={`${color}20`}
+                          stroke={color}
+                          strokeWidth={2}
+                          strokeDasharray="6 3"
+                          strokeLinejoin="round"
+                        />
+                      )}
+
+                      {/* Lines connecting points (when < 3 points) */}
+                      {previewPts.length >= 2 && previewPts.length < 3 && (
+                        <polyline
+                          points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
+                          fill="none"
+                          stroke={color}
+                          strokeWidth={2}
+                          strokeDasharray="6 3"
+                        />
+                      )}
+
+                      {/* Placed vertices */}
+                      {drawingPoly.map((p, i) => (
+                        <circle
+                          key={`dp-${i}`}
+                          cx={p.x * imgNat.w} cy={p.y * imgNat.h}
+                          r={i === 0 && drawingPoly.length >= 3 ? 9 : 6}
+                          fill={i === 0 && drawingPoly.length >= 3 ? color : "white"}
+                          stroke={color}
+                          strokeWidth={2}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      ))}
+
+                      {/* Close hint ring on first point */}
+                      {drawingPoly.length >= 3 && (
+                        <circle
+                          cx={drawingPoly[0].x * imgNat.w} cy={drawingPoly[0].y * imgNat.h}
+                          r={14}
+                          fill="none" stroke={color} strokeWidth={1.5}
+                          strokeDasharray="4 2" opacity={0.5}
+                        />
+                      )}
+
+                      {/* Hover point preview */}
+                      {hoverPoint && (
+                        <circle
+                          cx={hoverPoint.x * imgNat.w} cy={hoverPoint.y * imgNat.h}
+                          r={5} fill={`${color}60`} stroke={color} strokeWidth={1.5}
+                        />
+                      )}
+                    </g>
+                  );
+                })()}
               </svg>
             </div>
           </div>
@@ -480,9 +775,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                 </div>
                 {selectedEl.area_m2 != null && (
                   <div className="text-xs text-slate-400">
-                    {d("fa_facade_area")}: <span className="text-white font-mono">{selectedEl.area_m2.toFixed(2)} m²</span>
+                    {d("fa_facade_area")}: <span className="text-white font-mono">{selectedEl.area_m2.toFixed(2)} m\u00B2</span>
                   </div>
                 )}
+                <div className="text-[10px] text-slate-600">
+                  {getPolyPoints(selectedEl).length} vertices &middot; Clic droit sur un vertex pour le supprimer
+                </div>
                 <Button variant="outline" size="sm" onClick={deleteSelected} className="text-red-400 border-red-500/20 hover:bg-red-500/10">
                   <Trash2 className="w-3.5 h-3.5" /> {d("fa_delete")}
                 </Button>

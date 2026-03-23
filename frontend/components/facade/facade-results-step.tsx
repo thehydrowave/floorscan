@@ -17,6 +17,18 @@ import Facade3dPanel from "./facade-3d-panel";
 import FacadeMaterialsPanel from "./facade-materials-panel";
 import FacadeDpgfPanel from "./facade-dpgf-panel";
 import FacadeCompliancePanel from "./facade-compliance-panel";
+import FacadeDashboardPanel from "./facade-dashboard-panel";
+import FacadeChatPanel from "./facade-chat-panel";
+import FacadeCctpPanel from "./facade-cctp-panel";
+import FacadeGanttPanel from "./facade-gantt-panel";
+import FacadeLotsPanel from "./facade-lots-panel";
+import FacadeMetrePanel from "./facade-metre-panel";
+import FacadeToolkitPanel from "./facade-toolkit-panel";
+import FacadeScenarioPanel from "./facade-scenario-panel";
+import FacadeDebugPanel from "./facade-debug-panel";
+import FacadeRapportDialog from "./facade-rapport-dialog";
+import FacadeDevisDialog from "./facade-devis-dialog";
+import { FileText, Receipt } from "lucide-react";
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<string, string> = {
@@ -84,6 +96,10 @@ interface FacadeResultsStepProps {
 export default function FacadeResultsStep({ result, onGoEditor, onRestart }: FacadeResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
+
+  /* ── Dialog modals ── */
+  const [showRapport, setShowRapport] = useState(false);
+  const [showDevis, setShowDevis] = useState(false);
 
   /* ── View tab ── */
   const [viewTab, setViewTab] = useState<"ia" | "svg" | "masks">(() =>
@@ -648,6 +664,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         </div>
       </div>
 
+      {/* ── Dashboard Overview ── */}
+      <div className="mb-4">
+        <FacadeDashboardPanel result={result} />
+      </div>
+
+      {/* ── Métré (surfaces) ── */}
+      <div className="mb-4">
+        <FacadeMetrePanel result={result} />
+      </div>
+
       {/* ── 3D Facade View ── */}
       <div className="mb-4">
         <Facade3dPanel result={result} />
@@ -658,18 +684,63 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         <FacadeMaterialsPanel result={result} />
       </div>
 
+      {/* ── Toolkit (estimations) ── */}
+      <div className="mb-4">
+        <FacadeToolkitPanel result={result} />
+      </div>
+
       {/* ── DPGF Ravalement ── */}
       <div className="mb-4">
         <FacadeDpgfPanel result={result} />
       </div>
 
+      {/* ── Lots ── */}
+      <div className="mb-4">
+        <FacadeLotsPanel result={result} />
+      </div>
+
+      {/* ── Scenarios ── */}
+      <div className="mb-4">
+        <FacadeScenarioPanel result={result} />
+      </div>
+
+      {/* ── CCTP ── */}
+      <div className="mb-4">
+        <FacadeCctpPanel result={result} />
+      </div>
+
+      {/* ── Gantt ── */}
+      <div className="mb-4">
+        <FacadeGanttPanel result={result} />
+      </div>
+
       {/* ── Compliance ── */}
-      <div className="mb-8">
+      <div className="mb-4">
         <FacadeCompliancePanel result={result} />
       </div>
 
+      {/* ── Chat IA ── */}
+      <div className="mb-4">
+        <FacadeChatPanel result={result} />
+      </div>
+
+      {/* ── Debug ── */}
+      <div className="mb-8">
+        <FacadeDebugPanel result={result} />
+      </div>
+
+      {/* Dialog modals */}
+      {showRapport && <FacadeRapportDialog result={result} onClose={() => setShowRapport(false)} />}
+      {showDevis && <FacadeDevisDialog result={result} onClose={() => setShowDevis(false)} />}
+
       {/* Actions */}
       <div className="flex flex-wrap gap-3 justify-center">
+        <Button variant="outline" onClick={() => setShowRapport(true)}>
+          <FileText className="w-4 h-4" /> Rapport
+        </Button>
+        <Button variant="outline" onClick={() => setShowDevis(true)}>
+          <Receipt className="w-4 h-4" /> Devis
+        </Button>
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> {d("fa_export_csv")}
         </Button>
