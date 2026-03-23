@@ -1384,6 +1384,30 @@ export const DEMO_T = {
   chat_close:              { fr:"Fermer",                                 en:"Close",                             es:"Cerrar",                              de:"Schließen",                           it:"Chiudi"                               },
   chat_error_prefix:       { fr:"Erreur",                                 en:"Error",                             es:"Error",                               de:"Fehler",                              it:"Errore"                               },
   chat_placeholder_help:   { fr:"Posez votre question…",                  en:"Ask your question…",                es:"Haga su pregunta…",                   de:"Stellen Sie Ihre Frage…",             it:"Fate la vostra domanda…"              },
+
+  // ── Surface tools ──────────────────────────────────────────────────────────
+  sf_surfaces:     { fr:"Surfaces",           en:"Surfaces",         es:"Superficies",         de:"Flächen",            it:"Superfici"           },
+  sf_polygon:      { fr:"Polygone",           en:"Polygon",          es:"Polígono",            de:"Polygon",            it:"Poligono"            },
+  sf_rectangle:    { fr:"Rectangle",          en:"Rectangle",        es:"Rectángulo",          de:"Rechteck",           it:"Rettangolo"          },
+  sf_deduct:       { fr:"Déduire",            en:"Deduct",           es:"Deducir",             de:"Abziehen",           it:"Dedurre"             },
+  sf_validate:     { fr:"Valider",            en:"Validate",         es:"Validar",             de:"Bestätigen",         it:"Convalidare"         },
+  sf_type:         { fr:"Type",               en:"Type",             es:"Tipo",                de:"Typ",                it:"Tipo"                },
+  sf_zone_added:   { fr:"Zone ajoutée",       en:"Zone added",       es:"Zona añadida",        de:"Zone hinzugefügt",   it:"Zona aggiunta"       },
+  sf_zone_deducted:{ fr:"Zone déduite",       en:"Zone deducted",    es:"Zona deducida",       de:"Zone abgezogen",     it:"Zona dedotta"        },
+  sf_add_type:     { fr:"Ajouter un type",    en:"Add type",         es:"Añadir tipo",         de:"Typ hinzufügen",     it:"Aggiungi tipo"       },
+  sf_custom_name:  { fr:"Nom du type",        en:"Type name",        es:"Nombre del tipo",     de:"Typname",            it:"Nome del tipo"       },
+  sf_custom_color: { fr:"Couleur",            en:"Color",            es:"Color",               de:"Farbe",              it:"Colore"              },
+
+  // ── Utilities tools ────────────────────────────────────────────────────────
+  ut_tools:        { fr:"Outils",             en:"Tools",            es:"Herramientas",        de:"Werkzeuge",          it:"Strumenti"           },
+  ut_linear:       { fr:"Linéaire",           en:"Linear",           es:"Lineal",              de:"Linear",             it:"Lineare"             },
+  ut_angle:        { fr:"Angle",              en:"Angle",            es:"Ángulo",              de:"Winkel",             it:"Angolo"              },
+  ut_count:        { fr:"Comptage",           en:"Count",            es:"Recuento",            de:"Zählung",            it:"Conteggio"           },
+  ut_rescale:      { fr:"Échelle",            en:"Scale",            es:"Escala",              de:"Maßstab",            it:"Scala"               },
+  ut_distance:     { fr:"Distance",           en:"Distance",         es:"Distancia",           de:"Entfernung",         it:"Distanza"            },
+  ut_point:        { fr:"Point",              en:"Point",            es:"Punto",               de:"Punkt",              it:"Punto"               },
+  ut_enter_meters: { fr:"Distance réelle en mètres :", en:"Real distance in meters:", es:"Distancia real en metros:", de:"Reale Entfernung in Metern:", it:"Distanza reale in metri:" },
+  ut_scale_updated:{ fr:"Échelle mise à jour", en:"Scale updated",   es:"Escala actualizada",  de:"Maßstab aktualisiert", it:"Scala aggiornata"  },
 } as const;
 
 export type DTKey = keyof typeof DEMO_T;

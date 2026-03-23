@@ -872,8 +872,58 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
       return;
     }
+    // ── Utilities: linear measurement ──
+    if (tool === "linear") {
+      pts.current.push([rx, ry]);
+      drawCanvas();
+      if (pts.current.length >= 2) {
+        const img = imgRef.current!;
+        const dx = (pts.current[1][0] - pts.current[0][0]);
+        const dy = (pts.current[1][1] - pts.current[0][1]);
+        const distPx = Math.sqrt(dx * dx + dy * dy);
+        const distM = ppm ? distPx / ppm : null;
+        toast({ title: `${d("ut_distance")}: ${distM ? distM.toFixed(2) + " m" : Math.round(distPx) + " px"}`, variant: "default" });
+        pts.current = [];
+        canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      }
+      return;
+    }
+
+    // ── Utilities: count points ──
+    if (tool === "count") {
+      const img = imgRef.current!;
+      pushHistory(zones);
+      setZones(prev => [...prev, { id: crypto.randomUUID(), typeId: "__count__", points: [{ x: rx / img.naturalWidth, y: ry / img.naturalHeight }] }]);
+      const countTotal = zones.filter(z => z.typeId === "__count__").length + 1;
+      toast({ title: `${d("ut_point")} #${countTotal}`, variant: "default" });
+      return;
+    }
+
+    // ── Utilities: rescale ──
+    if (tool === "rescale") {
+      pts.current.push([rx, ry]);
+      drawCanvas();
+      if (pts.current.length >= 2) {
+        const dx = pts.current[1][0] - pts.current[0][0];
+        const dy = pts.current[1][1] - pts.current[0][1];
+        const distPx = Math.sqrt(dx * dx + dy * dy);
+        const input = prompt(d("ut_enter_meters"));
+        if (input) {
+          const meters = parseFloat(input);
+          if (meters > 0) {
+            const newPpm = distPx / meters;
+            setResult(prev => ({ ...prev, pixels_per_meter: newPpm }));
+            toast({ title: `${d("ut_scale_updated")}: ${newPpm.toFixed(1)} px/m`, variant: "success" });
+          }
+        }
+        pts.current = [];
+        canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      }
+      return;
+    }
+
     // For mask editing tools, require a layer to be selected (surface & utilities have their own layer)
-    if (layer === null && tool !== "select" && tool !== "split" && tool !== "linear" && tool !== "angle" && tool !== "count" && tool !== "rescale" && tool !== "deduct_rect") return;
+    if (layer === null && tool !== "select" && tool !== "split" && tool !== "deduct_rect") return;
     // ── Split tool: collect 2 points then submit ──
     if (tool === "split" && layer === "rooms") {
       pts.current.push([rx, ry]);
@@ -1070,11 +1120,51 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     const y1 = scaleY(mc.y);
     canvasRef.current!.getContext("2d")!.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
     if (Math.abs(x1 - startPt.current.x) > 5 || Math.abs(y1 - startPt.current.y) > 5) {
+      // ── Surface layer: create zone from rect instead of calling backend ──
+      if (layer === "surface") {
+        const img = imgRef.current!;
+        const x0n = Math.min(startPt.current.x, x1) / img.naturalWidth;
+        const y0n = Math.min(startPt.current.y, y1) / img.naturalHeight;
+        const x1n = Math.max(startPt.current.x, x1) / img.naturalWidth;
+        const y1n = Math.max(startPt.current.y, y1) / img.naturalHeight;
+        pushHistory(zones);
+        if (tool === "deduct_rect") {
+          // Remove zones whose centroid falls inside the drawn rect
+          setZones(prev => prev.filter(z => {
+            const c = z.points.reduce((a: {x:number;y:number}, p: {x:number;y:number}) => ({ x: a.x + p.x, y: a.y + p.y }), { x: 0, y: 0 });
+            c.x /= z.points.length; c.y /= z.points.length;
+            return !(c.x >= x0n && c.x <= x1n && c.y >= y0n && c.y <= y1n);
+          }));
+          toast({ title: d("sf_zone_deducted"), variant: "default" });
+        } else {
+          const polyNorm = [{ x: x0n, y: y0n }, { x: x1n, y: y0n }, { x: x1n, y: y1n }, { x: x0n, y: y1n }];
+          setZones(prev => [...prev, { id: crypto.randomUUID(), typeId: activeTypeId, points: polyNorm }]);
+          toast({ title: d("sf_zone_added"), variant: "success" });
+        }
+        return;
+      }
       await sendEdit({ action: tool, x0: startPt.current.x, y0: startPt.current.y, x1, y1 });
     }
   };
 
   const finishPoly = async () => {
+    // ── Surface layer: create a MeasureZone instead of calling backend ──
+    if (layer === "surface") {
+      if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
+      const img = imgRef.current!;
+      const polyNorm = pts.current.map(([x, y]) => ({ x: x / img.naturalWidth, y: y / img.naturalHeight }));
+      const newZone: MeasureZone = {
+        id: crypto.randomUUID(),
+        typeId: activeTypeId,
+        points: polyNorm,
+      };
+      pushHistory(zones);
+      setZones(prev => [...prev, newZone]);
+      pts.current = [];
+      canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      toast({ title: d("sf_zone_added"), variant: "success" });
+      return;
+    }
     if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
     await sendEdit({ action: tool, points: pts.current });
     pts.current = [];
@@ -1856,6 +1946,50 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </svg>
               )}
 
+              {/* ── Surface zones (carrelage, parquet, etc.) ── */}
+              {zones.length > 0 && imgDisplaySize.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 2 }}
+                >
+                  {zones.filter(z => z.typeId !== "__count__").map(zone => {
+                    const st = allMeasureTypes.find(t => t.id === zone.typeId);
+                    if (!st || !zone.points || zone.points.length < 3) return null;
+                    const ptsSvg = zone.points.map(p => `${p.x * imgDisplaySize.w},${p.y * imgDisplaySize.h}`).join(" ");
+                    const cx = zone.points.reduce((s, p) => s + p.x, 0) / zone.points.length * imgDisplaySize.w;
+                    const cy = zone.points.reduce((s, p) => s + p.y, 0) / zone.points.length * imgDisplaySize.h;
+                    const areaPx = polygonAreaNorm(zone.points, imageNatural.w, imageNatural.h);
+                    const areaM2 = ppm ? areaPx / (ppm * ppm) : null;
+                    const label = st.name;
+                    const areaStr = areaM2 != null ? `${areaM2.toFixed(2)} m\u00b2` : "";
+                    const fs = 9;
+                    return (
+                      <g key={zone.id}>
+                        <polygon points={ptsSvg} fill={st.color + "35"} stroke={st.color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.85} style={{ pointerEvents: "none" }} />
+                        <rect x={cx - 35} y={cy - 10} width={70} height={areaStr ? 22 : 14} rx={3} fill="rgba(10,16,32,0.92)" stroke={st.color} strokeWidth={1} />
+                        <text x={cx} y={cy - (areaStr ? 1 : 3)} textAnchor="middle" fill={st.color} fontSize={fs} fontWeight="700" fontFamily="system-ui,sans-serif">{label}</text>
+                        {areaStr && <text x={cx} y={cy + 9} textAnchor="middle" fill="#94a3b8" fontSize={7} fontWeight="500" fontFamily="monospace">{areaStr}</text>}
+                      </g>
+                    );
+                  })}
+                  {/* Count points (utilities) */}
+                  {zones.filter(z => z.typeId === "__count__").map((zone, i) => {
+                    if (!zone.points || zone.points.length < 1) return null;
+                    const px = zone.points[0].x * imgDisplaySize.w;
+                    const py = zone.points[0].y * imgDisplaySize.h;
+                    return (
+                      <g key={zone.id}>
+                        <circle cx={px} cy={py} r={8} fill="rgba(56,189,248,0.25)" stroke="#38bdf8" strokeWidth={1.5} />
+                        <text x={px} y={py + 3.5} textAnchor="middle" fill="#38bdf8" fontSize={8} fontWeight="700" fontFamily="monospace">{i + 1}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
               {/* SVG overlay: shows every opening bbox + number, highlights selected */}
               {showOpeningOverlay && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
@@ -2479,6 +2613,125 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* SURFACE TYPES PANEL */}
+              {layer === "surface" && (
+                <div className="glass rounded-xl border border-white/10 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sf_surfaces")}</h3>
+                    <span className="text-[10px] text-slate-600 font-mono">{zones.filter(z => z.typeId !== "__count__").length} zones</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5 max-h-[40vh] overflow-y-auto pr-0.5">
+                    {surfaceTypes.map(st => {
+                      const isActive = activeTypeId === st.id;
+                      const stZones = zones.filter(z => z.typeId === st.id);
+                      const totalArea = stZones.reduce((sum, z) => {
+                        const a = polygonAreaNorm(z.points, imageNatural.w, imageNatural.h);
+                        return sum + (ppm ? a / (ppm * ppm) : a);
+                      }, 0);
+                      const isCustom = !DEFAULT_SURFACE_TYPES.some(d => d.id === st.id);
+                      return (
+                        <div key={st.id}
+                          onClick={() => setActiveTypeId(st.id)}
+                          className={cn("flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all border",
+                            isActive ? "border-white/30 bg-white/10" : "border-white/5 hover:bg-white/5")}>
+                          <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: st.color }} />
+                          <span className={cn("text-xs flex-1 truncate", isActive ? "text-white font-medium" : "text-slate-400")}>{st.name}</span>
+                          <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                            {ppm ? `${totalArea.toFixed(2)} m\u00b2` : stZones.length > 0 ? `${stZones.length}` : ""}
+                          </span>
+                          {isCustom && (
+                            <button onClick={(e) => {
+                              e.stopPropagation();
+                              setSurfaceTypes(prev => prev.filter(t => t.id !== st.id));
+                              setZones(prev => prev.filter(z => z.typeId !== st.id));
+                              if (activeTypeId === st.id) setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
+                            }}
+                              className="opacity-0 group-hover:opacity-100 hover:!opacity-100 text-slate-600 hover:text-red-400 transition-all ml-0.5 shrink-0"
+                              title="Supprimer"><Trash2 className="w-3 h-3" /></button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Add custom surface type */}
+                  <div className="mt-2 pt-2 border-t border-white/5">
+                    <details className="group">
+                      <summary className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer transition-colors">
+                        <Plus className="w-3 h-3" /> {d("sf_add_type")}
+                      </summary>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <input type="text" placeholder={d("sf_custom_name")} id="sf-custom-name"
+                          className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-white/30" />
+                        <input type="color" defaultValue="#8b5cf6" id="sf-custom-color"
+                          className="w-7 h-7 rounded border border-white/10 bg-transparent cursor-pointer" />
+                        <button onClick={() => {
+                          const nameEl = document.getElementById("sf-custom-name") as HTMLInputElement;
+                          const colorEl = document.getElementById("sf-custom-color") as HTMLInputElement;
+                          const name = nameEl?.value?.trim();
+                          const color = colorEl?.value || "#8b5cf6";
+                          if (!name) return;
+                          const newType: SurfaceType = { id: crypto.randomUUID(), name, color };
+                          setSurfaceTypes(prev => [...prev, newType]);
+                          setActiveTypeId(newType.id);
+                          nameEl.value = "";
+                          toast({ title: `${d("sf_type")}: ${name}`, variant: "success" });
+                        }}
+                          className="px-2 py-1 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-[10px] shrink-0">
+                          <Check className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+                  {/* Totals */}
+                  {zones.filter(z => z.typeId !== "__count__").length > 0 && ppm && (
+                    <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
+                      <span className="text-xs text-slate-500">Total</span>
+                      <span className="font-mono text-sm text-white font-600">
+                        {(() => {
+                          const total = zones.filter(z => z.typeId !== "__count__").reduce((sum, z) => {
+                            const a = polygonAreaNorm(z.points, imageNatural.w, imageNatural.h);
+                            return sum + a / (ppm! * ppm!);
+                          }, 0);
+                          return `${total.toFixed(2)} m\u00b2`;
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* UTILITIES PANEL */}
+              {layer === "utilities" && (
+                <div className="glass rounded-xl border border-white/10 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("ut_tools")}</h3>
+                  </div>
+                  {ppm && (
+                    <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg border border-white/5 bg-white/5">
+                      <Ruler className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs text-slate-400">{d("re_scale")}</span>
+                      <span className="ml-auto font-mono text-xs text-amber-400 font-600">{ppm.toFixed(1)} px/m</span>
+                    </div>
+                  )}
+                  {zones.filter(z => z.typeId === "__count__").length > 0 && (
+                    <div className="flex items-center justify-between px-2 py-1.5 rounded-lg border border-white/5 bg-white/5 mb-2">
+                      <span className="text-xs text-slate-400 flex items-center gap-1.5"><Hash className="w-3.5 h-3.5 text-sky-400" /> {d("ut_count")}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-sky-400 font-600">{zones.filter(z => z.typeId === "__count__").length}</span>
+                        <button onClick={() => { pushHistory(zones); setZones(prev => prev.filter(z => z.typeId !== "__count__")); }}
+                          className="text-slate-600 hover:text-red-400 transition-colors" title="Reset"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-600 leading-relaxed">
+                    {tool === "linear" && d("ut_linear")+": "+d("ut_distance")}
+                    {tool === "count" && d("ut_count")+": "+d("ut_point")}
+                    {tool === "rescale" && d("ut_rescale")}
+                    {tool === "angle" && d("ut_angle")}
+                  </p>
                 </div>
               )}
 
