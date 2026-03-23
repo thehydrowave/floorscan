@@ -187,6 +187,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   // Measure state
   const [zones, setZones] = useState<MeasureZone[]>([]);
+  const [linearMeasures, setLinearMeasures] = useState<{id: string; p1: {x:number;y:number}; p2: {x:number;y:number}; distPx: number}[]>([]);
+  const [angleMeasures, setAngleMeasures] = useState<{id: string; p1: {x:number;y:number}; vertex: {x:number;y:number}; p3: {x:number;y:number}; angleDeg: number}[]>([]);
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
   const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
@@ -872,17 +874,48 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
       return;
     }
+    // ── Utilities: angle measurement (3-point) ──
+    if (tool === "angle") {
+      pts.current.push([rx, ry]);
+      drawCanvas();
+      if (pts.current.length >= 3) {
+        const img = imgRef.current!;
+        const [a, b, c] = pts.current;
+        // b is the vertex, a and c are the two rays
+        const ba = [a[0]-b[0], a[1]-b[1]];
+        const bc = [c[0]-b[0], c[1]-b[1]];
+        const dot = ba[0]*bc[0] + ba[1]*bc[1];
+        const magBA = Math.sqrt(ba[0]*ba[0] + ba[1]*ba[1]);
+        const magBC = Math.sqrt(bc[0]*bc[0] + bc[1]*bc[1]);
+        const cosAngle = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
+        const angleDeg = Math.acos(cosAngle) * 180 / Math.PI;
+
+        // Store angle measurement
+        const p1 = { x: a[0]/img.naturalWidth, y: a[1]/img.naturalHeight };
+        const p2 = { x: b[0]/img.naturalWidth, y: b[1]/img.naturalHeight };
+        const p3 = { x: c[0]/img.naturalWidth, y: c[1]/img.naturalHeight };
+        setAngleMeasures(prev => [...prev, { id: crypto.randomUUID(), p1, vertex: p2, p3, angleDeg }]);
+        toast({ title: `${d("ut_angle" as DTKey)}: ${angleDeg.toFixed(1)}°`, variant: "success" });
+        pts.current = [];
+        canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      }
+      return;
+    }
+
     // ── Utilities: linear measurement ──
     if (tool === "linear") {
       pts.current.push([rx, ry]);
       drawCanvas();
       if (pts.current.length >= 2) {
         const img = imgRef.current!;
-        const dx = (pts.current[1][0] - pts.current[0][0]);
-        const dy = (pts.current[1][1] - pts.current[0][1]);
+        const p1 = { x: pts.current[0][0] / img.naturalWidth, y: pts.current[0][1] / img.naturalHeight };
+        const p2 = { x: pts.current[1][0] / img.naturalWidth, y: pts.current[1][1] / img.naturalHeight };
+        const dx = pts.current[1][0] - pts.current[0][0];
+        const dy = pts.current[1][1] - pts.current[0][1];
         const distPx = Math.sqrt(dx * dx + dy * dy);
         const distM = ppm ? distPx / ppm : null;
-        toast({ title: `${d("ut_distance")}: ${distM ? distM.toFixed(2) + " m" : Math.round(distPx) + " px"}`, variant: "default" });
+        setLinearMeasures(prev => [...prev, { id: crypto.randomUUID(), p1, p2, distPx }]);
+        toast({ title: `${d("ut_distance" as DTKey)}: ${distM ? distM.toFixed(2) + " m" : Math.round(distPx) + " px"}`, variant: "success" });
         pts.current = [];
         canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
       }
@@ -1153,6 +1186,22 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
       const img = imgRef.current!;
       const polyNorm = pts.current.map(([x, y]) => ({ x: x / img.naturalWidth, y: y / img.naturalHeight }));
+
+      // Surface erase polygon: remove zones whose centroid is inside the drawn polygon
+      if (tool === "erase_poly") {
+        pushHistory(zones);
+        setZones(prev => prev.filter(z => {
+          if (z.typeId === "__count__") return true;
+          const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length;
+          const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length;
+          return !pointInPolygon(cx, cy, polyNorm);
+        }));
+        pts.current = [];
+        canvasRef.current?.getContext("2d")?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+        toast({ title: d("sf_zone_deducted" as DTKey), variant: "default" });
+        return;
+      }
+
       const newZone: MeasureZone = {
         id: crypto.randomUUID(),
         typeId: activeTypeId,
@@ -1356,7 +1405,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         <div className="flex items-center gap-1.5">
           {/* Save button */}
           {onGoResults && (
-            <Button size="sm" variant="outline" onClick={() => onGoResults(result, customDetections)}>
+            <Button size="sm" variant="outline" onClick={() => {
+              const updatedResult = {
+                ...result,
+                _measurements: {
+                  zones,
+                  linearMeasures,
+                  angleMeasures,
+                  surfaceTypes,
+                },
+              };
+              onGoResults(updatedResult, customDetections);
+            }}>
               <Save className="w-3.5 h-3.5" />
               <span className="hidden sm:inline ml-1">{d("ed_save_btn")}</span>
             </Button>
@@ -1447,8 +1507,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400" },
                 interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent" },
                 rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400" },
-                surface:     { Icon: PaintBucket,       label: "Surfaces",         active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400" },
-                utilities:   { Icon: Wrench,            label: "Outils",           active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400" },
+                surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400" },
+                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400" },
               };
               const m = layerMeta[l];
               // Separator before surface & utilities
@@ -1611,33 +1671,39 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {layer === "surface" && (
                 <>
                   <button onClick={() => { setTool("add_poly"); pts.current = []; }}
-                    title="Polygon surface"
+                    title={d("sf_polygon" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "add_poly" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <PenLine className="w-3 h-3" /> Polygon
+                    <PenLine className="w-3 h-3" /> {d("sf_polygon" as DTKey)}
                   </button>
                   <button onClick={() => { setTool("add_rect"); pts.current = []; }}
-                    title="Rectangle surface"
+                    title={d("sf_rectangle" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "add_rect" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Square className="w-3 h-3" /> Rectangle
+                    <Square className="w-3 h-3" /> {d("sf_rectangle" as DTKey)}
                   </button>
                   <button onClick={() => { setTool("deduct_rect"); pts.current = []; }}
-                    title="D\u00e9duire zone"
+                    title={d("sf_deduct" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "deduct_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Minus className="w-3 h-3" /> D\u00e9duire
+                    <Minus className="w-3 h-3" /> {d("sf_deduct" as DTKey)}
                   </button>
-                  {(tool === "add_poly") && (
+                  <button onClick={() => { setTool("erase_poly"); pts.current = []; }}
+                    title={d("sf_erase_poly" as DTKey)}
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <PenOff className="w-3 h-3" /> {d("sf_erase_poly" as DTKey)}
+                  </button>
+                  {(tool === "add_poly" || (tool === "erase_poly" && layer === "surface")) && (
                     <button onClick={finishPoly}
-                      title="Valider le polygon"
+                      title={d("sf_validate" as DTKey)}
                       className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
-                      <Check className="w-3 h-3" /> Valider
+                      <Check className="w-3 h-3" /> {d("sf_validate" as DTKey)}
                     </button>
                   )}
                   <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
                   {/* Surface type selector */}
-                  <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono shrink-0">Type</span>
+                  <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono shrink-0">{d("sf_type" as DTKey)}</span>
                   {surfaceTypes.map(st => (
                     <button key={st.id} onClick={() => setActiveTypeId(st.id)}
                       title={st.name}
@@ -1654,28 +1720,28 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {layer === "utilities" && (
                 <>
                   <button onClick={() => setTool("linear")}
-                    title="Mesure lin\u00e9aire (murs, distances)"
+                    title={d("ut_linear_tt" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Ruler className="w-3 h-3" /> Lin\u00e9aire
+                    <Ruler className="w-3 h-3" /> {d("ut_linear" as DTKey)}
                   </button>
                   <button onClick={() => setTool("angle")}
-                    title="Mesure d\u2019angle"
+                    title={d("ut_angle_tt" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "angle" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Compass className="w-3 h-3" /> Angle
+                    <Compass className="w-3 h-3" /> {d("ut_angle" as DTKey)}
                   </button>
                   <button onClick={() => setTool("count")}
-                    title="Comptage de points"
+                    title={d("ut_count_tt" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Hash className="w-3 h-3" /> Comptage
+                    <Hash className="w-3 h-3" /> {d("ut_count" as DTKey)}
                   </button>
                   <button onClick={() => setTool("rescale")}
-                    title="Refaire l\u2019\u00e9chelle (PPM)"
+                    title={d("ut_rescale_tt" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Maximize2 className="w-3 h-3" /> \u00c9chelle
+                    <Maximize2 className="w-3 h-3" /> {d("ut_rescale" as DTKey)}
                   </button>
                   {ppm && (
                     <span className="text-[10px] text-slate-500 font-mono ml-1">
@@ -1984,6 +2050,41 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <g key={zone.id}>
                         <circle cx={px} cy={py} r={8} fill="rgba(56,189,248,0.25)" stroke="#38bdf8" strokeWidth={1.5} />
                         <text x={px} y={py + 3.5} textAnchor="middle" fill="#38bdf8" fontSize={8} fontWeight="700" fontFamily="monospace">{i + 1}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Linear measurements */}
+                  {linearMeasures.map(lm => {
+                    const x1 = lm.p1.x * imgDisplaySize.w, y1 = lm.p1.y * imgDisplaySize.h;
+                    const x2 = lm.p2.x * imgDisplaySize.w, y2 = lm.p2.y * imgDisplaySize.h;
+                    const mx = (x1+x2)/2, my = (y1+y2)/2;
+                    const distM = ppm ? lm.distPx / ppm : null;
+                    const label = distM ? `${distM.toFixed(2)} m` : `${Math.round(lm.distPx)} px`;
+                    const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
+                    const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
+                    return (
+                      <g key={lm.id}>
+                        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth={2} strokeDasharray="4 2" />
+                        <circle cx={x1} cy={y1} r={4} fill="#38bdf8" />
+                        <circle cx={x2} cy={y2} r={4} fill="#38bdf8" />
+                        <rect x={mx-25} y={my-8} width={50} height={16} rx={3} fill="rgba(10,16,32,0.92)" stroke="#38bdf8" strokeWidth={1} transform={`rotate(${rot},${mx},${my})`} />
+                        <text x={mx} y={my+3.5} textAnchor="middle" fill="#38bdf8" fontSize={9} fontWeight="600" fontFamily="monospace" transform={`rotate(${rot},${mx},${my})`}>{label}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Angle measurements */}
+                  {angleMeasures.map(am => {
+                    const vx = am.vertex.x * imgDisplaySize.w, vy = am.vertex.y * imgDisplaySize.h;
+                    const ax = am.p1.x * imgDisplaySize.w, ay = am.p1.y * imgDisplaySize.h;
+                    const cx = am.p3.x * imgDisplaySize.w, cy = am.p3.y * imgDisplaySize.h;
+                    return (
+                      <g key={am.id}>
+                        <line x1={ax} y1={ay} x2={vx} y2={vy} stroke="#f59e0b" strokeWidth={1.5} />
+                        <line x1={vx} y1={vy} x2={cx} y2={cy} stroke="#f59e0b" strokeWidth={1.5} />
+                        <circle cx={vx} cy={vy} r={5} fill="#f59e0b" />
+                        <circle cx={ax} cy={ay} r={3} fill="#f59e0b80" />
+                        <circle cx={cx} cy={cy} r={3} fill="#f59e0b80" />
+                        <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}°</text>
                       </g>
                     );
                   })}
@@ -2688,7 +2789,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Totals */}
                   {zones.filter(z => z.typeId !== "__count__").length > 0 && ppm && (
                     <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
-                      <span className="text-xs text-slate-500">Total</span>
+                      <span className="text-xs text-slate-500">{d("sf_total" as DTKey)}</span>
                       <span className="font-mono text-sm text-white font-600">
                         {(() => {
                           const total = zones.filter(z => z.typeId !== "__count__").reduce((sum, z) => {
