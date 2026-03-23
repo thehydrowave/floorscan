@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo, type ElementType } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2, Sparkles, Check, Columns2, BrickWall, SeparatorVertical, Home, Hash, PenOff } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2, Sparkles, Check, Columns2, BrickWall, SeparatorVertical, Home, Hash, PenOff, PaintBucket, Wrench, Ruler, Minus, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -17,8 +17,8 @@ import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/
 
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
-type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | null;
-type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search";
+type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | "surface" | "utilities" | null;
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search" | "deduct_rect" | "linear" | "angle" | "count" | "rescale";
 // ── Constantes pièces ──────────────────────────────────────────────────────────
 const ROOM_TYPES: { type: string; i18nKey: DTKey }[] = [
   { type: "bedroom",      i18nKey: "rt_bedroom" },
@@ -872,8 +872,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
       return;
     }
-    // For mask editing tools, require a layer to be selected
-    if (layer === null && tool !== "select" && tool !== "split") return;
+    // For mask editing tools, require a layer to be selected (surface & utilities have their own layer)
+    if (layer === null && tool !== "select" && tool !== "split" && tool !== "linear" && tool !== "angle" && tool !== "count" && tool !== "rescale" && tool !== "deduct_rect") return;
     // ── Split tool: collect 2 points then submit ──
     if (tool === "split" && layer === "rooms") {
       pts.current.push([rx, ry]);
@@ -1348,24 +1348,32 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
           <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
-            {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms"] as const).map(l => {
-              const layerMeta: Record<"door"|"window"|"french_door"|"wall"|"cloison"|"interior"|"rooms", { Icon: ElementType; label: string; active: string; iconColor: string }> = {
+            {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).map(l => {
+              const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string }> = {
                 door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400" },
                 window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400" },
-                french_door: { Icon: Columns2,          label: "P-Fenêtres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400" },
+                french_door: { Icon: Columns2,          label: "P-Fen\u00eatres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400" },
                 wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400" },
                 cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400" },
                 interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent" },
                 rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400" },
+                surface:     { Icon: PaintBucket,       label: "Surfaces",         active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400" },
+                utilities:   { Icon: Wrench,            label: "Outils",           active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400" },
               };
               const m = layerMeta[l];
+              // Separator before surface & utilities
+              const sep = l === "surface";
               return (
-                <button key={l} onClick={() => setLayer(layer === l ? null : l)} title={m.label}
-                  className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
-                    layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-                  <m.Icon className={cn("w-3 h-3 shrink-0", m.iconColor)} />
-                  <span className={layer === l ? "" : "text-slate-400"}>{m.label}</span>
-                </button>
+                <span key={l} className="contents">
+                  {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
+                  <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); }}
+                    title={m.label}
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                    <m.Icon className={cn("w-3 h-3 shrink-0", m.iconColor)} />
+                    <span className={layer === l ? "" : "text-slate-400"}>{m.label}</span>
+                  </button>
+                </span>
               );
             })}
             {layer !== null && (
@@ -1374,9 +1382,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <X className="w-3 h-3" />
               </button>
             )}
-            {/* ── Recherche visuelle (toujours accessible dans Éléments) ── */}
+            {/* ── Recherche visuelle (standalone, fonctionne sans sélection d'élément) ── */}
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-            <button onClick={() => { setTool(tool === "visual_search" ? (layer === "rooms" ? "select" : "add_rect") : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
+            <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
               title={d("ed_tt_vs")}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
@@ -1421,8 +1429,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 {/* ══ BAR 3 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
           {layer !== null && (
             <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
-              {/* Outils couches masque (tout sauf rooms) */}
-              {layer !== "rooms" && (
+              {/* Outils couches masque (standard: door/window/french_door/wall/cloison/interior) */}
+              {layer !== null && layer !== "rooms" && layer !== "surface" && layer !== "utilities" && (
                 <>
                   <button onClick={() => { setTool("add_rect"); pts.current = []; }}
                     title={d("ed_tt_draw_rect")}
@@ -1508,6 +1516,85 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   </button>
                 </>
               )}
+
+              {/* ── Outils SURFACE (carrelage, parquet, peinture, etc.) ── */}
+              {layer === "surface" && (
+                <>
+                  <button onClick={() => { setTool("add_poly"); pts.current = []; }}
+                    title="Polygon surface"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "add_poly" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <PenLine className="w-3 h-3" /> Polygon
+                  </button>
+                  <button onClick={() => { setTool("add_rect"); pts.current = []; }}
+                    title="Rectangle surface"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "add_rect" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Square className="w-3 h-3" /> Rectangle
+                  </button>
+                  <button onClick={() => { setTool("deduct_rect"); pts.current = []; }}
+                    title="D\u00e9duire zone"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "deduct_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Minus className="w-3 h-3" /> D\u00e9duire
+                  </button>
+                  {(tool === "add_poly") && (
+                    <button onClick={finishPoly}
+                      title="Valider le polygon"
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
+                      <Check className="w-3 h-3" /> Valider
+                    </button>
+                  )}
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  {/* Surface type selector */}
+                  <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono shrink-0">Type</span>
+                  {surfaceTypes.map(st => (
+                    <button key={st.id} onClick={() => setActiveTypeId(st.id)}
+                      title={st.name}
+                      className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                        activeTypeId === st.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: st.color }} />
+                      {st.name}
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {/* ── Outils UTILITIES (lin\u00e9aire, comptage, angle, \u00e9chelle) ── */}
+              {layer === "utilities" && (
+                <>
+                  <button onClick={() => setTool("linear")}
+                    title="Mesure lin\u00e9aire (murs, distances)"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Ruler className="w-3 h-3" /> Lin\u00e9aire
+                  </button>
+                  <button onClick={() => setTool("angle")}
+                    title="Mesure d\u2019angle"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "angle" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Compass className="w-3 h-3" /> Angle
+                  </button>
+                  <button onClick={() => setTool("count")}
+                    title="Comptage de points"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Hash className="w-3 h-3" /> Comptage
+                  </button>
+                  <button onClick={() => setTool("rescale")}
+                    title="Refaire l\u2019\u00e9chelle (PPM)"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Maximize2 className="w-3 h-3" /> \u00c9chelle
+                  </button>
+                  {ppm && (
+                    <span className="text-[10px] text-slate-500 font-mono ml-1">
+                      {ppm.toFixed(1)} px/m
+                    </span>
+                  )}
+                </>
+              )}
+
               <div className="flex-1" />
               <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
               {/* Annuler / Rétablir */}
@@ -2453,52 +2540,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </div>
               )}
 
-              {/* ── SurfacePanel (carrelage, parquet, peinture, etc.) ── */}
-              <div className="border-t border-white/5 pt-2 mt-2">
-                <SurfacePanel
-                  types={surfaceTypes}
-                  zones={zones}
-                  activeTypeId={activeTypeId}
-                  imageW={imageNatural.w}
-                  imageH={imageNatural.h}
-                  ppm={ppm}
-                  onTypesChange={setSurfaceTypes}
-                  onActiveTypeChange={setActiveTypeId}
-                  panelMode={panelMode}
-                  onPanelModeChange={handlePanelModeChange}
-                  roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
-                />
-              </div>
             </div>
           </div>
           </div>{/* /inner row canvas+sidebar */}
-
-          {/* ── MeasureCanvas (zones carrelage/parquet/peinture) ── */}
-          <div className="mt-2">
-            {ppm ? (
-              <span className="inline-block glass border border-white/5 rounded-lg px-2.5 py-1 font-mono text-xs text-accent mb-2">
-                {ppm.toFixed(1)} px/m — {d("ed_scale_ia")}
-              </span>
-            ) : (
-              <span className="inline-block text-xs text-orange-400/80 glass border border-orange-500/20 rounded-lg px-3 py-1.5 mb-2">
-                {d("ed_no_scale_warn")}
-              </span>
-            )}
-            <MeasureCanvas
-              imageB64={currentOverlay}
-              imageMime="image/png"
-              zones={zones}
-              activeTypeId={activeTypeId}
-              surfaceTypes={allMeasureTypes}
-              ppm={ppm}
-              onZonesChange={setZones}
-              onHistoryPush={pushHistory}
-              onHistoryUndo={undoHistory}
-              onHistoryRedo={redoHistory}
-              canUndo={historyLen > 0}
-              canRedo={futureLen > 0}
-            />
-          </div>
         </div>
       )}
     </motion.div>
