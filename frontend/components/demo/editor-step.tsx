@@ -118,6 +118,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
   const [showFrenchDoors, setShowFrenchDoors] = useState(false);
+  const [showSurfaces, setShowSurfaces] = useState(true);
 
   // Mask edit undo/redo lengths
   const [editHistoryLen, setEditHistoryLen] = useState(0);
@@ -2013,7 +2014,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
 
               {/* ── Surface zones (carrelage, parquet, etc.) ── */}
-              {zones.length > 0 && imgDisplaySize.w > 0 && (
+              {showSurfaces && zones.length > 0 && imgDisplaySize.w > 0 && (
                 <svg
                   className="absolute top-0 left-0 pointer-events-none"
                   width={imgDisplaySize.w}
@@ -2624,6 +2625,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           </span>
                         </div>
                       </div>
+                    </div>
+                  )}
+                  {zones.length > 0 && (
+                    <div className="glass rounded-xl border border-white/10 p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PaintBucket className="w-3.5 h-3.5 text-violet-400" />
+                        <span className="text-xs font-600 text-slate-400 uppercase tracking-wide">Surfaces</span>
+                        <span className="text-[10px] font-mono text-violet-400">{zones.filter(z => z.typeId !== "__count__").length} zones</span>
+                      </div>
+                      <button onClick={() => setShowSurfaces(v => !v)}
+                        className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
+                        {showSurfaces ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
                     </div>
                   )}
                 </>
