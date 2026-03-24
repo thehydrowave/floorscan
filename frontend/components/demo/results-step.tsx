@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight } from "lucide-react";
+import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -78,8 +78,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [rapportOpen, setRapportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
-  // Always use plan_b64 as base — individual CSS luminance masks handle each opening type.
-  // overlay_openings_b64 bakes ALL openings together and must NOT be used as base image.
+  // ── Advanced tools accordion (closed by default) ──
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const basePlanB64 = (result.plan_b64 || result.overlay_openings_b64) as string;
   const baseImageB64 = showInterior && result.overlay_interior_b64
     ? result.overlay_interior_b64
@@ -297,8 +298,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-3" style={{ background: `${color}22` }}>
                   <Icon className="w-4 h-4" style={{ color }} />
                 </div>
-                {/* value */}
-                <div className="text-[1.6rem] font-display font-bold text-white leading-none mb-1.5 tracking-tight">{value}</div>
+                {/* value — tabular-nums prevents digit shift */}
+                <div
+                  className="text-3xl font-bold text-white leading-none mb-1.5"
+                  style={{ fontFamily: "ui-monospace, 'SF Mono', monospace", fontVariantNumeric: "tabular-nums" }}
+                >
+                  {value}
+                </div>
                 {/* label */}
                 <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wide">{label}</div>
                 {/* bottom accent */}
@@ -318,7 +324,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: det.color }} />
                 <p className="text-xs text-slate-500">{det.label}</p>
               </div>
-              <p className="text-2xl font-display font-700" style={{ color: det.color }}>×{det.count}</p>
+              <p
+                className="text-3xl font-bold"
+                style={{ color: det.color, fontFamily: "ui-monospace, 'SF Mono', monospace", fontVariantNumeric: "tabular-nums" }}
+              >
+                ×{det.count}
+              </p>
               {det.total_area_m2 !== null && (
                 <p className="text-xs text-slate-500 mt-1">{det.total_area_m2.toFixed(2)} m²</p>
               )}
@@ -502,7 +513,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               />
 
-              {/* Doors overlay — grayscale luminance mask → vivid solid color where white pixels */}
+              {/* Doors overlay */}
               {showDoors && result.mask_doors_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#FF00CC",
@@ -515,7 +526,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   zIndex: 1,
                 }} />
               )}
-              {/* Windows overlay — grayscale luminance mask → vivid solid color where white pixels */}
+              {/* Windows overlay */}
               {showWindows && result.mask_windows_b64 && (
                 <div className="absolute inset-0 pointer-events-none" style={{
                   backgroundColor: "#00CCFF",
@@ -528,34 +539,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   zIndex: 1,
                 }} />
               )}
-              {/* French Doors RGBA overlay (orange) */}
+              {/* French Doors RGBA overlay */}
               {showFrenchDoors && result.mask_french_doors_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_french_doors_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
+                <img src={`data:image/png;base64,${result.mask_french_doors_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
               )}
-              {/* Walls RGBA overlay (AI model detection) */}
+              {/* Walls RGBA overlay */}
               {showWalls && result.mask_walls_ai_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_walls_ai_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 1 }}
-                />
+                <img src={`data:image/png;base64,${result.mask_walls_ai_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
               )}
-              {/* Cloisons RGBA overlay — bleu fluo (IA − Pixel − périmètre) */}
+              {/* Cloisons RGBA overlay */}
               {showCloisons && result.mask_cloisons_b64 && (
-                <img
-                  src={`data:image/png;base64,${result.mask_cloisons_b64}`}
-                  alt=""
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  style={{ zIndex: 3 }}
-                />
+                <img src={`data:image/png;base64,${result.mask_cloisons_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 3 }} />
               )}
-              {/* V2 overlays removed — use ComparisonPanel instead */}
             </>
           ) : (
             <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
@@ -604,7 +599,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                       strokeLinejoin="round"
                       opacity={0.85}
                     />
-                    {/* Label background (editor-step style) */}
                     <rect
                       x={rcx - pw / 2} y={rcy - ph / 2}
                       width={pw} height={ph} rx={4}
@@ -762,11 +756,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       {/* ── 3D Floor Plan View ── */}
       <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
 
-      {/* ── Materials estimation panel ── */}
-      <div className="mt-8">
-        <MaterialsPanel result={result} customDetections={customDetections} />
-      </div>
-
       {/* ── Pattern detection panel ── */}
       {onDetectionsChange && result.overlay_openings_b64 && (
         <PatternPanel
@@ -777,32 +766,67 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         />
       )}
 
-      {/* ── DPGF estimatif panel ── */}
-      <DpgfPanel result={result} customDetections={customDetections} />
+      {/* ══════════════════════ Advanced Tools accordion ══════════════════════ */}
+      <div className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
+        <button
+          onClick={() => setAdvancedOpen(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center">
+              <Wrench className="w-3.5 h-3.5 text-accent" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-600 text-white">Advanced Tools</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Material estimate · DPGF · CCTP · Scenario · Schedule · Compliance · Housing · Unit/Lot · BTP Toolkit
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <span className="text-[10px] text-slate-600 border border-white/10 rounded px-1.5 py-0.5 font-mono">9 outils</span>
+            {advancedOpen
+              ? <ChevronDown className="w-4 h-4 text-slate-400" />
+              : <ChevronRight className="w-4 h-4 text-slate-400" />}
+          </div>
+        </button>
 
-      {/* ── Scenario Comparator ── */}
-      <ScenarioPanel result={result} customDetections={customDetections} />
+        {advancedOpen && (
+          <div className="border-t border-white/5 px-1 pb-1 flex flex-col gap-0">
+            {/* Materials estimation */}
+            <div className="pt-1">
+              <MaterialsPanel result={result} customDetections={customDetections} />
+            </div>
 
-      {/* ── CCTP panel ── */}
-      <CctpPanel result={result} customDetections={customDetections} />
+            {/* DPGF */}
+            <DpgfPanel result={result} customDetections={customDetections} />
 
-      {/* ── Gantt planning panel ── */}
-      <GanttPanel result={result} customDetections={customDetections} />
+            {/* CCTP */}
+            <CctpPanel result={result} customDetections={customDetections} />
 
-      {/* ── Compliance check panel ── */}
-      <CompliancePanel result={result} />
+            {/* Scenario Comparator */}
+            <ScenarioPanel result={result} customDetections={customDetections} />
 
-      {/* ── Housing Detection panel ── */}
-      <HousingPanel result={result} />
+            {/* Gantt / Estimated Schedule */}
+            <GanttPanel result={result} customDetections={customDetections} />
 
-      {/* ── Lots / Copropriété panel ── */}
-      <LotsPanel result={result} />
+            {/* Regulatory Compliance */}
+            <CompliancePanel result={result} />
 
-      {/* ── BTP Toolkit panel ── */}
-      <ToolkitPanel result={result} />
+            {/* Housing Detection */}
+            <HousingPanel result={result} />
 
-      {/* ── OCR text detection panel (Beta) ── */}
-      <OcrPanel result={result} />
+            {/* Unit / Lot */}
+            <LotsPanel result={result} />
+
+            {/* BTP Toolkit */}
+            <ToolkitPanel result={result} />
+
+            {/* OCR (Beta) */}
+            <OcrPanel result={result} />
+          </div>
+        )}
+      </div>
 
       {/* ── Multi-model comparison (admin only) ── */}
       {isAdmin && (
