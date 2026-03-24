@@ -102,6 +102,13 @@ PIPELINE_DEFINITIONS = [
         "color": "#A855F7",  # purple
     },
     {
+        "id": "K", "name": "Auto-rotate (K)",
+        "model_ids": ["wall-detection-xi9ox/1"],
+        "type": "diagonal",
+        "description": "Rotation automatique Hough + inférence adaptative multi-angles",
+        "color": "#ec4899",  # pink
+    },
+    {
         "id": "F", "name": "Consensus (F)",
         "model_ids": [],
         "type": "consensus",
@@ -2562,6 +2569,26 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_diagonal": True,
         }
 
+    # ── Pipeline K: Auto-rotate adaptive (Hough dominant angles) ──
+    try:
+        logger.info("Building auto-rotate pipeline K...")
+        from pipeline_diagonal import run_pipeline_k
+        results["K"] = run_pipeline_k(img_rgb, img_pil, client, ppm, cfg)
+        logger.info("Pipeline K built: doors=%d, windows=%d, angles=%s",
+                     results["K"].get("doors_count", 0), results["K"].get("windows_count", 0),
+                     (results["K"].get("diagonal_stats") or {}).get("detected_angles", []))
+    except Exception as e:
+        logger.error("Pipeline K failed: %s", e, exc_info=True)
+        results["K"] = {
+            "id": "K", "name": "Auto-rotate (K)",
+            "description": "Rotation automatique Hough + inférence adaptative multi-angles",
+            "color": "#ec4899",
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e), "is_diagonal": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2571,7 +2598,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
     total_time = round(time.time() - t0, 2)
 
     # ── Build comparison table (J first = latest test) ──
-    ordered = ["J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    ordered = ["K", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
