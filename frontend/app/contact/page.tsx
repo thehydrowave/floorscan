@@ -10,14 +10,29 @@ export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", company: "", subject: "", message: "" });
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setSending(true);
-    // Simule envoi — à brancher sur une API route ou Resend
-    await new Promise((r) => setTimeout(r, 1200));
-    setSending(false);
-    setSent(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Erreur lors de l'envoi. Réessayez ou écrivez directement à contact@floorscan.ai");
+      } else {
+        setSent(true);
+      }
+    } catch {
+      setError("Erreur réseau. Réessayez ou écrivez directement à contact@floorscan.ai");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -38,7 +53,7 @@ export default function ContactPage() {
           </span>
           <h1 className="font-display text-4xl md:text-5xl font-800 text-white mb-4">
             On est là pour vous<br />
-            <span className="text-gradient">aider</span>
+            <span className="bg-gradient-to-r from-brand-400 to-cyan-300 bg-clip-text text-transparent">aider</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
             Question sur le produit, démo, partenariat ou retour d&apos;expérience — écrivez-nous.
@@ -115,7 +130,9 @@ export default function ContactPage() {
                 </div>
                 <h3 className="text-white font-display font-700 text-xl">Message envoyé !</h3>
                 <p className="text-slate-400 text-sm max-w-sm">
-                  Merci pour votre message. Nous vous répondrons sous 24–48h ouvrées à l&apos;adresse <strong className="text-slate-300">{form.email}</strong>.
+                  Merci pour votre message. Nous vous répondrons sous 24–48h ouvrées à <strong className="text-slate-300">{form.email}</strong>.
+                  <br /><br />
+                  Un email de confirmation vous a également été envoyé.
                 </p>
                 <button
                   onClick={() => { setSent(false); setForm({ name: "", email: "", company: "", subject: "", message: "" }); }}
@@ -139,13 +156,13 @@ export default function ContactPage() {
                     onChange={(e) => setForm({ ...form, subject: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-brand-500/50 focus:border-brand-500/50 transition-colors"
                   >
-                    <option value="" disabled>Choisir un sujet...</option>
-                    <option value="demo">Demande de démo</option>
-                    <option value="question">Question produit</option>
-                    <option value="technique">Problème technique</option>
-                    <option value="partenariat">Partenariat / intégration</option>
-                    <option value="tarifs">Tarifs et abonnement</option>
-                    <option value="autre">Autre</option>
+                    <option value="" disabled className="bg-slate-900">Choisir un sujet...</option>
+                    <option value="demo" className="bg-slate-900">Demande de démo</option>
+                    <option value="question" className="bg-slate-900">Question produit</option>
+                    <option value="technique" className="bg-slate-900">Problème technique</option>
+                    <option value="partenariat" className="bg-slate-900">Partenariat / intégration</option>
+                    <option value="tarifs" className="bg-slate-900">Tarifs et abonnement</option>
+                    <option value="autre" className="bg-slate-900">Autre</option>
                   </select>
                 </div>
                 <div>
@@ -159,8 +176,18 @@ export default function ContactPage() {
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500/50 focus:border-brand-500/50 transition-colors resize-none"
                   />
                 </div>
+
+                {error && (
+                  <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                    {error}
+                  </div>
+                )}
+
                 <p className="text-slate-600 text-xs">
-                  En soumettant ce formulaire, vous acceptez notre <a href="/politique-confidentialite" className="text-slate-500 hover:text-slate-300 transition-colors underline">politique de confidentialité</a>.
+                  En soumettant ce formulaire, vous acceptez notre{" "}
+                  <a href="/politique-confidentialite" className="text-slate-500 hover:text-slate-300 transition-colors underline">
+                    politique de confidentialité
+                  </a>.
                 </p>
                 <button
                   type="submit"
