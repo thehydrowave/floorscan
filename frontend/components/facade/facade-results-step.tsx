@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
   LayoutPanelTop, Columns2, Frame, Box, HelpCircle, Trash2,
-  SquareDashedBottom,
+  SquareDashedBottom, Pencil, PlusCircle, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -108,6 +108,19 @@ interface FacadeResultsStepProps {
   onRestart: () => void;
 }
 
+/* ── Mask editor drag/draw state types ── */
+interface DragState {
+  mode: "move" | "tl" | "tr" | "bl" | "br";
+  id: number;
+  startNorm: { x: number; y: number };
+  origBbox: { x: number; y: number; w: number; h: number };
+}
+interface DrawState {
+  type: string;
+  startNorm: { x: number; y: number };
+  cur: { x: number; y: number };
+}
+
 export default function FacadeResultsStep({ result, onGoEditor, onRestart }: FacadeResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -121,8 +134,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     result.is_mock ? "svg" : "ia"
   );
 
+  /* ── Mask editor: mutable local copy of elements (declared early for use in presentTypes) ── */
+  const [localElements, setLocalElements] = useState<FacadeElement[]>(result.elements);
+
   /* ── SVG tab: per-type visibility toggles ── */
-  const presentTypes = [...new Set(result.elements.map(e => e.type))];
+  const presentTypes = [...new Set(localElements.map(e => e.type))];
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const toggleType = (t: string) =>
     setHiddenTypes(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n; });
@@ -137,16 +153,19 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const [hiddenLayers,   setHiddenLayers]   = useState<Set<string>>(new Set());
   const [hiddenElements, setHiddenElements] = useState<Set<number>>(new Set());
   const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
+  const [editMode,      setEditMode]      = useState(false);
+  const [addingType,    setAddingType]    = useState<string | null>(null);
+  const [dragState,     setDragState]     = useState<DragState | null>(null);
+  const [drawState,     setDrawState]     = useState<DrawState | null>(null);
+  const maskSvgRef = useRef<SVGSVGElement>(null);
 
   /* ── Surface murale SVG path (ROI rect − opening holes, evenodd) ── */
   const wallSvgPath = useMemo(() => {
     const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
     const W = imgNat.w, H = imgNat.h;
     const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
-    // Outer rectangle (clockwise winding)
     let p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
-    // Overlap with opening rects → evenodd cancels those pixels (= holes)
-    result.elements
+    localElements
       .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
       .forEach(e => {
         const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
@@ -154,16 +173,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
         p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
       });
     return p;
-  }, [result, hiddenElements, imgNat]);
+  }, [result.building_roi, localElements, hiddenElements, imgNat]);
 
   /* ── Surface murale area (live, excludes hidden elements) ── */
   const wallAreaM2 = useMemo(() => {
     if (!result.facade_area_m2) return null;
-    const openings = result.elements
+    const openingsArea = localElements
       .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
       .reduce((s, e) => s + (e.area_m2 ?? 0), 0);
-    return Math.max(0, result.facade_area_m2 - openings);
-  }, [result, hiddenElements]);
+    return Math.max(0, result.facade_area_m2 - openingsArea);
+  }, [result.facade_area_m2, localElements, hiddenElements]);
 
   /* ── Seed imgNat from plan_b64 ── */
   useEffect(() => {
@@ -172,6 +191,15 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     img.onload = () => setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = `data:image/png;base64,${result.plan_b64}`;
   }, [result.plan_b64]);
+
+  /* ── Sync localElements when result changes ── */
+  useEffect(() => {
+    setLocalElements(result.elements);
+    setHiddenElements(new Set());
+    setSelectedEl(null);
+    setEditMode(false);
+    setAddingType(null);
+  }, [result]);
 
   /* ── Keyboard: Delete/Backspace removes selected element from mask ── */
   useEffect(() => {
@@ -188,6 +216,88 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     return () => window.removeEventListener("keydown", handle);
   }, [viewTab, selectedEl]);
 
+  /* ── Mask editor: SVG coordinate helper ── */
+  const screenToNorm = useCallback((clientX: number, clientY: number) => {
+    const svg = maskSvgRef.current;
+    if (!svg || imgNat.w === 0) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    const inv = svg.getScreenCTM()?.inverse();
+    if (!inv) return { x: 0, y: 0 };
+    const sp = pt.matrixTransform(inv);
+    return { x: sp.x / imgNat.w, y: sp.y / imgNat.h };
+  }, [imgNat.w, imgNat.h]);
+
+  /* ── Mask editor: mouse handlers ── */
+  const handleSvgMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!editMode) return;
+    const norm = screenToNorm(e.clientX, e.clientY);
+    if (addingType) {
+      e.stopPropagation();
+      setDrawState({ type: addingType, startNorm: norm, cur: norm });
+      return;
+    }
+    setSelectedEl(null);
+  }, [editMode, addingType, screenToNorm]);
+
+  const handleSvgMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const norm = screenToNorm(e.clientX, e.clientY);
+    if (drawState) {
+      setDrawState(prev => prev ? { ...prev, cur: norm } : null);
+      return;
+    }
+    if (!dragState) return;
+    const dx = norm.x - dragState.startNorm.x;
+    const dy = norm.y - dragState.startNorm.y;
+    const ob = dragState.origBbox;
+    let nx = ob.x, ny = ob.y, nw = ob.w, nh = ob.h;
+    if (dragState.mode === "move") {
+      nx = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
+      ny = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
+    } else if (dragState.mode === "tl") {
+      const nnx = Math.min(ob.x + ob.w - 0.01, ob.x + dx);
+      const nny = Math.min(ob.y + ob.h - 0.01, ob.y + dy);
+      nw = ob.w + (ob.x - nnx); nh = ob.h + (ob.y - nny);
+      nx = nnx; ny = nny;
+    } else if (dragState.mode === "tr") {
+      const nny = Math.min(ob.y + ob.h - 0.01, ob.y + dy);
+      nh = ob.h + (ob.y - nny); ny = nny;
+      nw = Math.max(0.01, ob.w + dx);
+    } else if (dragState.mode === "bl") {
+      const nnx = Math.min(ob.x + ob.w - 0.01, ob.x + dx);
+      nw = ob.w + (ob.x - nnx); nx = nnx;
+      nh = Math.max(0.01, ob.h + dy);
+    } else if (dragState.mode === "br") {
+      nw = Math.max(0.01, ob.w + dx);
+      nh = Math.max(0.01, ob.h + dy);
+    }
+    setLocalElements(prev => prev.map(el =>
+      el.id === dragState.id ? { ...el, bbox_norm: { x: nx, y: ny, w: nw, h: nh } } : el
+    ));
+  }, [drawState, dragState, screenToNorm]);
+
+  const handleSvgMouseUp = useCallback(() => {
+    if (drawState) {
+      const { startNorm, cur, type } = drawState;
+      const x = Math.min(startNorm.x, cur.x);
+      const y = Math.min(startNorm.y, cur.y);
+      const w = Math.abs(cur.x - startNorm.x);
+      const h = Math.abs(cur.y - startNorm.y);
+      if (w > 0.005 && h > 0.005) {
+        const newId = localElements.length > 0 ? Math.max(...localElements.map(e => e.id)) + 1 : 1;
+        const newEl: FacadeElement = {
+          id: newId, type: type as FacadeElement["type"],
+          label_fr: type, bbox_norm: { x, y, w, h },
+          area_m2: null, floor_level: 0,
+        };
+        setLocalElements(prev => [...prev, newEl]);
+        setSelectedEl(newId);
+      }
+      setDrawState(null);
+    }
+    setDragState(null);
+  }, [drawState, localElements]);
+
   /* ── Isolation façade ── */
   const [isoFacadeEpaisseur, setIsoFacadeEpaisseur] = useState(12); // cm
 
@@ -200,9 +310,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const [epAppui,     setEpAppui]     = useState(3);
 
   /* ── Derived: per-floor breakdown ── */
-  const floorLevels = [...new Set(result.elements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
+  const floorLevels = [...new Set(localElements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
   const floorData = floorLevels.map(level => {
-    const els = result.elements.filter(e => (e.floor_level ?? 0) === level);
+    const els = localElements.filter(e => (e.floor_level ?? 0) === level);
     return {
       level,
       label:     level === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${level}`,
@@ -212,13 +322,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     };
   });
 
-  const visibleElements = result.elements.filter(e => !hiddenTypes.has(e.type));
+  const visibleElements = localElements.filter(e => !hiddenTypes.has(e.type));
 
   /* ── CSV export ── */
   const exportCSV = () => {
     const BOM = "\uFEFF";
     const header = `${d("fa_element")};${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;${d("fa_facade_area")} (m²)`;
-    const rows = result.elements.map(e =>
+    const rows = localElements.map(e =>
       `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};` +
       `${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};` +
       `${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
@@ -236,7 +346,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const ppm = result.pixels_per_meter;
   const hasPpm = ppm != null && ppm > 0;
 
-  const openings = result.elements.filter(e => e.type === "window" || e.type === "door");
+  const openings = localElements.filter(e => e.type === "window" || e.type === "door");
 
   const retourRows = useMemo(() => {
     if (!hasPpm) return [];
@@ -488,13 +598,15 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
 
         {/* ────────── Masques ────────── */}
         {viewTab === "masks" && (
-          <div className="flex flex-col lg:flex-row gap-3">
+          <div className="flex flex-col lg:flex-row gap-3 items-start">
 
-            {/* Left: base image + SVG mask overlays */}
-            <div className="relative flex-1 min-w-0">
+            {/* Left: base image + SVG mask overlays — self-start prevents height-stretch in flex-row */}
+            <div className="relative flex-1 min-w-0 self-start">
               <img
                 src={`data:image/png;base64,${result.plan_b64}`}
-                alt="Facade plan" className="w-full rounded-xl"
+                alt="Facade plan"
+                className="w-full rounded-xl block"
+                style={{ display: "block" }}
                 onLoad={e => {
                   const i = e.currentTarget;
                   setImgNat({ w: i.naturalWidth, h: i.naturalHeight });
@@ -502,79 +614,137 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
               />
 
               {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
-              {!hiddenLayers.has("surface_murale") && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (
+                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
                   <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
                 </svg>
               )}
 
-              {/* Per-type mask layers: interactive (click to select) */}
-              <svg className="absolute inset-0 w-full h-full"
-                viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+              {/* Per-type mask layers: interactive + editable */}
+              {imgNat.w > 0 && (
+                <svg
+                  ref={maskSvgRef}
+                  className="absolute top-0 left-0 w-full h-full"
+                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
+                  preserveAspectRatio="xMinYMin meet"
+                  style={{ cursor: addingType ? "crosshair" : editMode ? "default" : undefined }}
+                  onMouseDown={handleSvgMouseDown}
+                  onMouseMove={handleSvgMouseMove}
+                  onMouseUp={handleSvgMouseUp}
+                  onMouseLeave={handleSvgMouseUp}
+                >
 
-                {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
-                  const layerEls = result.elements.filter(
-                    e => e.type === layer.id && !hiddenElements.has(e.id)
-                  );
-                  return (
-                    <g key={layer.id}>
-                      {layerEls.map(el => {
-                        const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
-                        const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
-                        const sel = selectedEl === el.id;
-                        if (el.type === "floor_line") {
+                  {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
+                    const layerEls = localElements.filter(
+                      e => e.type === layer.id && !hiddenElements.has(e.id)
+                    );
+                    return (
+                      <g key={layer.id}>
+                        {layerEls.map(el => {
+                          const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                          const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
+                          const sel = selectedEl === el.id;
+                          if (el.type === "floor_line") {
+                            return (
+                              <line key={el.id}
+                                x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                                stroke={layer.color} strokeWidth={sel ? 5 : 3}
+                                strokeOpacity={sel ? 1 : 0.75}
+                                className="cursor-pointer"
+                                onClick={(ee: React.MouseEvent) => { ee.stopPropagation(); setSelectedEl(sel ? null : el.id); }}
+                              />
+                            );
+                          }
                           return (
-                            <line key={el.id}
-                              x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
-                              stroke={layer.color} strokeWidth={sel ? 5 : 3}
-                              strokeOpacity={sel ? 1 : 0.75}
-                              className="cursor-pointer"
-                              onClick={() => setSelectedEl(sel ? null : el.id)}
+                            <rect key={el.id}
+                              x={x} y={y} width={w} height={h}
+                              fill={layer.color} fillOpacity={sel ? 0.65 : 0.42}
+                              stroke={layer.color} strokeWidth={sel ? 2.5 : 1.5}
+                              strokeOpacity={sel ? 1 : 0.85}
+                              rx="2"
+                              className={editMode ? "cursor-move" : "cursor-pointer"}
+                              onClick={ee => { if (!dragState) { ee.stopPropagation(); setSelectedEl(sel ? null : el.id); } }}
+                              onMouseDown={editMode ? ee => {
+                                ee.stopPropagation();
+                                const norm = screenToNorm(ee.clientX, ee.clientY);
+                                setSelectedEl(el.id);
+                                setDragState({ mode: "move", id: el.id, startNorm: norm, origBbox: el.bbox_norm });
+                              } : undefined}
                             />
                           );
-                        }
-                        return (
-                          <rect key={el.id}
-                            x={x} y={y} width={w} height={h}
-                            fill={layer.color} fillOpacity={sel ? 0.65 : 0.42}
-                            stroke={layer.color} strokeWidth={sel ? 2.5 : 1.5}
-                            strokeOpacity={sel ? 1 : 0.85}
-                            rx="2"
-                            className="cursor-pointer"
-                            onClick={() => setSelectedEl(sel ? null : el.id)}
-                          />
-                        );
-                      })}
-                    </g>
-                  );
-                })}
+                        })}
+                      </g>
+                    );
+                  })}
 
-                {/* White dashed outline on selected element */}
-                {selectedEl !== null && (() => {
-                  const el = result.elements.find(e => e.id === selectedEl);
-                  if (!el) return null;
-                  const x = el.bbox_norm.x * imgNat.w - 5, y = el.bbox_norm.y * imgNat.h - 5;
-                  const w = el.bbox_norm.w * imgNat.w + 10, h = el.bbox_norm.h * imgNat.h + 10;
-                  return (
-                    <rect x={x} y={y} width={w} height={h}
-                      fill="none" stroke="white" strokeWidth={2}
-                      strokeDasharray="5 3" opacity={0.9} rx="4"
-                      style={{ pointerEvents: "none" }} />
-                  );
-                })()}
-              </svg>
+                  {/* White dashed outline on selected element */}
+                  {selectedEl !== null && (() => {
+                    const el = localElements.find(e => e.id === selectedEl);
+                    if (!el) return null;
+                    const x = el.bbox_norm.x * imgNat.w - 5, y = el.bbox_norm.y * imgNat.h - 5;
+                    const w = el.bbox_norm.w * imgNat.w + 10, h = el.bbox_norm.h * imgNat.h + 10;
+                    return (
+                      <rect x={x} y={y} width={w} height={h}
+                        fill="none" stroke="white" strokeWidth={2}
+                        strokeDasharray="5 3" opacity={0.9} rx="4"
+                        style={{ pointerEvents: "none" }} />
+                    );
+                  })()}
+
+                  {/* Resize handles (edit mode + selected) */}
+                  {editMode && selectedEl !== null && (() => {
+                    const el = localElements.find(e => e.id === selectedEl);
+                    if (!el || el.type === "floor_line") return null;
+                    const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                    const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
+                    const HS = Math.max(5, Math.min(10, imgNat.w * 0.008));
+                    const handles: Array<{ mode: DragState["mode"]; cx: number; cy: number }> = [
+                      { mode: "tl", cx: x,     cy: y     },
+                      { mode: "tr", cx: x + w, cy: y     },
+                      { mode: "bl", cx: x,     cy: y + h },
+                      { mode: "br", cx: x + w, cy: y + h },
+                    ];
+                    return handles.map(hh => (
+                      <rect key={hh.mode}
+                        x={hh.cx - HS} y={hh.cy - HS} width={HS * 2} height={HS * 2}
+                        fill="white" stroke="#0ea5e9" strokeWidth={1.5} rx={2}
+                        style={{ cursor: "nwse-resize" }}
+                        onMouseDown={ee => {
+                          ee.stopPropagation();
+                          const norm = screenToNorm(ee.clientX, ee.clientY);
+                          setDragState({ mode: hh.mode, id: selectedEl!, startNorm: norm, origBbox: el.bbox_norm });
+                        }}
+                      />
+                    ));
+                  })()}
+
+                  {/* Draw preview (while adding new element) */}
+                  {drawState && (() => {
+                    const x = Math.min(drawState.startNorm.x, drawState.cur.x) * imgNat.w;
+                    const y = Math.min(drawState.startNorm.y, drawState.cur.y) * imgNat.h;
+                    const w = Math.abs(drawState.cur.x - drawState.startNorm.x) * imgNat.w;
+                    const h = Math.abs(drawState.cur.y - drawState.startNorm.y) * imgNat.h;
+                    const color = getColor(drawState.type);
+                    return (
+                      <rect x={x} y={y} width={w} height={h}
+                        fill={color} fillOpacity={0.3}
+                        stroke={color} strokeWidth={2} strokeDasharray="4 2" rx={2}
+                        style={{ pointerEvents: "none" }} />
+                    );
+                  })()}
+                </svg>
+              )}
 
               {/* Action bar for selected element */}
               {selectedEl !== null && (() => {
-                const el = result.elements.find(e => e.id === selectedEl);
+                const el = localElements.find(e => e.id === selectedEl);
                 if (!el) return null;
                 const Icon  = getIcon(el.type);
                 const color = getColor(el.type);
                 return (
                   <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between
                     bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 text-xs border border-white/10">
-                    {/* Info */}
                     <span className="flex items-center gap-1.5 text-slate-300 min-w-0">
                       <Icon className="w-3 h-3 shrink-0" style={{ color }} />
                       <span className="truncate" style={{ color }}>{d(TYPE_I18N[el.type] ?? "fa_other")}</span>
@@ -585,12 +755,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                         <span className="text-slate-500 shrink-0 hidden sm:inline">· {el.area_m2.toFixed(2)} m²</span>
                       )}
                     </span>
-                    {/* Actions */}
                     <div className="flex items-center gap-2 ml-2 shrink-0">
-                      <span className="text-slate-600 hidden sm:inline">⌫</span>
+                      {!editMode && <span className="text-slate-600 hidden sm:inline">⌫</span>}
                       <button
                         onClick={() => {
-                          setHiddenElements(prev => new Set([...prev, selectedEl!]));
+                          setLocalElements(prev => prev.filter(e => e.id !== selectedEl));
                           setSelectedEl(null);
                         }}
                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors
@@ -611,20 +780,29 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                   <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
                 </div>
               )}
+
+              {/* Edit mode badge */}
+              {editMode && (
+                <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
+                  bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs font-medium pointer-events-none">
+                  <Pencil className="w-3 h-3" />
+                  {addingType ? `Dessiner ${addingType}` : "Mode édition"}
+                </div>
+              )}
             </div>
 
             {/* Right: layer panel */}
-            <div className="lg:w-56 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+            <div className="lg:w-60 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
 
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Couches</div>
 
               <div className="space-y-0.5">
                 {MASK_LAYERS.map(layer => {
-                  const hasAny = layer.isSurface || result.elements.some(e => e.type === layer.id);
+                  const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
                   if (!hasAny) return null;
 
-                  const totalCount   = layer.isSurface ? undefined : result.elements.filter(e => e.type === layer.id).length;
-                  const activeCount  = layer.isSurface ? undefined : result.elements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
+                  const totalCount   = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id).length;
+                  const activeCount  = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
                   const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
                   const layerHidden  = hiddenLayers.has(layer.id);
                   const Icon = layer.icon;
@@ -681,16 +859,76 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 </div>
               )}
 
-              {/* Restore removed elements */}
-              {hiddenElements.size > 0 && (
+              {/* ── Edit mode toggle ── */}
+              <div className="border-t border-white/5 pt-3">
                 <button
-                  onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
-                  className="mt-auto flex items-center justify-center gap-1.5 text-xs text-slate-500
-                    hover:text-slate-300 transition-colors py-1.5 rounded-lg border border-white/5
-                    hover:border-white/10">
-                  <RotateCcw className="w-3 h-3" /> Restaurer ({hiddenElements.size})
+                  onClick={() => { setEditMode(v => !v); setAddingType(null); setDragState(null); setDrawState(null); }}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    editMode
+                      ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
+                      : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                  )}>
+                  <Pencil className="w-3 h-3" />
+                  {editMode ? "Édition active" : "Éditer les masques"}
                 </button>
+              </div>
+
+              {/* ── Add element buttons (edit mode only) ── */}
+              {editMode && (
+                <div className="space-y-1">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <PlusCircle className="w-3 h-3" /> Ajouter
+                  </div>
+                  {MASK_LAYERS.filter(l => !l.isSurface && l.id !== "floor_line").map(layer => {
+                    const Icon = layer.icon;
+                    const active = addingType === layer.id;
+                    return (
+                      <button key={layer.id}
+                        onClick={() => setAddingType(active ? null : layer.id)}
+                        className={cn(
+                          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-all border",
+                          active
+                            ? "bg-white/10 border-white/25 text-white"
+                            : "border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
+                        )}>
+                        <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: layer.color }} />
+                        <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
+                        <span className="flex-1 text-left truncate">{layer.label}</span>
+                        {active && <span className="text-[10px] text-sky-400 shrink-0">Dessiner ✏</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
+
+              {/* Reset / Restore buttons */}
+              <div className="mt-auto flex flex-col gap-1.5">
+                {hiddenElements.size > 0 && (
+                  <button
+                    onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
+                    className="flex items-center justify-center gap-1.5 text-xs text-slate-500
+                      hover:text-slate-300 transition-colors py-1.5 rounded-lg border border-white/5
+                      hover:border-white/10">
+                    <RotateCcw className="w-3 h-3" /> Restaurer ({hiddenElements.size})
+                  </button>
+                )}
+                {localElements.length !== result.elements.length && (
+                  <button
+                    onClick={() => {
+                      setLocalElements(result.elements);
+                      setHiddenElements(new Set());
+                      setSelectedEl(null);
+                      setEditMode(false);
+                      setAddingType(null);
+                    }}
+                    className="flex items-center justify-center gap-1.5 text-xs text-slate-600
+                      hover:text-slate-400 transition-colors py-1.5 rounded-lg border border-white/5
+                      hover:border-white/10">
+                    <RefreshCw className="w-3 h-3" /> Réinitialiser
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
