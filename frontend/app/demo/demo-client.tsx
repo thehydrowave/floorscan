@@ -29,6 +29,7 @@ import ChatPanel from "@/components/demo/chat-panel";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, DiffResult, CartoucheResult } from "@/lib/types";
+import type { FacadeZoneCrop } from "@/components/demo/crop-step";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -72,6 +73,7 @@ export default function DemoClient() {
   const [currentPageIdx,setCurrentPageIdx]=useState<number>(0);
   const [customDetections,setCustomDetections]=useState<CustomDetection[]>([]);
   const [facadeResult,setFacadeResult]=useState<FacadeAnalysisResult|null>(null);
+  const [facadeZones,setFacadeZones]=useState<FacadeZoneCrop[]>([]);
   const [v1SessionId,setV1SessionId]=useState<string|null>(null);
   const [v1ImageB64,setV1ImageB64]=useState<string|null>(null);
   const [v2SessionId,setV2SessionId]=useState<string|null>(null);
@@ -102,8 +104,8 @@ export default function DemoClient() {
   const handleGoResults=(updatedResult:AnalysisResult,detections?:CustomDetection[])=>{setAnalysisResult(updatedResult);if(detections)setCustomDetections(detections);setStep(6);};
   const handleAddPage=()=>{if(analysisResult)setPageResults(prev=>{const next=new Map(prev);next.set(currentPageIdx,{ppm,analysisResult,customDetections});return next;});setStep(2);setSessionId(null);setUploadedImageB64(null);setPpm(null);setAnalysisResult(null);setCustomDetections([]);};
   const handleSwitchPage=(pageIdx:number)=>{if(analysisResult)setPageResults(prev=>{const next=new Map(prev);next.set(currentPageIdx,{ppm,analysisResult,customDetections});return next;});const target=pageResults.get(pageIdx);if(target){setCurrentPageIdx(pageIdx);setPpm(target.ppm);setAnalysisResult(target.analysisResult);setCustomDetections(target.customDetections);}};
-  const handleRestart=()=>{setStep(isAdmin?1:2);setSessionId(null);setUploadedImageB64(null);setPpm(null);setAnalysisResult(null);setFacadeResult(null);setV1SessionId(null);setV1ImageB64(null);setV2SessionId(null);setV2ImageB64(null);setDiffResult(null);setDiffLoading(false);setCartoucheResult(null);setCartoucheLoading(false);clearSession();};
-  const handleFullReset=()=>{setStep(1);setConfig(isAdmin?null:DEFAULT_CONFIG);setSessionId(null);setUploadedImageB64(null);setPpm(null);setAnalysisResult(null);setFacadeResult(null);setV1SessionId(null);setV1ImageB64(null);setV2SessionId(null);setV2ImageB64(null);setDiffResult(null);setDiffLoading(false);setCartoucheResult(null);setCartoucheLoading(false);clearSession();};
+  const handleRestart=()=>{setStep(isAdmin?1:2);setSessionId(null);setUploadedImageB64(null);setPpm(null);setAnalysisResult(null);setFacadeResult(null);setFacadeZones([]);setV1SessionId(null);setV1ImageB64(null);setV2SessionId(null);setV2ImageB64(null);setDiffResult(null);setDiffLoading(false);setCartoucheResult(null);setCartoucheLoading(false);clearSession();};
+  const handleFullReset=()=>{setStep(1);setConfig(isAdmin?null:DEFAULT_CONFIG);setSessionId(null);setUploadedImageB64(null);setPpm(null);setAnalysisResult(null);setFacadeResult(null);setFacadeZones([]);setV1SessionId(null);setV1ImageB64(null);setV2SessionId(null);setV2ImageB64(null);setDiffResult(null);setDiffLoading(false);setCartoucheResult(null);setCartoucheLoading(false);clearSession();};
   const handleFacadeAnalyzed=(result:FacadeAnalysisResult)=>{setFacadeResult(result);setStep(6);};
   const handleFacadeGoEditor=()=>setStep(7);
   const handleFacadeGoResults=(updatedResult:FacadeAnalysisResult)=>{setFacadeResult(updatedResult);setStep(6);};
@@ -254,10 +256,10 @@ export default function DemoClient() {
                 <motion.div key={step} initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:0.25}}>
                   {step===1&&<ConnectStep onConnected={handleConnected}/>}
                   {step===2&&<UploadStep onUploaded={handleUploaded}/>}
-                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart}/>}
+                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart} showFacadeDelimitation initialFacadeZones={facadeZones} onFacadeZonesChange={setFacadeZones}/>}
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled}/>}
                   {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} onAnalyzed={handleFacadeAnalyzed}/>}
-                  {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart}/>}
+                  {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart} initialFacadeZones={facadeZones}/>}
                   {step===7&&facadeResult&&<FacadeEditorStep result={facadeResult} onGoResults={handleFacadeGoResults} onRestart={handleRestart}/>}
                 </motion.div>
               </AnimatePresence>

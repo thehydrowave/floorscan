@@ -93,6 +93,7 @@ interface FacadeResultsStepProps {
   result: FacadeAnalysisResult;
   onGoEditor: () => void;
   onRestart: () => void;
+  initialFacadeZones?: Array<{ id: number; pts: Array<{ x: number; y: number }> }>;
 }
 
 /* ── Mask editor drag/draw state types ── */
@@ -128,7 +129,7 @@ function polygonAreaNorm(pts: Array<{ x: number; y: number }>): number {
 
 type ElementType = "window" | "door" | "balcony" | "floor_line" | "roof" | "column" | "other";
 
-export default function FacadeResultsStep({ result, onGoEditor, onRestart }: FacadeResultsStepProps) {
+export default function FacadeResultsStep({ result, onGoEditor, onRestart, initialFacadeZones }: FacadeResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -171,7 +172,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const maskSvgRef   = useRef<SVGSVGElement>(null);
 
   /* ── Facade polygon zones ── */
-  const [facadeZones,    setFacadeZones]    = useState<FacadeZone[]>([]);
+  const [facadeZones,    setFacadeZones]    = useState<FacadeZone[]>(
+    () => (initialFacadeZones ?? []).map(z => ({ id: z.id, pts: z.pts }))
+  );
   const [drawingZone,    setDrawingZone]    = useState(false);   // "Nouvelle façade" mode
   const [pendingPts,     setPendingPts]     = useState<Array<{x:number;y:number}>>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
