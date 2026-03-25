@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Loader2, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket } from "lucide-react";
+import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -73,7 +73,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [comparingModels, setComparingModels] = useState(false);
   const [imgNatural, setImgNatural] = useState({ w: 1, h: 1 });
 
-  const [exportingPdf, setExportingPdf] = useState(false);
   const [measureActive, setMeasureActive] = useState(false);
   const [rapportOpen, setRapportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -99,28 +98,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
   const hasRooms = (result.rooms ?? []).length > 0;
   const hasDetections = customDetections.length > 0;
-
-  const handleExportPdf = async () => {
-    setExportingPdf(true);
-    try {
-      const r = await fetch(`${BACKEND}/export-pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: result.session_id }),
-      });
-      if (!r.ok) throw new Error((await r.json()).detail ?? "Erreur export");
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "floorscan_rapport.pdf";
-      a.click(); URL.revokeObjectURL(url);
-      toast({ title: d("re_pdf_ok"), variant: "success" });
-    } catch (e: any) {
-      toast({ title: d("re_pdf_err"), description: e.message, variant: "error" });
-    } finally {
-      setExportingPdf(false);
-    }
-  };
 
   const handleExportCSV = () => {
     const sf = result.surfaces ?? {};
@@ -216,9 +193,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   </button>
                   <button onClick={() => { setRapportOpen(true); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
                     <FileDown className="w-4 h-4" /> {d("rap_btn" as DTKey)}
-                  </button>
-                  <button onClick={() => { handleExportPdf(); setExportOpen(false); }} disabled={exportingPdf} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors disabled:opacity-50">
-                    {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} {d("re_pdf")}
                   </button>
                 </div>
               </>
@@ -403,7 +377,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* ── Surfaces toggle (from editor) ── */}
           {hasSurfaces && (
             <button onClick={() => setShowSurfacesOverlay(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
@@ -470,7 +443,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               preserveAspectRatio="xMidYMid meet"
               style={{ zIndex: 2 }}
             >
-              {/* Room polygons */}
               {showRoomsOverlay && result.rooms?.map(room => {
                 const poly = room.polygon_norm;
                 if (!poly || poly.length < 3) return null;
@@ -501,7 +473,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 );
               })}
 
-              {/* VS detection rectangles */}
               {showDetectionsOverlay && customDetections.map(det =>
                 det.matches.map((m, i) => (
                   <rect key={`${det.id}-${i}`}
@@ -512,7 +483,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 ))
               )}
 
-              {/* ── Surface zones from editor ── */}
               {showSurfacesOverlay && editorZones.map(zone => {
                 const st = editorSurfaceTypes.find((t: SurfaceType) => t.id === zone.typeId);
                 if (!st) return null;
@@ -698,7 +668,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             }} disabled={comparingModels}
               className={cn("w-full px-4 py-3 rounded-xl text-sm font-500 border transition-all flex items-center justify-center gap-2",
                 comparingModels ? "border-amber-500/20 text-amber-400/50 cursor-wait" : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10")}>
-              {comparingModels ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("cmp_btn_comparing")}</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
+              {comparingModels ? <><Layers className="w-4 h-4" /> {d("cmp_btn_comparing")}</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
             </button>
           ) : (
             <ComparisonPanel result={comparisonResult} basePlanB64={basePlanB64} ppm={result.pixels_per_meter} />
