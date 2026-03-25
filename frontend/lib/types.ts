@@ -87,14 +87,23 @@ export interface FacadeElement {
   id: number; type: FacadeElementType; label_fr: string;
   bbox_norm: { x: number; y: number; w: number; h: number };
   polygon_norm?: { x: number; y: number }[];
-  area_m2: number | null; floor_level?: number; confidence?: number;
+  area_m2: number | null;
+  /** Dimensions réelles en mètres (disponibles si ppm connu) */
+  w_m?: number | null;
+  h_m?: number | null;
+  floor_level?: number; confidence?: number;
+  raw_class?: string;
 }
 
 export interface FacadeAnalysisResult {
   session_id: string;
   windows_count: number; doors_count: number; balconies_count: number; floors_count: number;
   elements: FacadeElement[];
-  facade_area_m2: number | null; openings_area_m2: number | null; ratio_openings: number | null;
+  facade_area_m2: number | null;
+  openings_area_m2: number | null;
+  /** Surface murale opaque = facade_area_m2 - openings_area_m2 */
+  surface_mur_net?: number | null;
+  ratio_openings: number | null;
   pixels_per_meter: number | null;
   /** ROI used for inference, normalized 0-1. Full image when absent. */
   building_roi?: { x: number; y: number; w: number; h: number };

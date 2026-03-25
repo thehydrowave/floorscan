@@ -1327,46 +1327,75 @@ FACADE_MODEL_ID = "my-first-project-utanq/7"
 # pour ne pas filtrer les détections si le modèle utilise des noms différents.
 FACADE_CLASS_MAP = {
     # Classes modèle original (singular + plural)
-    "door":        "door",
-    "doors":       "door",
-    "window":      "window",
-    "windows":     "window",
-    "building":    "other",
-    "roof":        "roof",
-    "rooftop":     "roof",
-    "floor":       "floor_line",
-    "floor_line":  "floor_line",
-    "floor-line":  "floor_line",
-    "floorline":   "floor_line",
-    "storey":      "floor_line",
-    "story":       "floor_line",
-    "column":      "column",
-    "columns":     "column",
-    "pillar":      "column",
-    "pillars":     "column",
-    "pilaster":    "column",
-    "pilasters":   "column",
-    "balcony":     "balcony",
-    "balconies":   "balcony",
+    "door":             "door",
+    "doors":            "door",
+    "window":           "window",
+    "windows":          "window",
+    "building":         "other",
+    "roof":             "roof",
+    "rooftop":          "roof",
+    "floor":            "floor_line",
+    "floor_line":       "floor_line",
+    "floor-line":       "floor_line",
+    "floorline":        "floor_line",
+    "storey":           "floor_line",
+    "story":            "floor_line",
+    "column":           "column",
+    "columns":          "column",
+    "pillar":           "column",
+    "pillars":          "column",
+    "pilaster":         "column",
+    "pilasters":        "column",
+    "balcony":          "balcony",
+    "balconies":        "balcony",
+    # Variantes courantes des modèles Roboflow
+    "opening":          "window",
+    "openings":         "window",
+    "window_frame":     "window",
+    "window-frame":     "window",
+    "fenetre_grande":   "window",
+    "french_window":    "window",
+    "french_door":      "door",
+    "french-door":      "door",
+    "porte-fenetre":    "door",
+    "porte_fenetre":    "door",
+    "gate":             "door",
+    "entree":           "door",
+    "terrace":          "balcony",
+    "terrasse":         "balcony",
+    "loggia":           "balcony",
+    "level":            "floor_line",
+    "level_line":       "floor_line",
+    "floor_level":      "floor_line",
+    "balustrade":       "balcony",
+    "garde-corps":      "balcony",
+    "cornice":          "roof",
+    "corniche":         "roof",
+    "parapet":          "roof",
+    "shutter":          "other",
+    "volet":            "other",
+    "volets":           "other",
+    "awning":           "other",
+    "store":            "other",
     # Alias FR (au cas où le modèle utilise des labels français)
-    "porte":       "door",
-    "portes":      "door",
-    "fenetre":     "window",
-    "fenetres":    "window",
-    "fenêtre":     "window",
-    "fenêtres":    "window",
-    "toiture":     "roof",
-    "balcon":      "balcony",
-    "balcons":     "balcony",
-    "colonne":     "column",
-    "colonnes":    "column",
-    "etage":       "floor_line",
-    "étage":       "floor_line",
+    "porte":            "door",
+    "portes":           "door",
+    "fenetre":          "window",
+    "fenetres":         "window",
+    "fenêtre":          "window",
+    "fenêtres":         "window",
+    "toiture":          "roof",
+    "balcon":           "balcony",
+    "balcons":          "balcony",
+    "colonne":          "column",
+    "colonnes":         "column",
+    "etage":            "floor_line",
+    "étage":            "floor_line",
     # Générique
-    "facade":      "other",
-    "facade-element": "other",
-    "wall":        "other",
-    "other":       "other",
+    "facade":           "other",
+    "facade-element":   "other",
+    "wall":             "other",
+    "other":            "other",
 }
 
 # NOTE: cv2.putText (polices Hershey) ne supporte que les caractères ASCII (32-126).
@@ -1479,12 +1508,16 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         w_norm = min(w_norm, 1.0 - x_norm)
         h_norm = min(h_norm, 1.0 - y_norm)
 
-        # Calcul surface (en m², basé sur les pixels du crop proportionnellement)
+        # Calcul surface + dimensions (en m², basé sur les pixels du crop proportionnellement)
         area_m2 = None
+        w_m = None
+        h_m = None
         if ppm and ppm > 0:
             pw_orig = pw_inf * roi_scale_x  # largeur en px dans l'image originale
             ph_orig = ph_inf * roi_scale_y
             area_m2 = (pw_orig * ph_orig) / (ppm * ppm)
+            w_m = pw_orig / ppm
+            h_m = ph_orig / ppm
 
         elements.append({
             "id": i,
@@ -1494,6 +1527,8 @@ def analyze_facade(req: AnalyzeFacadeRequest):
             "bbox_norm": {"x": round(x_norm, 5), "y": round(y_norm, 5),
                           "w": round(w_norm, 5), "h": round(h_norm, 5)},
             "area_m2": round(area_m2, 3) if area_m2 is not None else None,
+            "w_m": round(w_m, 3) if w_m is not None else None,
+            "h_m": round(h_m, 3) if h_m is not None else None,
             "confidence": round(pred.get("confidence", 0), 3),
         })
 
@@ -1572,6 +1607,11 @@ def analyze_facade(req: AnalyzeFacadeRequest):
 
     overlay_b64 = pipeline._np_to_b64(overlay)
 
+    # ── Surface murale nette (opaque) ──
+    surface_mur_net = None
+    if facade_area_m2 is not None:
+        surface_mur_net = round(max(0.0, facade_area_m2 - (openings_area_m2 or 0.0)), 2)
+
     return {
         "session_id": req.session_id,
         "windows_count": len(windows),
@@ -1581,6 +1621,7 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         "elements": elements,
         "facade_area_m2": round(facade_area_m2, 2) if facade_area_m2 else None,
         "openings_area_m2": round(openings_area_m2, 2) if openings_area_m2 else None,
+        "surface_mur_net": surface_mur_net,
         "ratio_openings": round(ratio_openings, 4) if ratio_openings else None,
         "pixels_per_meter": ppm,
         "building_roi": {

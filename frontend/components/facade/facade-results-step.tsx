@@ -27,6 +27,7 @@ import FacadeMetrePanel from "./facade-metre-panel";
 import FacadeToolkitPanel from "./facade-toolkit-panel";
 import FacadeScenarioPanel from "./facade-scenario-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
+import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
 import { FileText, Receipt } from "lucide-react";
@@ -764,6 +765,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── ITE & Retours de tableau ── */}
+      <div className="mb-4">
+        <FacadeIsolationPanel result={result} />
       </div>
 
       {/* ── Dashboard Overview ── */}
