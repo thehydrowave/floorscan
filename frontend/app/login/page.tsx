@@ -45,7 +45,7 @@ function LoginForm() {
   return (
     <div className="glass rounded-2xl border border-white/10 p-8">
       <h1 className="font-display text-xl font-700 text-white mb-1">Connexion</h1>
-      <p className="text-sm text-slate-400 mb-6">Connectez-vous pour acceder aux outils d&apos;analyse.</p>
+      <p className="text-sm text-slate-400 mb-6">Connectez-vous pour accéder aux outils d&apos;analyse.</p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -58,15 +58,21 @@ function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoFocus
             className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/25 transition-colors"
-            placeholder="admin@floorscan.local"
+            placeholder="votre@email.com"
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-xs font-semibold text-slate-400 mb-1.5">
-            Mot de passe
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label htmlFor="password" className="block text-xs font-semibold text-slate-400">
+              Mot de passe
+            </label>
+            <Link href="/forgot-password" className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
+              Mot de passe oublié ?
+            </Link>
+          </div>
           <input
             id="password"
             type="password"
@@ -74,7 +80,7 @@ function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             required
             className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/25 transition-colors"
-            placeholder="Mot de passe"
+            placeholder="Votre mot de passe"
           />
         </div>
 
@@ -86,9 +92,7 @@ function LoginForm() {
 
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Connexion...
-            </>
+            <><Loader2 className="w-4 h-4 animate-spin" /> Connexion...</>
           ) : (
             "Se connecter"
           )}
@@ -111,10 +115,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-ink flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
+        {/* Logo + retour accueil */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <ScanLine className="w-8 h-8 text-sky-400" />
+          <Link href="/" className="inline-flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow">
+              <ScanLine className="w-4 h-4 text-white" />
+            </div>
             <span className="font-display text-2xl font-700 bg-gradient-to-r from-sky-400 to-cyan-300 bg-clip-text text-transparent">
               FloorScan
             </span>
@@ -128,6 +134,12 @@ export default function LoginPage() {
         }>
           <LoginForm />
         </Suspense>
+
+        <div className="mt-4 text-center">
+          <Link href="/" className="text-xs text-slate-600 hover:text-slate-400 transition-colors">
+            ← Retour à l&apos;accueil
+          </Link>
+        </div>
       </div>
     </div>
   );
