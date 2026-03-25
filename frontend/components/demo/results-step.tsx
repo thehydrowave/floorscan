@@ -29,7 +29,6 @@ import OcrPanel from "@/components/demo/ocr-panel";
 import HousingPanel from "@/components/demo/housing-panel";
 import { polygonAreaNorm } from "@/lib/measure-types";
 import type { MeasureZone, SurfaceType } from "@/lib/measure-types";
-
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
 
@@ -357,7 +356,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          {/* Separator */}
           {(hasRooms || hasDetections || hasSurfaces) && (
             <div className="w-px h-6 bg-white/10 mx-1" />
           )}
@@ -435,7 +433,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             <MeasureTool ppm={result.pixels_per_meter ?? null} active={measureActive} imgW={imgNatural.w} imgH={imgNatural.h} />
           )}
 
-          {/* SVG overlay: rooms + detections + surfaces */}
           {(showRoomsOverlay || showDetectionsOverlay || (showSurfacesOverlay && hasSurfaces)) && hasBaseImage && (
             <svg
               className="absolute inset-0 w-full h-full pointer-events-none"
@@ -668,7 +665,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             }} disabled={comparingModels}
               className={cn("w-full px-4 py-3 rounded-xl text-sm font-500 border transition-all flex items-center justify-center gap-2",
                 comparingModels ? "border-amber-500/20 text-amber-400/50 cursor-wait" : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10")}>
-              {comparingModels ? <><Layers className="w-4 h-4" /> {d("cmp_btn_comparing")}</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
+              {comparingModels ? <><Layers className="w-4 h-4" /> Comparaison en cours...</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
             </button>
           ) : (
             <ComparisonPanel result={comparisonResult} basePlanB64={basePlanB64} ppm={result.pixels_per_meter} />
