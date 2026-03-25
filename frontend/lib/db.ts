@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { hashSync } from "bcryptjs";
 
-function getSql() {
+export function getSql() {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL environment variable is not set");
   }
@@ -31,6 +31,18 @@ async function doInit(): Promise<void> {
       role       TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  // ── Password reset tokens ──
+  await sql`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token      TEXT UNIQUE NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used       BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 
@@ -175,7 +187,6 @@ export async function upsertChantierProject(
 ): Promise<void> {
   await ensureInit();
   const sql = getSql();
-  // One project per user — upsert on user_id
   const existing = await sql`
     SELECT id FROM chantier_projects WHERE user_id = ${userId} LIMIT 1
   `;
