@@ -30,12 +30,8 @@ export default function Navbar() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) {
-        setLangOpen(false);
-      }
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
+      if (langRef.current && !langRef.current.contains(e.target as Node)) setLangOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -44,9 +40,10 @@ export default function Navbar() {
   const currentLang = LANGUAGES.find((l) => l.code === lang)!;
 
   const links = [
-    { href: "/#features",     labelKey: "nav_features" as const },
-    { href: "/#how-it-works", labelKey: "nav_how"      as const },
-    { href: "/#use-cases",    labelKey: "nav_cases"    as const },
+    { href: "/#features",     label: t("nav_features" as const, lang) },
+    { href: "/#how-it-works", label: t("nav_how"      as const, lang) },
+    { href: "/#use-cases",    label: t("nav_cases"    as const, lang) },
+    { href: "/contact",       label: "Contact" },
   ];
 
   return (
@@ -72,7 +69,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Desktop nav links */}
+        {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-1">
           {links.map((link) => (
             <Link
@@ -80,16 +77,16 @@ export default function Navbar() {
               href={link.href}
               className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/60 transition-all duration-150 font-medium"
             >
-              {t(link.labelKey, lang)}
+              {link.label}
             </Link>
           ))}
         </div>
 
-        {/* Right side: lang + CTAs */}
+        {/* Right: theme + lang + auth + CTA */}
         <div className="hidden md:flex items-center gap-3">
-          {/* Theme toggle */}
           <ThemeSwitcher />
-          {/* Language selector */}
+
+          {/* Language */}
           <div ref={langRef} className="relative">
             <button
               onClick={() => setLangOpen(!langOpen)}
@@ -99,7 +96,6 @@ export default function Navbar() {
               <span className="text-xs font-semibold uppercase tracking-wide">{currentLang.code}</span>
               <ChevronDown className={cn("w-3.5 h-3.5 text-slate-500 transition-transform duration-200", langOpen && "rotate-180")} />
             </button>
-
             <AnimatePresence>
               {langOpen && (
                 <motion.div
@@ -115,9 +111,7 @@ export default function Navbar() {
                       onClick={() => { setLang(l.code); setLangOpen(false); }}
                       className={cn(
                         "w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm transition-colors text-left",
-                        lang === l.code
-                          ? "bg-brand-900/50 text-brand-400 font-semibold"
-                          : "text-slate-300 hover:bg-slate-700/50"
+                        lang === l.code ? "bg-brand-900/50 text-brand-400 font-semibold" : "text-slate-300 hover:bg-slate-700/50"
                       )}
                     >
                       <span className="text-base">{l.flag}</span>
@@ -130,28 +124,22 @@ export default function Navbar() {
             </AnimatePresence>
           </div>
 
-          {/* Auth: user menu or sign in */}
+          {/* Auth */}
           {isLoggedIn ? (
             <div ref={userMenuRef} className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className={cn(
                   "flex items-center gap-2 px-3 py-1.5 text-sm font-medium border rounded-lg transition-all bg-slate-800/50",
-                  isAdmin
-                    ? "text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
-                    : "text-slate-300 border-slate-700 hover:bg-slate-800 hover:border-slate-600"
+                  isAdmin ? "text-amber-400 border-amber-500/30 hover:bg-amber-500/10" : "text-slate-300 border-slate-700 hover:bg-slate-800 hover:border-slate-600"
                 )}
               >
-                <div className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-700",
-                  isAdmin ? "bg-amber-500/20 text-amber-400" : "bg-sky-500/20 text-sky-400"
-                )}>
+                <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-700", isAdmin ? "bg-amber-500/20 text-amber-400" : "bg-sky-500/20 text-sky-400")}>
                   {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
                 </div>
                 <span className="text-xs max-w-[100px] truncate">{user?.name || user?.email}</span>
                 <ChevronDown className={cn("w-3 h-3 text-slate-500 transition-transform", userMenuOpen && "rotate-180")} />
               </button>
-
               <AnimatePresence>
                 {userMenuOpen && (
                   <motion.div
@@ -163,16 +151,11 @@ export default function Navbar() {
                   >
                     <div className="px-3.5 py-2.5 border-b border-slate-700/50">
                       <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-0.5">
-                        {isAdmin ? "Admin" : "Utilisateur"}
-                      </p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-0.5">{isAdmin ? "Admin" : "Utilisateur"}</p>
                     </div>
                     {isAdmin && (
-                      <Link
-                        href="/admin"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-amber-400 hover:bg-slate-700/50 transition-colors"
-                      >
+                      <Link href="/admin" onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-amber-400 hover:bg-slate-700/50 transition-colors">
                         <Shield className="w-3.5 h-3.5" /> Administration
                       </Link>
                     )}
@@ -188,9 +171,7 @@ export default function Navbar() {
             </div>
           ) : (
             <Button variant="outline" size="sm" asChild className="border-slate-700 text-slate-300 hover:bg-slate-800">
-              <Link href="/login">
-                <User className="w-3.5 h-3.5" /> Connexion
-              </Link>
+              <Link href="/login"><User className="w-3.5 h-3.5" /> Connexion</Link>
             </Button>
           )}
 
@@ -200,10 +181,7 @@ export default function Navbar() {
         </div>
 
         {/* Mobile burger */}
-        <button
-          className="md:hidden p-2 rounded-lg hover:bg-slate-800/60 transition-colors"
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
+        <button className="md:hidden p-2 rounded-lg hover:bg-slate-800/60 transition-colors" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? <X className="w-5 h-5 text-slate-400" /> : <Menu className="w-5 h-5 text-slate-400" />}
         </button>
       </nav>
@@ -216,35 +194,21 @@ export default function Navbar() {
           className="md:hidden bg-slate-900 border-t border-slate-700/50 px-6 py-4 flex flex-col gap-2 shadow-xl"
         >
           {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMenuOpen(false)}
-              className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60"
-            >
-              {t(link.labelKey, lang)}
+            <Link key={link.href} href={link.href} onClick={() => setMenuOpen(false)}
+              className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60">
+              {link.label}
             </Link>
           ))}
-          {/* Mobile theme + lang selector */}
           <div className="border-t border-slate-700/50 pt-2 mt-1 flex flex-wrap gap-2 items-center">
             <ThemeSwitcher />
             {LANGUAGES.map((l) => (
-              <button
-                key={l.code}
-                onClick={() => { setLang(l.code); setMenuOpen(false); }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
-                  lang === l.code
-                    ? "bg-brand-900/40 border-brand-700 text-brand-400"
-                    : "border-slate-700 text-slate-400 hover:bg-slate-800/60"
-                )}
-              >
-                <span>{l.flag}</span>
-                <span>{l.label}</span>
+              <button key={l.code} onClick={() => { setLang(l.code); setMenuOpen(false); }}
+                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                  lang === l.code ? "bg-brand-900/40 border-brand-700 text-brand-400" : "border-slate-700 text-slate-400 hover:bg-slate-800/60")}>
+                <span>{l.flag}</span><span>{l.label}</span>
               </button>
             ))}
           </div>
-          {/* Mobile auth section */}
           <div className="border-t border-slate-700/50 pt-2 mt-1">
             {isLoggedIn ? (
               <div className="flex flex-col gap-1">
@@ -255,10 +219,8 @@ export default function Navbar() {
                     <Shield className="w-3.5 h-3.5" /> Administration
                   </Link>
                 )}
-                <button
-                  onClick={() => { setMenuOpen(false); signOut({ callbackUrl: "/" }); }}
-                  className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60 text-left flex items-center gap-2"
-                >
+                <button onClick={() => { setMenuOpen(false); signOut({ callbackUrl: "/" }); }}
+                  className="px-4 py-2.5 text-sm text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/60 text-left flex items-center gap-2">
                   <LogOut className="w-3.5 h-3.5" /> Deconnexion
                 </button>
               </div>
