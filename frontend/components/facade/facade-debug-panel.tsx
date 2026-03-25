@@ -88,6 +88,17 @@ interface FacadeDebugPanelProps {
 /* ── Type labels ── */
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
+/* ── Type colors ── */
+const TYPE_COLOR: Record<string, string> = {
+  window:     "text-blue-400",
+  door:       "text-pink-400",
+  balcony:    "text-emerald-400",
+  floor_line: "text-orange-400",
+  roof:       "text-violet-400",
+  column:     "text-slate-400",
+  other:      "text-amber-400",
+};
+
 export default function FacadeDebugPanel({ result }: FacadeDebugPanelProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -103,6 +114,16 @@ export default function FacadeDebugPanel({ result }: FacadeDebugPanelProps) {
       map.set(el.type, (map.get(el.type) ?? 0) + 1);
     }
     return map;
+  }, [result.elements]);
+
+  /* ── Raw classes (de Roboflow, avant mapping) ── */
+  const rawClasses = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const el of result.elements) {
+      const rc = el.raw_class ?? "—";
+      counts.set(rc, (counts.get(rc) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [result.elements]);
 
   /* ── Masks/overlays present ── */
@@ -205,7 +226,7 @@ export default function FacadeDebugPanel({ result }: FacadeDebugPanelProps) {
             </Section>
 
             {/* Element count per type */}
-            <Section title={isFr ? "Comptage par type" : "Count per type"}>
+            <Section title={isFr ? "Comptage par type mappé" : "Count per mapped type"}>
               {ALL_TYPES.map(type => {
                 const count = typeCounts.get(type) ?? 0;
                 if (count === 0) return null;
@@ -214,13 +235,31 @@ export default function FacadeDebugPanel({ result }: FacadeDebugPanelProps) {
                     key={type}
                     label={type}
                     value={count}
-                    color="text-sky-300"
+                    color={TYPE_COLOR[type] ?? "text-sky-300"}
                   />
                 );
               })}
               {result.elements.length === 0 && (
                 <span className="text-[10px] text-slate-600">{isFr ? "Aucun element" : "No elements"}</span>
               )}
+            </Section>
+
+            {/* Raw classes from Roboflow — DIAGNOSTIC */}
+            <Section title={isFr ? "⚠ Classes brutes Roboflow (diagnostic)" : "⚠ Raw Roboflow classes (diagnostic)"}>
+              <p className="text-[10px] text-slate-600 mb-2">
+                {isFr
+                  ? "Noms de classes renvoyés par le modèle avant mapping. Si tout est 'other', le nom de classe n'est pas reconnu."
+                  : "Class names returned by the model before mapping. If everything is 'other', the class name is not recognized."}
+              </p>
+              {rawClasses.length === 0 && (
+                <span className="text-[10px] text-slate-600">{isFr ? "Aucun élément" : "No elements"}</span>
+              )}
+              {rawClasses.map(([rc, count]) => (
+                <div key={rc} className="flex items-center justify-between py-1 border-b border-white/[0.03]">
+                  <span className="text-[10px] font-mono text-amber-300">{rc}</span>
+                  <span className="text-[10px] font-mono text-slate-500">×{count}</span>
+                </div>
+              ))}
             </Section>
 
             {/* ROI info */}
@@ -267,7 +306,13 @@ export default function FacadeDebugPanel({ result }: FacadeDebugPanelProps) {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-slate-400">
-                          #{el.id} <span className="text-sky-400">{el.type}</span>
+                          #{el.id}{" "}
+                          <span className={TYPE_COLOR[el.type] ?? "text-sky-400"}>{el.type}</span>
+                          {el.raw_class && el.raw_class !== el.type && (
+                            <span className="text-amber-500/70 ml-1 font-mono text-[9px]">
+                              ({el.raw_class})
+                            </span>
+                          )}
                           {el.floor_level != null && (
                             <span className="text-slate-600 ml-1">L{el.floor_level}</span>
                           )}

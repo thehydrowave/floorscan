@@ -1416,7 +1416,7 @@ class AnalyzeFacadeRequest(BaseModel):
     session_id: str
     roboflow_api_key: str = "tyCM9PZp8cs3KtifPUaQ"
     pixels_per_meter: Optional[float] = None
-    confidence: float = 0.25
+    confidence: float = 0.15
     # ROI optionnel : délimite le bâtiment avant inférence
     # {x, y, w, h} normalisés [0-1] dans l'image originale
     building_roi: Optional[dict] = None
@@ -1472,17 +1472,44 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     except Exception as e:
         raise HTTPException(500, f"Erreur inférence façade : {e}")
 
-    predictions = resp.get("predictions", [])
+    # Roboflow peut retourner un dict {"predictions": [...]} ou une liste directe
+    if isinstance(resp, list):
+        predictions = resp
+    else:
+        predictions = resp.get("predictions", [])
+
+    # Log des classes brutes reçues (aide au diagnostic)
+    raw_classes_seen = list({p.get("class") or p.get("class_name") or "" for p in predictions})
+    logger.info("[FACADE] %d prédictions brutes — classes vues: %s", len(predictions), raw_classes_seen)
 
     # ── Convertir les détections en FacadeElement ──
     elements = []
     for i, pred in enumerate(predictions):
-        cls_name = pred.get("class", "").lower()
+        # Compatibilité : Roboflow peut utiliser "class" ou "class_name"
+        cls_name = (pred.get("class") or pred.get("class_name") or "").strip().lower()
         if pred.get("confidence", 0) < req.confidence:
             continue
 
-        # Classes inconnues → "other" (on ne filtre plus silencieusement)
-        facade_type = FACADE_CLASS_MAP.get(cls_name, "other")
+        # 1. Lookup exact
+        facade_type = FACADE_CLASS_MAP.get(cls_name)
+
+        # 2. Fallback fuzzy : substring matching sur les mots-clés
+        if facade_type is None:
+            if any(k in cls_name for k in ("win", "fen", "glas", "glazing", "vitrag", "opening", "ouvert")):
+                facade_type = "window"
+            elif any(k in cls_name for k in ("door", "port", "entr", "gate", "porte")):
+                facade_type = "door"
+            elif any(k in cls_name for k in ("balc", "terr", "loggi")):
+                facade_type = "balcony"
+            elif any(k in cls_name for k in ("roof", "toit", "parapet", "cornich", "comble")):
+                facade_type = "roof"
+            elif any(k in cls_name for k in ("floor", "etage", "level", "storey", "ligne")):
+                facade_type = "floor_line"
+            elif any(k in cls_name for k in ("col", "pillar", "pilast", "poteau")):
+                facade_type = "column"
+            else:
+                facade_type = "other"
+                logger.debug("[FACADE] classe inconnue ignorée en 'other': %r", cls_name)
 
         # Roboflow retourne x_center, y_center, width, height en pixels du CROP
         cx_inf = pred["x"]

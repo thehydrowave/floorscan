@@ -247,6 +247,7 @@ export default function FacadeAnalyzeStep({
           session_id: sessionId,
           roboflow_api_key: apiKey,
           pixels_per_meter: ppm ?? null,
+          confidence: 0.15,
           building_roi: (roiEnabled && roi) ? roi : null,
         }),
       });
