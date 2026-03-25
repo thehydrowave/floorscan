@@ -2589,6 +2589,26 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e), "is_diagonal": True,
         }
 
+    # ── Pipeline P: Hybrid IA (straight) + pixel (diagonal) ──
+    try:
+        logger.info("Building hybrid pipeline P (IA+pixel)...")
+        from pipeline_diagonal import run_pipeline_p
+        results["P"] = run_pipeline_p(img_rgb, img_pil, client, ppm, cfg)
+        logger.info("Pipeline P built: doors=%d, windows=%d, walls_ia=%d, walls_diag=%d",
+                     results["P"].get("doors_count", 0), results["P"].get("windows_count", 0),
+                     results["P"].get("walls_ia_px", 0), results["P"].get("walls_diag_pixel_px", 0))
+    except Exception as e:
+        logger.error("Pipeline P failed: %s", e, exc_info=True)
+        results["P"] = {
+            "id": "P", "name": "Hybride IA+Pixel (P)", "description": "Murs IA (droit) + pixel (diagonal)",
+            "color": "#EC4899",
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_diagonal": True, "is_hybrid": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2597,8 +2617,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
 
     total_time = round(time.time() - t0, 2)
 
-    # ── Build comparison table (J first = latest test) ──
-    ordered = ["K", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    # ── Build comparison table (K, P first = latest tests) ──
+    ordered = ["K", "P", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
