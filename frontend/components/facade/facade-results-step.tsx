@@ -610,7 +610,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                   className="absolute top-0 left-0 w-full h-full"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                   preserveAspectRatio="xMinYMin meet"
-                  style={{ cursor: addingType ? "crosshair" : editMode ? "default" : undefined }}
+                  style={{ cursor: drawingZone ? "crosshair" : addingType ? "crosshair" : editMode ? "default" : undefined }}
                   onMouseDown={handleSvgMouseDown}
                   onMouseMove={handleSvgMouseMove}
                   onMouseUp={handleSvgMouseUp}
@@ -850,12 +850,19 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 </div>
               )}
 
-              {/* Edit mode badge */}
-              {editMode && (
-                <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
-                  bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs font-medium pointer-events-none">
-                  <Pencil className="w-3 h-3" />
-                  {addingType ? `Dessiner ${addingType}` : "Mode édition"}
+              {/* Edit / Drawing mode badge */}
+              {(editMode || drawingZone) && (
+                <div className={cn(
+                  "absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium pointer-events-none",
+                  drawingZone
+                    ? "bg-amber-500/20 border border-amber-500/30 text-amber-300"
+                    : "bg-blue-500/20 border border-blue-500/30 text-blue-300"
+                )}>
+                  {drawingZone ? (
+                    <><Crop className="w-3 h-3" /> Délimiter façade ({pendingPts.length}/4)</>
+                  ) : (
+                    <><Pencil className="w-3 h-3" /> {addingType ? `Dessiner ${addingType}` : "Mode édition"}</>
+                  )}
                 </div>
               )}
             </div>
@@ -1133,6 +1140,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
           result={result}
           localElements={localElements}
           facadeAreaOverride={totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : null}
+          imgSize={imgNat}
         />
       </div>
 

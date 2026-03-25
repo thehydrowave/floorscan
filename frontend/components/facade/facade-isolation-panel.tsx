@@ -26,6 +26,8 @@ interface FacadeIsolationPanelProps {
   localElements?: FacadeElement[];
   /** Surface façade depuis polygones manuels — remplace result.facade_area_m2 */
   facadeAreaOverride?: number | null;
+  /** Image natural dimensions (pixels) — needed to compute w_m/h_m from bbox_norm */
+  imgSize?: { w: number; h: number };
 }
 
 const fmtM2  = (v: number) => `${v.toFixed(2)} m²`;
@@ -48,13 +50,14 @@ function TypeIcon({ type }: { type: string }) {
   if (type === "window")  return <AppWindow      className="w-3.5 h-3.5 text-blue-400" />;
   if (type === "door")    return <DoorOpen       className="w-3.5 h-3.5 text-pink-400" />;
   if (type === "balcony") return <LayoutPanelTop className="w-3.5 h-3.5 text-emerald-400" />;
-  return null;
+  return <AppWindow className="w-3.5 h-3.5 text-amber-400" />;
 }
 
 export default function FacadeIsolationPanel({
   result,
   localElements,
   facadeAreaOverride,
+  imgSize,
 }: FacadeIsolationPanelProps) {
   const { lang } = useLang();
   const fr = lang === "fr";
@@ -66,23 +69,30 @@ export default function FacadeIsolationPanel({
   const [epLinteau, setEpLinteau] = useState(14);
   const [epAppui,   setEpAppui]   = useState(14);
 
-  const hasPpm = result.pixels_per_meter != null && result.pixels_per_meter > 0;
+  const ppm = result.pixels_per_meter;
+  const hasPpm = ppm != null && ppm > 0;
   const elements = localElements ?? result.elements;
 
+  // Include ALL element types that represent openings (including "other" since the model
+  // often classifies windows/doors as "other"). Exclude structural: floor_line, roof, column.
   const openings = useMemo(
-    () => elements.filter(e => ["window", "door"].includes(e.type)),
+    () => elements.filter(e => !["floor_line", "roof", "column"].includes(e.type)),
     [elements],
   );
 
   const lines = useMemo<RetourLine[]>(() => {
-    if (!hasPpm) return [];
+    if (!hasPpm || !ppm) return [];
     const epL = epLinteau / 100;
     const epA = epAppui   / 100;
     const epT = epTableau / 100;
 
+    const iW = imgSize?.w ?? 0;
+    const iH = imgSize?.h ?? 0;
+
     return openings.map(el => {
-      const w = el.w_m ?? null;
-      const h = el.h_m ?? null;
+      // Use el.w_m/h_m if backend provided them, else compute from bbox + ppm + imgSize
+      const w = el.w_m ?? (iW > 0 ? (el.bbox_norm.w * iW / ppm) : null);
+      const h = el.h_m ?? (iH > 0 ? (el.bbox_norm.h * iH / ppm) : null);
 
       const lon_linteau = w;
       const lon_appui   = w;
@@ -111,16 +121,33 @@ export default function FacadeIsolationPanel({
   const totSurfRetours = totSurfTableau + totSurfLinteau + totSurfAppui;
 
   const facadeArea = facadeAreaOverride ?? result.facade_area_m2;
+
+  // Compute openings area from localElements (reflects reclassifications + edits)
+  const openingsAreaLocal = useMemo(() => {
+    if (!hasPpm || !ppm) return null;
+    const iW = imgSize?.w ?? 0;
+    const iH = imgSize?.h ?? 0;
+    if (iW === 0 || iH === 0) return result.openings_area_m2 ?? null;
+    return openings.reduce((s, el) => {
+      const area = el.area_m2 ?? (el.bbox_norm.w * iW * el.bbox_norm.h * iH / (ppm * ppm));
+      return s + area;
+    }, 0);
+  }, [openings, hasPpm, ppm, imgSize, result.openings_area_m2]);
+
   const wallNet = useMemo<number | null>(() => {
-    if (result.surface_mur_net != null) return result.surface_mur_net;
     if (facadeArea == null) return null;
-    return Math.max(0, facadeArea - (result.openings_area_m2 ?? 0));
-  }, [result, facadeArea]);
+    const oa = openingsAreaLocal ?? result.openings_area_m2 ?? 0;
+    return Math.max(0, facadeArea - oa);
+  }, [facadeArea, openingsAreaLocal, result.openings_area_m2]);
 
   const iteTotal = wallNet != null ? wallNet + totSurfRetours : null;
 
   const typeLabel = (t: string) =>
-    t === "window" ? (fr ? "Fenêtre" : "Window") : t === "door" ? (fr ? "Porte" : "Door") : t;
+    t === "window" ? (fr ? "Fenêtre" : "Window")
+    : t === "door" ? (fr ? "Porte" : "Door")
+    : t === "balcony" ? (fr ? "Balcon" : "Balcony")
+    : t === "other" ? (fr ? "Ouverture" : "Opening")
+    : t;
 
   const NumInput = ({ value, onChange, color }: { value: number; onChange: (v: number) => void; color: string }) => (
     <input
