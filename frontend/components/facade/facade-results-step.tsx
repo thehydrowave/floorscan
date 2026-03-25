@@ -6,7 +6,7 @@ import {
   ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
   LayoutPanelTop, Columns2, Frame, Box, HelpCircle, Trash2,
-  SquareDashedBottom, Pencil, PlusCircle, RefreshCw,
+  Pencil, PlusCircle, RefreshCw, Crop,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -68,19 +68,6 @@ const TYPE_I18N: Record<string, DTKey> = {
   other:      "fa_other",
 };
 
-/* ── Small number input ── */
-function NumInput({
-  value, onChange, min = 0, step = 0.5,
-}: { value: number; onChange: (v: number) => void; min?: number; step?: number }) {
-  return (
-    <input
-      type="number" min={min} step={step} value={value}
-      onChange={e => onChange(parseFloat(e.target.value) || 0)}
-      className="w-16 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-center text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-400/50"
-    />
-  );
-}
-
 /* ── KPI icons + Tailwind colors ── */
 const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
   windows:  { Icon: AppWindow,      color: "text-blue-400" },
@@ -121,6 +108,26 @@ interface DrawState {
   cur: { x: number; y: number };
 }
 
+/* ── Facade polygon zone (4 points) ── */
+interface FacadeZone {
+  id: number;
+  pts: Array<{ x: number; y: number }>; // normalized 0-1, 4 points
+  label?: string;
+}
+
+/* ── Shoelace polygon area (normalized coords → fraction of image) ── */
+function polygonAreaNorm(pts: Array<{ x: number; y: number }>): number {
+  const n = pts.length;
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+type ElementType = "window" | "door" | "balcony" | "floor_line" | "roof" | "column" | "other";
+
 export default function FacadeResultsStep({ result, onGoEditor, onRestart }: FacadeResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -153,11 +160,35 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
   const [hiddenLayers,   setHiddenLayers]   = useState<Set<string>>(new Set());
   const [hiddenElements, setHiddenElements] = useState<Set<number>>(new Set());
   const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
-  const [editMode,      setEditMode]      = useState(false);
-  const [addingType,    setAddingType]    = useState<string | null>(null);
-  const [dragState,     setDragState]     = useState<DragState | null>(null);
-  const [drawState,     setDrawState]     = useState<DrawState | null>(null);
-  const maskSvgRef = useRef<SVGSVGElement>(null);
+  const [editMode,       setEditMode]       = useState(false);
+  const [addingType,     setAddingType]     = useState<string | null>(null);
+
+  /* Use refs for drag/draw state to avoid stale-closure bugs */
+  const dragStateRef = useRef<DragState | null>(null);
+  const drawStateRef = useRef<DrawState | null>(null);
+  const [isDragging,  setIsDragging]  = useState(false); // triggers re-render only when needed
+  const [isDrawing,   setIsDrawing]   = useState(false);
+  const maskSvgRef   = useRef<SVGSVGElement>(null);
+
+  /* ── Facade polygon zones ── */
+  const [facadeZones,    setFacadeZones]    = useState<FacadeZone[]>([]);
+  const [drawingZone,    setDrawingZone]    = useState(false);   // "Nouvelle façade" mode
+  const [pendingPts,     setPendingPts]     = useState<Array<{x:number;y:number}>>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
+  const draggingPtRef    = useRef<{zoneId:number;ptIdx:number} | null>(null);
+
+  /* ── Facade zone area (m²) from polygon + PPM ── */
+  const facadeZoneAreaM2 = useCallback((pts: Array<{x:number;y:number}>) => {
+    const ppm = result.pixels_per_meter;
+    if (!ppm || ppm <= 0 || imgNat.w === 0) return 0;
+    const areaNorm = polygonAreaNorm(pts);
+    return areaNorm * imgNat.w * imgNat.h / (ppm * ppm);
+  }, [result.pixels_per_meter, imgNat.w, imgNat.h]);
+
+  const totalFacadeZonesM2 = useMemo(
+    () => facadeZones.reduce((s, z) => s + facadeZoneAreaM2(z.pts), 0),
+    [facadeZones, facadeZoneAreaM2],
+  );
 
   /* ── Surface murale SVG path (ROI rect − opening holes, evenodd) ── */
   const wallSvgPath = useMemo(() => {
@@ -228,86 +259,114 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     return { x: sp.x / imgNat.w, y: sp.y / imgNat.h };
   }, [imgNat.w, imgNat.h]);
 
-  /* ── Mask editor: mouse handlers ── */
+  /* ── Mask editor: mouse handlers (ref-based, no stale closures) ── */
   const handleSvgMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    // Facade zone drawing mode: click to add points, 4th point closes polygon
+    if (drawingZone) {
+      e.stopPropagation();
+      const norm = screenToNorm(e.clientX, e.clientY);
+      setPendingPts(prev => {
+        const next = [...prev, norm];
+        if (next.length >= 4) {
+          setFacadeZones(z => [...z, { id: Date.now(), pts: next.slice(0, 4) }]);
+          setDrawingZone(false);
+          return [];
+        }
+        return next;
+      });
+      return;
+    }
     if (!editMode) return;
     const norm = screenToNorm(e.clientX, e.clientY);
     if (addingType) {
       e.stopPropagation();
-      setDrawState({ type: addingType, startNorm: norm, cur: norm });
+      drawStateRef.current = { type: addingType, startNorm: norm, cur: norm };
+      setIsDrawing(true);
       return;
     }
     setSelectedEl(null);
-  }, [editMode, addingType, screenToNorm]);
+  }, [editMode, addingType, screenToNorm, drawingZone]);
 
   const handleSvgMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const norm = screenToNorm(e.clientX, e.clientY);
-    if (drawState) {
-      setDrawState(prev => prev ? { ...prev, cur: norm } : null);
+
+    // Drag facade zone corner point
+    const dp = draggingPtRef.current;
+    if (dp) {
+      setFacadeZones(prev => prev.map(z =>
+        z.id === dp.zoneId
+          ? { ...z, pts: z.pts.map((p, i) => i === dp.ptIdx ? norm : p) }
+          : z
+      ));
       return;
     }
-    if (!dragState) return;
-    const dx = norm.x - dragState.startNorm.x;
-    const dy = norm.y - dragState.startNorm.y;
-    const ob = dragState.origBbox;
+
+    // Draw new element preview
+    if (drawStateRef.current) {
+      drawStateRef.current = { ...drawStateRef.current, cur: norm };
+      setIsDrawing(v => !v); // toggle to force re-render
+      return;
+    }
+
+    // Drag existing element
+    const ds = dragStateRef.current;
+    if (!ds) return;
+    const dx = norm.x - ds.startNorm.x;
+    const dy = norm.y - ds.startNorm.y;
+    const ob = ds.origBbox;
     let nx = ob.x, ny = ob.y, nw = ob.w, nh = ob.h;
-    if (dragState.mode === "move") {
+    if (ds.mode === "move") {
       nx = Math.max(0, Math.min(1 - ob.w, ob.x + dx));
       ny = Math.max(0, Math.min(1 - ob.h, ob.y + dy));
-    } else if (dragState.mode === "tl") {
+    } else if (ds.mode === "tl") {
       const nnx = Math.min(ob.x + ob.w - 0.01, ob.x + dx);
       const nny = Math.min(ob.y + ob.h - 0.01, ob.y + dy);
       nw = ob.w + (ob.x - nnx); nh = ob.h + (ob.y - nny);
       nx = nnx; ny = nny;
-    } else if (dragState.mode === "tr") {
+    } else if (ds.mode === "tr") {
       const nny = Math.min(ob.y + ob.h - 0.01, ob.y + dy);
       nh = ob.h + (ob.y - nny); ny = nny;
       nw = Math.max(0.01, ob.w + dx);
-    } else if (dragState.mode === "bl") {
+    } else if (ds.mode === "bl") {
       const nnx = Math.min(ob.x + ob.w - 0.01, ob.x + dx);
       nw = ob.w + (ob.x - nnx); nx = nnx;
       nh = Math.max(0.01, ob.h + dy);
-    } else if (dragState.mode === "br") {
+    } else if (ds.mode === "br") {
       nw = Math.max(0.01, ob.w + dx);
       nh = Math.max(0.01, ob.h + dy);
     }
     setLocalElements(prev => prev.map(el =>
-      el.id === dragState.id ? { ...el, bbox_norm: { x: nx, y: ny, w: nw, h: nh } } : el
+      el.id === ds.id ? { ...el, bbox_norm: { x: nx, y: ny, w: nw, h: nh } } : el
     ));
-  }, [drawState, dragState, screenToNorm]);
+  }, [screenToNorm]);
 
   const handleSvgMouseUp = useCallback(() => {
-    if (drawState) {
-      const { startNorm, cur, type } = drawState;
+    draggingPtRef.current = null;
+    const ds = drawStateRef.current;
+    if (ds) {
+      const { startNorm, cur, type } = ds;
       const x = Math.min(startNorm.x, cur.x);
       const y = Math.min(startNorm.y, cur.y);
       const w = Math.abs(cur.x - startNorm.x);
       const h = Math.abs(cur.y - startNorm.y);
       if (w > 0.005 && h > 0.005) {
-        const newId = localElements.length > 0 ? Math.max(...localElements.map(e => e.id)) + 1 : 1;
-        const newEl: FacadeElement = {
-          id: newId, type: type as FacadeElement["type"],
-          label_fr: type, bbox_norm: { x, y, w, h },
-          area_m2: null, floor_level: 0,
-        };
-        setLocalElements(prev => [...prev, newEl]);
-        setSelectedEl(newId);
+        setLocalElements(prev => {
+          const newId = prev.length > 0 ? Math.max(...prev.map(e => e.id)) + 1 : 1;
+          const newEl: FacadeElement = {
+            id: newId, type: type as FacadeElement["type"],
+            label_fr: type, bbox_norm: { x, y, w, h },
+            area_m2: null, floor_level: 0,
+          };
+          setTimeout(() => setSelectedEl(newId), 0);
+          return [...prev, newEl];
+        });
       }
-      setDrawState(null);
+      drawStateRef.current = null;
+      setIsDrawing(false);
     }
-    setDragState(null);
-  }, [drawState, localElements]);
-
-  /* ── Isolation façade ── */
-  const [isoFacadeEpaisseur, setIsoFacadeEpaisseur] = useState(12); // cm
-
-  /* ── Isolation retours de fenêtres: largeurs + épaisseurs (cm) ── */
-  const [largTableau, setLargTableau] = useState(8);
-  const [largLinteau, setLargLinteau] = useState(5);
-  const [largAppui,   setLargAppui]   = useState(2);
-  const [epTableau,   setEpTableau]   = useState(3);
-  const [epLinteau,   setEpLinteau]   = useState(3);
-  const [epAppui,     setEpAppui]     = useState(3);
+    dragStateRef.current = null;
+    setIsDragging(false);
+  }, []);
 
   /* ── Derived: per-floor breakdown ── */
   const floorLevels = [...new Set(localElements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
@@ -340,83 +399,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     a.href = url; a.download = "facade_analysis.csv"; a.click();
     URL.revokeObjectURL(url);
     toast({ title: d("fa_export_csv"), variant: "success" });
-  };
-
-  /* ── Isolation: computed ── */
-  const ppm = result.pixels_per_meter;
-  const hasPpm = ppm != null && ppm > 0;
-
-  const openings = localElements.filter(e => e.type === "window" || e.type === "door");
-
-  const retourRows = useMemo(() => {
-    if (!hasPpm) return [];
-    return openings.map((el, idx) => {
-      const W_m = el.bbox_norm.w * imgNat.w / ppm!;
-      const H_m = el.bbox_norm.h * imgNat.h / ppm!;
-      const lonLinteau = W_m;
-      const lonAppui   = W_m;
-      const lonTableau = H_m * 2;
-      const surfLinteau = lonLinteau * (largLinteau / 100);
-      const surfAppui   = lonAppui   * (largAppui   / 100);
-      const surfTableau = lonTableau * (largTableau  / 100);
-      return {
-        idx: idx + 1, el, W_m, H_m,
-        lonLinteau, lonAppui, lonTableau,
-        surfLinteau, surfAppui, surfTableau,
-        totalSurf: surfLinteau + surfAppui + surfTableau,
-      };
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openings.length, imgNat.w, imgNat.h, ppm, largLinteau, largAppui, largTableau]);
-
-  const totalLonLinteau  = retourRows.reduce((s, r) => s + r.lonLinteau,  0);
-  const totalLonAppui    = retourRows.reduce((s, r) => s + r.lonAppui,    0);
-  const totalLonTableau  = retourRows.reduce((s, r) => s + r.lonTableau,  0);
-  const totalSurfLinteau = retourRows.reduce((s, r) => s + r.surfLinteau, 0);
-  const totalSurfAppui   = retourRows.reduce((s, r) => s + r.surfAppui,   0);
-  const totalSurfTableau = retourRows.reduce((s, r) => s + r.surfTableau, 0);
-  const totalSurfRetours = totalSurfLinteau + totalSurfAppui + totalSurfTableau;
-
-  const surfFacade     = result.facade_area_m2;
-  const surfOuvertures = result.openings_area_m2;
-  const surfMurNet     = surfFacade != null && surfOuvertures != null ? surfFacade - surfOuvertures : null;
-  const volumeIsoFacade = surfMurNet != null ? surfMurNet * (isoFacadeEpaisseur / 100) : null;
-
-  /* ── CSV retours de fenêtres ── */
-  const exportCSVRetours = () => {
-    if (!hasPpm || retourRows.length === 0) return;
-    const BOM = "\uFEFF";
-    const cols = [
-      d("fa_ret_opening_id"), d("fa_type"), d("fa_floor_level"),
-      d("fa_ret_w"), d("fa_ret_h"),
-      `${d("fa_ret_longueur")} Linteau`, `${d("fa_ret_surface")} Linteau`,
-      `${d("fa_ret_longueur")} Appui`,   `${d("fa_ret_surface")} Appui`,
-      `${d("fa_ret_longueur")} Tableau`, `${d("fa_ret_surface")} Tableau`,
-      `${d("fa_ret_surface")} Total`,
-    ];
-    const rows = retourRows.map(r => [
-      r.idx, d(TYPE_I18N[r.el.type] ?? "fa_other"), r.el.floor_level ?? 0,
-      r.W_m.toFixed(2), r.H_m.toFixed(2),
-      r.lonLinteau.toFixed(2), r.surfLinteau.toFixed(3),
-      r.lonAppui.toFixed(2),   r.surfAppui.toFixed(3),
-      r.lonTableau.toFixed(2), r.surfTableau.toFixed(3),
-      r.totalSurf.toFixed(3),
-    ].join(";"));
-    const recap = [
-      ";;;;;;;;;;;",
-      `${d("fa_ret_recap")};;;;;;;;;;`,
-      `Linteau;;;${totalLonLinteau.toFixed(2)};;;${totalSurfLinteau.toFixed(3)}`,
-      `Appui;;;${totalLonAppui.toFixed(2)};;;${totalSurfAppui.toFixed(3)}`,
-      `Tableau;;;${totalLonTableau.toFixed(2)};;;${totalSurfTableau.toFixed(3)}`,
-      `${d("fa_ret_total")};;;;;;;;;;;${totalSurfRetours.toFixed(3)}`,
-    ];
-    const csv = BOM + [cols.join(";"), ...rows, ...recap].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "isolation_retours_fenetres.csv"; a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: d("fa_ret_export"), variant: "success" });
   };
 
   /* ═══════════════════════════════════════════════ render ══ */
@@ -664,12 +646,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                               strokeOpacity={sel ? 1 : 0.85}
                               rx="2"
                               className={editMode ? "cursor-move" : "cursor-pointer"}
-                              onClick={ee => { if (!dragState) { ee.stopPropagation(); setSelectedEl(sel ? null : el.id); } }}
+                              onClick={ee => { if (!dragStateRef.current) { ee.stopPropagation(); setSelectedEl(sel ? null : el.id); } }}
                               onMouseDown={editMode ? ee => {
                                 ee.stopPropagation();
                                 const norm = screenToNorm(ee.clientX, ee.clientY);
                                 setSelectedEl(el.id);
-                                setDragState({ mode: "move", id: el.id, startNorm: norm, origBbox: el.bbox_norm });
+                                dragStateRef.current = { mode: "move", id: el.id, startNorm: norm, origBbox: el.bbox_norm };
+                                setIsDragging(true);
                               } : undefined}
                             />
                           );
@@ -713,19 +696,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                         onMouseDown={ee => {
                           ee.stopPropagation();
                           const norm = screenToNorm(ee.clientX, ee.clientY);
-                          setDragState({ mode: hh.mode, id: selectedEl!, startNorm: norm, origBbox: el.bbox_norm });
+                          dragStateRef.current = { mode: hh.mode, id: selectedEl!, startNorm: norm, origBbox: el.bbox_norm };
+                          setIsDragging(true);
                         }}
                       />
                     ));
                   })()}
 
                   {/* Draw preview (while adding new element) */}
-                  {drawState && (() => {
-                    const x = Math.min(drawState.startNorm.x, drawState.cur.x) * imgNat.w;
-                    const y = Math.min(drawState.startNorm.y, drawState.cur.y) * imgNat.h;
-                    const w = Math.abs(drawState.cur.x - drawState.startNorm.x) * imgNat.w;
-                    const h = Math.abs(drawState.cur.y - drawState.startNorm.y) * imgNat.h;
-                    const color = getColor(drawState.type);
+                  {isDrawing && drawStateRef.current && (() => {
+                    const ds = drawStateRef.current!;
+                    const x = Math.min(ds.startNorm.x, ds.cur.x) * imgNat.w;
+                    const y = Math.min(ds.startNorm.y, ds.cur.y) * imgNat.h;
+                    const w = Math.abs(ds.cur.x - ds.startNorm.x) * imgNat.w;
+                    const h = Math.abs(ds.cur.y - ds.startNorm.y) * imgNat.h;
+                    const color = getColor(ds.type);
                     return (
                       <rect x={x} y={y} width={w} height={h}
                         fill={color} fillOpacity={0.3}
@@ -733,6 +718,75 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                         style={{ pointerEvents: "none" }} />
                     );
                   })()}
+
+                  {/* Facade polygon zones */}
+                  {facadeZones.map(zone => {
+                    const ptStr = zone.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
+                    const sel = selectedZoneId === zone.id;
+                    const R = Math.max(5, imgNat.w * 0.007);
+                    return (
+                      <g key={zone.id}>
+                        <polygon points={ptStr}
+                          fill="#64748b" fillOpacity={sel ? 0.35 : 0.18}
+                          stroke={sel ? "#f59e0b" : "#94a3b8"}
+                          strokeWidth={sel ? 2 : 1.5}
+                          strokeDasharray={sel ? undefined : "7 3"}
+                          className="cursor-pointer"
+                          onClick={ee => { ee.stopPropagation(); setSelectedZoneId(zone.id === selectedZoneId ? null : zone.id); }}
+                        />
+                        {/* Draggable corner handles */}
+                        {zone.pts.map((pt, ptIdx) => (
+                          <circle key={ptIdx}
+                            cx={pt.x * imgNat.w} cy={pt.y * imgNat.h} r={R}
+                            fill="white" stroke="#f59e0b" strokeWidth={1.5}
+                            style={{ cursor: "move" }}
+                            onMouseDown={ee => {
+                              ee.stopPropagation();
+                              draggingPtRef.current = { zoneId: zone.id, ptIdx };
+                            }}
+                          />
+                        ))}
+                        {/* Area label */}
+                        {(() => {
+                          const a = facadeZoneAreaM2(zone.pts);
+                          const cx = zone.pts.reduce((s, p) => s + p.x, 0) / 4 * imgNat.w;
+                          const cy = zone.pts.reduce((s, p) => s + p.y, 0) / 4 * imgNat.h;
+                          return a > 0 ? (
+                            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+                              fill="#f59e0b" fontSize={Math.max(10, imgNat.w * 0.013)}
+                              fontFamily="monospace" fontWeight="bold"
+                              style={{ pointerEvents: "none" }}>
+                              {a.toFixed(1)} m²
+                            </text>
+                          ) : null;
+                        })()}
+                      </g>
+                    );
+                  })}
+
+                  {/* Pending polygon preview (drawingZone mode) */}
+                  {drawingZone && pendingPts.length > 0 && (
+                    <g>
+                      <polyline
+                        points={pendingPts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ")}
+                        fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 2"
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {pendingPts.map((pt, i) => (
+                        <circle key={i} cx={pt.x * imgNat.w} cy={pt.y * imgNat.h}
+                          r={5} fill="#f59e0b" fillOpacity={0.9}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      ))}
+                      <text
+                        x={pendingPts[pendingPts.length - 1].x * imgNat.w + 8}
+                        y={pendingPts[pendingPts.length - 1].y * imgNat.h - 6}
+                        fill="#f59e0b" fontSize={Math.max(9, imgNat.w * 0.011)}
+                        fontFamily="monospace" style={{ pointerEvents: "none" }}>
+                        {pendingPts.length}/4
+                      </text>
+                    </g>
+                  )}
                 </svg>
               )}
 
@@ -743,20 +797,35 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                 const Icon  = getIcon(el.type);
                 const color = getColor(el.type);
                 return (
-                  <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between
-                    bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 text-xs border border-white/10">
-                    <span className="flex items-center gap-1.5 text-slate-300 min-w-0">
-                      <Icon className="w-3 h-3 shrink-0" style={{ color }} />
-                      <span className="truncate" style={{ color }}>{d(TYPE_I18N[el.type] ?? "fa_other")}</span>
+                  <div className="absolute bottom-2 left-2 right-2 z-20 flex flex-wrap items-center gap-2
+                    bg-black/85 backdrop-blur-sm rounded-lg px-3 py-2 text-xs border border-white/10">
+                    {/* Type badge */}
+                    <span className="flex items-center gap-1 text-slate-300 shrink-0">
+                      <Icon className="w-3 h-3" style={{ color }} />
+                      <span style={{ color }}>{d(TYPE_I18N[el.type] ?? "fa_other")}</span>
                       {el.confidence != null && (
-                        <span className="text-slate-500 shrink-0">{(el.confidence * 100).toFixed(0)}%</span>
-                      )}
-                      {el.area_m2 != null && (
-                        <span className="text-slate-500 shrink-0 hidden sm:inline">· {el.area_m2.toFixed(2)} m²</span>
+                        <span className="text-slate-600">{(el.confidence * 100).toFixed(0)}%</span>
                       )}
                     </span>
-                    <div className="flex items-center gap-2 ml-2 shrink-0">
-                      {!editMode && <span className="text-slate-600 hidden sm:inline">⌫</span>}
+                    {/* Reclassify selector */}
+                    <select
+                      value={el.type}
+                      onChange={e2 => {
+                        const newType = e2.target.value as FacadeElement["type"];
+                        setLocalElements(prev => prev.map(x =>
+                          x.id === el.id ? { ...x, type: newType, label_fr: newType } : x
+                        ));
+                      }}
+                      className="flex-1 min-w-[100px] bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-white text-xs focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+                    >
+                      {(["window","door","balcony","floor_line","roof","column","other"] as ElementType[]).map(t => (
+                        <option key={t} value={t} style={{ background: "#1e293b" }}>
+                          {d(TYPE_I18N[t] ?? "fa_other")}
+                        </option>
+                      ))}
+                    </select>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                       <button
                         onClick={() => {
                           setLocalElements(prev => prev.filter(e => e.id !== selectedEl));
@@ -862,7 +931,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
               {/* ── Edit mode toggle ── */}
               <div className="border-t border-white/5 pt-3">
                 <button
-                  onClick={() => { setEditMode(v => !v); setAddingType(null); setDragState(null); setDrawState(null); }}
+                  onClick={() => {
+                    setEditMode(v => !v);
+                    setAddingType(null);
+                    dragStateRef.current = null; setIsDragging(false);
+                    drawStateRef.current = null; setIsDrawing(false);
+                    setDrawingZone(false); setPendingPts([]);
+                  }}
                   className={cn(
                     "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
                     editMode
@@ -901,6 +976,53 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
                   })}
                 </div>
               )}
+
+              {/* ── Facade polygon zones ── */}
+              <div className="border-t border-white/5 pt-3 space-y-2">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1"><Crop className="w-3 h-3" /> Zones façade</span>
+                  {totalFacadeZonesM2 > 0 && (
+                    <span className="font-mono text-amber-400">{totalFacadeZonesM2.toFixed(1)} m²</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setDrawingZone(v => !v);
+                    setPendingPts([]);
+                    setEditMode(false);
+                    setAddingType(null);
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    drawingZone
+                      ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                      : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                  )}>
+                  <PlusCircle className="w-3 h-3" />
+                  {drawingZone ? `Cliquer ${4 - pendingPts.length} point(s)…` : "Nouvelle façade"}
+                </button>
+                {facadeZones.length > 0 && (
+                  <div className="space-y-1">
+                    {facadeZones.map((zone, zi) => (
+                      <div key={zone.id}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all cursor-pointer",
+                          selectedZoneId === zone.id ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5"
+                        )}
+                        onClick={() => setSelectedZoneId(zone.id === selectedZoneId ? null : zone.id)}>
+                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: "#94a3b8", opacity: 0.75 }} />
+                        <span className="flex-1">Façade {zi + 1}</span>
+                        <span className="font-mono text-[10px] text-slate-500">
+                          {facadeZoneAreaM2(zone.pts).toFixed(1)} m²
+                        </span>
+                        <button
+                          onClick={e2 => { e2.stopPropagation(); setFacadeZones(prev => prev.filter(z => z.id !== zone.id)); if (selectedZoneId === zone.id) setSelectedZoneId(null); }}
+                          className="text-slate-600 hover:text-red-400 transition-colors px-0.5">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Reset / Restore buttons */}
               <div className="mt-auto flex flex-col gap-1.5">
@@ -1007,7 +1129,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
 
       {/* ── ITE & Retours de tableau ── */}
       <div className="mb-4">
-        <FacadeIsolationPanel result={result} />
+        <FacadeIsolationPanel
+          result={result}
+          localElements={localElements}
+          facadeAreaOverride={totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : null}
+        />
       </div>
 
       {/* ── Dashboard Overview ── */}
@@ -1018,174 +1144,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
       {/* ── Métré (surfaces) ── */}
       <div className="mb-4">
         <FacadeMetrePanel result={result} />
-      </div>
-
-      {/* ── Isolation façade ── */}
-      <div className="glass rounded-2xl border border-amber-500/20 p-6 mb-4">
-        <h3 className="font-display text-lg font-700 text-white mb-5 flex items-center gap-2">
-          <Layers className="w-5 h-5 text-amber-400" />
-          {d("fa_iso_facade_title")}
-        </h3>
-        {surfMurNet == null ? (
-          <p className="text-sm text-slate-500">{d("fa_iso_no_area")}</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-              <div className="glass rounded-xl border border-white/5 p-4 text-center">
-                <div className="text-xs text-slate-500 mb-1">{d("fa_facade_area")}</div>
-                <div className="text-xl font-display font-700 text-white">{surfFacade!.toFixed(1)} m²</div>
-              </div>
-              <div className="glass rounded-xl border border-white/5 p-4 text-center">
-                <div className="text-xs text-slate-500 mb-1">{d("fa_openings_area")}</div>
-                <div className="text-xl font-display font-700 text-blue-400">
-                  {surfOuvertures!.toFixed(1)} m²
-                  {result.ratio_openings != null && (
-                    <span className="text-sm text-slate-500 ml-1">({(result.ratio_openings * 100).toFixed(0)}%)</span>
-                  )}
-                </div>
-              </div>
-              <div className="glass rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-center">
-                <div className="text-xs text-amber-400/70 mb-1">{d("fa_iso_facade_net")}</div>
-                <div className="text-xl font-display font-700 text-amber-300">{surfMurNet.toFixed(1)} m²</div>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-400">{d("fa_iso_facade_epaisseur")}</span>
-                <NumInput value={isoFacadeEpaisseur} onChange={setIsoFacadeEpaisseur} min={1} step={1} />
-              </div>
-              {volumeIsoFacade != null && (
-                <div className="glass rounded-lg border border-amber-400/20 bg-amber-400/5 px-4 py-2 flex items-center gap-2">
-                  <span className="text-xs text-slate-500">{d("fa_iso_facade_volume")}</span>
-                  <span className="text-base font-display font-700 text-amber-300">{volumeIsoFacade.toFixed(2)} m³</span>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Isolation retours de fenêtres ── */}
-      <div className="glass rounded-2xl border border-blue-500/20 p-6 mb-4">
-        <h3 className="font-display text-lg font-700 text-white mb-5 flex items-center gap-2">
-          <SquareDashedBottom className="w-5 h-5 text-blue-400" />
-          {d("fa_ret_title")}
-        </h3>
-        {!hasPpm ? (
-          <div className="flex items-center gap-2 text-sm text-amber-400/80">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            {d("fa_ret_no_ppm")}
-          </div>
-        ) : (
-          <>
-            {/* 6 inputs: 2 rows × 3 cols */}
-            <div className="overflow-x-auto mb-6">
-              <table className="text-sm">
-                <thead>
-                  <tr className="text-slate-400 text-xs">
-                    <th className="text-left pr-6 py-1 font-medium w-48"></th>
-                    <th className="text-center px-3 py-1 font-medium text-blue-300">{d("fa_ret_tableau")}</th>
-                    <th className="text-center px-3 py-1 font-medium text-pink-300">{d("fa_ret_linteau")}</th>
-                    <th className="text-center px-3 py-1 font-medium text-emerald-300">{d("fa_ret_appui")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="pr-6 py-2 text-slate-400 text-xs">{d("fa_ret_largeur")}</td>
-                    <td className="px-3 py-2 text-center"><NumInput value={largTableau} onChange={setLargTableau} /></td>
-                    <td className="px-3 py-2 text-center"><NumInput value={largLinteau} onChange={setLargLinteau} /></td>
-                    <td className="px-3 py-2 text-center"><NumInput value={largAppui}   onChange={setLargAppui}   /></td>
-                  </tr>
-                  <tr>
-                    <td className="pr-6 py-2 text-slate-400 text-xs">{d("fa_ret_epaisseur")}</td>
-                    <td className="px-3 py-2 text-center"><NumInput value={epTableau}   onChange={setEpTableau}   /></td>
-                    <td className="px-3 py-2 text-center"><NumInput value={epLinteau}   onChange={setEpLinteau}   /></td>
-                    <td className="px-3 py-2 text-center"><NumInput value={epAppui}     onChange={setEpAppui}     /></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {openings.length === 0 ? (
-              <p className="text-sm text-slate-500 mb-4">Aucune ouverture détectée.</p>
-            ) : (
-              <>
-                {/* Per-opening detail */}
-                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                  {d("fa_ret_per_opening")}
-                </h4>
-                <div className="overflow-x-auto mb-6 rounded-xl border border-white/5">
-                  <table className="w-full text-xs font-mono">
-                    <thead>
-                      <tr className="bg-white/3 text-slate-500 border-b border-white/5">
-                        <th className="text-center py-2 px-2">{d("fa_ret_opening_id")}</th>
-                        <th className="text-left   py-2 px-2">{d("fa_type")}</th>
-                        <th className="text-center py-2 px-2">{d("fa_floor_level")}</th>
-                        <th className="text-center py-2 px-2">{d("fa_ret_w")}</th>
-                        <th className="text-center py-2 px-2">{d("fa_ret_h")}</th>
-                        <th className="text-center py-2 px-2 text-pink-400/60">L.Lin (m)</th>
-                        <th className="text-center py-2 px-2 text-pink-400/60">S.Lin (m²)</th>
-                        <th className="text-center py-2 px-2 text-emerald-400/60">L.App (m)</th>
-                        <th className="text-center py-2 px-2 text-emerald-400/60">S.App (m²)</th>
-                        <th className="text-center py-2 px-2 text-blue-400/60">L.Tab (m)</th>
-                        <th className="text-center py-2 px-2 text-blue-400/60">S.Tab (m²)</th>
-                        <th className="text-center py-2 px-2 text-amber-400/80">Total (m²)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {retourRows.map(r => (
-                        <tr key={r.el.id} className="border-b border-white/5 hover:bg-white/2">
-                          <td className="text-center py-1.5 px-2 text-slate-400">{r.idx}</td>
-                          <td className="text-left   py-1.5 px-2" style={{ color: getColor(r.el.type) }}>
-                            {d(TYPE_I18N[r.el.type] ?? "fa_other")}
-                          </td>
-                          <td className="text-center py-1.5 px-2 text-slate-400">
-                            {r.el.floor_level === 0 ? d("fa_rdc") : r.el.floor_level}
-                          </td>
-                          <td className="text-center py-1.5 px-2 text-white">{r.W_m.toFixed(2)}</td>
-                          <td className="text-center py-1.5 px-2 text-white">{r.H_m.toFixed(2)}</td>
-                          <td className="text-center py-1.5 px-2 text-pink-300">{r.lonLinteau.toFixed(2)}</td>
-                          <td className="text-center py-1.5 px-2 text-pink-300">{r.surfLinteau.toFixed(3)}</td>
-                          <td className="text-center py-1.5 px-2 text-emerald-300">{r.lonAppui.toFixed(2)}</td>
-                          <td className="text-center py-1.5 px-2 text-emerald-300">{r.surfAppui.toFixed(3)}</td>
-                          <td className="text-center py-1.5 px-2 text-blue-300">{r.lonTableau.toFixed(2)}</td>
-                          <td className="text-center py-1.5 px-2 text-blue-300">{r.surfTableau.toFixed(3)}</td>
-                          <td className="text-center py-1.5 px-2 text-amber-300 font-semibold">{r.totalSurf.toFixed(3)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Global recap */}
-                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">
-                  {d("fa_ret_recap")}
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                  {[
-                    { label: d("fa_ret_linteau"), lon: totalLonLinteau, surf: totalSurfLinteau, color: "text-pink-300",    border: "border-pink-400/20" },
-                    { label: d("fa_ret_appui"),   lon: totalLonAppui,   surf: totalSurfAppui,   color: "text-emerald-300", border: "border-emerald-400/20" },
-                    { label: d("fa_ret_tableau"), lon: totalLonTableau, surf: totalSurfTableau, color: "text-blue-300",   border: "border-blue-400/20" },
-                  ].map(({ label, lon, surf, color, border }) => (
-                    <div key={label} className={cn("glass rounded-xl border p-3 text-center", border)}>
-                      <div className="text-xs text-slate-500 mb-1">{label}</div>
-                      <div className={cn("text-sm font-display font-700", color)}>{lon.toFixed(2)} ml</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{surf.toFixed(3)} m²</div>
-                    </div>
-                  ))}
-                  <div className="glass rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 text-center">
-                    <div className="text-xs text-amber-400/70 mb-1">{d("fa_ret_total")}</div>
-                    <div className="text-lg font-display font-700 text-amber-300">{totalSurfRetours.toFixed(2)} m²</div>
-                  </div>
-                </div>
-
-                <Button variant="outline" size="sm" onClick={exportCSVRetours} className="text-xs">
-                  <Download className="w-3 h-3" /> {d("fa_ret_export")}
-                </Button>
-              </>
-            )}
-          </>
-        )}
       </div>
 
       {/* ── 3D Facade View ── */}
