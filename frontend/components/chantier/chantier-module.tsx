@@ -393,12 +393,14 @@ export default function ChantierModule({ rooms, openings, imgWidth=0, imgHeight=
         <span className={cn("text-lg font-700 font-mono flex-shrink-0",progressionGlobale(projet)===100?"text-emerald-400":"text-white")}>{progressionGlobale(projet)}%</span>
         <div className="flex items-center gap-1 flex-shrink-0">
           {/* Indicateur de sync */}
-          {syncing
-            ? <Cloud className="w-3.5 h-3.5 text-slate-500 animate-pulse" title="Synchronisation…"/>
-            : syncError
-            ? <CloudOff className="w-3.5 h-3.5 text-red-400" title="Erreur de sync — données sauvegardées localement"/>
-            : <Cloud className="w-3.5 h-3.5 text-emerald-500/70" title="Synchronisé"/>
-          }
+          <span title={syncing ? "Synchronisation…" : syncError ? "Erreur de sync — données sauvegardées localement" : "Synchronisé"}>
+            {syncing
+              ? <Cloud className="w-3.5 h-3.5 text-slate-500 animate-pulse"/>
+              : syncError
+              ? <CloudOff className="w-3.5 h-3.5 text-red-400"/>
+              : <Cloud className="w-3.5 h-3.5 text-emerald-500/70"/>
+            }
+          </span>
           {hasPlan&&onglet==="avancement"&&<div className="flex items-center glass border border-white/10 rounded-lg p-0.5 mr-1"><button onClick={()=>setView("liste")} className={cn("px-2 py-1 rounded text-xs font-medium transition-colors",view==="liste"?"bg-white/15 text-white":"text-slate-500 hover:text-white")}>Liste</button><button onClick={()=>setView("plan")} className={cn("px-2 py-1 rounded text-xs font-medium transition-colors",view==="plan"?"bg-white/15 text-white":"text-slate-500 hover:text-white")}>Plan</button></div>}
           <button onClick={exportJson} title="Exporter JSON" className="text-slate-500 hover:text-white p-1.5 transition-colors"><Download className="w-4 h-4"/></button>
           <button onClick={resetProjet} title="Réinitialiser" className="text-slate-500 hover:text-red-400 p-1.5 transition-colors"><RotateCcw className="w-4 h-4"/></button>
