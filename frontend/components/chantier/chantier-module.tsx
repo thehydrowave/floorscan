@@ -23,7 +23,7 @@ import {
   Clock, AlertCircle, Circle, PenLine, X, Save,
   ClipboardList, Layers, RotateCcw, Download,
   Package, AlertTriangle, BarChart3,
-  Truck, Wrench, MessageSquare,
+  Truck, Wrench, MessageSquare, Cloud, CloudOff,
 } from "lucide-react";
 
 const STATUT_ICONS: Record<TacheStatut, React.ReactNode> = {
@@ -33,6 +33,31 @@ const STATUT_ICONS: Record<TacheStatut, React.ReactNode> = {
 function getNextStatut(s: TacheStatut): TacheStatut { const o: TacheStatut[] = ["a_faire","en_cours","termine","bloque"]; return o[(o.indexOf(s)+1)%o.length]; }
 function ProgressBar({ value, className }: { value: number; className?: string }) { const c = value===100?"#10B981":value>60?"#3B82F6":value>30?"#F59E0B":"#94A3B8"; return <div className={cn("h-1.5 bg-white/5 rounded-full overflow-hidden",className)}><div className="h-full rounded-full transition-all duration-500" style={{width:`${value}%`,background:c}}/></div>; }
 function fmt(n: number) { return new Intl.NumberFormat("fr-FR",{maximumFractionDigits:0}).format(n); }
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function apiLoad(): Promise<ChantierProjet | null> {
+  try {
+    const res = await fetch("/api/chantier");
+    if (!res.ok) return null;
+    const { data } = await res.json();
+    return data as ChantierProjet | null;
+  } catch { return null; }
+}
+
+async function apiSave(projet: ChantierProjet): Promise<void> {
+  try {
+    const { planImageB64: _img, ...safe } = projet as any;
+    await fetch("/api/chantier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(safe),
+    });
+  } catch { /* silencieux */ }
+}
+
+async function apiDelete(): Promise<void> {
+  try { await fetch("/api/chantier", { method: "DELETE" }); } catch { /* silencieux */ }
+}
 
 function TacheRow({ tache, onUpdate, onDelete }: { tache: ChantierTache; onUpdate: (t: ChantierTache) => void; onDelete: () => void }) {
   const [editing, setEditing] = useState(false);
@@ -268,20 +293,74 @@ export interface ChantierModuleProps {
 
 export default function ChantierModule({ rooms, openings, imgWidth=0, imgHeight=0, planB64, planMime="image/png", sessionId, pixelsPerMeter }: ChantierModuleProps) {
   const [projet,setProjet]=useState<ChantierProjet|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [syncing,setSyncing]=useState(false);
+  const [syncError,setSyncError]=useState(false);
   const [onglet,setOnglet]=useState<"avancement"|"inventaire"|"reserves">("avancement");
   const [expandedIds,setExpandedIds]=useState<Set<string>>(new Set());
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [view,setView]=useState<"liste"|"plan">("liste");
   const [showNew,setShowNew]=useState(false); const [nomProjet,setNomProjet]=useState("");
   const [addingPiece,setAddingPiece]=useState(false); const [newPieceNom,setNewPieceNom]=useState("");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+
   const openingRefs: OpeningRef[]=(openings??[]).map(o=>({class:o.class,x_px:o.x_px,y_px:o.y_px,width_px:o.width_px,height_px:o.height_px,width_m:o.width_m,height_m:o.height_m}));
-  useEffect(()=>{try{const raw=localStorage.getItem(CHANTIER_STORAGE_KEY);if(raw)setProjet(JSON.parse(raw));}catch{}},[]);
-  const save=useCallback((p:ChantierProjet)=>{setProjet(p);try{localStorage.setItem(CHANTIER_STORAGE_KEY,JSON.stringify(p));}catch{}},[]);
+
+  // ── Chargement initial : API d'abord, fallback localStorage ──
+  useEffect(()=>{
+    (async()=>{
+      setLoading(true);
+      // Essayer l'API Neon
+      const remote = await apiLoad();
+      if (remote) {
+        setProjet(remote);
+        setLoading(false);
+        return;
+      }
+      // Fallback localStorage
+      try {
+        const raw = localStorage.getItem(CHANTIER_STORAGE_KEY);
+        if (raw) setProjet(JSON.parse(raw));
+      } catch { /* silencieux */ }
+      setLoading(false);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // ── Sauvegarde : debounce 1.5s → API + localStorage ──
+  const save = useCallback((p: ChantierProjet) => {
+    setProjet(p);
+    // localStorage immédiat (backup local)
+    try { localStorage.setItem(CHANTIER_STORAGE_KEY, JSON.stringify(p)); } catch { /* silencieux */ }
+    // API Neon avec debounce pour éviter les appels excessifs
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      setSyncing(true);
+      setSyncError(false);
+      try {
+        await apiSave(p);
+      } catch {
+        setSyncError(true);
+      } finally {
+        setSyncing(false);
+      }
+    }, 1500);
+  }, []);
+
   const initFromRooms=()=>{const p=createProjet(nomProjet||"Mon chantier");p.planImageB64=planB64??undefined;p.planImageMime=planMime;p.sessionId=sessionId??undefined;p.pixelsPerMeter=pixelsPerMeter??undefined;if(rooms?.length)p.pieces=rooms.map(r=>createPieceFromRoom(r,openingRefs,imgWidth,imgHeight));setExpandedIds(new Set(p.pieces.map(pc=>pc.id)));save(p);setShowNew(false);setNomProjet("");};
   const initManuel=()=>{const p=createProjet(nomProjet||"Mon chantier");save(p);setShowNew(false);setNomProjet("");};
   const addPieceManuelle=()=>{if(!projet||!newPieceNom.trim())return;const piece=createPieceManuelle(newPieceNom.trim());save({...projet,pieces:[...projet.pieces,piece],updatedAt:new Date().toISOString()});setExpandedIds(prev=>new Set([...prev,piece.id]));setNewPieceNom("");setAddingPiece(false);};
   const exportJson=()=>{if(!projet)return;const{planImageB64:_,...safe}=projet as any;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(safe,null,2)],{type:"application/json"}));a.download=`chantier_${projet.nom.replace(/\s+/g,"_")}.json`;a.click();};
-  const resetProjet=()=>{if(!confirm("Supprimer le suivi de chantier ?"))return;localStorage.removeItem(CHANTIER_STORAGE_KEY);setProjet(null);};
+  const resetProjet=async()=>{if(!confirm("Supprimer le suivi de chantier ?"))return;localStorage.removeItem(CHANTIER_STORAGE_KEY);await apiDelete();setProjet(null);};
+
+  if (loading) {
+    return (
+      <div className="max-w-lg mx-auto flex flex-col items-center justify-center py-20 gap-3">
+        <Cloud className="w-8 h-8 text-slate-500 animate-pulse"/>
+        <p className="text-slate-400 text-sm">Chargement du chantier…</p>
+      </div>
+    );
+  }
 
   if(!projet) {
     const openingsCount=openingRefs.length;
@@ -313,6 +392,13 @@ export default function ChantierModule({ rooms, openings, imgWidth=0, imgHeight=
         <div className="flex-1 min-w-0"><span className="text-white font-semibold truncate block">{projet.nom}</span><ProgressBar value={progressionGlobale(projet)} className="mt-1"/></div>
         <span className={cn("text-lg font-700 font-mono flex-shrink-0",progressionGlobale(projet)===100?"text-emerald-400":"text-white")}>{progressionGlobale(projet)}%</span>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Indicateur de sync */}
+          {syncing
+            ? <Cloud className="w-3.5 h-3.5 text-slate-500 animate-pulse" title="Synchronisation…"/>
+            : syncError
+            ? <CloudOff className="w-3.5 h-3.5 text-red-400" title="Erreur de sync — données sauvegardées localement"/>
+            : <Cloud className="w-3.5 h-3.5 text-emerald-500/70" title="Synchronisé"/>
+          }
           {hasPlan&&onglet==="avancement"&&<div className="flex items-center glass border border-white/10 rounded-lg p-0.5 mr-1"><button onClick={()=>setView("liste")} className={cn("px-2 py-1 rounded text-xs font-medium transition-colors",view==="liste"?"bg-white/15 text-white":"text-slate-500 hover:text-white")}>Liste</button><button onClick={()=>setView("plan")} className={cn("px-2 py-1 rounded text-xs font-medium transition-colors",view==="plan"?"bg-white/15 text-white":"text-slate-500 hover:text-white")}>Plan</button></div>}
           <button onClick={exportJson} title="Exporter JSON" className="text-slate-500 hover:text-white p-1.5 transition-colors"><Download className="w-4 h-4"/></button>
           <button onClick={resetProjet} title="Réinitialiser" className="text-slate-500 hover:text-red-400 p-1.5 transition-colors"><RotateCcw className="w-4 h-4"/></button>
