@@ -6,6 +6,7 @@ import {
   ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
   LayoutPanelTop, Columns2, Frame, Box, HelpCircle, Trash2,
+  SquareDashedBottom,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -65,6 +66,19 @@ const TYPE_I18N: Record<string, DTKey> = {
   column:     "fa_column",
   other:      "fa_other",
 };
+
+/* ── Small number input ── */
+function NumInput({
+  value, onChange, min = 0, step = 0.5,
+}: { value: number; onChange: (v: number) => void; min?: number; step?: number }) {
+  return (
+    <input
+      type="number" min={min} step={step} value={value}
+      onChange={e => onChange(parseFloat(e.target.value) || 0)}
+      className="w-16 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-center text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+    />
+  );
+}
 
 /* ── KPI icons + Tailwind colors ── */
 const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
@@ -173,6 +187,17 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     return () => window.removeEventListener("keydown", handle);
   }, [viewTab, selectedEl]);
 
+  /* ── Isolation façade ── */
+  const [isoFacadeEpaisseur, setIsoFacadeEpaisseur] = useState(12); // cm
+
+  /* ── Isolation retours de fenêtres: largeurs + épaisseurs (cm) ── */
+  const [largTableau, setLargTableau] = useState(8);
+  const [largLinteau, setLargLinteau] = useState(5);
+  const [largAppui,   setLargAppui]   = useState(2);
+  const [epTableau,   setEpTableau]   = useState(3);
+  const [epLinteau,   setEpLinteau]   = useState(3);
+  const [epAppui,     setEpAppui]     = useState(3);
+
   /* ── Derived: per-floor breakdown ── */
   const floorLevels = [...new Set(result.elements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
   const floorData = floorLevels.map(level => {
@@ -204,6 +229,83 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
     a.href = url; a.download = "facade_analysis.csv"; a.click();
     URL.revokeObjectURL(url);
     toast({ title: d("fa_export_csv"), variant: "success" });
+  };
+
+  /* ── Isolation: computed ── */
+  const ppm = result.pixels_per_meter;
+  const hasPpm = ppm != null && ppm > 0;
+
+  const openings = result.elements.filter(e => e.type === "window" || e.type === "door");
+
+  const retourRows = useMemo(() => {
+    if (!hasPpm) return [];
+    return openings.map((el, idx) => {
+      const W_m = el.bbox_norm.w * imgNat.w / ppm!;
+      const H_m = el.bbox_norm.h * imgNat.h / ppm!;
+      const lonLinteau = W_m;
+      const lonAppui   = W_m;
+      const lonTableau = H_m * 2;
+      const surfLinteau = lonLinteau * (largLinteau / 100);
+      const surfAppui   = lonAppui   * (largAppui   / 100);
+      const surfTableau = lonTableau * (largTableau  / 100);
+      return {
+        idx: idx + 1, el, W_m, H_m,
+        lonLinteau, lonAppui, lonTableau,
+        surfLinteau, surfAppui, surfTableau,
+        totalSurf: surfLinteau + surfAppui + surfTableau,
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openings.length, imgNat.w, imgNat.h, ppm, largLinteau, largAppui, largTableau]);
+
+  const totalLonLinteau  = retourRows.reduce((s, r) => s + r.lonLinteau,  0);
+  const totalLonAppui    = retourRows.reduce((s, r) => s + r.lonAppui,    0);
+  const totalLonTableau  = retourRows.reduce((s, r) => s + r.lonTableau,  0);
+  const totalSurfLinteau = retourRows.reduce((s, r) => s + r.surfLinteau, 0);
+  const totalSurfAppui   = retourRows.reduce((s, r) => s + r.surfAppui,   0);
+  const totalSurfTableau = retourRows.reduce((s, r) => s + r.surfTableau, 0);
+  const totalSurfRetours = totalSurfLinteau + totalSurfAppui + totalSurfTableau;
+
+  const surfFacade     = result.facade_area_m2;
+  const surfOuvertures = result.openings_area_m2;
+  const surfMurNet     = surfFacade != null && surfOuvertures != null ? surfFacade - surfOuvertures : null;
+  const volumeIsoFacade = surfMurNet != null ? surfMurNet * (isoFacadeEpaisseur / 100) : null;
+
+  /* ── CSV retours de fenêtres ── */
+  const exportCSVRetours = () => {
+    if (!hasPpm || retourRows.length === 0) return;
+    const BOM = "\uFEFF";
+    const cols = [
+      d("fa_ret_opening_id"), d("fa_type"), d("fa_floor_level"),
+      d("fa_ret_w"), d("fa_ret_h"),
+      `${d("fa_ret_longueur")} Linteau`, `${d("fa_ret_surface")} Linteau`,
+      `${d("fa_ret_longueur")} Appui`,   `${d("fa_ret_surface")} Appui`,
+      `${d("fa_ret_longueur")} Tableau`, `${d("fa_ret_surface")} Tableau`,
+      `${d("fa_ret_surface")} Total`,
+    ];
+    const rows = retourRows.map(r => [
+      r.idx, d(TYPE_I18N[r.el.type] ?? "fa_other"), r.el.floor_level ?? 0,
+      r.W_m.toFixed(2), r.H_m.toFixed(2),
+      r.lonLinteau.toFixed(2), r.surfLinteau.toFixed(3),
+      r.lonAppui.toFixed(2),   r.surfAppui.toFixed(3),
+      r.lonTableau.toFixed(2), r.surfTableau.toFixed(3),
+      r.totalSurf.toFixed(3),
+    ].join(";"));
+    const recap = [
+      ";;;;;;;;;;;",
+      `${d("fa_ret_recap")};;;;;;;;;;`,
+      `Linteau;;;${totalLonLinteau.toFixed(2)};;;${totalSurfLinteau.toFixed(3)}`,
+      `Appui;;;${totalLonAppui.toFixed(2)};;;${totalSurfAppui.toFixed(3)}`,
+      `Tableau;;;${totalLonTableau.toFixed(2)};;;${totalSurfTableau.toFixed(3)}`,
+      `${d("fa_ret_total")};;;;;;;;;;;${totalSurfRetours.toFixed(3)}`,
+    ];
+    const csv = BOM + [cols.join(";"), ...rows, ...recap].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "isolation_retours_fenetres.csv"; a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: d("fa_ret_export"), variant: "success" });
   };
 
   /* ═══════════════════════════════════════════════ render ══ */
@@ -672,6 +774,174 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart }: Fac
       {/* ── Métré (surfaces) ── */}
       <div className="mb-4">
         <FacadeMetrePanel result={result} />
+      </div>
+
+      {/* ── Isolation façade ── */}
+      <div className="glass rounded-2xl border border-amber-500/20 p-6 mb-4">
+        <h3 className="font-display text-lg font-700 text-white mb-5 flex items-center gap-2">
+          <Layers className="w-5 h-5 text-amber-400" />
+          {d("fa_iso_facade_title")}
+        </h3>
+        {surfMurNet == null ? (
+          <p className="text-sm text-slate-500">{d("fa_iso_no_area")}</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+              <div className="glass rounded-xl border border-white/5 p-4 text-center">
+                <div className="text-xs text-slate-500 mb-1">{d("fa_facade_area")}</div>
+                <div className="text-xl font-display font-700 text-white">{surfFacade!.toFixed(1)} m²</div>
+              </div>
+              <div className="glass rounded-xl border border-white/5 p-4 text-center">
+                <div className="text-xs text-slate-500 mb-1">{d("fa_openings_area")}</div>
+                <div className="text-xl font-display font-700 text-blue-400">
+                  {surfOuvertures!.toFixed(1)} m²
+                  {result.ratio_openings != null && (
+                    <span className="text-sm text-slate-500 ml-1">({(result.ratio_openings * 100).toFixed(0)}%)</span>
+                  )}
+                </div>
+              </div>
+              <div className="glass rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 text-center">
+                <div className="text-xs text-amber-400/70 mb-1">{d("fa_iso_facade_net")}</div>
+                <div className="text-xl font-display font-700 text-amber-300">{surfMurNet.toFixed(1)} m²</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-400">{d("fa_iso_facade_epaisseur")}</span>
+                <NumInput value={isoFacadeEpaisseur} onChange={setIsoFacadeEpaisseur} min={1} step={1} />
+              </div>
+              {volumeIsoFacade != null && (
+                <div className="glass rounded-lg border border-amber-400/20 bg-amber-400/5 px-4 py-2 flex items-center gap-2">
+                  <span className="text-xs text-slate-500">{d("fa_iso_facade_volume")}</span>
+                  <span className="text-base font-display font-700 text-amber-300">{volumeIsoFacade.toFixed(2)} m³</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Isolation retours de fenêtres ── */}
+      <div className="glass rounded-2xl border border-blue-500/20 p-6 mb-4">
+        <h3 className="font-display text-lg font-700 text-white mb-5 flex items-center gap-2">
+          <SquareDashedBottom className="w-5 h-5 text-blue-400" />
+          {d("fa_ret_title")}
+        </h3>
+        {!hasPpm ? (
+          <div className="flex items-center gap-2 text-sm text-amber-400/80">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            {d("fa_ret_no_ppm")}
+          </div>
+        ) : (
+          <>
+            {/* 6 inputs: 2 rows × 3 cols */}
+            <div className="overflow-x-auto mb-6">
+              <table className="text-sm">
+                <thead>
+                  <tr className="text-slate-400 text-xs">
+                    <th className="text-left pr-6 py-1 font-medium w-48"></th>
+                    <th className="text-center px-3 py-1 font-medium text-blue-300">{d("fa_ret_tableau")}</th>
+                    <th className="text-center px-3 py-1 font-medium text-pink-300">{d("fa_ret_linteau")}</th>
+                    <th className="text-center px-3 py-1 font-medium text-emerald-300">{d("fa_ret_appui")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="pr-6 py-2 text-slate-400 text-xs">{d("fa_ret_largeur")}</td>
+                    <td className="px-3 py-2 text-center"><NumInput value={largTableau} onChange={setLargTableau} /></td>
+                    <td className="px-3 py-2 text-center"><NumInput value={largLinteau} onChange={setLargLinteau} /></td>
+                    <td className="px-3 py-2 text-center"><NumInput value={largAppui}   onChange={setLargAppui}   /></td>
+                  </tr>
+                  <tr>
+                    <td className="pr-6 py-2 text-slate-400 text-xs">{d("fa_ret_epaisseur")}</td>
+                    <td className="px-3 py-2 text-center"><NumInput value={epTableau}   onChange={setEpTableau}   /></td>
+                    <td className="px-3 py-2 text-center"><NumInput value={epLinteau}   onChange={setEpLinteau}   /></td>
+                    <td className="px-3 py-2 text-center"><NumInput value={epAppui}     onChange={setEpAppui}     /></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {openings.length === 0 ? (
+              <p className="text-sm text-slate-500 mb-4">Aucune ouverture détectée.</p>
+            ) : (
+              <>
+                {/* Per-opening detail */}
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
+                  {d("fa_ret_per_opening")}
+                </h4>
+                <div className="overflow-x-auto mb-6 rounded-xl border border-white/5">
+                  <table className="w-full text-xs font-mono">
+                    <thead>
+                      <tr className="bg-white/3 text-slate-500 border-b border-white/5">
+                        <th className="text-center py-2 px-2">{d("fa_ret_opening_id")}</th>
+                        <th className="text-left   py-2 px-2">{d("fa_type")}</th>
+                        <th className="text-center py-2 px-2">{d("fa_floor_level")}</th>
+                        <th className="text-center py-2 px-2">{d("fa_ret_w")}</th>
+                        <th className="text-center py-2 px-2">{d("fa_ret_h")}</th>
+                        <th className="text-center py-2 px-2 text-pink-400/60">L.Lin (m)</th>
+                        <th className="text-center py-2 px-2 text-pink-400/60">S.Lin (m²)</th>
+                        <th className="text-center py-2 px-2 text-emerald-400/60">L.App (m)</th>
+                        <th className="text-center py-2 px-2 text-emerald-400/60">S.App (m²)</th>
+                        <th className="text-center py-2 px-2 text-blue-400/60">L.Tab (m)</th>
+                        <th className="text-center py-2 px-2 text-blue-400/60">S.Tab (m²)</th>
+                        <th className="text-center py-2 px-2 text-amber-400/80">Total (m²)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {retourRows.map(r => (
+                        <tr key={r.el.id} className="border-b border-white/5 hover:bg-white/2">
+                          <td className="text-center py-1.5 px-2 text-slate-400">{r.idx}</td>
+                          <td className="text-left   py-1.5 px-2" style={{ color: getColor(r.el.type) }}>
+                            {d(TYPE_I18N[r.el.type] ?? "fa_other")}
+                          </td>
+                          <td className="text-center py-1.5 px-2 text-slate-400">
+                            {r.el.floor_level === 0 ? d("fa_rdc") : r.el.floor_level}
+                          </td>
+                          <td className="text-center py-1.5 px-2 text-white">{r.W_m.toFixed(2)}</td>
+                          <td className="text-center py-1.5 px-2 text-white">{r.H_m.toFixed(2)}</td>
+                          <td className="text-center py-1.5 px-2 text-pink-300">{r.lonLinteau.toFixed(2)}</td>
+                          <td className="text-center py-1.5 px-2 text-pink-300">{r.surfLinteau.toFixed(3)}</td>
+                          <td className="text-center py-1.5 px-2 text-emerald-300">{r.lonAppui.toFixed(2)}</td>
+                          <td className="text-center py-1.5 px-2 text-emerald-300">{r.surfAppui.toFixed(3)}</td>
+                          <td className="text-center py-1.5 px-2 text-blue-300">{r.lonTableau.toFixed(2)}</td>
+                          <td className="text-center py-1.5 px-2 text-blue-300">{r.surfTableau.toFixed(3)}</td>
+                          <td className="text-center py-1.5 px-2 text-amber-300 font-semibold">{r.totalSurf.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Global recap */}
+                <h4 className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-3">
+                  {d("fa_ret_recap")}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                  {[
+                    { label: d("fa_ret_linteau"), lon: totalLonLinteau, surf: totalSurfLinteau, color: "text-pink-300",    border: "border-pink-400/20" },
+                    { label: d("fa_ret_appui"),   lon: totalLonAppui,   surf: totalSurfAppui,   color: "text-emerald-300", border: "border-emerald-400/20" },
+                    { label: d("fa_ret_tableau"), lon: totalLonTableau, surf: totalSurfTableau, color: "text-blue-300",   border: "border-blue-400/20" },
+                  ].map(({ label, lon, surf, color, border }) => (
+                    <div key={label} className={cn("glass rounded-xl border p-3 text-center", border)}>
+                      <div className="text-xs text-slate-500 mb-1">{label}</div>
+                      <div className={cn("text-sm font-display font-700", color)}>{lon.toFixed(2)} ml</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{surf.toFixed(3)} m²</div>
+                    </div>
+                  ))}
+                  <div className="glass rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 text-center">
+                    <div className="text-xs text-amber-400/70 mb-1">{d("fa_ret_total")}</div>
+                    <div className="text-lg font-display font-700 text-amber-300">{totalSurfRetours.toFixed(2)} m²</div>
+                  </div>
+                </div>
+
+                <Button variant="outline" size="sm" onClick={exportCSVRetours} className="text-xs">
+                  <Download className="w-3 h-3" /> {d("fa_ret_export")}
+                </Button>
+              </>
+            )}
+          </>
+        )}
       </div>
 
       {/* ── 3D Facade View ── */}
