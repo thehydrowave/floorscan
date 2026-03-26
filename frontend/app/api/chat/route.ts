@@ -116,6 +116,46 @@ function buildContext(data: any): string {
     }
   }
 
+  // Surfaces par type de revêtement
+  if (data.surface_zones?.length) {
+    lines.push(`\n## Surfaces par type de revêtement`);
+    for (const s of data.surface_zones) {
+      lines.push(`- ${s.typeName} : ${s.totalArea?.toFixed(2) ?? "?"} m² (${s.zoneCount} zones)`);
+    }
+  }
+
+  // Mesures linéaires
+  if (data.linear_measurements?.length) {
+    lines.push(`\n## Mesures linéaires (${data.linear_measurements.length})`);
+    data.linear_measurements.forEach((lm: any, i: number) => {
+      lines.push(`- Mesure ${i + 1} : ${lm.distanceM?.toFixed(2) ?? "?"} m`);
+    });
+  }
+
+  // Mesures d'angles
+  if (data.angle_measurements?.length) {
+    lines.push(`\n## Mesures d'angles (${data.angle_measurements.length})`);
+    data.angle_measurements.forEach((am: any, i: number) => {
+      lines.push(`- Angle ${i + 1} : ${am.angleDeg?.toFixed(1) ?? "?"}°`);
+    });
+  }
+
+  // Comptages par catégorie
+  if (data.count_annotations?.length) {
+    lines.push(`\n## Comptages`);
+    for (const c of data.count_annotations) {
+      lines.push(`- ${c.name} : ${c.count}`);
+    }
+  }
+
+  // Détections personnalisées (visual search)
+  if (data.custom_detections?.length) {
+    lines.push(`\n## Détections personnalisées`);
+    for (const det of data.custom_detections) {
+      lines.push(`- ${det.label} : ${det.count}${det.area_m2 != null ? ` (${det.area_m2.toFixed(2)} m²)` : ""}`);
+    }
+  }
+
   // Échelle
   if (data.pixels_per_meter) {
     lines.push(`\n## Échelle : ${data.pixels_per_meter} px/m`);

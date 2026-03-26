@@ -1324,7 +1324,7 @@ export const DEMO_T = {
   re_csv_ok:              { fr:"CSV exporté ✓",                        en:"CSV exported ✓",                    es:"CSV exportado ✓",                     de:"CSV exportiert ✓",                   it:"CSV esportato ✓"                      },
 
   // ── Editor mask tools ─────────────────────────────────────────────────
-  ed_element:             { fr:"Élément",                              en:"Element",                           es:"Elemento",                            de:"Element",                            it:"Elemento"                             },
+  ed_element:             { fr:"Modification",                         en:"Edit layer",                        es:"Modificar",                           de:"Bearbeitung",                        it:"Modifica"                             },
   ed_concrete:            { fr:"Béton",                                en:"Concrete",                          es:"Hormigón",                            de:"Beton",                              it:"Cemento"                              },
   ed_partitions:          { fr:"Cloisons",                             en:"Partitions",                        es:"Tabiques",                            de:"Trennwände",                         it:"Tramezzi"                             },
   ed_draw:                { fr:"Dessiner",                             en:"Draw",                              es:"Dibujar",                             de:"Zeichnen",                           it:"Disegnare"                            },
