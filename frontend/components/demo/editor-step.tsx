@@ -1557,8 +1557,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
-            <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).map(l => {
               const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string; tooltip: string }> = {
                 door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", tooltip: "Portes : dessinez, effacez ou corrigez les masques de portes d\u00e9tect\u00e9es par l'IA" },
@@ -1579,9 +1579,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
                   <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
                     title={m.tooltip}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                       layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-                    <m.Icon className={cn("w-3 h-3 shrink-0", m.iconColor)} />
+                    <m.Icon className={cn("w-4 h-4 shrink-0", m.iconColor)} />
                     <span className={layer === l ? "" : "text-slate-400"}>{m.label}</span>
                   </button>
                 </span>
@@ -2177,6 +2177,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         <circle cx={ax} cy={ay} r={3} fill="#f59e0b80" />
                         <circle cx={cx} cy={cy} r={3} fill="#f59e0b80" />
                         <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}°</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              {/* SVG overlay for count points — separate to allow pointer-events */}
+              {imgDisplaySize.w > 0 && countPoints.length > 0 && (
+                <svg
+                  className="absolute top-0 left-0"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 3, pointerEvents: "none" }}
+                >
+                  {countPoints.filter(cp => countGroupVisibility[cp.groupId] !== false).map(cp => {
+                    const grp = countGroups.find(g => g.id === cp.groupId);
+                    const color = grp?.color ?? "#38bdf8";
+                    const px = cp.x * imgDisplaySize.w;
+                    const py = cp.y * imgDisplaySize.h;
+                    const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
+                    const label = grp?.name ?? "";
+                    return (
+                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setCountPoints(prev => prev.filter(p => p.id !== cp.id))}>
+                        <circle cx={px} cy={py} r={14} fill={color} fillOpacity={0.4} stroke={color} strokeWidth={2.5} />
+                        <text x={px} y={py + 4.5} textAnchor="middle" fill="white" fontSize={10} fontWeight="800" fontFamily="monospace">{num}</text>
+                        <rect x={px + 16} y={py - 8} width={label.length * 6 + 8} height={16} rx={4} fill="black" fillOpacity={0.7} style={{ pointerEvents: "none" }} />
+                        <text x={px + 20} y={py + 4} fill={color} fontSize={9} fontWeight="700" fontFamily="system-ui" style={{ pointerEvents: "none" }}>{label}</text>
                       </g>
                     );
                   })}
@@ -3100,6 +3129,86 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           <PenLine className="w-3 h-3" /> {d("ed_trace_poly")}
                         </button>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VISIBILITY: Count, Surfaces, Detections toggles */}
+              {sidebarTab === "visibility" && (
+                <div className="glass rounded-xl border border-white/10 p-4 space-y-3">
+                  <p className="text-xs font-600 text-slate-500 uppercase tracking-wide">Affichage</p>
+
+                  {/* Count groups toggle */}
+                  {countGroups.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Comptages</p>
+                      {countGroups.map(grp => {
+                        const visible = countGroupVisibility[grp.id] !== false;
+                        const count = countPoints.filter(p => p.groupId === grp.id).length;
+                        return (
+                          <button key={grp.id}
+                            onClick={() => setCountGroupVisibility(prev => ({ ...prev, [grp.id]: !visible }))}
+                            className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                              visible ? "opacity-100" : "opacity-40")}>
+                            <div className="w-3 h-3 rounded-full shrink-0" style={{ background: grp.color }} />
+                            <span className="flex-1 text-left text-slate-300 truncate">{grp.name}</span>
+                            <span className="font-mono text-[10px] text-slate-500">{count}</span>
+                            {visible ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Surfaces toggle */}
+                  {zones.filter(z => z.typeId !== "__count__").length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Surfaces</p>
+                      <button
+                        onClick={() => setShowSurfaces(v => !v)}
+                        className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                          showSurfaces ? "opacity-100" : "opacity-40")}>
+                        <PaintBucket className="w-3.5 h-3.5 text-violet-400" />
+                        <span className="flex-1 text-left text-slate-300">Zones de surface</span>
+                        <span className="font-mono text-[10px] text-slate-500">{zones.filter(z => z.typeId !== "__count__").length}</span>
+                        {showSurfaces ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Custom detections toggle */}
+                  {customDetections.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Détections personnalisées</p>
+                      {customDetections.map(det => (
+                        <div key={det.label} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ background: det.color }} />
+                          <span className="flex-1 truncate">{det.label}</span>
+                          <span className="font-mono text-[10px] text-slate-500">×{det.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Linear/angle measurements */}
+                  {(linearMeasures.length > 0 || angleMeasures.length > 0) && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Mesures</p>
+                      {linearMeasures.length > 0 && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <Ruler className="w-3.5 h-3.5 text-sky-400" />
+                          <span className="flex-1">Distances</span>
+                          <span className="font-mono text-[10px] text-slate-500">{linearMeasures.length}</span>
+                        </div>
+                      )}
+                      {angleMeasures.length > 0 && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <Compass className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="flex-1">Angles</span>
+                          <span className="font-mono text-[10px] text-slate-500">{angleMeasures.length}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
