@@ -79,14 +79,14 @@ const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
 /* ── Mask layer definitions (Masques tab) ── */
 interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
 const MASK_LAYERS: MaskLayerDef[] = [
-  { id: "surface_murale", label: "Surface murale", icon: Building2,      color: "#64748b", isSurface: true },
-  { id: "window",         label: "Fenêtres",        icon: AppWindow,      color: "#60a5fa" },
-  { id: "door",           label: "Portes",           icon: DoorOpen,       color: "#f472b6" },
-  { id: "balcony",        label: "Balcons",          icon: LayoutPanelTop, color: "#34d399" },
-  { id: "column",         label: "Colonnes",         icon: Columns2,       color: "#94a3b8" },
-  { id: "roof",           label: "Toit",             icon: Frame,          color: "#a78bfa" },
-  { id: "floor_line",     label: "Lignes d'étage",   icon: Layers,         color: "#fb923c" },
-  { id: "other",          label: "Autres",           icon: HelpCircle,     color: "#fbbf24" },
+  { id: "surface_murale", label: "Mur opaque",              icon: Building2,      color: "#64748b", isSurface: true },
+  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#60a5fa" },
+  { id: "door",           label: "Portes",                  icon: DoorOpen,       color: "#f472b6" },
+  { id: "balcony",        label: "Balcons",                 icon: LayoutPanelTop, color: "#34d399" },
+  { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
+  { id: "roof",           label: "Toiture",                 icon: Frame,          color: "#a78bfa" },
+  { id: "floor_line",     label: "Séparations d'étage",     icon: Layers,         color: "#fb923c" },
+  { id: "other",          label: "Ouvertures détectées",    icon: HelpCircle,     color: "#fbbf24" },
 ];
 
 interface FacadeResultsStepProps {
@@ -903,16 +903,19 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             </div>
 
             {/* Right: layer panel */}
-            <div className="lg:w-64 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+            <div className="lg:w-72 shrink-0 glass rounded-xl border border-white/10 p-4 flex flex-col gap-4">
 
-              {/* ── CALQUES : afficher/masquer chaque type ── */}
-              <div className="group/section relative">
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <Eye className="w-4 h-4" /> Calques
+              {/* ── AFFICHAGE DES CALQUES ── */}
+              <div>
+                <div className="text-sm font-semibold text-slate-300 mb-1.5 flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-slate-400" /> Affichage des calques
                 </div>
-                <p className="text-[10px] text-slate-600 mb-2">Cliquez sur un calque pour le masquer ou l'afficher sur l'image.</p>
+                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                  Chaque calque correspond à un type de zone sur la façade.
+                  Cliquez sur un calque pour le masquer ou le réafficher sur l'image.
+                </p>
 
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {filteredMaskLayers.map(layer => {
                     const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
                     if (!hasAny) return null;
@@ -925,7 +928,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
 
                     return (
                       <button key={layer.id}
-                        title={layerHidden ? `Afficher ${layer.label}` : `Masquer ${layer.label}`}
+                        title={layerHidden
+                          ? `Réafficher le calque "${layer.label}" sur l'image de façade`
+                          : `Masquer le calque "${layer.label}" — les zones de ce type seront cachées sur l'image`}
                         onClick={() => {
                           setHiddenLayers(prev => {
                             const n = new Set(prev);
@@ -940,32 +945,33 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                           });
                         }}
                         className={cn(
-                          "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all hover:bg-white/5",
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all hover:bg-white/5",
                           layerHidden ? "opacity-40" : "opacity-100"
                         )}>
-                        <div className="w-4 h-4 rounded shrink-0"
-                          style={{ background: layer.color, opacity: 0.75 }} />
-                        <Icon className="w-4 h-4 shrink-0" style={{ color: layer.color }} />
+                        <div className="w-5 h-5 rounded shrink-0"
+                          style={{ background: layer.color, opacity: 0.8 }} />
+                        <Icon className="w-5 h-5 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
                         {activeCount != null && (
-                          <span className="font-mono text-slate-500 shrink-0 text-[10px]">
+                          <span className="font-mono text-slate-500 shrink-0 text-xs">
                             {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
                           </span>
                         )}
                         {layerHidden
-                          ? <EyeOff className="w-4 h-4 shrink-0 text-slate-600" />
-                          : <Eye    className="w-4 h-4 shrink-0 text-slate-400" />}
+                          ? <EyeOff className="w-5 h-5 shrink-0 text-slate-600" />
+                          : <Eye    className="w-5 h-5 shrink-0 text-slate-400" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* ── SURFACE MURALE : stats ── */}
+              {/* ── SURFACE MUR OPAQUE ── */}
               {!hiddenLayers.has("surface_murale") && (
-                <div className="border-t border-white/5 pt-3 space-y-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Surface mur opaque</div>
-                  <div className="text-sm font-mono font-semibold text-slate-200">
+                <div className="border-t border-white/5 pt-3 space-y-1"
+                  title="Surface du mur opaque = surface totale de la façade moins les ouvertures (fenêtres, portes, balcons). C'est la surface à isoler.">
+                  <div className="text-xs text-slate-500 uppercase tracking-wider">Surface mur opaque</div>
+                  <div className="text-base font-mono font-semibold text-slate-200">
                     {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
                   </div>
                   {result.facade_area_m2 && wallAreaM2 != null && (
@@ -976,12 +982,17 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 </div>
               )}
 
-              {/* ── MODE ÉDITION : déplacer, redimensionner, reclasser ── */}
+              {/* ── MODIFICATION DES ZONES ── */}
               <div className="border-t border-white/5 pt-3">
+                <div className="text-sm font-semibold text-slate-300 mb-1.5 flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-blue-400" /> Modification des zones
+                </div>
+                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                  Activez le mode édition pour corriger les zones détectées par l'IA :
+                  déplacer, redimensionner ou changer le type d'une zone.
+                </p>
                 <button
-                  title={editMode
-                    ? "Désactiver le mode édition"
-                    : "Activer le mode édition pour déplacer, redimensionner et reclasser les zones détectées"}
+                  title="Mode édition : une fois activé, vous pouvez glisser-déposer les rectangles pour les déplacer, tirer les coins blancs pour les redimensionner, et utiliser le menu déroulant pour changer le type (fenêtre → porte, etc.)"
                   onClick={() => {
                     setEditMode(v => !v);
                     setAddingType(null);
@@ -990,47 +1001,50 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setDrawingZone(false); setPendingPts([]);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-2.5 text-sm px-4 py-3 rounded-xl border transition-all font-medium",
                     editMode
                       ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <Pencil className="w-4 h-4" />
-                  {editMode ? "Mode édition actif" : "Modifier les zones"}
+                  <Pencil className="w-5 h-5" />
+                  {editMode ? "Mode édition actif" : "Activer l'édition"}
                 </button>
                 {editMode && (
-                  <p className="text-[10px] text-slate-600 mt-1.5 px-1">
-                    Glissez une zone pour la déplacer. Tirez les coins pour redimensionner. Cliquez pour reclasser le type.
+                  <p className="text-[11px] text-blue-300/70 mt-2 px-1 leading-relaxed">
+                    Glissez une zone pour la déplacer.
+                    Tirez les coins blancs pour redimensionner.
+                    Cliquez sur une zone puis changez son type dans la barre en bas.
                   </p>
                 )}
               </div>
 
-              {/* ── DESSINER UN ÉLÉMENT : ajouter manuellement des zones ── */}
+              {/* ── AJOUT MANUEL DE ZONES ── */}
               {editMode && (
-                <div className="space-y-1.5">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                    <PlusCircle className="w-4 h-4" /> Dessiner un élément
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                    <PlusCircle className="w-5 h-5 text-emerald-400" /> Ajout manuel
                   </div>
-                  <p className="text-[10px] text-slate-600 px-0.5">
-                    Sélectionnez un type puis dessinez un rectangle sur l'image pour ajouter manuellement une zone.
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    L'IA a raté une fenêtre ou une porte ? Sélectionnez un type ci-dessous
+                    puis dessinez un rectangle directement sur l'image pour l'ajouter.
                   </p>
                   {MASK_LAYERS.filter(l => !l.isSurface && l.id !== "floor_line").map(layer => {
                     const Icon = layer.icon;
                     const active = addingType === layer.id;
                     return (
                       <button key={layer.id}
-                        title={`Dessiner un rectangle "${layer.label}" sur l'image`}
+                        title={`Cliquez ici puis dessinez un rectangle sur l'image pour ajouter une zone "${layer.label}". Maintenez le clic et glissez pour dessiner le rectangle.`}
                         onClick={() => setAddingType(active ? null : layer.id)}
                         className={cn(
-                          "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all border",
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all border",
                           active
                             ? "bg-white/10 border-white/25 text-white"
                             : "border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
                         )}>
-                        <div className="w-4 h-4 rounded shrink-0" style={{ background: layer.color }} />
-                        <Icon className="w-4 h-4 shrink-0" style={{ color: layer.color }} />
+                        <div className="w-5 h-5 rounded shrink-0" style={{ background: layer.color, opacity: 0.8 }} />
+                        <Icon className="w-5 h-5 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left truncate">{layer.label}</span>
-                        {active && <span className="text-[10px] text-sky-400 shrink-0 animate-pulse">Dessiner...</span>}
+                        {active && <span className="text-xs text-sky-400 shrink-0 animate-pulse">Dessiner...</span>}
                       </button>
                     );
                   })}
@@ -1039,17 +1053,18 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
 
               {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
               <div className="border-t border-white/5 pt-3 space-y-2">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-1.5"><Crop className="w-4 h-4" /> Délimiter la façade</span>
+                <div className="text-sm font-semibold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Crop className="w-5 h-5 text-amber-400" /> Délimitation façade</span>
                   {totalFacadeZonesM2 > 0 && (
-                    <span className="font-mono text-amber-400">{totalFacadeZonesM2.toFixed(1)} m²</span>
+                    <span className="font-mono text-amber-400 text-sm">{totalFacadeZonesM2.toFixed(1)} m²</span>
                   )}
                 </div>
-                <p className="text-[10px] text-slate-600 px-0.5">
-                  Tracez un polygone à 4 points pour délimiter la surface de façade à isoler.
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Tracez un polygone à 4 points pour délimiter manuellement le contour de la façade.
+                  La surface calculée remplacera celle de l'IA pour le calcul d'isolation.
                 </p>
                 <button
-                  title="Cliquez puis placez 4 points sur l'image pour délimiter la zone de façade"
+                  title="Cliquez sur ce bouton, puis placez 4 points directement sur l'image pour tracer le contour de la façade. Les coins sont ensuite déplaçables. Vous pouvez ajouter plusieurs zones."
                   onClick={() => {
                     setDrawingZone(v => !v);
                     setPendingPts([]);
@@ -1057,13 +1072,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setAddingType(null);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-2.5 text-sm px-4 py-3 rounded-xl border transition-all font-medium",
                     drawingZone
                       ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <PlusCircle className="w-4 h-4" />
-                  {drawingZone ? `Placez ${4 - pendingPts.length} point(s)...` : "Nouvelle zone façade"}
+                  <PlusCircle className="w-5 h-5" />
+                  {drawingZone ? `Placez ${4 - pendingPts.length} point(s)...` : "Tracer une zone façade"}
                 </button>
                 {facadeZones.length > 0 && (
                   <div className="space-y-1">
@@ -1090,20 +1105,20 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               </div>
 
               {/* ── ANNULER / RÉINITIALISER ── */}
-              <div className="mt-auto flex flex-col gap-1.5">
+              <div className="mt-auto flex flex-col gap-2">
                 {hiddenElements.size > 0 && (
                   <button
-                    title={`Réafficher les ${hiddenElements.size} zone(s) masquée(s)`}
+                    title={`Vous avez masqué ${hiddenElements.size} zone(s). Cliquez ici pour toutes les réafficher sur l'image.`}
                     onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
-                    className="flex items-center justify-center gap-2 text-xs text-slate-500
-                      hover:text-slate-300 transition-colors py-2 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-2.5 text-sm text-slate-500
+                      hover:text-slate-300 transition-colors py-2.5 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RotateCcw className="w-4 h-4" /> Réafficher les zones masquées ({hiddenElements.size})
+                    <RotateCcw className="w-5 h-5" /> Réafficher {hiddenElements.size} zone(s) masquée(s)
                   </button>
                 )}
                 {localElements.length !== result.elements.length && (
                   <button
-                    title="Revenir aux zones détectées par l'IA (annule toutes les modifications)"
+                    title="Annule toutes vos modifications (déplacements, redimensionnements, ajouts, suppressions) et revient aux zones détectées automatiquement par l'IA."
                     onClick={() => {
                       setLocalElements(result.elements);
                       setHiddenElements(new Set());
@@ -1111,10 +1126,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       setEditMode(false);
                       setAddingType(null);
                     }}
-                    className="flex items-center justify-center gap-2 text-xs text-slate-600
-                      hover:text-slate-400 transition-colors py-2 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-2.5 text-sm text-slate-600
+                      hover:text-slate-400 transition-colors py-2.5 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RefreshCw className="w-4 h-4" /> Revenir à la détection IA
+                    <RefreshCw className="w-5 h-5" /> Revenir à la détection IA
                   </button>
                 )}
               </div>
