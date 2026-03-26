@@ -908,11 +908,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* ── AFFICHAGE DES CALQUES ── */}
               <div>
                 <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
-                  <Eye className="w-6 h-6 text-slate-400" /> Affichage des calques
+                  <Eye className="w-6 h-6 text-slate-400" /> {d("fa_layer_display" as DTKey)}
                 </div>
                 <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-                  Chaque calque correspond à un type de zone sur la façade.
-                  Cliquez sur un calque pour le masquer ou le réafficher sur l'image.
+                  {d("fa_layer_desc" as DTKey)}
                 </p>
 
                 <div className="space-y-1">
@@ -985,11 +984,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* ── MODIFICATION DES ZONES ── */}
               <div className="border-t border-white/5 pt-3">
                 <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
-                  <Pencil className="w-6 h-6 text-blue-400" /> Modification des zones
+                  <Pencil className="w-6 h-6 text-blue-400" /> {d("fa_edit_zones" as DTKey)}
                 </div>
                 <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-                  Activez le mode édition pour corriger les zones détectées par l'IA :
-                  déplacer, redimensionner ou changer le type d'une zone.
+                  {d("fa_edit_desc" as DTKey)}
                 </p>
                 <button
                   title="Mode édition : une fois activé, vous pouvez glisser-déposer les rectangles pour les déplacer, tirer les coins blancs pour les redimensionner, et utiliser le menu déroulant pour changer le type (fenêtre → porte, etc.)"
@@ -1007,13 +1005,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
                   <Pencil className="w-6 h-6" />
-                  {editMode ? "Mode édition actif" : "Activer l'édition"}
+                  {editMode ? d("fa_edit_active" as DTKey) : d("fa_edit_enable" as DTKey)}
                 </button>
                 {editMode && (
                   <p className="text-[11px] text-blue-300/70 mt-2 px-1 leading-relaxed">
-                    Glissez une zone pour la déplacer.
-                    Tirez les coins blancs pour redimensionner.
-                    Cliquez sur une zone puis changez son type dans la barre en bas.
+                    {d("fa_edit_hint" as DTKey)}
                   </p>
                 )}
               </div>
@@ -1022,11 +1018,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {editMode && (
                 <div className="space-y-2">
                   <div className="text-base font-semibold text-slate-200 flex items-center gap-2.5">
-                    <PlusCircle className="w-6 h-6 text-emerald-400" /> Ajout manuel
+                    <PlusCircle className="w-6 h-6 text-emerald-400" /> {d("fa_add_manual" as DTKey)}
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    L'IA a raté une fenêtre ou une porte ? Sélectionnez un type ci-dessous
-                    puis dessinez un rectangle directement sur l'image pour l'ajouter.
+                    {d("fa_add_desc" as DTKey)}
                   </p>
                   {MASK_LAYERS.filter(l => !l.isSurface && l.id !== "floor_line").map(layer => {
                     const Icon = layer.icon;
@@ -1054,14 +1049,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
               <div className="border-t border-white/5 pt-3 space-y-2">
                 <div className="text-base font-semibold text-slate-200 flex items-center justify-between">
-                  <span className="flex items-center gap-2.5"><Crop className="w-6 h-6 text-amber-400" /> Délimitation façade</span>
+                  <span className="flex items-center gap-2.5"><Crop className="w-6 h-6 text-amber-400" /> {d("fa_delim_facade" as DTKey)}</span>
                   {totalFacadeZonesM2 > 0 && (
                     <span className="font-mono text-amber-400 text-sm">{totalFacadeZonesM2.toFixed(1)} m²</span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Tracez un polygone à 4 points pour délimiter manuellement le contour de la façade.
-                  La surface calculée remplacera celle de l'IA pour le calcul d'isolation.
+                  {d("fa_delim_desc" as DTKey)}
                 </p>
                 <button
                   title="Cliquez sur ce bouton, puis placez 4 points directement sur l'image pour tracer le contour de la façade. Les coins sont ensuite déplaçables. Vous pouvez ajouter plusieurs zones."
@@ -1113,7 +1107,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     className="flex items-center justify-center gap-3 text-sm text-slate-500
                       hover:text-slate-300 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RotateCcw className="w-6 h-6" /> Réafficher {hiddenElements.size} zone(s) masquée(s)
+                    <RotateCcw className="w-6 h-6" /> {d("fa_restore" as DTKey)} ({hiddenElements.size})
                   </button>
                 )}
                 {localElements.length !== result.elements.length && (
@@ -1129,7 +1123,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     className="flex items-center justify-center gap-3 text-sm text-slate-600
                       hover:text-slate-400 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RefreshCw className="w-6 h-6" /> Revenir à la détection IA
+                    <RefreshCw className="w-6 h-6" /> {d("fa_reset_ia" as DTKey)}
                   </button>
                 )}
               </div>

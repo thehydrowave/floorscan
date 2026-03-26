@@ -1013,7 +1013,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         // Validate: check if the selected room exists and the line crosses its polygon
         const room = (result.rooms ?? []).find(r => r.id === selectedRoomId);
         if (!room || !room.polygon_norm) {
-          toast({ title: "Sélectionnez d'abord une pièce à découper", variant: "error" });
+          toast({ title: d("ed_select_room_first" as DTKey), variant: "error" });
           setTool("select");
           return;
         }
@@ -1021,7 +1021,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         const p1In = pointInPolygon(cutPoints[0].x, cutPoints[0].y, room.polygon_norm);
         const p2In = pointInPolygon(cutPoints[1].x, cutPoints[1].y, room.polygon_norm);
         if (!p1In && !p2In) {
-          toast({ title: "La ligne de coupe ne traverse pas la pièce", description: "Tracez une ligne qui passe à travers la pièce sélectionnée", variant: "error" });
+          toast({ title: d("ed_cut_no_cross" as DTKey), description: d("ed_cut_no_cross_d" as DTKey), variant: "error" });
           setTool("select");
           return;
         }
@@ -1871,8 +1871,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <Scissors className="w-4 h-4 text-orange-400" />
                   <span className="text-sm text-orange-300">
                     {pts.current.length === 0
-                      ? "Cliquez le 1er point de la ligne de coupe"
-                      : "Cliquez le 2ème point pour couper la pièce"}
+                      ? d("ed_cut_pt1" as DTKey)
+                      : d("ed_cut_pt2" as DTKey)}
                   </span>
                   <kbd className="text-[10px] px-1.5 py-0.5 border border-white/20 rounded bg-white/5 text-slate-400 pointer-events-auto cursor-pointer"
                     onClick={() => { setTool("select"); pts.current = []; }}>Echap</kbd>
@@ -2810,7 +2810,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                               </div>
                               {/* Type de sol */}
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">Sol :</span>
+                                <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">{d("ed_floor_type" as DTKey)}</span>
                                 <select
                                   value={room.surfaceTypeId ?? ""}
                                   title="Assigner un type de revêtement de sol à cette pièce. Une zone de surface sera automatiquement créée à partir du contour de la pièce."
@@ -2999,7 +2999,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <div className="border-t border-white/5 pt-2 mt-2 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <Hash className="w-3 h-3" /> Catégories d'annotations
+                        <Hash className="w-3 h-3" /> {d("ed_annot_cats" as DTKey)}
                       </span>
                       <button
                         title="Ajouter une catégorie d'annotation (ex: Prises, Radiateurs, Spots...)"
@@ -3062,16 +3062,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         <span className="text-[10px] text-slate-500">Total : {countPoints.length} points</span>
                         <button onClick={() => setCountPoints([])}
                           className="text-[10px] text-slate-600 hover:text-red-400 transition-colors">
-                          Tout effacer
+                          {d("ed_annot_clear" as DTKey)}
                         </button>
                       </div>
                     )}
                   </div>
                   <p className="text-[10px] text-slate-600 leading-relaxed mt-2">
-                    {tool === "linear" && "Distance : cliquez 2 points pour mesurer"}
-                    {tool === "count" && `Annotation : cliquez sur le plan pour placer un point "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
-                    {tool === "rescale" && "Recalibrer : cliquez 2 points d'une distance connue"}
-                    {tool === "angle" && "Angle : cliquez 3 points (départ, sommet, arrivée)"}
+                    {tool === "linear" && d("ed_dist_help" as DTKey)}
+                    {tool === "count" && `${d("ed_annot_help" as DTKey)} "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
+                    {tool === "rescale" && d("ed_rescale_help" as DTKey)}
+                    {tool === "angle" && d("ed_angle_help" as DTKey)}
                   </p>
                 </div>
               )}
@@ -3137,12 +3137,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {/* VISIBILITY: Count, Surfaces, Detections toggles */}
               {sidebarTab === "visibility" && (
                 <div className="glass rounded-xl border border-white/10 p-4 space-y-3">
-                  <p className="text-xs font-600 text-slate-500 uppercase tracking-wide">Affichage</p>
+                  <p className="text-xs font-600 text-slate-500 uppercase tracking-wide">{d("ed_display" as DTKey)}</p>
 
                   {/* Count groups toggle */}
                   {countGroups.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Annotations</p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_annotations" as DTKey)}</p>
                       {countGroups.map(grp => {
                         const visible = countGroupVisibility[grp.id] !== false;
                         const count = countPoints.filter(p => p.groupId === grp.id).length;
@@ -3180,7 +3180,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Custom detections toggle */}
                   {customDetections.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Détections personnalisées</p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_custom_det" as DTKey)}</p>
                       {customDetections.map(det => (
                         <div key={det.label} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
                           <div className="w-3 h-3 rounded-full shrink-0" style={{ background: det.color }} />
@@ -3194,18 +3194,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Linear/angle measurements */}
                   {(linearMeasures.length > 0 || angleMeasures.length > 0) && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Mesures</p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_measures" as DTKey)}</p>
                       {linearMeasures.length > 0 && (
                         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
                           <Ruler className="w-3.5 h-3.5 text-sky-400" />
-                          <span className="flex-1">Distances</span>
+                          <span className="flex-1">{d("ed_distances" as DTKey)}</span>
                           <span className="font-mono text-[10px] text-slate-500">{linearMeasures.length}</span>
                         </div>
                       )}
                       {angleMeasures.length > 0 && (
                         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
                           <Compass className="w-3.5 h-3.5 text-amber-400" />
-                          <span className="flex-1">Angles</span>
+                          <span className="flex-1">{d("ed_angles" as DTKey)}</span>
                           <span className="font-mono text-[10px] text-slate-500">{angleMeasures.length}</span>
                         </div>
                       )}
