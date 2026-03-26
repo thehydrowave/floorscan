@@ -1569,7 +1569,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent",      tooltip: "Surface habitable : dessinez ou corrigez le masque de la surface int\u00e9rieure habitable" },
                 rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400",  tooltip: "Pi\u00e8ces : s\u00e9lectionnez, renommez, d\u00e9coupez ou fusionnez les pi\u00e8ces d\u00e9tect\u00e9es. Shift+clic pour fusionner." },
                 surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400",  tooltip: "Surfaces : dessinez des zones de rev\u00eatement (carrelage, parquet, peinture...) pour le m\u00e9tr\u00e9" },
-                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400",     tooltip: "Outils de mesure : distance, angle, comptage et recalibrage de l'\u00e9chelle" },
+                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400",     tooltip: "Outils de mesure : distance, angle, annotations et recalibrage de l'\u00e9chelle" },
               };
               const m = layerMeta[l];
               // Separator before surface & utilities
@@ -1777,7 +1777,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </>
               )}
 
-              {/* ── Outils UTILITIES (lin\u00e9aire, comptage, angle, \u00e9chelle) ── */}
+              {/* ── Outils UTILITIES (lin\u00e9aire, annotations, angle, \u00e9chelle) ── */}
               {layer === "utilities" && (
                 <>
                   <button onClick={() => setTool("linear")}
@@ -1793,7 +1793,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     <Compass className="w-2.5 h-2.5" /> {d("ut_angle" as DTKey)}
                   </button>
                   <button onClick={() => setTool("count")}
-                    title="Comptage : cliquez sur le plan pour placer des points de comptage. Créez des catégories (prises, radiateurs, etc.) dans le panneau latéral"
+                    title="Annotation : cliquez sur le plan pour placer des points. Créez des catégories (prises, radiateurs, etc.) dans le panneau latéral"
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Hash className="w-2.5 h-2.5" /> {d("ut_count" as DTKey)}
@@ -2999,12 +2999,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <div className="border-t border-white/5 pt-2 mt-2 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                        <Hash className="w-3 h-3" /> Catégories de comptage
+                        <Hash className="w-3 h-3" /> Catégories d'annotations
                       </span>
                       <button
-                        title="Ajouter une catégorie de comptage (ex: Prises, Radiateurs, Spots...)"
+                        title="Ajouter une catégorie d'annotation (ex: Prises, Radiateurs, Spots...)"
                         onClick={() => {
-                          const name = prompt("Nom de la catégorie (ex: Prises, Radiateurs, Spots):");
+                          const name = prompt("Nom de l'annotation (ex: Prises, Radiateurs, Spots):");
                           if (!name?.trim()) return;
                           const colors = ["#F59E0B","#06B6D4","#EC4899","#10B981","#8B5CF6","#EF4444","#3B82F6","#F97316"];
                           const color = colors[countGroups.length % colors.length];
@@ -3069,7 +3069,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   </div>
                   <p className="text-[10px] text-slate-600 leading-relaxed mt-2">
                     {tool === "linear" && "Distance : cliquez 2 points pour mesurer"}
-                    {tool === "count" && `Comptage : cliquez sur le plan pour ajouter un point "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
+                    {tool === "count" && `Annotation : cliquez sur le plan pour placer un point "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
                     {tool === "rescale" && "Recalibrer : cliquez 2 points d'une distance connue"}
                     {tool === "angle" && "Angle : cliquez 3 points (départ, sommet, arrivée)"}
                   </p>
@@ -3142,7 +3142,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Count groups toggle */}
                   {countGroups.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Comptages</p>
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Annotations</p>
                       {countGroups.map(grp => {
                         const visible = countGroupVisibility[grp.id] !== false;
                         const count = countPoints.filter(p => p.groupId === grp.id).length;
