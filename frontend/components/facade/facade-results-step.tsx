@@ -164,6 +164,20 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
   const [editMode,       setEditMode]       = useState(false);
   const [addingType,     setAddingType]     = useState<string | null>(null);
 
+  /* ── Mask filter: Tous | Murs | Ouvertures ── */
+  type MaskFilterMode = "all" | "walls" | "openings";
+  const [maskFilter, setMaskFilter] = useState<MaskFilterMode>("all");
+  const WALL_LAYER_IDS = useMemo(() => new Set(["surface_murale", "column", "floor_line", "roof"]), []);
+  const OPENING_LAYER_IDS = useMemo(() => new Set(["window", "door", "balcony", "other"]), []);
+  const filteredMaskLayers = useMemo(() => {
+    return MASK_LAYERS.filter(l => {
+      if (maskFilter === "all") return true;
+      if (maskFilter === "walls") return WALL_LAYER_IDS.has(l.id);
+      if (maskFilter === "openings") return OPENING_LAYER_IDS.has(l.id);
+      return true;
+    });
+  }, [maskFilter, WALL_LAYER_IDS, OPENING_LAYER_IDS]);
+
   /* Use refs for drag/draw state to avoid stale-closure bugs */
   const dragStateRef = useRef<DragState | null>(null);
   const drawStateRef = useRef<DrawState | null>(null);
@@ -451,6 +465,24 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             ))}
         </div>
 
+        {/* Mask filter: Tous | Murs | Ouvertures */}
+        {viewTab === "masks" && (
+          <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
+            {([
+              { id: "all" as MaskFilterMode, label: "Tous" },
+              { id: "walls" as MaskFilterMode, label: "Murs" },
+              { id: "openings" as MaskFilterMode, label: "Ouvertures" },
+            ]).map(f => (
+              <button key={f.id}
+                onClick={() => setMaskFilter(f.id)}
+                className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                  maskFilter === f.id ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Per-type toggles: SVG mode only */}
         {viewTab === "svg" && presentTypes.map(type => {
           const hidden = hiddenTypes.has(type);
@@ -599,7 +631,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               />
 
               {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
-              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (
+              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
                 <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
                   <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
@@ -620,7 +652,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   onMouseLeave={handleSvgMouseUp}
                 >
 
-                  {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
+                  {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
                     const layerEls = localElements.filter(
                       e => e.type === layer.id && !hiddenElements.has(e.id)
                     );
@@ -876,7 +908,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Couches</div>
 
               <div className="space-y-0.5">
-                {MASK_LAYERS.map(layer => {
+                {filteredMaskLayers.map(layer => {
                   const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
                   if (!hasAny) return null;
 

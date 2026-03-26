@@ -241,11 +241,16 @@ export default function FacadeIsolationPanel({
                 )}
               </div>
 
-              {/* ══ 2. ÉPAISSEURS ITE ══ */}
+              {/* ══ 2. LARGEUR RETOURS (profondeur embrasure) ══ */}
               <div className="glass rounded-xl border border-white/5 p-4">
-                <div className="text-xs font-semibold text-slate-300 mb-4">
-                  {fr ? "Épaisseur ITE par type (cm)" : "ITE thickness per type (cm)"}
+                <div className="text-xs font-semibold text-slate-300 mb-2">
+                  {fr ? "Largeur des retours d'isolation (cm)" : "Insulation return width (cm)"}
                 </div>
+                <p className="text-[10px] text-slate-600 mb-4">
+                  {fr
+                    ? "Surface retour = linéaire (ml) × largeur retour. L'épaisseur d'isolant ne sert pas au calcul de surface."
+                    : "Return surface = linear (ml) × return width. Insulation thickness is not used for surface calc."}
+                </p>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   {[
                     { label: fr ? "Tableau"  : "Reveal",  value: epTableau, onChange: setEpTableau, color: "text-amber-300"   },
