@@ -1486,6 +1486,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <span className="hidden sm:inline ml-1">{d("ed_save_btn")}</span>
             </Button>
           )}
+          {/* Tutorial replay */}
+          <Button size="sm" variant="ghost" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Revoir le tutoriel">
+            <span className="text-sm">?</span>
+          </Button>
           {/* Export dropdown */}
           <div className="relative">
             <Button size="sm" variant="outline" onClick={() => setExportOpen(v => !v)}>
@@ -1537,7 +1541,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         <div className="flex flex-col gap-1" style={{ height: "calc(100vh - 7rem)" }}>
 
 {/* ══ BAR 1 : VISIBILITÉ ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
+          <div data-tuto="visibility-bar" className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_visibility")}</span>
             {([
               { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
@@ -1579,11 +1583,6 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               <Hash size={10} className="text-sky-400" />
               <span className="text-[8px]">A</span>
-            </button>
-            {/* Tutorial replay button */}
-            <button onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Tutoriel"
-              className="flex items-center px-1.5 py-0.5 rounded text-[10px] border border-white/5 text-slate-600 hover:text-white hover:border-white/20 transition-all">
-              ?
             </button>
           </div>
 

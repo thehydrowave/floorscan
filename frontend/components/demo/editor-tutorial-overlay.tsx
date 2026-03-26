@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutGrid, PaintBucket, Hash, Ruler, Search, ChevronRight, ChevronLeft, X, Sparkles, Layers } from "lucide-react";
+import { LayoutGrid, PaintBucket, Hash, Ruler, Search, ChevronRight, ChevronLeft, X, Sparkles, Layers, Eye } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ interface TutorialStep {
 }
 
 const STEPS: TutorialStep[] = [
+  { icon: <Eye className="w-6 h-6" />,         titleKey: "tuto_ed_step7", color: "text-slate-300",   target: '[data-tuto="visibility-bar"]', position: "bottom" },
   { icon: <Layers className="w-6 h-6" />,      titleKey: "tuto_ed_step1", color: "text-slate-300",   target: '[data-tuto="edit-bar"]',    position: "bottom" },
   { icon: <LayoutGrid className="w-6 h-6" />,  titleKey: "tuto_ed_step2", color: "text-emerald-300", target: '[data-tuto="rooms-btn"]',   position: "bottom" },
   { icon: <PaintBucket className="w-6 h-6" />, titleKey: "tuto_ed_step3", color: "text-violet-300",  target: '[data-tuto="surface-btn"]', position: "bottom" },
