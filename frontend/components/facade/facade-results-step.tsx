@@ -903,12 +903,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             </div>
 
             {/* Right: layer panel */}
-            <div className="lg:w-72 shrink-0 glass rounded-xl border border-white/10 p-4 flex flex-col gap-4">
+            <div className="lg:w-80 shrink-0 glass rounded-xl border border-white/10 p-5 flex flex-col gap-5">
 
               {/* ── AFFICHAGE DES CALQUES ── */}
               <div>
-                <div className="text-sm font-semibold text-slate-300 mb-1.5 flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-slate-400" /> Affichage des calques
+                <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
+                  <Eye className="w-6 h-6 text-slate-400" /> Affichage des calques
                 </div>
                 <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
                   Chaque calque correspond à un type de zone sur la façade.
@@ -945,21 +945,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                           });
                         }}
                         className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all hover:bg-white/5",
+                          "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm transition-all hover:bg-white/5",
                           layerHidden ? "opacity-40" : "opacity-100"
                         )}>
-                        <div className="w-5 h-5 rounded shrink-0"
+                        <div className="w-6 h-6 rounded shrink-0"
                           style={{ background: layer.color, opacity: 0.8 }} />
-                        <Icon className="w-5 h-5 shrink-0" style={{ color: layer.color }} />
-                        <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
+                        <Icon className="w-6 h-6 shrink-0" style={{ color: layer.color }} />
+                        <span className="flex-1 text-left text-slate-300 truncate text-sm">{layer.label}</span>
                         {activeCount != null && (
                           <span className="font-mono text-slate-500 shrink-0 text-xs">
                             {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
                           </span>
                         )}
                         {layerHidden
-                          ? <EyeOff className="w-5 h-5 shrink-0 text-slate-600" />
-                          : <Eye    className="w-5 h-5 shrink-0 text-slate-400" />}
+                          ? <EyeOff className="w-6 h-6 shrink-0 text-slate-600" />
+                          : <Eye    className="w-6 h-6 shrink-0 text-slate-400" />}
                       </button>
                     );
                   })}
@@ -984,8 +984,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
 
               {/* ── MODIFICATION DES ZONES ── */}
               <div className="border-t border-white/5 pt-3">
-                <div className="text-sm font-semibold text-slate-300 mb-1.5 flex items-center gap-2">
-                  <Pencil className="w-5 h-5 text-blue-400" /> Modification des zones
+                <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
+                  <Pencil className="w-6 h-6 text-blue-400" /> Modification des zones
                 </div>
                 <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
                   Activez le mode édition pour corriger les zones détectées par l'IA :
@@ -1001,12 +1001,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setDrawingZone(false); setPendingPts([]);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-2.5 text-sm px-4 py-3 rounded-xl border transition-all font-medium",
+                    "w-full flex items-center justify-center gap-3 text-base px-5 py-3.5 rounded-xl border transition-all font-medium",
                     editMode
                       ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <Pencil className="w-5 h-5" />
+                  <Pencil className="w-6 h-6" />
                   {editMode ? "Mode édition actif" : "Activer l'édition"}
                 </button>
                 {editMode && (
@@ -1021,8 +1021,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* ── AJOUT MANUEL DE ZONES ── */}
               {editMode && (
                 <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                    <PlusCircle className="w-5 h-5 text-emerald-400" /> Ajout manuel
+                  <div className="text-base font-semibold text-slate-200 flex items-center gap-2.5">
+                    <PlusCircle className="w-6 h-6 text-emerald-400" /> Ajout manuel
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
                     L'IA a raté une fenêtre ou une porte ? Sélectionnez un type ci-dessous
@@ -1036,13 +1036,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                         title={`Cliquez ici puis dessinez un rectangle sur l'image pour ajouter une zone "${layer.label}". Maintenez le clic et glissez pour dessiner le rectangle.`}
                         onClick={() => setAddingType(active ? null : layer.id)}
                         className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all border",
+                          "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm transition-all border",
                           active
                             ? "bg-white/10 border-white/25 text-white"
                             : "border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
                         )}>
-                        <div className="w-5 h-5 rounded shrink-0" style={{ background: layer.color, opacity: 0.8 }} />
-                        <Icon className="w-5 h-5 shrink-0" style={{ color: layer.color }} />
+                        <div className="w-6 h-6 rounded shrink-0" style={{ background: layer.color, opacity: 0.8 }} />
+                        <Icon className="w-6 h-6 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left truncate">{layer.label}</span>
                         {active && <span className="text-xs text-sky-400 shrink-0 animate-pulse">Dessiner...</span>}
                       </button>
@@ -1053,8 +1053,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
 
               {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
               <div className="border-t border-white/5 pt-3 space-y-2">
-                <div className="text-sm font-semibold text-slate-300 flex items-center justify-between">
-                  <span className="flex items-center gap-2"><Crop className="w-5 h-5 text-amber-400" /> Délimitation façade</span>
+                <div className="text-base font-semibold text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-2.5"><Crop className="w-6 h-6 text-amber-400" /> Délimitation façade</span>
                   {totalFacadeZonesM2 > 0 && (
                     <span className="font-mono text-amber-400 text-sm">{totalFacadeZonesM2.toFixed(1)} m²</span>
                   )}
@@ -1072,12 +1072,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setAddingType(null);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-2.5 text-sm px-4 py-3 rounded-xl border transition-all font-medium",
+                    "w-full flex items-center justify-center gap-3 text-base px-5 py-3.5 rounded-xl border transition-all font-medium",
                     drawingZone
                       ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <PlusCircle className="w-5 h-5" />
+                  <PlusCircle className="w-6 h-6" />
                   {drawingZone ? `Placez ${4 - pendingPts.length} point(s)...` : "Tracer une zone façade"}
                 </button>
                 {facadeZones.length > 0 && (
@@ -1110,10 +1110,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   <button
                     title={`Vous avez masqué ${hiddenElements.size} zone(s). Cliquez ici pour toutes les réafficher sur l'image.`}
                     onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
-                    className="flex items-center justify-center gap-2.5 text-sm text-slate-500
-                      hover:text-slate-300 transition-colors py-2.5 rounded-xl border border-white/5
+                    className="flex items-center justify-center gap-3 text-sm text-slate-500
+                      hover:text-slate-300 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RotateCcw className="w-5 h-5" /> Réafficher {hiddenElements.size} zone(s) masquée(s)
+                    <RotateCcw className="w-6 h-6" /> Réafficher {hiddenElements.size} zone(s) masquée(s)
                   </button>
                 )}
                 {localElements.length !== result.elements.length && (
@@ -1126,10 +1126,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       setEditMode(false);
                       setAddingType(null);
                     }}
-                    className="flex items-center justify-center gap-2.5 text-sm text-slate-600
-                      hover:text-slate-400 transition-colors py-2.5 rounded-xl border border-white/5
+                    className="flex items-center justify-center gap-3 text-sm text-slate-600
+                      hover:text-slate-400 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RefreshCw className="w-5 h-5" /> Revenir à la détection IA
+                    <RefreshCw className="w-6 h-6" /> Revenir à la détection IA
                   </button>
                 )}
               </div>

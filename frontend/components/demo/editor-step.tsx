@@ -1052,6 +1052,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
           setEditingRoomId(hitRoom.id);
           setActiveRoomType(hitRoom.type);
+          setSidebarTab("rooms");
         } else {
           setSelectedRoomId(null);
           setEditingRoomId(null);
@@ -1576,7 +1577,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               return (
                 <span key={l} className="contents">
                   {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
-                  <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); }}
+                  <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
                     title={m.tooltip}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
@@ -2124,10 +2125,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
                     const label = grp?.name ?? "";
                     return (
-                      <g key={cp.id}>
-                        <circle cx={px} cy={py} r={9} fill={color} fillOpacity={0.3} stroke={color} strokeWidth={1.5} />
-                        <text x={px} y={py + 3} textAnchor="middle" fill="white" fontSize={7} fontWeight="700" fontFamily="monospace">{num}</text>
-                        <text x={px + 13} y={py + 3} fill={color} fontSize={7} fontWeight="600" fontFamily="system-ui" opacity={0.9}>{label}</text>
+                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setCountPoints(prev => prev.filter(p => p.id !== cp.id))}>
+                        <circle cx={px} cy={py} r={12} fill={color} fillOpacity={0.35} stroke={color} strokeWidth={2} />
+                        <text x={px} y={py + 4} textAnchor="middle" fill="white" fontSize={9} fontWeight="700" fontFamily="monospace">{num}</text>
+                        <text x={px + 16} y={py + 4} fill={color} fontSize={8} fontWeight="600" fontFamily="system-ui">{label}</text>
                       </g>
                     );
                   })}
@@ -2997,7 +2999,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             isActive ? "border-white/20 bg-white/5" : "border-transparent hover:bg-white/3"
                           )}
                           onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); }}>
-                          <div className="w-3 h-3 rounded-full shrink-0" style={{ background: grp.color }} />
+                          <input type="color" value={grp.color}
+                            title="Changer la couleur de cette catégorie"
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setCountGroups(prev => prev.map(g => g.id === grp.id ? { ...g, color: e.target.value } : g)); }}
+                            className="w-4 h-4 rounded-full shrink-0 border-0 p-0 cursor-pointer bg-transparent" style={{ background: grp.color }} />
                           <span className={cn("flex-1 truncate", isActive ? "text-white" : "text-slate-400")}>{grp.name}</span>
                           <span className="font-mono text-[10px] text-slate-500">{pts.length}</span>
                           <button
@@ -3041,8 +3047,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </div>
               )}
 
-              {/* OPENINGS TAB */}
-              {sidebarTab === "visibility" && (layer === "door" || layer === "window") && (
+              {/* OPENINGS TAB — visible for all layers when visibility tab is selected */}
+              {sidebarTab === "visibility" && (
                 <div className="glass rounded-xl border border-white/10 p-4 text-xs">
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
