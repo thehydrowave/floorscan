@@ -272,8 +272,8 @@ export default function CropStep({
         <p className="text-slate-400 text-sm">
           {activeMode === "facade"
             ? (drawingFacade
-              ? `Cliquez ${4 - pendingPts.length} point${4 - pendingPts.length > 1 ? "s" : ""} pour délimiter la façade`
-              : "Cliquez « Nouvelle façade » puis placez 4 points sur l'image")
+              ? `${4 - pendingPts.length} ${d("cr_facade_pts" as DTKey)}`
+              : d("cr_facade_hint" as DTKey))
             : (hasCrop ? d("cr_adjust_hint") : d("cr_drag_hint"))
           }
         </p>
@@ -286,13 +286,13 @@ export default function CropStep({
             onClick={() => { setActiveMode("crop"); setDrawingFacade(false); setPendingPts([]); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "crop" ? "bg-cyan-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
           >
-            <Crop className="w-3.5 h-3.5" /> Recadrage
+            <Crop className="w-3.5 h-3.5" /> {d("cr_crop_mode" as DTKey)}
           </button>
           <button
             onClick={() => setActiveMode("facade")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "facade" ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
           >
-            <Building2 className="w-3.5 h-3.5" /> Délimitation façade
+            <Building2 className="w-3.5 h-3.5" /> {d("cr_facade_mode" as DTKey)}
           </button>
         </div>
       )}
@@ -468,7 +468,7 @@ export default function CropStep({
         <div className="mt-4 mx-auto max-w-3xl">
           <div className="flex items-center gap-3 mb-2">
             <span className="text-sm font-semibold text-amber-400 flex items-center gap-1.5">
-              <Building2 className="w-4 h-4" /> Zones façade ({facadeZones.length})
+              <Building2 className="w-4 h-4" /> {d("cr_facade_zones" as DTKey)} ({facadeZones.length})
             </span>
             <Button
               variant="outline"
@@ -477,7 +477,7 @@ export default function CropStep({
               disabled={drawingFacade}
               className="text-xs"
             >
-              <PlusCircle className="w-3.5 h-3.5" /> Nouvelle façade
+              <PlusCircle className="w-3.5 h-3.5" /> {d("cr_new_facade" as DTKey)}
             </Button>
             {drawingFacade && (
               <Button
@@ -486,7 +486,7 @@ export default function CropStep({
                 onClick={() => { setDrawingFacade(false); setPendingPts([]); }}
                 className="text-xs text-slate-500"
               >
-                Annuler
+                {d("cr_cancel" as DTKey)}
               </Button>
             )}
           </div>

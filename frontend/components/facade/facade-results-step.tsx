@@ -30,6 +30,7 @@ import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
+import FacadeTutorialOverlay from "./facade-tutorial-overlay";
 import { FileText, Receipt } from "lucide-react";
 
 /* ── Colors per element type ── */
@@ -523,7 +524,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             {result.is_mock && (
               <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
                 bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
+                <AlertTriangle className="w-3 h-3" /> {d("fa_demo_badge" as DTKey)}
               </div>
             )}
             <img
@@ -616,6 +617,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
         {/* ────────── Masques ────────── */}
         {viewTab === "masks" && (
           <div className="flex flex-col lg:flex-row gap-3 items-start">
+            {/* Tutorial overlay — shown once per session */}
+            <FacadeTutorialOverlay />
 
             {/* Left: base image + SVG mask overlays — self-start prevents height-stretch in flex-row */}
             <div className="relative flex-1 min-w-0 self-start">
@@ -868,7 +871,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                         }}
                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors
                           px-2 py-0.5 rounded border border-red-500/30 hover:border-red-400/50">
-                        <Trash2 className="w-3 h-3" /> Retirer
+                        <Trash2 className="w-3 h-3" /> {d("fa_remove" as DTKey)}
                       </button>
                       <button onClick={() => setSelectedEl(null)}
                         className="text-slate-500 hover:text-slate-300 px-1">✕</button>
@@ -881,7 +884,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {result.is_mock && (
                 <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
                   bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                  <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
+                  <AlertTriangle className="w-3 h-3" /> {d("fa_demo_badge" as DTKey)}
                 </div>
               )}
 
@@ -928,8 +931,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     return (
                       <button key={layer.id}
                         title={layerHidden
-                          ? `Réafficher le calque "${layer.label}" sur l'image de façade`
-                          : `Masquer le calque "${layer.label}" — les zones de ce type seront cachées sur l'image`}
+                          ? `${d("fa_tt_show_layer" as DTKey)} — ${layer.label}`
+                          : `${d("fa_tt_hide_layer" as DTKey)} — ${layer.label}`}
                         onClick={() => {
                           setHiddenLayers(prev => {
                             const n = new Set(prev);
@@ -968,8 +971,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* ── SURFACE MUR OPAQUE ── */}
               {!hiddenLayers.has("surface_murale") && (
                 <div className="border-t border-white/5 pt-3 space-y-1"
-                  title="Surface du mur opaque = surface totale de la façade moins les ouvertures (fenêtres, portes, balcons). C'est la surface à isoler.">
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">Surface mur opaque</div>
+                  title={d("fa_tt_wall_area" as DTKey)}>
+                  <div className="text-xs text-slate-500 uppercase tracking-wider">{d("fa_wall_area" as DTKey)}</div>
                   <div className="text-base font-mono font-semibold text-slate-200">
                     {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
                   </div>
@@ -990,7 +993,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   {d("fa_edit_desc" as DTKey)}
                 </p>
                 <button
-                  title="Mode édition : une fois activé, vous pouvez glisser-déposer les rectangles pour les déplacer, tirer les coins blancs pour les redimensionner, et utiliser le menu déroulant pour changer le type (fenêtre → porte, etc.)"
+                  title={d("fa_tt_edit_mode" as DTKey)}
                   onClick={() => {
                     setEditMode(v => !v);
                     setAddingType(null);
@@ -1028,7 +1031,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     const active = addingType === layer.id;
                     return (
                       <button key={layer.id}
-                        title={`Cliquez ici puis dessinez un rectangle sur l'image pour ajouter une zone "${layer.label}". Maintenez le clic et glissez pour dessiner le rectangle.`}
+                        title={`${d("fa_tt_draw_el" as DTKey)} — ${layer.label}`}
                         onClick={() => setAddingType(active ? null : layer.id)}
                         className={cn(
                           "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm transition-all border",
@@ -1039,7 +1042,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                         <div className="w-6 h-6 rounded shrink-0" style={{ background: layer.color, opacity: 0.8 }} />
                         <Icon className="w-6 h-6 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left truncate">{layer.label}</span>
-                        {active && <span className="text-xs text-sky-400 shrink-0 animate-pulse">Dessiner...</span>}
+                        {active && <span className="text-xs text-sky-400 shrink-0 animate-pulse">{d("fa_draw" as DTKey)}</span>}
                       </button>
                     );
                   })}
@@ -1058,7 +1061,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   {d("fa_delim_desc" as DTKey)}
                 </p>
                 <button
-                  title="Cliquez sur ce bouton, puis placez 4 points directement sur l'image pour tracer le contour de la façade. Les coins sont ensuite déplaçables. Vous pouvez ajouter plusieurs zones."
+                  title={d("fa_tt_delim" as DTKey)}
                   onClick={() => {
                     setDrawingZone(v => !v);
                     setPendingPts([]);
@@ -1072,7 +1075,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
                   <PlusCircle className="w-6 h-6" />
-                  {drawingZone ? `Placez ${4 - pendingPts.length} point(s)...` : "Tracer une zone façade"}
+                  {drawingZone ? `${d("fa_place_pts" as DTKey)} ${4 - pendingPts.length} ${d("fa_pts_suffix" as DTKey)}` : d("fa_draw_zone" as DTKey)}
                 </button>
                 {facadeZones.length > 0 && (
                   <div className="space-y-1">
@@ -1102,7 +1105,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               <div className="mt-auto flex flex-col gap-2">
                 {hiddenElements.size > 0 && (
                   <button
-                    title={`Vous avez masqué ${hiddenElements.size} zone(s). Cliquez ici pour toutes les réafficher sur l'image.`}
+                    title={d("fa_tt_restore" as DTKey)}
                     onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
                     className="flex items-center justify-center gap-3 text-sm text-slate-500
                       hover:text-slate-300 transition-colors py-3 rounded-xl border border-white/5
@@ -1112,7 +1115,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 )}
                 {localElements.length !== result.elements.length && (
                   <button
-                    title="Annule toutes vos modifications (déplacements, redimensionnements, ajouts, suppressions) et revient aux zones détectées automatiquement par l'IA."
+                    title={d("fa_tt_reset" as DTKey)}
                     onClick={() => {
                       setLocalElements(result.elements);
                       setHiddenElements(new Set());
@@ -1285,10 +1288,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
       {/* Actions */}
       <div className="flex flex-wrap gap-3 justify-center">
         <Button variant="outline" onClick={() => setShowRapport(true)}>
-          <FileText className="w-4 h-4" /> Rapport
+          <FileText className="w-4 h-4" /> {d("fa_report" as DTKey)}
         </Button>
         <Button variant="outline" onClick={() => setShowDevis(true)}>
-          <Receipt className="w-4 h-4" /> Devis
+          <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> {d("fa_export_csv")}
