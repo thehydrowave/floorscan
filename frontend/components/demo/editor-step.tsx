@@ -1560,7 +1560,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
+          <div data-tuto="edit-bar" className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).map(l => {
               const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string; tooltip: string }> = {
@@ -1580,7 +1580,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               return (
                 <span key={l} className="contents">
                   {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
-                  <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
+                  <button
+                    data-tuto={l === "rooms" ? "rooms-btn" : l === "surface" ? "surface-btn" : l === "utilities" ? "tools-btn" : undefined}
+                    onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
                     title={m.tooltip}
                     className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                       layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
@@ -1598,7 +1600,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             )}
             {/* ── Détection visuelle (standalone, fonctionne sans sélection d'élément) ── */}
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-            <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
+            <button data-tuto="vs-btn"
+              onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
               title={d("ed_tt_vs")}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>

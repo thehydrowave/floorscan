@@ -909,7 +909,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             <div className="lg:w-80 shrink-0 glass rounded-xl border border-white/10 p-5 flex flex-col gap-5">
 
               {/* ── AFFICHAGE DES CALQUES ── */}
-              <div>
+              <div data-tuto-fa="layers">
                 <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
                   <Eye className="w-6 h-6 text-slate-400" /> {d("fa_layer_display" as DTKey)}
                 </div>
@@ -985,7 +985,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               )}
 
               {/* ── MODIFICATION DES ZONES ── */}
-              <div className="border-t border-white/5 pt-3">
+              <div data-tuto-fa="edit" className="border-t border-white/5 pt-3">
                 <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
                   <Pencil className="w-6 h-6 text-blue-400" /> {d("fa_edit_zones" as DTKey)}
                 </div>
@@ -1050,7 +1050,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               )}
 
               {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
-              <div className="border-t border-white/5 pt-3 space-y-2">
+              <div data-tuto-fa="delim" className="border-t border-white/5 pt-3 space-y-2">
                 <div className="text-base font-semibold text-slate-200 flex items-center justify-between">
                   <span className="flex items-center gap-2.5"><Crop className="w-6 h-6 text-amber-400" /> {d("fa_delim_facade" as DTKey)}</span>
                   {totalFacadeZonesM2 > 0 && (
