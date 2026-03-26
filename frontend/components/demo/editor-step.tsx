@@ -3167,21 +3167,45 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     </div>
                   )}
 
-                  {/* Surfaces toggle */}
-                  {zones.filter(z => z.typeId !== "__count__").length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">Surfaces</p>
-                      <button
-                        onClick={() => setShowSurfaces(v => !v)}
-                        className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
-                          showSurfaces ? "opacity-100" : "opacity-40")}>
-                        <PaintBucket className="w-3.5 h-3.5 text-violet-400" />
-                        <span className="flex-1 text-left text-slate-300">Zones de surface</span>
-                        <span className="font-mono text-[10px] text-slate-500">{zones.filter(z => z.typeId !== "__count__").length}</span>
-                        {showSurfaces ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
-                      </button>
-                    </div>
-                  )}
+                  {/* Overlays: Walls, Rooms, Openings */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-600 uppercase tracking-wider">Calques</p>
+                    <button onClick={() => setShowWalls(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showWalls ? "opacity-100" : "opacity-40")}>
+                      <BrickWall className="w-3.5 h-3.5 text-red-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_concrete")}</span>
+                      {showWalls ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                    <button onClick={() => setShowRooms(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showRooms ? "opacity-100" : "opacity-40")}>
+                      <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_rooms")}</span>
+                      {showRooms ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                    <button onClick={() => setShowOpeningOverlay(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showOpeningOverlay ? "opacity-100" : "opacity-40")}>
+                      <DoorOpen className="w-3.5 h-3.5 text-fuchsia-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_doors")}/{d("ed_windows")}</span>
+                      {showOpeningOverlay ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                  </div>
+
+                  {/* Surfaces toggle — always visible */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_surfaces_label" as DTKey)}</p>
+                    <button
+                      onClick={() => setShowSurfaces(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showSurfaces ? "opacity-100" : "opacity-40")}>
+                      <PaintBucket className="w-3.5 h-3.5 text-violet-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("sf_surfaces" as DTKey)}</span>
+                      <span className="font-mono text-[10px] text-slate-500">{zones.filter(z => z.typeId !== "__count__").length}</span>
+                      {showSurfaces ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                  </div>
 
                   {/* Custom detections toggle */}
                   {customDetections.length > 0 && (
