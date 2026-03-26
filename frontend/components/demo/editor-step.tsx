@@ -12,6 +12,7 @@ import { dt, DTKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/use-auth";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
+import EditorTutorialOverlay from "@/components/demo/editor-tutorial-overlay";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm, CountGroup, CountPoint, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
@@ -1442,6 +1443,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      {/* Tutorial overlay — shown once */}
+      <EditorTutorialOverlay />
       {/* ── Compact Header ── */}
       <div className="flex items-center gap-2 h-11 mb-1.5">
         {/* Undo / Redo (unified) */}
