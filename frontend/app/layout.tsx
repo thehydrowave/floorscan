@@ -9,6 +9,13 @@ export const metadata: Metadata = {
   title: "FloorScan — Analyse IA de Plans de Sol",
   description: "Détectez portes, fenêtres, murs et surfaces dans vos plans de construction grâce à l'IA.",
   keywords: "analyse plan de sol, IA construction, BIM, détection automatique, analyse PDF",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-icon.png",
+  },
   openGraph: {
     title: "FloorScan — Analyse IA de Plans de Sol",
     description: "Analyse IA instantanée de plans de construction.",

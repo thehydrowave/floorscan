@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+  <!-- ScanLine icon simplified -->
+  <g stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none">
+    <!-- Top-left corner -->
+    <path d="M7 12V9a2 2 0 012-2h3"/>
+    <!-- Top-right corner -->
+    <path d="M20 7h3a2 2 0 012 2v3"/>
+    <!-- Bottom-left corner -->
+    <path d="M12 25H9a2 2 0 01-2-2v-3"/>
+    <!-- Bottom-right corner -->
+    <path d="M25 20v3a2 2 0 01-2 2h-3"/>
+    <!-- Scan line -->
+    <line x1="7" y1="16" x2="25" y2="16" stroke-width="2.5" opacity="0.9"/>
+  </g>
+</svg>
