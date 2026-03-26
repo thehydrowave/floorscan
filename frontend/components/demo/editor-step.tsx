@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { useAuth } from "@/lib/use-auth";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm } from "@/lib/measure-types";
@@ -97,6 +98,7 @@ interface EditorStepProps {
 export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
+  const { isAdmin } = useAuth();
 
   const [result, setResult] = useState(initialResult);
   const [layer, setLayer] = useState<Layer>(null);
@@ -163,7 +165,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setTool("select");
     } else {
       if (tool === "select" || tool === "split") setTool("add_rect");
-      if (tool === "sam" && layer !== "door" && layer !== "window" && layer !== "interior") setTool("add_rect");
+      if (tool === "sam" && ((!isAdmin) || (layer !== "door" && layer !== "window" && layer !== "interior"))) setTool("add_rect");
       pts.current = [];
     }
     if (layer !== "rooms") {
@@ -1533,7 +1535,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <X className="w-3 h-3" />
               </button>
             )}
-            {/* ── Recherche visuelle (standalone, fonctionne sans sélection d'élément) ── */}
+            {/* ── Détection visuelle (standalone, fonctionne sans sélection d'élément) ── */}
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
             <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
               title={d("ed_tt_vs")}
@@ -1607,9 +1609,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <PenOff className="w-3 h-3" /> {d("ed_erase_free")}
                   </button>
-                  {(layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
+                  {isAdmin && (layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
-                      title={d("ed_tt_ia_auto")}
+                      title="Détection IA automatique : cliquez sur un élément pour le détecter automatiquement (SAM)"
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                         tool === "sam" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                       <Sparkles className="w-3 h-3" /> {d("ed_ia_auto")}

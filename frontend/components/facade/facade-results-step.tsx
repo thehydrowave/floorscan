@@ -903,62 +903,68 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             </div>
 
             {/* Right: layer panel */}
-            <div className="lg:w-60 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+            <div className="lg:w-64 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
 
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Couches</div>
+              {/* ── CALQUES : afficher/masquer chaque type ── */}
+              <div className="group/section relative">
+                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Eye className="w-4 h-4" /> Calques
+                </div>
+                <p className="text-[10px] text-slate-600 mb-2">Cliquez sur un calque pour le masquer ou l'afficher sur l'image.</p>
 
-              <div className="space-y-0.5">
-                {filteredMaskLayers.map(layer => {
-                  const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
-                  if (!hasAny) return null;
+                <div className="space-y-0.5">
+                  {filteredMaskLayers.map(layer => {
+                    const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
+                    if (!hasAny) return null;
 
-                  const totalCount   = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id).length;
-                  const activeCount  = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
-                  const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
-                  const layerHidden  = hiddenLayers.has(layer.id);
-                  const Icon = layer.icon;
+                    const totalCount   = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id).length;
+                    const activeCount  = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
+                    const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
+                    const layerHidden  = hiddenLayers.has(layer.id);
+                    const Icon = layer.icon;
 
-                  return (
-                    <button key={layer.id}
-                      onClick={() => {
-                        setHiddenLayers(prev => {
-                          const n = new Set(prev);
-                          if (!n.has(layer.id)) {
-                            n.add(layer.id);
-                            // Deselect if selected element belongs to this layer
-                            if (selectedEl !== null) {
-                              const sel = result.elements.find(e => e.id === selectedEl);
-                              if (sel?.type === layer.id) setSelectedEl(null);
-                            }
-                          } else { n.delete(layer.id); }
-                          return n;
-                        });
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
-                        layerHidden ? "opacity-40" : "opacity-100"
-                      )}>
-                      <div className="w-3 h-3 rounded-sm shrink-0"
-                        style={{ background: layer.color, opacity: 0.75 }} />
-                      <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
-                      <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
-                      {activeCount != null && (
-                        <span className="font-mono text-slate-500 shrink-0 text-[10px]">
-                          {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
-                        </span>
-                      )}
-                      {layerHidden
-                        ? <EyeOff className="w-3 h-3 shrink-0 text-slate-600" />
-                        : <Eye    className="w-3 h-3 shrink-0 text-slate-400" />}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button key={layer.id}
+                        title={layerHidden ? `Afficher ${layer.label}` : `Masquer ${layer.label}`}
+                        onClick={() => {
+                          setHiddenLayers(prev => {
+                            const n = new Set(prev);
+                            if (!n.has(layer.id)) {
+                              n.add(layer.id);
+                              if (selectedEl !== null) {
+                                const sel = result.elements.find(e => e.id === selectedEl);
+                                if (sel?.type === layer.id) setSelectedEl(null);
+                              }
+                            } else { n.delete(layer.id); }
+                            return n;
+                          });
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-all hover:bg-white/5",
+                          layerHidden ? "opacity-40" : "opacity-100"
+                        )}>
+                        <div className="w-4 h-4 rounded shrink-0"
+                          style={{ background: layer.color, opacity: 0.75 }} />
+                        <Icon className="w-4 h-4 shrink-0" style={{ color: layer.color }} />
+                        <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
+                        {activeCount != null && (
+                          <span className="font-mono text-slate-500 shrink-0 text-[10px]">
+                            {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
+                          </span>
+                        )}
+                        {layerHidden
+                          ? <EyeOff className="w-4 h-4 shrink-0 text-slate-600" />
+                          : <Eye    className="w-4 h-4 shrink-0 text-slate-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Surface murale stats */}
+              {/* ── SURFACE MURALE : stats ── */}
               {!hiddenLayers.has("surface_murale") && (
                 <div className="border-t border-white/5 pt-3 space-y-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Surface murale</div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Surface mur opaque</div>
                   <div className="text-sm font-mono font-semibold text-slate-200">
                     {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
                   </div>
@@ -970,9 +976,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 </div>
               )}
 
-              {/* ── Edit mode toggle ── */}
+              {/* ── MODE ÉDITION : déplacer, redimensionner, reclasser ── */}
               <div className="border-t border-white/5 pt-3">
                 <button
+                  title={editMode
+                    ? "Désactiver le mode édition"
+                    : "Activer le mode édition pour déplacer, redimensionner et reclasser les zones détectées"}
                   onClick={() => {
                     setEditMode(v => !v);
                     setAddingType(null);
@@ -981,53 +990,66 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setDrawingZone(false); setPendingPts([]);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border transition-all",
                     editMode
                       ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <Pencil className="w-3 h-3" />
-                  {editMode ? "Édition active" : "Éditer les masques"}
+                  <Pencil className="w-4 h-4" />
+                  {editMode ? "Mode édition actif" : "Modifier les zones"}
                 </button>
+                {editMode && (
+                  <p className="text-[10px] text-slate-600 mt-1.5 px-1">
+                    Glissez une zone pour la déplacer. Tirez les coins pour redimensionner. Cliquez pour reclasser le type.
+                  </p>
+                )}
               </div>
 
-              {/* ── Add element buttons (edit mode only) ── */}
+              {/* ── DESSINER UN ÉLÉMENT : ajouter manuellement des zones ── */}
               {editMode && (
-                <div className="space-y-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <PlusCircle className="w-3 h-3" /> Ajouter
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <PlusCircle className="w-4 h-4" /> Dessiner un élément
                   </div>
+                  <p className="text-[10px] text-slate-600 px-0.5">
+                    Sélectionnez un type puis dessinez un rectangle sur l'image pour ajouter manuellement une zone.
+                  </p>
                   {MASK_LAYERS.filter(l => !l.isSurface && l.id !== "floor_line").map(layer => {
                     const Icon = layer.icon;
                     const active = addingType === layer.id;
                     return (
                       <button key={layer.id}
+                        title={`Dessiner un rectangle "${layer.label}" sur l'image`}
                         onClick={() => setAddingType(active ? null : layer.id)}
                         className={cn(
-                          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-all border",
+                          "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-all border",
                           active
                             ? "bg-white/10 border-white/25 text-white"
                             : "border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
                         )}>
-                        <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: layer.color }} />
-                        <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
+                        <div className="w-4 h-4 rounded shrink-0" style={{ background: layer.color }} />
+                        <Icon className="w-4 h-4 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left truncate">{layer.label}</span>
-                        {active && <span className="text-[10px] text-sky-400 shrink-0">Dessiner ✏</span>}
+                        {active && <span className="text-[10px] text-sky-400 shrink-0 animate-pulse">Dessiner...</span>}
                       </button>
                     );
                   })}
                 </div>
               )}
 
-              {/* ── Facade polygon zones ── */}
+              {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
               <div className="border-t border-white/5 pt-3 space-y-2">
                 <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-1"><Crop className="w-3 h-3" /> Zones façade</span>
+                  <span className="flex items-center gap-1.5"><Crop className="w-4 h-4" /> Délimiter la façade</span>
                   {totalFacadeZonesM2 > 0 && (
                     <span className="font-mono text-amber-400">{totalFacadeZonesM2.toFixed(1)} m²</span>
                   )}
                 </div>
+                <p className="text-[10px] text-slate-600 px-0.5">
+                  Tracez un polygone à 4 points pour délimiter la surface de façade à isoler.
+                </p>
                 <button
+                  title="Cliquez puis placez 4 points sur l'image pour délimiter la zone de façade"
                   onClick={() => {
                     setDrawingZone(v => !v);
                     setPendingPts([]);
@@ -1035,29 +1057,30 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setAddingType(null);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border transition-all",
                     drawingZone
                       ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <PlusCircle className="w-3 h-3" />
-                  {drawingZone ? `Cliquer ${4 - pendingPts.length} point(s)…` : "Nouvelle façade"}
+                  <PlusCircle className="w-4 h-4" />
+                  {drawingZone ? `Placez ${4 - pendingPts.length} point(s)...` : "Nouvelle zone façade"}
                 </button>
                 {facadeZones.length > 0 && (
                   <div className="space-y-1">
                     {facadeZones.map((zone, zi) => (
                       <div key={zone.id}
                         className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all cursor-pointer",
+                          "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer",
                           selectedZoneId === zone.id ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5"
                         )}
                         onClick={() => setSelectedZoneId(zone.id === selectedZoneId ? null : zone.id)}>
-                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: "#94a3b8", opacity: 0.75 }} />
+                        <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: "#94a3b8", opacity: 0.75 }} />
                         <span className="flex-1">Façade {zi + 1}</span>
                         <span className="font-mono text-[10px] text-slate-500">
                           {facadeZoneAreaM2(zone.pts).toFixed(1)} m²
                         </span>
                         <button
+                          title="Supprimer cette zone"
                           onClick={e2 => { e2.stopPropagation(); setFacadeZones(prev => prev.filter(z => z.id !== zone.id)); if (selectedZoneId === zone.id) setSelectedZoneId(null); }}
                           className="text-slate-600 hover:text-red-400 transition-colors px-0.5">×</button>
                       </div>
@@ -1066,19 +1089,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 )}
               </div>
 
-              {/* Reset / Restore buttons */}
+              {/* ── ANNULER / RÉINITIALISER ── */}
               <div className="mt-auto flex flex-col gap-1.5">
                 {hiddenElements.size > 0 && (
                   <button
+                    title={`Réafficher les ${hiddenElements.size} zone(s) masquée(s)`}
                     onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
-                    className="flex items-center justify-center gap-1.5 text-xs text-slate-500
-                      hover:text-slate-300 transition-colors py-1.5 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-2 text-xs text-slate-500
+                      hover:text-slate-300 transition-colors py-2 rounded-lg border border-white/5
                       hover:border-white/10">
-                    <RotateCcw className="w-3 h-3" /> Restaurer ({hiddenElements.size})
+                    <RotateCcw className="w-4 h-4" /> Réafficher les zones masquées ({hiddenElements.size})
                   </button>
                 )}
                 {localElements.length !== result.elements.length && (
                   <button
+                    title="Revenir aux zones détectées par l'IA (annule toutes les modifications)"
                     onClick={() => {
                       setLocalElements(result.elements);
                       setHiddenElements(new Set());
@@ -1086,10 +1111,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       setEditMode(false);
                       setAddingType(null);
                     }}
-                    className="flex items-center justify-center gap-1.5 text-xs text-slate-600
-                      hover:text-slate-400 transition-colors py-1.5 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-2 text-xs text-slate-600
+                      hover:text-slate-400 transition-colors py-2 rounded-lg border border-white/5
                       hover:border-white/10">
-                    <RefreshCw className="w-3 h-3" /> Réinitialiser
+                    <RefreshCw className="w-4 h-4" /> Revenir à la détection IA
                   </button>
                 )}
               </div>
