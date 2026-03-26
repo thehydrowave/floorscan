@@ -1487,8 +1487,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             </Button>
           )}
           {/* Tutorial replay */}
-          <Button size="sm" variant="ghost" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Revoir le tutoriel">
-            <span className="text-sm">?</span>
+          <Button size="sm" variant="outline" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Revoir le tutoriel">
+            <span className="text-xs">Tutorial</span>
           </Button>
           {/* Export dropdown */}
           <div className="relative">
