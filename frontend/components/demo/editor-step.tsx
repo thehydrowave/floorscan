@@ -12,7 +12,7 @@ import { dt, DTKey } from "@/lib/i18n";
 import { useAuth } from "@/lib/use-auth";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import EditorTutorialOverlay from "@/components/demo/editor-tutorial-overlay";
+import EditorTutorialOverlay, { resetEditorTutorial } from "@/components/demo/editor-tutorial-overlay";
 import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm, CountGroup, CountPoint, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
@@ -211,6 +211,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [activeCountGroupId, setActiveCountGroupId] = useState<string>(DEFAULT_COUNT_GROUPS[0].id);
   const [countGroupVisibility, setCountGroupVisibility] = useState<Record<string, boolean>>({});
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
+  const [showTuto, setShowTuto] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
@@ -1444,7 +1445,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       {/* Tutorial overlay — shown once */}
-      <EditorTutorialOverlay />
+      <EditorTutorialOverlay forceShow={showTuto} />
       {/* ── Compact Header ── */}
       <div className="flex items-center gap-2 h-11 mb-1.5">
         {/* Undo / Redo (unified) */}
@@ -1556,6 +1557,33 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
                 showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               <Hash size={10} />
+            </button>
+            {/* Separator */}
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+            {/* Surfaces toggle */}
+            <button onClick={() => setShowSurfaces(v => !v)} title={d("ed_surfaces_label" as DTKey)}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                showSurfaces ? "border-violet-500/30 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+              <PaintBucket size={10} className="text-violet-400" />
+              {showSurfaces ? <Eye className="w-2.5 h-2.5 text-violet-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
+            {/* Annotations toggle (all count points) */}
+            <button onClick={() => {
+              const allVisible = countGroups.every(g => countGroupVisibility[g.id] !== false);
+              const newVis: Record<string, boolean> = {};
+              countGroups.forEach(g => { newVis[g.id] = !allVisible; });
+              setCountGroupVisibility(newVis);
+            }} title={d("ed_annotations" as DTKey)}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                countGroups.some(g => countGroupVisibility[g.id] !== false || countGroupVisibility[g.id] === undefined)
+                  ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+              <Hash size={10} className="text-sky-400" />
+              <span className="text-[8px]">A</span>
+            </button>
+            {/* Tutorial replay button */}
+            <button onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Tutoriel"
+              className="flex items-center px-1.5 py-0.5 rounded text-[10px] border border-white/5 text-slate-600 hover:text-white hover:border-white/20 transition-all">
+              ?
             </button>
           </div>
 

@@ -30,7 +30,7 @@ import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
-import FacadeTutorialOverlay from "./facade-tutorial-overlay";
+import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
 import { FileText, Receipt } from "lucide-react";
 
 /* ── Colors per element type ── */
@@ -164,6 +164,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
   const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
   const [editMode,       setEditMode]       = useState(false);
   const [addingType,     setAddingType]     = useState<string | null>(null);
+  const [showTuto,       setShowTuto]       = useState(false);
 
   /* ── Mask filter: Tous | Murs | Ouvertures ── */
   type MaskFilterMode = "all" | "walls" | "openings";
@@ -481,6 +482,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 {f.label}
               </button>
             ))}
+            <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title="Tutoriel"
+              className="px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-white hover:bg-white/10 transition-all">
+              ?
+            </button>
           </div>
         )}
 
@@ -618,7 +623,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
         {viewTab === "masks" && (
           <div className="flex flex-col lg:flex-row gap-3 items-start">
             {/* Tutorial overlay — shown once per session */}
-            <FacadeTutorialOverlay />
+            <FacadeTutorialOverlay forceShow={showTuto} />
 
             {/* Left: base image + SVG mask overlays — self-start prevents height-stretch in flex-row */}
             <div className="relative flex-1 min-w-0 self-start">

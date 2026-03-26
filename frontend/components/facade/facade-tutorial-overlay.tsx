@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "floorscan_mask_tuto_seen";
 
+export function resetFacadeTutorial() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
 interface TutorialStep {
   icon: React.ReactNode;
   titleKey: DTKey;
@@ -27,7 +31,7 @@ const STEPS: TutorialStep[] = [
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
 
-export default function FacadeTutorialOverlay() {
+export default function FacadeTutorialOverlay({ forceShow: externalForce }: { forceShow?: boolean } = {}) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -44,6 +48,10 @@ export default function FacadeTutorialOverlay() {
       }
     } catch {}
   }, []);
+
+  useEffect(() => {
+    if (externalForce) { setShow(true); setStep(0); }
+  }, [externalForce]);
 
   const updateSpotlight = useCallback(() => {
     const current = STEPS[step];

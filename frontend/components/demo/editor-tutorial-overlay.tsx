@@ -9,6 +9,11 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "floorscan_editor_tuto_seen";
 
+/** Call this to force the tutorial to show again */
+export function resetEditorTutorial() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
 interface TutorialStep {
   icon: React.ReactNode;
   titleKey: DTKey;
@@ -30,7 +35,7 @@ const STEPS: TutorialStep[] = [
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
 
-export default function EditorTutorialOverlay() {
+export default function EditorTutorialOverlay({ forceShow: externalForce }: { forceShow?: boolean }) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -47,6 +52,11 @@ export default function EditorTutorialOverlay() {
       }
     } catch {}
   }, []);
+
+  // Allow parent to force-show the tutorial
+  useEffect(() => {
+    if (externalForce) { setShow(true); setStep(0); }
+  }, [externalForce]);
 
   // Update spotlight position when step changes or on scroll/resize
   const updateSpotlight = useCallback(() => {
