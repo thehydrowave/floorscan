@@ -87,7 +87,7 @@ const MASK_LAYERS: MaskLayerDef[] = [
   { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
   { id: "roof",           label: "Toiture",                 icon: Frame,          color: "#a78bfa" },
   { id: "floor_line",     label: "Séparations d'étage",     icon: Layers,         color: "#fb923c" },
-  { id: "other",          label: "Ouvertures détectées",    icon: HelpCircle,     color: "#fbbf24" },
+  { id: "other",          label: "Fenêtres",                icon: AppWindow,      color: "#fbbf24" },
 ];
 
 interface FacadeResultsStepProps {
@@ -195,6 +195,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const draggingPtRef    = useRef<{zoneId:number;ptIdx:number} | null>(null);
 
+  /* ── Masques: zoom / pan ── */
+  const [maskZoom,     setMaskZoom]     = useState(1);
+  const [maskPan,      setMaskPan]      = useState({ x: 0, y: 0 });
+  const maskPanRef     = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [isMaskPanning, setIsMaskPanning] = useState(false);
+  const maskContainerRef = useRef<HTMLDivElement>(null);
+
   /* ── Facade zone area (m²) from polygon + PPM ── */
   const facadeZoneAreaM2 = useCallback((pts: Array<{x:number;y:number}>) => {
     const ppm = result.pixels_per_meter;
@@ -225,7 +232,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
     }
     // Holes: opening elements
     localElements
-      .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
+      .filter(e => ["window", "door", "balcony", "other"].includes(e.type) && !hiddenElements.has(e.id))
       .forEach(e => {
         const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
         const w = e.bbox_norm.w * W, h = e.bbox_norm.h * H;
@@ -242,6 +249,24 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
       .reduce((s, e) => s + (e.area_m2 ?? 0), 0);
     return Math.max(0, result.facade_area_m2 - openingsArea);
   }, [result.facade_area_m2, localElements, hiddenElements]);
+
+  /* ── Surface fenêtres (type "other") ── */
+  const fenetresAreaM2 = useMemo(() => {
+    const ppm = result.pixels_per_meter;
+    return localElements
+      .filter(e => e.type === "other" && !hiddenElements.has(e.id))
+      .reduce((s, e) => {
+        if (e.area_m2 != null) return s + e.area_m2;
+        if (!ppm || ppm <= 0 || imgNat.w === 0) return s;
+        return s + (e.bbox_norm.w * imgNat.w * e.bbox_norm.h * imgNat.h) / (ppm * ppm);
+      }, 0);
+  }, [localElements, hiddenElements, result.pixels_per_meter, imgNat]);
+
+  /* ── Surface façade nette = délimitée − fenêtres ── */
+  const facadeNetteM2 = useMemo(() => {
+    if (totalFacadeZonesM2 <= 0) return null;
+    return Math.max(0, totalFacadeZonesM2 - fenetresAreaM2);
+  }, [totalFacadeZonesM2, fenetresAreaM2]);
 
   /* ── Seed imgNat from plan_b64 ── */
   useEffect(() => {
@@ -396,6 +421,49 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
     setIsDragging(false);
   }, []);
 
+  /* ── Masques: wheel zoom ── */
+  useEffect(() => {
+    if (viewTab !== "masks") return;
+    const el = maskContainerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      setMaskZoom(z => {
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        const newZ = Math.min(Math.max(z * factor, 0.5), 8);
+        setMaskPan(p => ({
+          x: mx - (mx - p.x) * (newZ / z),
+          y: my - (my - p.y) * (newZ / z),
+        }));
+        return newZ;
+      });
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [viewTab]);
+
+  const handleMaskContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      maskPanRef.current = { startX: e.clientX, startY: e.clientY, panX: maskPan.x, panY: maskPan.y };
+      setIsMaskPanning(true);
+    }
+  }, [maskPan]);
+
+  const handleMaskContainerMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const ref = maskPanRef.current;
+    if (!ref) return;
+    setMaskPan({ x: ref.panX + (e.clientX - ref.startX), y: ref.panY + (e.clientY - ref.startY) });
+  }, []);
+
+  const handleMaskContainerMouseUp = useCallback(() => {
+    maskPanRef.current = null;
+    setIsMaskPanning(false);
+  }, []);
+
   /* ── Derived: per-floor breakdown ── */
   const floorLevels = [...new Set(localElements.map(e => e.floor_level ?? 0))].sort((a, b) => b - a);
   const floorData = floorLevels.map(level => {
@@ -442,22 +510,31 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
       )}
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {[
-          { k: "windows",   value: result.windows_count,   label: d("fa_windows") },
-          { k: "doors",     value: result.doors_count,     label: d("fa_doors") },
-          { k: "balconies", value: result.balconies_count, label: d("fa_balconies") },
-          { k: "floors",    value: result.floors_count,    label: d("fa_floors") },
-        ].map(({ k, value, label }) => {
-          const { Icon, color } = KPI_ICONS[k];
-          return (
-            <div key={k} className="glass rounded-xl border border-white/10 p-4 text-center">
-              <Icon className={cn("w-6 h-6 mx-auto", color)} />
-              <div className={cn("text-2xl font-display font-700 mt-1", color)}>{value}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{label}</div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        {/* Fenêtres count */}
+        <div className="glass rounded-xl border border-white/10 p-4 text-center">
+          <AppWindow className="w-6 h-6 mx-auto text-amber-400" />
+          <div className="text-2xl font-display font-700 mt-1 text-amber-400">
+            {localElements.filter(e => e.type === "other").length}
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">Fenêtres</div>
+        </div>
+        {/* Façade délimitée */}
+        <div className="glass rounded-xl border border-white/10 p-4 text-center">
+          <Crop className="w-6 h-6 mx-auto text-slate-400" />
+          <div className="text-2xl font-display font-700 mt-1 text-slate-200">
+            {totalFacadeZonesM2 > 0 ? `${totalFacadeZonesM2.toFixed(0)} m²` : "—"}
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">Façade délimitée</div>
+        </div>
+        {/* Surface nette */}
+        <div className="glass rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-center">
+          <Building2 className="w-6 h-6 mx-auto text-blue-400" />
+          <div className="text-2xl font-display font-700 mt-1 text-blue-400">
+            {facadeNetteM2 != null ? `${facadeNetteM2.toFixed(0)} m²` : "—"}
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">Surface façade nette</div>
+        </div>
       </div>
 
       {/* ── Tab bar + SVG toggles ── */}
@@ -635,7 +712,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             <FacadeTutorialOverlay forceShow={showTuto} />
 
             {/* Left: base image + SVG mask overlays — self-start prevents height-stretch in flex-row */}
-            <div className="relative flex-1 min-w-0 self-start">
+            <div
+              ref={maskContainerRef}
+              className="relative flex-1 min-w-0 self-start overflow-hidden rounded-xl select-none"
+              style={{ minHeight: 200, cursor: isMaskPanning ? "grabbing" : "default" }}
+              onMouseDown={handleMaskContainerMouseDown}
+              onMouseMove={handleMaskContainerMouseMove}
+              onMouseUp={handleMaskContainerMouseUp}
+              onMouseLeave={handleMaskContainerMouseUp}
+            >
+            <div style={{
+              transform: `translate(${maskPan.x}px, ${maskPan.y}px) scale(${maskZoom})`,
+              transformOrigin: "0 0",
+              willChange: "transform",
+            }}>
+            <div className="relative">
               <img
                 src={`data:image/png;base64,${result.plan_b64}`}
                 alt="Facade plan"
@@ -650,7 +741,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
               {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                  <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
+                  <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.3} />
                 </svg>
               )}
 
@@ -840,6 +931,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 </svg>
               )}
 
+            </div>{/* /relative inner */}
+            </div>{/* /transform */}
+
               {/* Action bar for selected element */}
               {selectedEl !== null && (() => {
                 const el = localElements.find(e => e.id === selectedEl);
@@ -977,21 +1071,30 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   })}
                 </div>              </div>
 
-              {/* ── SURFACE MUR OPAQUE ── */}
-              {!hiddenLayers.has("surface_murale") && (
-                <div className="border-t border-white/5 pt-3 space-y-1"
-                  title={d("fa_tt_wall_area" as DTKey)}>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">{d("fa_wall_area" as DTKey)}</div>
-                  <div className="text-base font-mono font-semibold text-slate-200">
-                    {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
-                  </div>
-                  {result.facade_area_m2 && wallAreaM2 != null && (
-                    <div className="text-xs text-slate-500">
-                      {((wallAreaM2 / result.facade_area_m2) * 100).toFixed(0)}% de la façade
+              {/* ── SURFACE FENÊTRES + SURFACE NETTE ── */}
+              <div className="border-t border-white/5 pt-3 space-y-3">
+                {fenetresAreaM2 > 0 && (
+                  <div className="space-y-0.5">
+                    <div className="text-xs text-amber-500/80 uppercase tracking-wider">Surface fenêtres</div>
+                    <div className="text-base font-mono font-semibold text-amber-300">
+                      {fenetresAreaM2.toFixed(1)} m²
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+                {facadeNetteM2 != null && (
+                  <div className="space-y-0.5">
+                    <div className="text-xs text-blue-400/80 uppercase tracking-wider">Surface façade nette</div>
+                    <div className="text-xl font-mono font-bold text-blue-400">
+                      {facadeNetteM2.toFixed(1)} m²
+                    </div>
+                    {totalFacadeZonesM2 > 0 && fenetresAreaM2 > 0 && (
+                      <div className="text-xs text-slate-500">
+                        {((fenetresAreaM2 / totalFacadeZonesM2) * 100).toFixed(0)}% ouvertures
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* ── MODIFICATION DES ZONES ── */}
               <div data-tuto-fa="edit" className="border-t border-white/5 pt-3">
