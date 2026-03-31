@@ -74,6 +74,7 @@ export default function DemoClient() {
   const [customDetections,setCustomDetections]=useState<CustomDetection[]>([]);
   const [facadeResult,setFacadeResult]=useState<FacadeAnalysisResult|null>(null);
   const [facadeZones,setFacadeZones]=useState<FacadeZoneCrop[]>([]);
+  const [measurementData,setMeasurementData]=useState<any>(null);
   const [v1SessionId,setV1SessionId]=useState<string|null>(null);
   const [v1ImageB64,setV1ImageB64]=useState<string|null>(null);
   const [v2SessionId,setV2SessionId]=useState<string|null>(null);
@@ -223,8 +224,8 @@ export default function DemoClient() {
                   {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart} onBack={handleBack}/>}
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
                   {step===5&&sessionId&&config&&<AnalyzeStep sessionId={sessionId} config={config} ppm={ppm} onAnalyzed={handleAnalyzed} onSessionExpired={handleRestart} onBack={handleBack}/>}
-                  {step===6&&analysisResult&&<ResultsStep result={analysisResult} customDetections={customDetections} onDetectionsChange={setCustomDetections} onGoEditor={handleGoEditor} onRestart={handleRestart} pageCount={savedPdfData?.pageCount} currentPage={savedPdfData?currentPageIdx:undefined} onSwitchPage={savedPdfData&&pageResults.size>1?handleSwitchPage:undefined} analyzedPages={savedPdfData?[...pageResults.keys()]:undefined} onAddPage={savedPdfData?handleAddPage:undefined}/>}
-                  {step===7&&analysisResult&&sessionId&&<EditorStep sessionId={sessionId} initialResult={analysisResult} initialCustomDetections={customDetections} onRestart={handleRestart} onSessionExpired={handleRestart} onAddPage={savedPdfData?handleAddPage:undefined} onGoResults={handleGoResults}/>}
+                  {step===6&&analysisResult&&<ResultsStep result={analysisResult} customDetections={customDetections} onDetectionsChange={setCustomDetections} onGoEditor={handleGoEditor} onGoChantier={() => setDemoMode("chantier")} onRestart={handleRestart} pageCount={savedPdfData?.pageCount} currentPage={savedPdfData?currentPageIdx:undefined} onSwitchPage={savedPdfData&&pageResults.size>1?handleSwitchPage:undefined} analyzedPages={savedPdfData?[...pageResults.keys()]:undefined} onAddPage={savedPdfData?handleAddPage:undefined}/>}
+                  {step===7&&analysisResult&&sessionId&&<EditorStep sessionId={sessionId} initialResult={analysisResult} initialCustomDetections={customDetections} onRestart={handleRestart} onSessionExpired={handleRestart} onAddPage={savedPdfData?handleAddPage:undefined} onGoResults={handleGoResults} onMeasurementDataChange={setMeasurementData}/>}
                 </motion.div>
               </AnimatePresence>
             </motion.div>
@@ -283,7 +284,7 @@ export default function DemoClient() {
 
       <div className="fixed inset-0 pointer-events-none -z-10"><div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-64 bg-gradient-to-b from-brand-900/10 to-transparent"/><div className="absolute inset-0 bg-grid-pattern bg-grid-size opacity-30"/></div>
 
-      {demoMode&&demoMode!=="chantier"&&<ChatPanel result={demoMode==="facade"?null:analysisResult} facadeResult={demoMode==="facade"?facadeResult:null} currentStep={step} autoOpen={demoMode==="ia"||demoMode==="measure"||(demoMode==="facade"&&step>=6)}/>}
+      {demoMode&&demoMode!=="chantier"&&<ChatPanel result={demoMode==="facade"?null:analysisResult} facadeResult={demoMode==="facade"?facadeResult:null} currentStep={step} autoOpen={demoMode==="ia"||demoMode==="measure"||(demoMode==="facade"&&step>=6)} measurementData={measurementData}/>}
     </div>
   );
 }

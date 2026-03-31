@@ -9,9 +9,11 @@ import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { useAuth } from "@/lib/use-auth";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm } from "@/lib/measure-types";
+import EditorTutorialOverlay, { resetEditorTutorial } from "@/components/demo/editor-tutorial-overlay";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm, CountGroup, CountPoint, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
@@ -84,6 +86,14 @@ function edgeLengthM(
   return Math.sqrt(dx * dx + dy * dy) / ppm;
 }
 
+export interface MeasurementSnapshot {
+  surfaceZones?: Array<{ typeName: string; totalArea: number; zoneCount: number }>;
+  linearMeasures?: Array<{ distanceM: number | null }>;
+  angleMeasures?: Array<{ angleDeg: number }>;
+  countCategories?: Array<{ name: string; count: number }>;
+  customDetections?: Array<{ label: string; count: number; area_m2?: number | null }>;
+}
+
 interface EditorStepProps {
   sessionId: string;
   initialResult: AnalysisResult;
@@ -92,11 +102,13 @@ interface EditorStepProps {
   onSessionExpired?: () => void;
   onAddPage?: () => void;
   onGoResults?: (updatedResult: AnalysisResult, detections?: CustomDetection[]) => void;
+  onMeasurementDataChange?: (data: MeasurementSnapshot) => void;
 }
 
-export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults }: EditorStepProps) {
+export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults, onMeasurementDataChange }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
+  const { isAdmin } = useAuth();
 
   const [result, setResult] = useState(initialResult);
   const [layer, setLayer] = useState<Layer>(null);
@@ -163,7 +175,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setTool("select");
     } else {
       if (tool === "select" || tool === "split") setTool("add_rect");
-      if (tool === "sam" && layer !== "door" && layer !== "window" && layer !== "interior") setTool("add_rect");
+      if (tool === "sam" && ((!isAdmin) || (layer !== "door" && layer !== "window" && layer !== "interior"))) setTool("add_rect");
       pts.current = [];
     }
     if (layer !== "rooms") {
@@ -193,7 +205,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
   const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
+  // Count categories
+  const [countGroups, setCountGroups] = useState<CountGroup[]>(DEFAULT_COUNT_GROUPS);
+  const [countPoints, setCountPoints] = useState<CountPoint[]>([]);
+  const [activeCountGroupId, setActiveCountGroupId] = useState<string>(DEFAULT_COUNT_GROUPS[0].id);
+  const [countGroupVisibility, setCountGroupVisibility] = useState<Record<string, boolean>>({});
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
+  const [showTuto, setShowTuto] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
@@ -220,6 +238,28 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [vsSaveOpen, setVsSaveOpen] = useState(false);
   const [vsEditMode, setVsEditMode] = useState<"search" | "add" | "remove">("search");
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>(initialCustomDetections ?? []);
+
+  // Push measurement data up to parent (for chatbot context)
+  useEffect(() => {
+    onMeasurementDataChange?.({
+      surfaceZones: surfaceTypes.map(st => {
+        const stZones = zones.filter(z => z.typeId === st.id);
+        return { typeName: st.name, totalArea: 0, zoneCount: stZones.length };
+      }).filter(s => s.zoneCount > 0),
+      linearMeasures: linearMeasures.map(lm => ({
+        distanceM: ppm ? lm.distPx / ppm : null,
+      })),
+      angleMeasures: angleMeasures.map(am => ({ angleDeg: am.angleDeg })),
+      countCategories: countGroups.map(g => ({
+        name: g.name,
+        count: countPoints.filter(p => p.groupId === g.id).length,
+      })).filter(c => c.count > 0),
+      customDetections: customDetections.map(det => ({
+        label: det.label, count: det.count, area_m2: det.total_area_m2,
+      })),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones.length, linearMeasures.length, angleMeasures.length, countPoints.length, customDetections.length]);
 
   // Undo / Redo (measure mode)
   const historyRef   = useRef<MeasureZone[][]>([]);
@@ -923,13 +963,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       return;
     }
 
-    // ── Utilities: count points ──
-    if (tool === "count") {
+    // ── Utilities: count points (category-based) ──
+    if (tool === "count" && activeCountGroupId) {
       const img = imgRef.current!;
-      pushHistory(zones);
-      setZones(prev => [...prev, { id: crypto.randomUUID(), typeId: "__count__", points: [{ x: rx / img.naturalWidth, y: ry / img.naturalHeight }] }]);
-      const countTotal = zones.filter(z => z.typeId === "__count__").length + 1;
-      toast({ title: `${d("ut_point")} #${countTotal}`, variant: "default" });
+      const newPt: CountPoint = {
+        id: crypto.randomUUID(),
+        groupId: activeCountGroupId,
+        x: rx / img.naturalWidth,
+        y: ry / img.naturalHeight,
+      };
+      setCountPoints(prev => [...prev, newPt]);
+      const grp = countGroups.find(g => g.id === activeCountGroupId);
+      const grpTotal = countPoints.filter(p => p.groupId === activeCountGroupId).length + 1;
+      toast({ title: `${grp?.name ?? "Point"} #${grpTotal}`, variant: "default" });
       return;
     }
 
@@ -966,6 +1012,21 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         const img = imgRef.current!;
         const cutPoints = pts.current.map(([px, py]) => ({ x: px / img.naturalWidth, y: py / img.naturalHeight }));
         pts.current = [];
+        // Validate: check if the selected room exists and the line crosses its polygon
+        const room = (result.rooms ?? []).find(r => r.id === selectedRoomId);
+        if (!room || !room.polygon_norm) {
+          toast({ title: d("ed_select_room_first" as DTKey), variant: "error" });
+          setTool("select");
+          return;
+        }
+        // Check both cut points are near/inside the room polygon
+        const p1In = pointInPolygon(cutPoints[0].x, cutPoints[0].y, room.polygon_norm);
+        const p2In = pointInPolygon(cutPoints[1].x, cutPoints[1].y, room.polygon_norm);
+        if (!p1In && !p2In) {
+          toast({ title: d("ed_cut_no_cross" as DTKey), description: d("ed_cut_no_cross_d" as DTKey), variant: "error" });
+          setTool("select");
+          return;
+        }
         sendEditRoom({ action: "split_room", room_id: selectedRoomId, cut_points: cutPoints });
         setTool("select");
       }
@@ -993,6 +1054,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
           setEditingRoomId(hitRoom.id);
           setActiveRoomType(hitRoom.type);
+          setSidebarTab("rooms");
         } else {
           setSelectedRoomId(null);
           setEditingRoomId(null);
@@ -1382,6 +1444,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      {/* Tutorial overlay — shown once */}
+      <EditorTutorialOverlay forceShow={showTuto} />
       {/* ── Compact Header ── */}
       <div className="flex items-center gap-2 h-11 mb-1.5">
         {/* Undo / Redo (unified) */}
@@ -1422,6 +1486,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <span className="hidden sm:inline ml-1">{d("ed_save_btn")}</span>
             </Button>
           )}
+          {/* Tutorial replay */}
+          <Button size="sm" variant="outline" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Revoir le tutoriel">
+            <span className="text-xs">Tutorial</span>
+          </Button>
           {/* Export dropdown */}
           <div className="relative">
             <Button size="sm" variant="outline" onClick={() => setExportOpen(v => !v)}>
@@ -1473,7 +1541,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         <div className="flex flex-col gap-1" style={{ height: "calc(100vh - 7rem)" }}>
 
 {/* ══ BAR 1 : VISIBILITÉ ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
+          <div data-tuto="visibility-bar" className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_visibility")}</span>
             {([
               { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
@@ -1494,22 +1562,44 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               <Hash size={10} />
             </button>
+            {/* Separator */}
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+            {/* Surfaces toggle */}
+            <button onClick={() => setShowSurfaces(v => !v)} title={d("ed_surfaces_label" as DTKey)}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                showSurfaces ? "border-violet-500/30 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+              <PaintBucket size={10} className="text-violet-400" />
+              {showSurfaces ? <Eye className="w-2.5 h-2.5 text-violet-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
+            {/* Annotations toggle (all count points) */}
+            <button onClick={() => {
+              const allVisible = countGroups.every(g => countGroupVisibility[g.id] !== false);
+              const newVis: Record<string, boolean> = {};
+              countGroups.forEach(g => { newVis[g.id] = !allVisible; });
+              setCountGroupVisibility(newVis);
+            }} title={d("ed_annotations" as DTKey)}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                countGroups.some(g => countGroupVisibility[g.id] !== false || countGroupVisibility[g.id] === undefined)
+                  ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
+              <Hash size={10} className="text-sky-400" />
+              <span className="text-[8px]">A</span>
+            </button>
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
-            <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">{d("ed_element")}</span>
+          <div data-tuto="edit-bar" className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">{d("ed_element")}</span>
             {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).map(l => {
-              const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string }> = {
-                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400" },
-                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400" },
-                french_door: { Icon: Columns2,          label: "P-Fen\u00eatres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400" },
-                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400" },
-                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400" },
-                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent" },
-                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400" },
-                surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400" },
-                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400" },
+              const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string; tooltip: string }> = {
+                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", tooltip: "Portes : dessinez, effacez ou corrigez les masques de portes d\u00e9tect\u00e9es par l'IA" },
+                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400",    tooltip: "Fen\u00eatres : dessinez, effacez ou corrigez les masques de fen\u00eatres d\u00e9tect\u00e9es par l'IA" },
+                french_door: { Icon: Columns2,          label: "P-Fen\u00eatres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400",  tooltip: "Portes-fen\u00eatres : dessinez ou corrigez les masques de portes-fen\u00eatres (baies vitr\u00e9es)" },
+                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400",     tooltip: "Murs porteurs : dessinez ou corrigez les masques des murs en b\u00e9ton/porteurs" },
+                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400",    tooltip: "Cloisons : dessinez ou corrigez les cloisons int\u00e9rieures l\u00e9g\u00e8res" },
+                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent",      tooltip: "Surface habitable : dessinez ou corrigez le masque de la surface int\u00e9rieure habitable" },
+                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400",  tooltip: "Pi\u00e8ces : s\u00e9lectionnez, renommez, d\u00e9coupez ou fusionnez les pi\u00e8ces d\u00e9tect\u00e9es. Shift+clic pour fusionner." },
+                surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400",  tooltip: "Surfaces : dessinez des zones de rev\u00eatement (carrelage, parquet, peinture...) pour le m\u00e9tr\u00e9" },
+                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400",     tooltip: "Outils de mesure : distance, angle, annotations et recalibrage de l'\u00e9chelle" },
               };
               const m = layerMeta[l];
               // Separator before surface & utilities
@@ -1517,11 +1607,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               return (
                 <span key={l} className="contents">
                   {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
-                  <button onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); }}
-                    title={m.label}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                  <button
+                    data-tuto={l === "rooms" ? "rooms-btn" : l === "surface" ? "surface-btn" : l === "utilities" ? "tools-btn" : undefined}
+                    onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
+                    title={m.tooltip}
+                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                       layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-                    <m.Icon className={cn("w-3 h-3 shrink-0", m.iconColor)} />
+                    <m.Icon className={cn("w-4 h-4 shrink-0", m.iconColor)} />
                     <span className={layer === l ? "" : "text-slate-400"}>{m.label}</span>
                   </button>
                 </span>
@@ -1533,9 +1625,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <X className="w-3 h-3" />
               </button>
             )}
-            {/* ── Recherche visuelle (standalone, fonctionne sans sélection d'élément) ── */}
+            {/* ── Détection visuelle (standalone, fonctionne sans sélection d'élément) ── */}
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-            <button onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
+            <button data-tuto="vs-btn"
+              onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
               title={d("ed_tt_vs")}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
@@ -1607,9 +1700,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "erase_poly" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <PenOff className="w-3 h-3" /> {d("ed_erase_free")}
                   </button>
-                  {(layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
+                  {isAdmin && (layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
-                      title={d("ed_tt_ia_auto")}
+                      title="Détection IA automatique : cliquez sur un élément pour le détecter automatiquement (SAM)"
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                         tool === "sam" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                       <Sparkles className="w-3 h-3" /> {d("ed_ia_auto")}
@@ -1717,32 +1810,32 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 </>
               )}
 
-              {/* ── Outils UTILITIES (lin\u00e9aire, comptage, angle, \u00e9chelle) ── */}
+              {/* ── Outils UTILITIES (lin\u00e9aire, annotations, angle, \u00e9chelle) ── */}
               {layer === "utilities" && (
                 <>
                   <button onClick={() => setTool("linear")}
-                    title={d("ut_linear_tt" as DTKey)}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                    title="Mesure de distance : cliquez 2 points pour mesurer une longueur en mètres"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Ruler className="w-3 h-3" /> {d("ut_linear" as DTKey)}
+                    <Ruler className="w-2.5 h-2.5" /> {d("ut_linear" as DTKey)}
                   </button>
                   <button onClick={() => setTool("angle")}
-                    title={d("ut_angle_tt" as DTKey)}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                    title="Mesure d'angle : cliquez 3 points (point de départ, sommet, point d'arrivée) pour mesurer un angle en degrés"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "angle" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Compass className="w-3 h-3" /> {d("ut_angle" as DTKey)}
+                    <Compass className="w-2.5 h-2.5" /> {d("ut_angle" as DTKey)}
                   </button>
                   <button onClick={() => setTool("count")}
-                    title={d("ut_count_tt" as DTKey)}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                    title="Annotation : cliquez sur le plan pour placer des points. Créez des catégories (prises, radiateurs, etc.) dans le panneau latéral"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Hash className="w-3 h-3" /> {d("ut_count" as DTKey)}
+                    <Hash className="w-2.5 h-2.5" /> {d("ut_count" as DTKey)}
                   </button>
                   <button onClick={() => setTool("rescale")}
-                    title={d("ut_rescale_tt" as DTKey)}
-                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                    title="Recalibrer l'échelle : cliquez 2 points d'une distance connue pour ajuster le rapport pixels/mètres"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Maximize2 className="w-3 h-3" /> {d("ut_rescale" as DTKey)}
+                    <Maximize2 className="w-2.5 h-2.5" /> {d("ut_rescale" as DTKey)}
                   </button>
                   {ppm && (
                     <span className="text-[10px] text-slate-500 font-mono ml-1">
@@ -1803,6 +1896,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {loading && (
                 <div className="absolute inset-0 bg-ink/70 flex items-center justify-center z-30">
                   <Loader2 className="w-8 h-8 text-accent animate-spin" />
+                </div>
+              )}
+              {/* Split mode overlay instruction */}
+              {tool === "split" && (
+                <div className="absolute top-3 left-3 z-20 flex items-center gap-2 bg-slate-900/95 border border-orange-500/40 rounded-xl px-4 py-2 shadow-lg pointer-events-none">
+                  <Scissors className="w-4 h-4 text-orange-400" />
+                  <span className="text-sm text-orange-300">
+                    {pts.current.length === 0
+                      ? d("ed_cut_pt1" as DTKey)
+                      : d("ed_cut_pt2" as DTKey)}
+                  </span>
+                  <kbd className="text-[10px] px-1.5 py-0.5 border border-white/20 rounded bg-white/5 text-slate-400 pointer-events-auto cursor-pointer"
+                    onClick={() => { setTool("select"); pts.current = []; }}>Echap</kbd>
                 </div>
               )}
               {/* Floating zoom controls — top-right */}
@@ -2043,6 +2149,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     );
                   })}
                   {/* Count points (utilities) */}
+                  {/* Count points by category (new system) */}
+                  {countPoints.filter(cp => countGroupVisibility[cp.groupId] !== false).map(cp => {
+                    const grp = countGroups.find(g => g.id === cp.groupId);
+                    const color = grp?.color ?? "#38bdf8";
+                    const px = cp.x * imgDisplaySize.w;
+                    const py = cp.y * imgDisplaySize.h;
+                    const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
+                    const label = grp?.name ?? "";
+                    return (
+                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setCountPoints(prev => prev.filter(p => p.id !== cp.id))}>
+                        <circle cx={px} cy={py} r={12} fill={color} fillOpacity={0.35} stroke={color} strokeWidth={2} />
+                        <text x={px} y={py + 4} textAnchor="middle" fill="white" fontSize={9} fontWeight="700" fontFamily="monospace">{num}</text>
+                        <text x={px + 16} y={py + 4} fill={color} fontSize={8} fontWeight="600" fontFamily="system-ui">{label}</text>
+                      </g>
+                    );
+                  })}
+                  {/* Legacy __count__ points (backward compat) */}
                   {zones.filter(z => z.typeId === "__count__").map((zone, i) => {
                     if (!zone.points || zone.points.length < 1) return null;
                     const px = zone.points[0].x * imgDisplaySize.w;
@@ -2086,6 +2210,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         <circle cx={ax} cy={ay} r={3} fill="#f59e0b80" />
                         <circle cx={cx} cy={cy} r={3} fill="#f59e0b80" />
                         <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}°</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              {/* SVG overlay for count points — separate to allow pointer-events */}
+              {imgDisplaySize.w > 0 && countPoints.length > 0 && (
+                <svg
+                  className="absolute top-0 left-0"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 3, pointerEvents: "none" }}
+                >
+                  {countPoints.filter(cp => countGroupVisibility[cp.groupId] !== false).map(cp => {
+                    const grp = countGroups.find(g => g.id === cp.groupId);
+                    const color = grp?.color ?? "#38bdf8";
+                    const px = cp.x * imgDisplaySize.w;
+                    const py = cp.y * imgDisplaySize.h;
+                    const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
+                    const label = grp?.name ?? "";
+                    return (
+                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setCountPoints(prev => prev.filter(p => p.id !== cp.id))}>
+                        <circle cx={px} cy={py} r={14} fill={color} fillOpacity={0.4} stroke={color} strokeWidth={2.5} />
+                        <text x={px} y={py + 4.5} textAnchor="middle" fill="white" fontSize={10} fontWeight="800" fontFamily="monospace">{num}</text>
+                        <rect x={px + 16} y={py - 8} width={label.length * 6 + 8} height={16} rx={4} fill="black" fillOpacity={0.7} style={{ pointerEvents: "none" }} />
+                        <text x={px + 20} y={py + 4} fill={color} fontSize={9} fontWeight="700" fontFamily="system-ui" style={{ pointerEvents: "none" }}>{label}</text>
                       </g>
                     );
                   })}
@@ -2688,6 +2841,50 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                                     style={{ background: getRoomColor(rt.type) }} />
                                 ))}
                               </div>
+                              {/* Type de sol */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] text-slate-600 uppercase tracking-wide mr-0.5">{d("ed_floor_type" as DTKey)}</span>
+                                <select
+                                  value={room.surfaceTypeId ?? ""}
+                                  title="Assigner un type de revêtement de sol à cette pièce. Une zone de surface sera automatiquement créée à partir du contour de la pièce."
+                                  onChange={e => {
+                                    const stId = e.target.value || undefined;
+                                    setResult(prev => ({
+                                      ...prev,
+                                      rooms: (prev.rooms ?? []).map(r => {
+                                        if (r.id !== room.id) return r;
+                                        // Remove old linked zone
+                                        if (r.linkedZoneId) {
+                                          setZones(zp => zp.filter(z => z.id !== r.linkedZoneId));
+                                        }
+                                        if (!stId || !r.polygon_norm) return { ...r, surfaceTypeId: stId, linkedZoneId: undefined };
+                                        // Create new linked zone from room polygon
+                                        const zoneId = crypto.randomUUID();
+                                        const newZone: MeasureZone = {
+                                          id: zoneId,
+                                          typeId: stId,
+                                          points: r.polygon_norm.map(p => ({ x: p.x, y: p.y })),
+                                          name: `auto:room:${r.id}`,
+                                        };
+                                        setZones(zp => [...zp.filter(z => z.id !== r.linkedZoneId), newZone]);
+                                        return { ...r, surfaceTypeId: stId, linkedZoneId: zoneId };
+                                      }),
+                                    }));
+                                  }}
+                                  className="text-[10px] bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-violet-400/50"
+                                >
+                                  <option value="" style={{ background: "#1e293b" }}>— Aucun —</option>
+                                  {surfaceTypes.map(st => (
+                                    <option key={st.id} value={st.id} style={{ background: "#1e293b" }}>
+                                      {st.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {room.surfaceTypeId && (() => {
+                                  const st = surfaceTypes.find(s => s.id === room.surfaceTypeId);
+                                  return st ? <span className="w-3 h-3 rounded-full shrink-0" style={{ background: st.color }} /> : null;
+                                })()}
+                              </div>
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <button onClick={() => toast({ title: d("ed_mode_merge"), description: d("ed_mode_merge_d"), variant: "default" })}
                                   className="flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-[10px]">
@@ -2831,27 +3028,89 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <span className="ml-auto font-mono text-xs text-amber-400 font-600">{ppm.toFixed(1)} px/m</span>
                     </div>
                   )}
-                  {zones.filter(z => z.typeId === "__count__").length > 0 && (
-                    <div className="flex items-center justify-between px-2 py-1.5 rounded-lg border border-white/5 bg-white/5 mb-2">
-                      <span className="text-xs text-slate-400 flex items-center gap-1.5"><Hash className="w-3.5 h-3.5 text-sky-400" /> {d("ut_count")}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-sky-400 font-600">{zones.filter(z => z.typeId === "__count__").length}</span>
-                        <button onClick={() => { pushHistory(zones); setZones(prev => prev.filter(z => z.typeId !== "__count__")); }}
-                          className="text-slate-600 hover:text-red-400 transition-colors" title="Reset"><Trash2 className="w-3 h-3" /></button>
-                      </div>
+                  {/* Count categories */}
+                  <div className="border-t border-white/5 pt-2 mt-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <Hash className="w-3 h-3" /> {d("ed_annot_cats" as DTKey)}
+                      </span>
+                      <button
+                        title="Ajouter une catégorie d'annotation (ex: Prises, Radiateurs, Spots...)"
+                        onClick={() => {
+                          const name = prompt("Nom de l'annotation (ex: Prises, Radiateurs, Spots):");
+                          if (!name?.trim()) return;
+                          const colors = ["#F59E0B","#06B6D4","#EC4899","#10B981","#8B5CF6","#EF4444","#3B82F6","#F97316"];
+                          const color = colors[countGroups.length % colors.length];
+                          const newGroup: CountGroup = { id: `cnt_${Date.now()}`, name: name.trim(), color };
+                          setCountGroups(prev => [...prev, newGroup]);
+                          setActiveCountGroupId(newGroup.id);
+                          setTool("count");
+                        }}
+                        className="text-slate-500 hover:text-emerald-400 transition-colors p-0.5 rounded hover:bg-emerald-500/10">
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  )}
-                  <p className="text-[10px] text-slate-600 leading-relaxed">
-                    {tool === "linear" && d("ut_linear")+": "+d("ut_distance")}
-                    {tool === "count" && d("ut_count")+": "+d("ut_point")}
-                    {tool === "rescale" && d("ut_rescale")}
-                    {tool === "angle" && d("ut_angle")}
+                    {countGroups.map(grp => {
+                      const pts = countPoints.filter(p => p.groupId === grp.id);
+                      const isActive = activeCountGroupId === grp.id;
+                      const visible = countGroupVisibility[grp.id] !== false;
+                      return (
+                        <div key={grp.id}
+                          className={cn(
+                            "flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all cursor-pointer border",
+                            isActive ? "border-white/20 bg-white/5" : "border-transparent hover:bg-white/3"
+                          )}
+                          onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); }}>
+                          <input type="color" value={grp.color}
+                            title="Changer la couleur de cette catégorie"
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setCountGroups(prev => prev.map(g => g.id === grp.id ? { ...g, color: e.target.value } : g)); }}
+                            className="w-4 h-4 rounded-full shrink-0 border-0 p-0 cursor-pointer bg-transparent" style={{ background: grp.color }} />
+                          <span className={cn("flex-1 truncate", isActive ? "text-white" : "text-slate-400")}>{grp.name}</span>
+                          <span className="font-mono text-[10px] text-slate-500">{pts.length}</span>
+                          <button
+                            title={visible ? `Masquer "${grp.name}" sur le plan` : `Afficher "${grp.name}" sur le plan`}
+                            onClick={e => { e.stopPropagation(); setCountGroupVisibility(prev => ({ ...prev, [grp.id]: !visible })); }}
+                            className="text-slate-600 hover:text-slate-300 transition-colors p-0.5">
+                            {visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                          </button>
+                          <button
+                            title={`Supprimer la catégorie "${grp.name}" et ses ${pts.length} point(s)`}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setCountPoints(prev => prev.filter(p => p.groupId !== grp.id));
+                              setCountGroups(prev => prev.filter(g => g.id !== grp.id));
+                              if (activeCountGroupId === grp.id && countGroups.length > 1) {
+                                setActiveCountGroupId(countGroups.find(g => g.id !== grp.id)?.id ?? "");
+                              }
+                            }}
+                            className="text-slate-600 hover:text-red-400 transition-colors p-0.5">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {countPoints.length > 0 && (
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-slate-500">Total : {countPoints.length} points</span>
+                        <button onClick={() => setCountPoints([])}
+                          className="text-[10px] text-slate-600 hover:text-red-400 transition-colors">
+                          {d("ed_annot_clear" as DTKey)}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-600 leading-relaxed mt-2">
+                    {tool === "linear" && d("ed_dist_help" as DTKey)}
+                    {tool === "count" && `${d("ed_annot_help" as DTKey)} "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
+                    {tool === "rescale" && d("ed_rescale_help" as DTKey)}
+                    {tool === "angle" && d("ed_angle_help" as DTKey)}
                   </p>
                 </div>
               )}
 
-              {/* OPENINGS TAB */}
-              {sidebarTab === "visibility" && (layer === "door" || layer === "window") && (
+              {/* OPENINGS TAB — visible for all layers when visibility tab is selected */}
+              {sidebarTab === "visibility" && (
                 <div className="glass rounded-xl border border-white/10 p-4 text-xs">
                   <div className="flex items-center justify-between mb-2">
                     <p className="font-600 text-slate-500">{d("ed_openings_det")}</p>
@@ -2903,6 +3162,110 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           <PenLine className="w-3 h-3" /> {d("ed_trace_poly")}
                         </button>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VISIBILITY: Count, Surfaces, Detections toggles */}
+              {sidebarTab === "visibility" && (
+                <div className="glass rounded-xl border border-white/10 p-4 space-y-3">
+                  <p className="text-xs font-600 text-slate-500 uppercase tracking-wide">{d("ed_display" as DTKey)}</p>
+
+                  {/* Count groups toggle */}
+                  {countGroups.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_annotations" as DTKey)}</p>
+                      {countGroups.map(grp => {
+                        const visible = countGroupVisibility[grp.id] !== false;
+                        const count = countPoints.filter(p => p.groupId === grp.id).length;
+                        return (
+                          <button key={grp.id}
+                            onClick={() => setCountGroupVisibility(prev => ({ ...prev, [grp.id]: !visible }))}
+                            className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                              visible ? "opacity-100" : "opacity-40")}>
+                            <div className="w-3 h-3 rounded-full shrink-0" style={{ background: grp.color }} />
+                            <span className="flex-1 text-left text-slate-300 truncate">{grp.name}</span>
+                            <span className="font-mono text-[10px] text-slate-500">{count}</span>
+                            {visible ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Overlays: Walls, Rooms, Openings */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-600 uppercase tracking-wider">Calques</p>
+                    <button onClick={() => setShowWalls(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showWalls ? "opacity-100" : "opacity-40")}>
+                      <BrickWall className="w-3.5 h-3.5 text-red-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_concrete")}</span>
+                      {showWalls ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                    <button onClick={() => setShowRooms(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showRooms ? "opacity-100" : "opacity-40")}>
+                      <LayoutGrid className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_rooms")}</span>
+                      {showRooms ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                    <button onClick={() => setShowOpeningOverlay(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showOpeningOverlay ? "opacity-100" : "opacity-40")}>
+                      <DoorOpen className="w-3.5 h-3.5 text-fuchsia-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("ed_doors")}/{d("ed_windows")}</span>
+                      {showOpeningOverlay ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                  </div>
+
+                  {/* Surfaces toggle — always visible */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_surfaces_label" as DTKey)}</p>
+                    <button
+                      onClick={() => setShowSurfaces(v => !v)}
+                      className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
+                        showSurfaces ? "opacity-100" : "opacity-40")}>
+                      <PaintBucket className="w-3.5 h-3.5 text-violet-400" />
+                      <span className="flex-1 text-left text-slate-300">{d("sf_surfaces" as DTKey)}</span>
+                      <span className="font-mono text-[10px] text-slate-500">{zones.filter(z => z.typeId !== "__count__").length}</span>
+                      {showSurfaces ? <Eye className="w-3.5 h-3.5 text-slate-400" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                    </button>
+                  </div>
+
+                  {/* Custom detections toggle */}
+                  {customDetections.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_custom_det" as DTKey)}</p>
+                      {customDetections.map(det => (
+                        <div key={det.label} className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ background: det.color }} />
+                          <span className="flex-1 truncate">{det.label}</span>
+                          <span className="font-mono text-[10px] text-slate-500">×{det.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Linear/angle measurements */}
+                  {(linearMeasures.length > 0 || angleMeasures.length > 0) && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-slate-600 uppercase tracking-wider">{d("ed_measures" as DTKey)}</p>
+                      {linearMeasures.length > 0 && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <Ruler className="w-3.5 h-3.5 text-sky-400" />
+                          <span className="flex-1">{d("ed_distances" as DTKey)}</span>
+                          <span className="font-mono text-[10px] text-slate-500">{linearMeasures.length}</span>
+                        </div>
+                      )}
+                      {angleMeasures.length > 0 && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-300">
+                          <Compass className="w-3.5 h-3.5 text-amber-400" />
+                          <span className="flex-1">{d("ed_angles" as DTKey)}</span>
+                          <span className="font-mono text-[10px] text-slate-500">{angleMeasures.length}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

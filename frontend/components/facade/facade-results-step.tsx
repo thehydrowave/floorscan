@@ -30,6 +30,7 @@ import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
+import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
 import { FileText, Receipt } from "lucide-react";
 
 /* ── Colors per element type ── */
@@ -79,14 +80,14 @@ const KPI_ICONS: Record<string, { Icon: IconComp; color: string }> = {
 /* ── Mask layer definitions (Masques tab) ── */
 interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
 const MASK_LAYERS: MaskLayerDef[] = [
-  { id: "surface_murale", label: "Surface murale", icon: Building2,      color: "#64748b", isSurface: true },
-  { id: "window",         label: "Fenêtres",        icon: AppWindow,      color: "#60a5fa" },
-  { id: "door",           label: "Portes",           icon: DoorOpen,       color: "#f472b6" },
-  { id: "balcony",        label: "Balcons",          icon: LayoutPanelTop, color: "#34d399" },
-  { id: "column",         label: "Colonnes",         icon: Columns2,       color: "#94a3b8" },
-  { id: "roof",           label: "Toit",             icon: Frame,          color: "#a78bfa" },
-  { id: "floor_line",     label: "Lignes d'étage",   icon: Layers,         color: "#fb923c" },
-  { id: "other",          label: "Autres",           icon: HelpCircle,     color: "#fbbf24" },
+  { id: "surface_murale", label: "Mur opaque",              icon: Building2,      color: "#64748b", isSurface: true },
+  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#60a5fa" },
+  { id: "door",           label: "Portes",                  icon: DoorOpen,       color: "#f472b6" },
+  { id: "balcony",        label: "Balcons",                 icon: LayoutPanelTop, color: "#34d399" },
+  { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
+  { id: "roof",           label: "Toiture",                 icon: Frame,          color: "#a78bfa" },
+  { id: "floor_line",     label: "Séparations d'étage",     icon: Layers,         color: "#fb923c" },
+  { id: "other",          label: "Ouvertures détectées",    icon: HelpCircle,     color: "#fbbf24" },
 ];
 
 interface FacadeResultsStepProps {
@@ -163,8 +164,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
   const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
   const [editMode,       setEditMode]       = useState(false);
   const [addingType,     setAddingType]     = useState<string | null>(null);
-  const [soloLayer,      setSoloLayer]      = useState<string | null>(null);
+  const [showTuto,       setShowTuto]       = useState(false);
 
+  /* ── Mask filter: Tous | Murs | Ouvertures ── */
+  type MaskFilterMode = "all" | "walls" | "openings";
+  const [maskFilter, setMaskFilter] = useState<MaskFilterMode>("all");
+  const WALL_LAYER_IDS = useMemo(() => new Set(["surface_murale", "column", "floor_line", "roof"]), []);
+  const OPENING_LAYER_IDS = useMemo(() => new Set(["window", "door", "balcony", "other"]), []);
+  const filteredMaskLayers = useMemo(() => {
+    return MASK_LAYERS.filter(l => {
+      if (maskFilter === "all") return true;
+      if (maskFilter === "walls") return WALL_LAYER_IDS.has(l.id);
+      if (maskFilter === "openings") return OPENING_LAYER_IDS.has(l.id);
+      return true;
+    });
+  }, [maskFilter, WALL_LAYER_IDS, OPENING_LAYER_IDS]);
   /* Use refs for drag/draw state to avoid stale-closure bugs */
   const dragStateRef = useRef<DragState | null>(null);
   const drawStateRef = useRef<DrawState | null>(null);
@@ -462,6 +476,28 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             ))}
         </div>
 
+        {/* Mask filter: Tous | Murs | Ouvertures */}
+        {viewTab === "masks" && (
+          <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
+            {([
+              { id: "all" as MaskFilterMode, label: "Tous" },
+              { id: "walls" as MaskFilterMode, label: "Murs" },
+              { id: "openings" as MaskFilterMode, label: "Ouvertures" },
+            ]).map(f => (
+              <button key={f.id}
+                onClick={() => setMaskFilter(f.id)}
+                className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                  maskFilter === f.id ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+                {f.label}
+              </button>
+            ))}
+            <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title="Tutoriel"
+              className="px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-white hover:bg-white/10 transition-all">
+              ?
+            </button>
+          </div>
+        )}
+
         {/* Per-type toggles: SVG mode only */}
         {viewTab === "svg" && presentTypes.map(type => {
           const hidden = hiddenTypes.has(type);
@@ -502,7 +538,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             {result.is_mock && (
               <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
                 bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
+                <AlertTriangle className="w-3 h-3" /> {d("fa_demo_badge" as DTKey)}
               </div>
             )}
             <img
@@ -595,6 +631,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
         {/* ────────── Masques ────────── */}
         {viewTab === "masks" && (
           <div className="flex flex-col lg:flex-row gap-3 items-start">
+            {/* Tutorial overlay — shown once per session */}
+            <FacadeTutorialOverlay forceShow={showTuto} />
 
             {/* Left: base image + SVG mask overlays — self-start prevents height-stretch in flex-row */}
             <div className="relative flex-1 min-w-0 self-start">
@@ -610,8 +648,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               />
 
               {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
-              {!hiddenLayers.has("surface_murale") && (!soloLayer || soloLayer === "surface_murale") && imgNat.w > 0 && (
-                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
                   <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
                 </svg>
@@ -631,8 +668,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   onMouseLeave={handleSvgMouseUp}
                 >
 
-                  {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id) && (!soloLayer || soloLayer === l.id)).map(layer => {
-                    const layerEls = localElements.filter(
+                  {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {                    const layerEls = localElements.filter(
                       e => e.type === layer.id && !hiddenElements.has(e.id)
                     );
                     return (
@@ -847,7 +883,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                         }}
                         className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors
                           px-2 py-0.5 rounded border border-red-500/30 hover:border-red-400/50">
-                        <Trash2 className="w-3 h-3" /> Retirer
+                        <Trash2 className="w-3 h-3" /> {d("fa_remove" as DTKey)}
                       </button>
                       <button onClick={() => setSelectedEl(null)}
                         className="text-slate-500 hover:text-slate-300 px-1">✕</button>
@@ -860,7 +896,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               {result.is_mock && (
                 <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
                   bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                  <AlertTriangle className="w-3 h-3" /> Démo — positions simulées
+                  <AlertTriangle className="w-3 h-3" /> {d("fa_demo_badge" as DTKey)}
                 </div>
               )}
 
@@ -882,26 +918,33 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
             </div>
 
             {/* Right: layer panel */}
-            <div className="lg:w-60 shrink-0 glass rounded-xl border border-white/10 p-3 flex flex-col gap-3">
+            <div className="lg:w-80 shrink-0 glass rounded-xl border border-white/10 p-5 flex flex-col gap-5">
 
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Couches</div>
+              {/* ── AFFICHAGE DES CALQUES ── */}
+              <div data-tuto-fa="layers">
+                <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
+                  <Eye className="w-6 h-6 text-slate-400" /> {d("fa_layer_display" as DTKey)}
+                </div>
+                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                  {d("fa_layer_desc" as DTKey)}
+                </p>
 
-              <div className="space-y-0.5">
-                {MASK_LAYERS.map(layer => {
-                  const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
-                  if (!hasAny) return null;
+                <div className="space-y-1">
+                  {filteredMaskLayers.map(layer => {
+                    const hasAny = layer.isSurface || localElements.some(e => e.type === layer.id);
+                    if (!hasAny) return null;
 
-                  const totalCount   = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id).length;
-                  const activeCount  = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
-                  const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
-                  const layerHidden  = hiddenLayers.has(layer.id);
-                  const Icon = layer.icon;
+                    const totalCount   = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id).length;
+                    const activeCount  = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
+                    const removedCount = (totalCount ?? 0) - (activeCount ?? 0);
+                    const layerHidden  = hiddenLayers.has(layer.id);
+                    const Icon = layer.icon;
 
-                  const isSolo = soloLayer === layer.id;
-                  return (
-                    <div key={layer.id} className={cn("flex items-center gap-1 rounded-lg transition-all hover:bg-white/5", layerHidden ? "opacity-40" : "opacity-100")}>
-                      <button
-                        onClick={() => {
+                    return (
+                      <button key={layer.id}
+                        title={layerHidden
+                          ? `${d("fa_tt_show_layer" as DTKey)} — ${layer.label}`
+                          : `${d("fa_tt_hide_layer" as DTKey)} — ${layer.label}`}                        onClick={() => {
                           setHiddenLayers(prev => {
                             const n = new Set(prev);
                             if (!n.has(layer.id)) {
@@ -914,42 +957,32 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                             return n;
                           });
                         }}
-                        className="flex-1 flex items-center gap-2 px-2 py-1.5 text-xs text-left min-w-0"
-                      >
-                        <div className="w-3 h-3 rounded-sm shrink-0"
-                          style={{ background: layer.color, opacity: 0.75 }} />
-                        <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
-                        <span className="flex-1 text-slate-300 truncate">{layer.label}</span>
+                        className={cn(
+                          "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm transition-all hover:bg-white/5",
+                          layerHidden ? "opacity-40" : "opacity-100"
+                        )}>
+                        <div className="w-6 h-6 rounded shrink-0"
+                          style={{ background: layer.color, opacity: 0.8 }} />
+                        <Icon className="w-6 h-6 shrink-0" style={{ color: layer.color }} />
+                        <span className="flex-1 text-left text-slate-300 truncate text-sm">{layer.label}</span>
                         {activeCount != null && (
-                          <span className="font-mono text-slate-500 shrink-0 text-[10px]">
-                            {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
+                          <span className="font-mono text-slate-500 shrink-0 text-xs">                            {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
                           </span>
                         )}
                         {layerHidden
-                          ? <EyeOff className="w-3 h-3 shrink-0 text-slate-600" />
-                          : <Eye    className="w-3 h-3 shrink-0 text-slate-400" />}
+                          ? <EyeOff className="w-6 h-6 shrink-0 text-slate-600" />
+                          : <Eye    className="w-6 h-6 shrink-0 text-slate-400" />}
                       </button>
-                      {/* Solo button: isolate this layer */}
-                      <button
-                        onClick={() => setSoloLayer(isSolo ? null : layer.id)}
-                        title={isSolo ? "Désactiver solo" : "Solo — isoler ce calque"}
-                        className={cn(
-                          "shrink-0 px-1.5 py-1 rounded text-[10px] font-bold transition-all mr-1",
-                          isSolo
-                            ? "bg-amber-500/30 text-amber-300 border border-amber-500/40"
-                            : "text-slate-600 hover:text-slate-300 hover:bg-white/5"
-                        )}
-                      >S</button>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>              </div>
 
-              {/* Surface murale stats */}
+              {/* ── SURFACE MUR OPAQUE ── */}
               {!hiddenLayers.has("surface_murale") && (
-                <div className="border-t border-white/5 pt-3 space-y-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Surface murale</div>
-                  <div className="text-sm font-mono font-semibold text-slate-200">
+                <div className="border-t border-white/5 pt-3 space-y-1"
+                  title={d("fa_tt_wall_area" as DTKey)}>
+                  <div className="text-xs text-slate-500 uppercase tracking-wider">{d("fa_wall_area" as DTKey)}</div>
+                  <div className="text-base font-mono font-semibold text-slate-200">
                     {wallAreaM2 != null ? `${wallAreaM2.toFixed(1)} m²` : "—"}
                   </div>
                   {result.facade_area_m2 && wallAreaM2 != null && (
@@ -960,9 +993,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 </div>
               )}
 
-              {/* ── Edit mode toggle ── */}
-              <div className="border-t border-white/5 pt-3">
+              {/* ── MODIFICATION DES ZONES ── */}
+              <div data-tuto-fa="edit" className="border-t border-white/5 pt-3">
+                <div className="text-base font-semibold text-slate-200 mb-2 flex items-center gap-2.5">
+                  <Pencil className="w-6 h-6 text-blue-400" /> {d("fa_edit_zones" as DTKey)}
+                </div>
+                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                  {d("fa_edit_desc" as DTKey)}
+                </p>
                 <button
+                  title={d("fa_tt_edit_mode" as DTKey)}
                   onClick={() => {
                     setEditMode(v => !v);
                     setAddingType(null);
@@ -971,53 +1011,66 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setDrawingZone(false); setPendingPts([]);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-3 text-base px-5 py-3.5 rounded-xl border transition-all font-medium",
                     editMode
                       ? "bg-blue-500/20 border-blue-500/40 text-blue-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <Pencil className="w-3 h-3" />
-                  {editMode ? "Édition active" : "Éditer les masques"}
+                  <Pencil className="w-6 h-6" />
+                  {editMode ? d("fa_edit_active" as DTKey) : d("fa_edit_enable" as DTKey)}
                 </button>
+                {editMode && (
+                  <p className="text-[11px] text-blue-300/70 mt-2 px-1 leading-relaxed">
+                    {d("fa_edit_hint" as DTKey)}
+                  </p>
+                )}
               </div>
 
-              {/* ── Add element buttons (edit mode only) ── */}
+              {/* ── AJOUT MANUEL DE ZONES ── */}
               {editMode && (
-                <div className="space-y-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <PlusCircle className="w-3 h-3" /> Ajouter
+                <div className="space-y-2">
+                  <div className="text-base font-semibold text-slate-200 flex items-center gap-2.5">
+                    <PlusCircle className="w-6 h-6 text-emerald-400" /> {d("fa_add_manual" as DTKey)}
                   </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    {d("fa_add_desc" as DTKey)}
+                  </p>
                   {MASK_LAYERS.filter(l => !l.isSurface && l.id !== "floor_line").map(layer => {
                     const Icon = layer.icon;
                     const active = addingType === layer.id;
                     return (
                       <button key={layer.id}
+                        title={`${d("fa_tt_draw_el" as DTKey)} — ${layer.label}`}
                         onClick={() => setAddingType(active ? null : layer.id)}
                         className={cn(
-                          "w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs transition-all border",
+                          "w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm transition-all border",
                           active
                             ? "bg-white/10 border-white/25 text-white"
                             : "border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
                         )}>
-                        <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: layer.color }} />
-                        <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
+                        <div className="w-6 h-6 rounded shrink-0" style={{ background: layer.color, opacity: 0.8 }} />
+                        <Icon className="w-6 h-6 shrink-0" style={{ color: layer.color }} />
                         <span className="flex-1 text-left truncate">{layer.label}</span>
-                        {active && <span className="text-[10px] text-sky-400 shrink-0">Dessiner ✏</span>}
+                        {active && <span className="text-xs text-sky-400 shrink-0 animate-pulse">{d("fa_draw" as DTKey)}</span>}
                       </button>
                     );
                   })}
                 </div>
               )}
 
-              {/* ── Facade polygon zones ── */}
-              <div className="border-t border-white/5 pt-3 space-y-2">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-1"><Crop className="w-3 h-3" /> Zones façade</span>
+              {/* ── DÉLIMITER LA FAÇADE : polygone 4 points ── */}
+              <div data-tuto-fa="delim" className="border-t border-white/5 pt-3 space-y-2">
+                <div className="text-base font-semibold text-slate-200 flex items-center justify-between">
+                  <span className="flex items-center gap-2.5"><Crop className="w-6 h-6 text-amber-400" /> {d("fa_delim_facade" as DTKey)}</span>
                   {totalFacadeZonesM2 > 0 && (
-                    <span className="font-mono text-amber-400">{totalFacadeZonesM2.toFixed(1)} m²</span>
+                    <span className="font-mono text-amber-400 text-sm">{totalFacadeZonesM2.toFixed(1)} m²</span>
                   )}
                 </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  {d("fa_delim_desc" as DTKey)}
+                </p>
                 <button
+                  title={d("fa_tt_delim" as DTKey)}
                   onClick={() => {
                     setDrawingZone(v => !v);
                     setPendingPts([]);
@@ -1025,29 +1078,30 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                     setAddingType(null);
                   }}
                   className={cn(
-                    "w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all",
+                    "w-full flex items-center justify-center gap-3 text-base px-5 py-3.5 rounded-xl border transition-all font-medium",
                     drawingZone
                       ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
                       : "border-white/10 text-slate-400 hover:text-white hover:border-white/20"
                   )}>
-                  <PlusCircle className="w-3 h-3" />
-                  {drawingZone ? `Cliquer ${4 - pendingPts.length} point(s)…` : "Nouvelle façade"}
+                  <PlusCircle className="w-6 h-6" />
+                  {drawingZone ? `${d("fa_place_pts" as DTKey)} ${4 - pendingPts.length} ${d("fa_pts_suffix" as DTKey)}` : d("fa_draw_zone" as DTKey)}
                 </button>
                 {facadeZones.length > 0 && (
                   <div className="space-y-1">
                     {facadeZones.map((zone, zi) => (
                       <div key={zone.id}
                         className={cn(
-                          "flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all cursor-pointer",
+                          "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer",
                           selectedZoneId === zone.id ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/5"
                         )}
                         onClick={() => setSelectedZoneId(zone.id === selectedZoneId ? null : zone.id)}>
-                        <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: "#94a3b8", opacity: 0.75 }} />
+                        <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: "#94a3b8", opacity: 0.75 }} />
                         <span className="flex-1">Façade {zi + 1}</span>
                         <span className="font-mono text-[10px] text-slate-500">
                           {facadeZoneAreaM2(zone.pts).toFixed(1)} m²
                         </span>
                         <button
+                          title="Supprimer cette zone"
                           onClick={e2 => { e2.stopPropagation(); setFacadeZones(prev => prev.filter(z => z.id !== zone.id)); if (selectedZoneId === zone.id) setSelectedZoneId(null); }}
                           className="text-slate-600 hover:text-red-400 transition-colors px-0.5">×</button>
                       </div>
@@ -1056,19 +1110,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                 )}
               </div>
 
-              {/* Reset / Restore buttons */}
-              <div className="mt-auto flex flex-col gap-1.5">
+              {/* ── ANNULER / RÉINITIALISER ── */}
+              <div className="mt-auto flex flex-col gap-2">
                 {hiddenElements.size > 0 && (
                   <button
+                    title={d("fa_tt_restore" as DTKey)}
                     onClick={() => { setHiddenElements(new Set()); setSelectedEl(null); }}
-                    className="flex items-center justify-center gap-1.5 text-xs text-slate-500
-                      hover:text-slate-300 transition-colors py-1.5 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-3 text-sm text-slate-500
+                      hover:text-slate-300 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RotateCcw className="w-3 h-3" /> Restaurer ({hiddenElements.size})
+                    <RotateCcw className="w-6 h-6" /> {d("fa_restore" as DTKey)} ({hiddenElements.size})
                   </button>
                 )}
                 {localElements.length !== result.elements.length && (
                   <button
+                    title={d("fa_tt_reset" as DTKey)}
                     onClick={() => {
                       setLocalElements(result.elements);
                       setHiddenElements(new Set());
@@ -1076,10 +1132,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                       setEditMode(false);
                       setAddingType(null);
                     }}
-                    className="flex items-center justify-center gap-1.5 text-xs text-slate-600
-                      hover:text-slate-400 transition-colors py-1.5 rounded-lg border border-white/5
+                    className="flex items-center justify-center gap-3 text-sm text-slate-600
+                      hover:text-slate-400 transition-colors py-3 rounded-xl border border-white/5
                       hover:border-white/10">
-                    <RefreshCw className="w-3 h-3" /> Réinitialiser
+                    <RefreshCw className="w-6 h-6" /> {d("fa_reset_ia" as DTKey)}
                   </button>
                 )}
               </div>
@@ -1241,10 +1297,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
       {/* Actions */}
       <div className="flex flex-wrap gap-3 justify-center">
         <Button variant="outline" onClick={() => setShowRapport(true)}>
-          <FileText className="w-4 h-4" /> Rapport
+          <FileText className="w-4 h-4" /> {d("fa_report" as DTKey)}
         </Button>
         <Button variant="outline" onClick={() => setShowDevis(true)}>
-          <Receipt className="w-4 h-4" /> Devis
+          <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> {d("fa_export_csv")}

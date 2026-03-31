@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket } from "lucide-react";
+import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -37,6 +37,7 @@ interface ResultsStepProps {
   customDetections?: CustomDetection[];
   onDetectionsChange?: (dets: CustomDetection[]) => void;
   onGoEditor: () => void;
+  onGoChantier?: () => void;
   onRestart: () => void;
   pageCount?: number;
   currentPage?: number;
@@ -50,7 +51,7 @@ function fmt(v: number | undefined, nd = 1, suffix = "") {
   return v.toFixed(nd) + suffix;
 }
 
-export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onRestart, pageCount, currentPage, onSwitchPage, analyzedPages, onAddPage }: ResultsStepProps) {
+export default function ResultsStep({ result, customDetections = [], onDetectionsChange, onGoEditor, onGoChantier, onRestart, pageCount, currentPage, onSwitchPage, analyzedPages, onAddPage }: ResultsStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const { isAdmin } = useAuth();
@@ -203,6 +204,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <Button onClick={onGoEditor}>
             <Edit3 className="w-4 h-4" /> {d("re_editor")}
           </Button>
+          {onGoChantier && (
+            <Button onClick={onGoChantier} variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
+              <ClipboardList className="w-4 h-4" /> Chantier
+            </Button>
+          )}
         </div>
       </div>
 

@@ -17,6 +17,10 @@ export interface Room {
   area_px2: number;
   polygon_norm?: { x: number; y: number }[];
   perimeter_m?: number;
+  /** Type de revêtement de sol lié (ex: "carrelage", "parquet") — ID d'un SurfaceType */
+  surfaceTypeId?: string;
+  /** ID de la MeasureZone auto-générée depuis le polygone de la pièce */
+  linkedZoneId?: string;
 }
 
 export interface ScaleInfo {

@@ -27,6 +27,14 @@ interface ChatPanelProps {
   autoOpen?: boolean;
   dpgf?: any;
   compliance?: any[];
+  /** Enriched measurement data from editor */
+  measurementData?: {
+    surfaceZones?: Array<{ typeName: string; totalArea: number; zoneCount: number }>;
+    linearMeasures?: Array<{ distanceM: number | null }>;
+    angleMeasures?: Array<{ angleDeg: number }>;
+    countCategories?: Array<{ name: string; count: number }>;
+    customDetections?: Array<{ label: string; count: number; area_m2?: number | null }>;
+  } | null;
 }
 
 /* ── Suggestions per context ──────────────────────────────────────────── */
@@ -95,7 +103,7 @@ function AvatarIcon({ size = 28 }: { size?: number }) {
 
 /* ── Component ──────────────────────────────────────────────────────────── */
 
-export default function ChatPanel({ result, facadeResult, currentStep, autoOpen, dpgf, compliance }: ChatPanelProps) {
+export default function ChatPanel({ result, facadeResult, currentStep, autoOpen, dpgf, compliance, measurementData }: ChatPanelProps) {
   const { lang } = useLang();
   const d = (k: Parameters<typeof dt>[0]) => dt(k, lang);
 
@@ -141,11 +149,28 @@ export default function ChatPanel({ result, facadeResult, currentStep, autoOpen,
       })),
       rooms: result.rooms?.map((r) => ({
         type: r.type, label_fr: r.label_fr, area_m2: r.area_m2, perimeter_m: r.perimeter_m,
+        surfaceType: r.surfaceTypeId ?? null,
       })),
       ...(dpgf ? { dpgf } : {}),
       ...(compliance ? { compliance } : {}),
+      // Enriched measurement data
+      ...(measurementData?.surfaceZones?.length ? {
+        surface_zones: measurementData.surfaceZones,
+      } : {}),
+      ...(measurementData?.linearMeasures?.length ? {
+        linear_measurements: measurementData.linearMeasures,
+      } : {}),
+      ...(measurementData?.angleMeasures?.length ? {
+        angle_measurements: measurementData.angleMeasures,
+      } : {}),
+      ...(measurementData?.countCategories?.length ? {
+        count_annotations: measurementData.countCategories,
+      } : {}),
+      ...(measurementData?.customDetections?.length ? {
+        custom_detections: measurementData.customDetections,
+      } : {}),
     };
-  }, [result, facadeResult, dpgf, compliance]);
+  }, [result, facadeResult, dpgf, compliance, measurementData]);
 
   // Auto-open once when autoOpen becomes true
   useEffect(() => {
