@@ -16,10 +16,12 @@ export interface FacadeZoneCrop {
   pts: Array<{ x: number; y: number }>;
 }
 
+export interface CropBox { x0: number; y0: number; x1: number; y1: number; imgW: number; imgH: number; }
+
 interface CropStepProps {
   sessionId: string;
   imageB64: string;
-  onCropped: () => void;
+  onCropped: (cropBox: CropBox) => void;
   onSkip: () => void;
   onSessionExpired?: () => void;
   onBack?: () => void;
@@ -235,7 +237,7 @@ export default function CropStep({
       if (!r.ok) throw new Error((await r.json()).detail ?? "Crop error");
       const data = await r.json();
       toast({ title: d("cr_confirm"), description: `${data.width}×${data.height} px`, variant: "success" });
-      onCropped();
+      onCropped({ x0, y0, x1, y1, imgW: img.naturalWidth, imgH: img.naturalHeight });
     } catch (e: any) {
       if (e.message?.includes("Session introuvable")) {
         toast({ title: d("err_session_expired"), description: d("err_server_restarted"), variant: "error" });

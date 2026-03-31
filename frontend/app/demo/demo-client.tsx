@@ -29,7 +29,7 @@ import ChatPanel from "@/components/demo/chat-panel";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { RoboflowConfig, AnalysisResult, CustomDetection, FacadeAnalysisResult, DiffResult, CartoucheResult } from "@/lib/types";
-import type { FacadeZoneCrop } from "@/components/demo/crop-step";
+import type { FacadeZoneCrop, CropBox } from "@/components/demo/crop-step";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -95,7 +95,19 @@ export default function DemoClient() {
   const handleConnected=(cfg:RoboflowConfig)=>{setConfig(cfg);setStep(2);};
   const handlePdfMetadata=(data:{pdfBase64:string;fileName:string;pageCount:number})=>setSavedPdfData(data);
   const handleUploaded=(sid:string,imgB64:string)=>{setSessionId(sid);setUploadedImageB64(imgB64);setStep(3);};
-  const handleCropped=()=>setStep(4);
+  const handleCropped=(cropBox?: CropBox)=>{
+    if(cropBox && demoMode==="facade" && facadeZones.length>0){
+      const {x0,y0,x1,y1,imgW,imgH}=cropBox;
+      const cw=x1-x0, ch=y1-y0;
+      if(cw>0&&ch>0){
+        setFacadeZones(prev=>prev.map(z=>({...z,pts:z.pts.map(p=>({
+          x:Math.max(0,Math.min(1,(p.x*imgW-x0)/cw)),
+          y:Math.max(0,Math.min(1,(p.y*imgH-y0)/ch)),
+        }))})));
+      }
+    }
+    setStep(4);
+  };
   const handleScaled=(value:number|null)=>{setPpm(value);setStep(5);};
   const handleAnalyzed=(result:AnalysisResult)=>{setAnalysisResult(result);if(savedPdfData)setPageResults(prev=>{const next=new Map(prev);next.set(currentPageIdx,{ppm,analysisResult:result,customDetections:[]});return next;});setStep(6);};
   const handleGoEditor=()=>setStep(7);

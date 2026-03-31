@@ -163,6 +163,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
   const [selectedEl,     setSelectedEl]     = useState<number | null>(null);
   const [editMode,       setEditMode]       = useState(false);
   const [addingType,     setAddingType]     = useState<string | null>(null);
+  const [soloLayer,      setSoloLayer]      = useState<string | null>(null);
 
   /* Use refs for drag/draw state to avoid stale-closure bugs */
   const dragStateRef = useRef<DragState | null>(null);
@@ -193,12 +194,22 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
     [facadeZones, facadeZoneAreaM2],
   );
 
-  /* ── Surface murale SVG path (ROI rect − opening holes, evenodd) ── */
+  /* ── Surface murale SVG path (facade polygon − opening holes, evenodd) ── */
   const wallSvgPath = useMemo(() => {
-    const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
     const W = imgNat.w, H = imgNat.h;
-    const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
-    let p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
+    let p = '';
+    // Outer shape: user facade zones if defined, else building_roi rectangle
+    if (facadeZones.length > 0) {
+      facadeZones.forEach(zone => {
+        if (zone.pts.length < 3) return;
+        p += zone.pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z ';
+      });
+    } else {
+      const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
+      const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
+      p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
+    }
+    // Holes: opening elements
     localElements
       .filter(e => ["window", "door", "balcony"].includes(e.type) && !hiddenElements.has(e.id))
       .forEach(e => {
@@ -207,7 +218,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
         p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
       });
     return p;
-  }, [result.building_roi, localElements, hiddenElements, imgNat]);
+  }, [result.building_roi, facadeZones, localElements, hiddenElements, imgNat]);
 
   /* ── Surface murale area (live, excludes hidden elements) ── */
   const wallAreaM2 = useMemo(() => {
@@ -599,7 +610,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
               />
 
               {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
-              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (
+              {!hiddenLayers.has("surface_murale") && (!soloLayer || soloLayer === "surface_murale") && imgNat.w > 0 && (
                 <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
                   <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.35} />
@@ -620,7 +631,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   onMouseLeave={handleSvgMouseUp}
                 >
 
-                  {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
+                  {MASK_LAYERS.filter(l => !l.isSurface && !hiddenLayers.has(l.id) && (!soloLayer || soloLayer === l.id)).map(layer => {
                     const layerEls = localElements.filter(
                       e => e.type === layer.id && !hiddenElements.has(e.id)
                     );
@@ -648,15 +659,15 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                               stroke={layer.color} strokeWidth={sel ? 2.5 : 1.5}
                               strokeOpacity={sel ? 1 : 0.85}
                               rx="2"
-                              className={editMode ? "cursor-move" : "cursor-pointer"}
+                              className="cursor-move"
                               onClick={ee => { if (!dragStateRef.current) { ee.stopPropagation(); setSelectedEl(sel ? null : el.id); } }}
-                              onMouseDown={editMode ? ee => {
+                              onMouseDown={ee => {
                                 ee.stopPropagation();
                                 const norm = screenToNorm(ee.clientX, ee.clientY);
                                 setSelectedEl(el.id);
                                 dragStateRef.current = { mode: "move", id: el.id, startNorm: norm, origBbox: el.bbox_norm };
                                 setIsDragging(true);
-                              } : undefined}
+                              }}
                             />
                           );
                         })}
@@ -886,39 +897,50 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, initi
                   const layerHidden  = hiddenLayers.has(layer.id);
                   const Icon = layer.icon;
 
+                  const isSolo = soloLayer === layer.id;
                   return (
-                    <button key={layer.id}
-                      onClick={() => {
-                        setHiddenLayers(prev => {
-                          const n = new Set(prev);
-                          if (!n.has(layer.id)) {
-                            n.add(layer.id);
-                            // Deselect if selected element belongs to this layer
-                            if (selectedEl !== null) {
-                              const sel = result.elements.find(e => e.id === selectedEl);
-                              if (sel?.type === layer.id) setSelectedEl(null);
-                            }
-                          } else { n.delete(layer.id); }
-                          return n;
-                        });
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:bg-white/5",
-                        layerHidden ? "opacity-40" : "opacity-100"
-                      )}>
-                      <div className="w-3 h-3 rounded-sm shrink-0"
-                        style={{ background: layer.color, opacity: 0.75 }} />
-                      <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
-                      <span className="flex-1 text-left text-slate-300 truncate">{layer.label}</span>
-                      {activeCount != null && (
-                        <span className="font-mono text-slate-500 shrink-0 text-[10px]">
-                          {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
-                        </span>
-                      )}
-                      {layerHidden
-                        ? <EyeOff className="w-3 h-3 shrink-0 text-slate-600" />
-                        : <Eye    className="w-3 h-3 shrink-0 text-slate-400" />}
-                    </button>
+                    <div key={layer.id} className={cn("flex items-center gap-1 rounded-lg transition-all hover:bg-white/5", layerHidden ? "opacity-40" : "opacity-100")}>
+                      <button
+                        onClick={() => {
+                          setHiddenLayers(prev => {
+                            const n = new Set(prev);
+                            if (!n.has(layer.id)) {
+                              n.add(layer.id);
+                              if (selectedEl !== null) {
+                                const sel = result.elements.find(e => e.id === selectedEl);
+                                if (sel?.type === layer.id) setSelectedEl(null);
+                              }
+                            } else { n.delete(layer.id); }
+                            return n;
+                          });
+                        }}
+                        className="flex-1 flex items-center gap-2 px-2 py-1.5 text-xs text-left min-w-0"
+                      >
+                        <div className="w-3 h-3 rounded-sm shrink-0"
+                          style={{ background: layer.color, opacity: 0.75 }} />
+                        <Icon className="w-3 h-3 shrink-0" style={{ color: layer.color }} />
+                        <span className="flex-1 text-slate-300 truncate">{layer.label}</span>
+                        {activeCount != null && (
+                          <span className="font-mono text-slate-500 shrink-0 text-[10px]">
+                            {removedCount > 0 ? `${activeCount}/${totalCount}` : activeCount}
+                          </span>
+                        )}
+                        {layerHidden
+                          ? <EyeOff className="w-3 h-3 shrink-0 text-slate-600" />
+                          : <Eye    className="w-3 h-3 shrink-0 text-slate-400" />}
+                      </button>
+                      {/* Solo button: isolate this layer */}
+                      <button
+                        onClick={() => setSoloLayer(isSolo ? null : layer.id)}
+                        title={isSolo ? "Désactiver solo" : "Solo — isoler ce calque"}
+                        className={cn(
+                          "shrink-0 px-1.5 py-1 rounded text-[10px] font-bold transition-all mr-1",
+                          isSolo
+                            ? "bg-amber-500/30 text-amber-300 border border-amber-500/40"
+                            : "text-slate-600 hover:text-slate-300 hover:bg-white/5"
+                        )}
+                      >S</button>
+                    </div>
                   );
                 })}
               </div>

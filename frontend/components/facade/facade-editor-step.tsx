@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
-  ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon,
+  ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -32,7 +32,11 @@ const TYPE_I18N: Record<string, DTKey> = {
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
-type EditorTool = "select" | "add_polygon" | "erase";
+/* ── Only 2 editable types in editor ── */
+const EDITOR_TYPES: FacadeElementType[] = ["other", "column"];
+const EDITOR_LABELS: Record<string, string> = { other: "Fenetres", column: "Emprise mur" };
+
+type EditorTool = "select" | "add_polygon" | "add_rect" | "erase";
 
 /* ── Helpers ── */
 type Pt = { x: number; y: number };
@@ -85,7 +89,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const [elements, setElements] = useState<FacadeElement[]>(() => [...result.elements]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tool, setTool] = useState<EditorTool>("select");
-  const [addType, setAddType] = useState<FacadeElementType>("window");
+  const [addType, setAddType] = useState<FacadeElementType>("other");
 
   // Zoom/pan
   const [zoom, setZoom] = useState(1);
@@ -106,11 +110,17 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const [dragVertex, setDragVertex] = useState<{ elId: number; idx: number } | null>(null);
   const dragVertexRef = useRef<{ elId: number; idx: number } | null>(null);
 
-  // Visibility toggles
-  const [showWindows, setShowWindows] = useState(true);
-  const [showDoors, setShowDoors] = useState(true);
-  const [showBalconies, setShowBalconies] = useState(true);
-  const [showFloorLines, setShowFloorLines] = useState(true);
+  // Visibility toggles (only the 2 editable types)
+  const [showOther, setShowOther] = useState(true);
+  const [showColumns, setShowColumns] = useState(true);
+
+  // Whole-element drag
+  const dragElRef = useRef<{ elId: number; startNorm: Pt; origPts: Pt[] } | null>(null);
+  const [isDraggingEl, setIsDraggingEl] = useState(false);
+
+  // Rectangle drawing state
+  const rectDragRef = useRef<Pt | null>(null);
+  const [rectPreview, setRectPreview] = useState<{ start: Pt; end: Pt } | null>(null);
 
   useEffect(() => {
     const img = new Image();
@@ -206,14 +216,24 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       const p = toNorm(e);
       // Find element under click using point-in-polygon
       const clicked = [...elements].reverse().find(el => {
-        if (el.type === "window" && !showWindows) return false;
-        if (el.type === "door" && !showDoors) return false;
-        if (el.type === "balcony" && !showBalconies) return false;
-        if (el.type === "floor_line" && !showFloorLines) return false;
+        if (el.type === "other" && !showOther) return false;
+        if (el.type === "column" && !showColumns) return false;
         const poly = getPolyPoints(el);
         return pointInPolygon(p, poly);
       });
       setSelectedId(clicked?.id ?? null);
+      // Start whole-element drag if element found
+      if (clicked) {
+        dragElRef.current = { elId: clicked.id, startNorm: p, origPts: getPolyPoints(clicked) };
+        setIsDraggingEl(true);
+      }
+    }
+
+    if (tool === "add_rect") {
+      const p = toNorm(e);
+      rectDragRef.current = p;
+      setRectPreview({ start: p, end: p });
+      return;
     }
 
     if (tool === "erase") {
@@ -266,7 +286,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       setHoverPoint(p);
     }
 
-    // Vertex dragging
+    // Vertex dragging (takes priority)
     if (dragVertexRef.current) {
       const { elId, idx } = dragVertexRef.current;
       setElements(prev => prev.map(el => {
@@ -283,14 +303,63 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             : el.area_m2,
         };
       }));
+      return;
+    }
+
+    // Rect drawing preview
+    if (tool === "add_rect" && rectDragRef.current) {
+      setRectPreview({ start: rectDragRef.current, end: p });
+    }
+
+    // Whole-element drag (move all vertices by delta from start)
+    if (dragElRef.current) {
+      const { elId, startNorm, origPts } = dragElRef.current;
+      const dx = p.x - startNorm.x;
+      const dy = p.y - startNorm.y;
+      setElements(prev => prev.map(el => {
+        if (el.id !== elId) return el;
+        const newPts = origPts.map(pt => ({
+          x: Math.max(0, Math.min(1, pt.x + dx)),
+          y: Math.max(0, Math.min(1, pt.y + dy)),
+        }));
+        return {
+          ...el,
+          polygon_norm: newPts,
+          bbox_norm: bboxFromPoly(newPts),
+        };
+      }));
     }
   };
 
   const handleMouseUp = () => {
     if (isPanning) { setIsPanning(false); return; }
+
+    // Rectangle: create 4-point polygon on mouseup
+    if (tool === "add_rect" && rectDragRef.current && rectPreview) {
+      const { start, end } = rectPreview;
+      const dx = Math.abs(end.x - start.x);
+      const dy = Math.abs(end.y - start.y);
+      if (dx > 0.005 || dy > 0.005) {
+        const pts: Pt[] = [
+          { x: Math.min(start.x, end.x), y: Math.min(start.y, end.y) },
+          { x: Math.max(start.x, end.x), y: Math.min(start.y, end.y) },
+          { x: Math.max(start.x, end.x), y: Math.max(start.y, end.y) },
+          { x: Math.min(start.x, end.x), y: Math.max(start.y, end.y) },
+        ];
+        closePolygon(pts);
+      }
+      rectDragRef.current = null;
+      setRectPreview(null);
+      return;
+    }
+
     if (dragVertexRef.current) {
       dragVertexRef.current = null;
       setDragVertex(null);
+    }
+    if (dragElRef.current) {
+      dragElRef.current = null;
+      setIsDraggingEl(false);
     }
   };
 
@@ -346,12 +415,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     toast({ title: d("fa_export_csv"), variant: "success" });
   };
 
-  // Visible elements filter
+  // Visible elements filter (non-editable AI types always visible)
   const visibleElements = elements.filter(e => {
-    if (e.type === "window" && !showWindows) return false;
-    if (e.type === "door" && !showDoors) return false;
-    if (e.type === "balcony" && !showBalconies) return false;
-    if (e.type === "floor_line" && !showFloorLines) return false;
+    if (e.type === "other" && !showOther) return false;
+    if (e.type === "column" && !showColumns) return false;
     return true;
   });
 
@@ -374,21 +441,28 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
           <div className="flex items-center gap-2 mb-2 px-2 flex-wrap">
             <div className="flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
               <button
-                onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); }}
+                onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "select" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}
                 title={d("fa_select")}
               >
                 <MousePointer2 className="w-4 h-4" />
               </button>
               <button
-                onClick={() => { setTool("add_polygon"); setSelectedId(null); }}
+                onClick={() => { setTool("add_polygon"); setSelectedId(null); setRectPreview(null); rectDragRef.current = null; }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "add_polygon" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
-                title={d("fa_add_element")}
+                title="Polygone"
               >
                 <Pentagon className="w-4 h-4" />
               </button>
               <button
-                onClick={() => { setTool("erase"); setDrawingPoly([]); setHoverPoint(null); }}
+                onClick={() => { setTool("add_rect"); setSelectedId(null); setDrawingPoly([]); setHoverPoint(null); }}
+                className={cn("p-1.5 rounded-md text-xs", tool === "add_rect" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
+                title="Rectangle"
+              >
+                <Square className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { setTool("erase"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "erase" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
                 title={d("fa_delete")}
               >
@@ -397,14 +471,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             </div>
 
             {/* Add type selector */}
-            {tool === "add_polygon" && (
+            {(tool === "add_polygon" || tool === "add_rect") && (
               <select
                 value={addType}
                 onChange={e => setAddType(e.target.value as FacadeElementType)}
                 className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
               >
-                {ALL_TYPES.map(t => (
-                  <option key={t} value={t}>{d(TYPE_I18N[t] ?? "fa_other")}</option>
+                {EDITOR_TYPES.map(t => (
+                  <option key={t} value={t}>{EDITOR_LABELS[t] ?? t}</option>
                 ))}
               </select>
             )}
@@ -413,6 +487,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             {isDrawing && (
               <span className="text-xs text-amber-300/70 animate-pulse">
                 {drawingPoly.length < 3 ? "Cliquez pour poser des points..." : "Double-clic ou clic sur le 1er point pour fermer"}
+              </span>
+            )}
+            {tool === "add_rect" && (
+              <span className="text-xs text-amber-300/70 animate-pulse">
+                {rectPreview ? "Relâchez pour créer le rectangle" : "Cliquez et glissez pour dessiner un rectangle"}
               </span>
             )}
 
@@ -425,7 +504,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
           {/* Image area */}
           <div
             ref={containerRef}
-            className={cn("relative overflow-hidden rounded-xl bg-slate-900", tool === "add_polygon" ? "cursor-crosshair" : "cursor-default")}
+            className={cn("relative overflow-hidden rounded-xl bg-slate-900",
+              tool === "add_polygon" || tool === "add_rect" ? "cursor-crosshair"
+              : tool === "erase" ? "cursor-cell"
+              : isDraggingEl ? "cursor-grabbing"
+              : "cursor-default"
+            )}
             style={{ minHeight: 400 }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -653,6 +737,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   );
                 })}
 
+                {/* ── Rectangle drawing preview ── */}
+                {tool === "add_rect" && rectPreview && (() => {
+                  const { start, end } = rectPreview;
+                  const rx = Math.min(start.x, end.x) * imgNat.w;
+                  const ry = Math.min(start.y, end.y) * imgNat.h;
+                  const rw = Math.abs(end.x - start.x) * imgNat.w;
+                  const rh = Math.abs(end.y - start.y) * imgNat.h;
+                  const color = TYPE_COLORS[addType] ?? "#fbbf24";
+                  return (
+                    <rect
+                      x={rx} y={ry} width={rw} height={rh}
+                      fill={`${color}20`}
+                      stroke={color}
+                      strokeWidth={2}
+                      strokeDasharray="6 3"
+                    />
+                  );
+                })()}
+
                 {/* ── Drawing preview polygon (live fill) ── */}
                 {isDrawing && (() => {
                   const previewPts = hoverPoint ? [...drawingPoly, hoverPoint] : drawingPoly;
@@ -725,21 +828,19 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
         <div className="flex flex-col gap-4">
           {/* Visibility toggles */}
           <div className="glass rounded-xl border border-white/10 p-4">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Layers</h4>
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">LAYERS</h4>
             {[
-              { key: "fa_toggle_windows" as DTKey, on: showWindows, set: setShowWindows, color: "#60a5fa" },
-              { key: "fa_toggle_doors" as DTKey, on: showDoors, set: setShowDoors, color: "#f472b6" },
-              { key: "fa_toggle_balconies" as DTKey, on: showBalconies, set: setShowBalconies, color: "#34d399" },
-              { key: "fa_toggle_floors" as DTKey, on: showFloorLines, set: setShowFloorLines, color: "#fb923c" },
-            ].map(({ key, on, set, color }) => (
+              { label: "Fenetres", on: showOther, set: setShowOther, color: "#fbbf24" },
+              { label: "Emprise mur", on: showColumns, set: setShowColumns, color: "#94a3b8" },
+            ].map(({ label, on, set, color }) => (
               <button
-                key={key}
+                key={label}
                 onClick={() => set(!on)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors"
               >
                 {on ? <Eye className="w-3.5 h-3.5 text-white" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: on ? color : "#475569" }} />
-                <span className={on ? "text-white" : "text-slate-600"}>{d(key)}</span>
+                <span className={on ? "text-white" : "text-slate-600"}>{label}</span>
               </button>
             ))}
           </div>
@@ -756,8 +857,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                     onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
                     className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
                   >
-                    {ALL_TYPES.map(t => (
-                      <option key={t} value={t}>{d(TYPE_I18N[t] ?? "fa_other")}</option>
+                    {EDITOR_TYPES.map(t => (
+                      <option key={t} value={t}>{EDITOR_LABELS[t] ?? t}</option>
                     ))}
                   </select>
                 </div>
@@ -793,11 +894,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}s</h4>
             <div className="flex flex-col gap-1.5">
               {[
-                { type: "window", color: "#60a5fa" },
-                { type: "door", color: "#f472b6" },
-                { type: "balcony", color: "#34d399" },
-                { type: "floor_line", color: "#fb923c" },
-                { type: "roof", color: "#a78bfa" },
+                { type: "other", color: "#fbbf24" },
                 { type: "column", color: "#94a3b8" },
               ].map(({ type, color }) => {
                 const count = elements.filter(e => e.type === type).length;
@@ -806,7 +903,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   <div key={type} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-slate-300">{d(TYPE_I18N[type] ?? "fa_other")}</span>
+                      <span className="text-slate-300">{EDITOR_LABELS[type] ?? type}</span>
                     </div>
                     <span className="font-mono text-white">{count}</span>
                   </div>

@@ -65,9 +65,9 @@ export default function FacadeIsolationPanel({
   const [expanded,   setExpanded]   = useState(true);
   const [showDetail, setShowDetail] = useState(false);
 
-  const [epTableau, setEpTableau] = useState(14);
-  const [epLinteau, setEpLinteau] = useState(14);
-  const [epAppui,   setEpAppui]   = useState(14);
+  const [retTableau, setRetTableau] = useState(14);
+  const [retLinteau, setRetLinteau] = useState(14);
+  const [retAppui,   setRetAppui]   = useState(14);
 
   const ppm = result.pixels_per_meter;
   const hasPpm = ppm != null && ppm > 0;
@@ -82,9 +82,9 @@ export default function FacadeIsolationPanel({
 
   const lines = useMemo<RetourLine[]>(() => {
     if (!hasPpm || !ppm) return [];
-    const epL = epLinteau / 100;
-    const epA = epAppui   / 100;
-    const epT = epTableau / 100;
+    const epL = retLinteau / 100;
+    const epA = retAppui   / 100;
+    const epT = retTableau / 100;
 
     const iW = imgSize?.w ?? 0;
     const iH = imgSize?.h ?? 0;
@@ -108,7 +108,7 @@ export default function FacadeIsolationPanel({
 
       return { el, w_m: w, h_m: h, lon_linteau, lon_appui, lon_tableau, surf_linteau, surf_appui, surf_tableau, total_m2 };
     });
-  }, [openings, hasPpm, epLinteau, epAppui, epTableau]);
+  }, [openings, hasPpm, retLinteau, retAppui, retTableau]);
 
   const totLonTableau  = lines.reduce((s, l) => s + (l.lon_tableau  ?? 0), 0);
   const totLonLinteau  = lines.reduce((s, l) => s + (l.lon_linteau  ?? 0), 0);
@@ -244,13 +244,13 @@ export default function FacadeIsolationPanel({
               {/* ══ 2. ÉPAISSEURS ITE ══ */}
               <div className="glass rounded-xl border border-white/5 p-4">
                 <div className="text-xs font-semibold text-slate-300 mb-4">
-                  {fr ? "Épaisseur ITE par type (cm)" : "ITE thickness per type (cm)"}
+                  {fr ? "Largeur retour par type (cm)" : "Return width per type (cm)"}
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-center">
                   {[
-                    { label: fr ? "Tableau"  : "Reveal",  value: epTableau, onChange: setEpTableau, color: "text-amber-300"   },
-                    { label: fr ? "Linteau"  : "Lintel",  value: epLinteau, onChange: setEpLinteau, color: "text-sky-300"     },
-                    { label: fr ? "Appui"    : "Sill",    value: epAppui,   onChange: setEpAppui,   color: "text-emerald-300" },
+                    { label: fr ? "Tableau"  : "Reveal",  value: retTableau, onChange: setRetTableau, color: "text-amber-300"   },
+                    { label: fr ? "Linteau"  : "Lintel",  value: retLinteau, onChange: setRetLinteau, color: "text-sky-300"     },
+                    { label: fr ? "Appui"    : "Sill",    value: retAppui,   onChange: setRetAppui,   color: "text-emerald-300" },
                   ].map(({ label, value, onChange, color }) => (
                     <div key={label}>
                       <div className={cn("text-xs mb-2", color)}>{label}</div>
@@ -382,8 +382,8 @@ export default function FacadeIsolationPanel({
 
               <p className="text-[10px] text-slate-600">
                 {fr
-                  ? "⚠ Tableau = H×2. Linteau = W. Appui = W. Surface = longueur × épaisseur ITE. À valider avec un bureau d'études."
-                  : "⚠ Reveal = H×2. Lintel = W. Sill = W. Area = length × ITE thickness. To be validated with a thermal engineer."}
+                  ? "⚠ Tableau = H×2. Linteau = W. Appui = W. Surface retour = longueur × largeur retour. À valider avec un bureau d'études."
+                  : "⚠ Reveal = H×2. Lintel = W. Sill = W. Return area = length × return width. To be validated with a thermal engineer."}
               </p>
             </div>
           </motion.div>
