@@ -103,6 +103,8 @@ export interface MeasureZone {
   isDeduction?: boolean;               // si true, zone soustraite du total
   depthM?: number;                     // profondeur en mètres (pour volume)
   slopeDeg?: number;                   // angle de pente en degrés (pour surface corrigée)
+  groupId?: string;                    // appartenance à un groupe
+  layer?: string;                      // discipline layer ID
 }
 
 export interface PlanSnapshot {
@@ -463,4 +465,123 @@ export interface MarkupAnnotation {
   locked?: boolean;
   label?: string;       // user note
   layer?: string;       // discipline layer name
+  groupId?: string;     // group membership
 }
+
+// ── Groups ──────────────────────────────────────────────────────────────────
+
+export interface MarkupGroup {
+  id: string;
+  name?: string;
+  memberIds: string[];  // IDs of zones, linears, markups, etc.
+}
+
+// ── Layers (disciplines) ────────────────────────────────────────────────────
+
+export interface MeasureLayer {
+  id: string;
+  name: string;
+  color: string;
+  visible: boolean;
+  locked: boolean;
+}
+
+export const DEFAULT_LAYERS: MeasureLayer[] = [
+  { id: "lyr_general",    name: "Général",      color: "#6B7280", visible: true, locked: false },
+  { id: "lyr_archi",      name: "Architecture", color: "#3B82F6", visible: true, locked: false },
+  { id: "lyr_structure",  name: "Structure",    color: "#F97316", visible: true, locked: false },
+  { id: "lyr_electrical", name: "Électricité",  color: "#EF4444", visible: true, locked: false },
+  { id: "lyr_plumbing",   name: "Plomberie",    color: "#06B6D4", visible: true, locked: false },
+  { id: "lyr_mechanical", name: "CVC",          color: "#10B981", visible: true, locked: false },
+  { id: "lyr_fire",       name: "Incendie",     color: "#F59E0B", visible: true, locked: false },
+  { id: "lyr_interior",   name: "Finitions",    color: "#8B5CF6", visible: true, locked: false },
+];
+
+// ── Tool Chest presets (Bluebeam-style) ─────────────────────────────────────
+
+export interface ToolPreset {
+  id: string;
+  name: string;
+  toolType: "area" | "polylength" | "count" | "diameter" | "angle";
+  color: string;
+  subject: string;     // e.g. "4\" Pour", "Receptacle"
+  label: string;       // e.g. "3500 PSI", "Duplex"
+  layerId?: string;
+  depthM?: number;
+  slopeDeg?: number;
+  pricePerUnit?: number;
+}
+
+export interface ToolChestCategory {
+  id: string;
+  name: string;
+  icon?: string;
+  presets: ToolPreset[];
+}
+
+export const DEFAULT_TOOL_CHEST: ToolChestCategory[] = [
+  {
+    id: "tc_general", name: "Mesures générales", presets: [
+      { id: "tp_area",      name: "Surface",   toolType: "area",       color: "#3B82F6", subject: "Surface", label: "" },
+      { id: "tp_length",    name: "Longueur",  toolType: "polylength", color: "#10B981", subject: "Longueur", label: "" },
+      { id: "tp_count",     name: "Comptage",  toolType: "count",      color: "#F59E0B", subject: "Comptage", label: "" },
+      { id: "tp_diameter",  name: "Diamètre",  toolType: "diameter",   color: "#8B5CF6", subject: "Diamètre", label: "" },
+      { id: "tp_angle",     name: "Angle",     toolType: "angle",      color: "#FBBF24", subject: "Angle", label: "" },
+    ],
+  },
+  {
+    id: "tc_concrete", name: "Béton", presets: [
+      { id: "tp_slab4",     name: "Dalle 10cm",      toolType: "area",       color: "#F97316", subject: "Dalle béton", label: "10 cm", depthM: 0.10 },
+      { id: "tp_slab15",    name: "Dalle 15cm",      toolType: "area",       color: "#F97316", subject: "Dalle béton", label: "15 cm", depthM: 0.15 },
+      { id: "tp_chape",     name: "Chape 5cm",       toolType: "area",       color: "#FB923C", subject: "Chape", label: "5 cm", depthM: 0.05 },
+      { id: "tp_form",      name: "Coffrage",         toolType: "polylength", color: "#F97316", subject: "Coffrage", label: "" },
+      { id: "tp_footing",   name: "Semelle",          toolType: "count",      color: "#F97316", subject: "Semelle filante", label: "" },
+      { id: "tp_pile",      name: "Pieu ⌀45cm",      toolType: "diameter",   color: "#F97316", subject: "Pieu béton", label: "⌀45 cm" },
+    ],
+  },
+  {
+    id: "tc_electrical", name: "Électricité", presets: [
+      { id: "tp_conduit",   name: "Gaine ⌀20",       toolType: "polylength", color: "#EF4444", subject: "Gaine ICTA", label: "⌀20 mm", layerId: "lyr_electrical" },
+      { id: "tp_outlet",    name: "Prise 2P+T",      toolType: "count",      color: "#EF4444", subject: "Prise électrique", label: "2P+T", layerId: "lyr_electrical" },
+      { id: "tp_switch",    name: "Interrupteur",     toolType: "count",      color: "#EF4444", subject: "Interrupteur", label: "Simple", layerId: "lyr_electrical" },
+      { id: "tp_panel",     name: "Tableau élec.",    toolType: "count",      color: "#EF4444", subject: "Tableau électrique", label: "", layerId: "lyr_electrical" },
+      { id: "tp_fixture",   name: "Luminaire",        toolType: "count",      color: "#EF4444", subject: "Luminaire", label: "", layerId: "lyr_electrical" },
+    ],
+  },
+  {
+    id: "tc_plumbing", name: "Plomberie", presets: [
+      { id: "tp_pipe_cu",   name: "Tube cuivre ⌀16", toolType: "polylength", color: "#06B6D4", subject: "Tube cuivre", label: "⌀16", layerId: "lyr_plumbing" },
+      { id: "tp_pipe_per",  name: "Tube PER ⌀16",    toolType: "polylength", color: "#22D3EE", subject: "Tube PER", label: "⌀16", layerId: "lyr_plumbing" },
+      { id: "tp_drain",     name: "Évacuation PVC",   toolType: "polylength", color: "#0891B2", subject: "Évacuation PVC", label: "⌀100", layerId: "lyr_plumbing" },
+      { id: "tp_siphon",    name: "Siphon",           toolType: "count",      color: "#06B6D4", subject: "Siphon de sol", label: "", layerId: "lyr_plumbing" },
+      { id: "tp_valve",     name: "Vanne",            toolType: "count",      color: "#06B6D4", subject: "Vanne d'arrêt", label: "", layerId: "lyr_plumbing" },
+    ],
+  },
+  {
+    id: "tc_mechanical", name: "CVC", presets: [
+      { id: "tp_duct",      name: "Gaine VMC",        toolType: "polylength", color: "#10B981", subject: "Gaine VMC", label: "⌀125", layerId: "lyr_mechanical" },
+      { id: "tp_duct_rect", name: "Gaine rectangul.", toolType: "polylength", color: "#10B981", subject: "Gaine rectangulaire", label: "400×200", layerId: "lyr_mechanical" },
+      { id: "tp_diffuser",  name: "Bouche VMC",       toolType: "count",      color: "#10B981", subject: "Bouche extraction", label: "", layerId: "lyr_mechanical" },
+      { id: "tp_radiator",  name: "Radiateur",        toolType: "count",      color: "#10B981", subject: "Radiateur", label: "", layerId: "lyr_mechanical" },
+      { id: "tp_split",     name: "Unité split",      toolType: "count",      color: "#10B981", subject: "Climatisation split", label: "", layerId: "lyr_mechanical" },
+    ],
+  },
+  {
+    id: "tc_fire", name: "Incendie / Sécurité", presets: [
+      { id: "tp_smoke",     name: "Détecteur fumée",  toolType: "count",      color: "#F59E0B", subject: "Détecteur de fumée", label: "Plafond", layerId: "lyr_fire" },
+      { id: "tp_sprinkler", name: "Sprinkler",        toolType: "count",      color: "#F59E0B", subject: "Sprinkler", label: "", layerId: "lyr_fire" },
+      { id: "tp_extinguish",name: "Extincteur",       toolType: "count",      color: "#EF4444", subject: "Extincteur", label: "ABC 6kg", layerId: "lyr_fire" },
+      { id: "tp_alarm",     name: "Alarme incendie",  toolType: "count",      color: "#EF4444", subject: "Déclencheur manuel", label: "", layerId: "lyr_fire" },
+      { id: "tp_exit",      name: "Issue de secours", toolType: "count",      color: "#22C55E", subject: "Bloc autonome", label: "BAES", layerId: "lyr_fire" },
+    ],
+  },
+  {
+    id: "tc_finishes", name: "Finitions intérieures", presets: [
+      { id: "tp_tile",      name: "Carrelage sol",    toolType: "area",       color: "#3B82F6", subject: "Carrelage", label: "60×60", layerId: "lyr_interior" },
+      { id: "tp_parquet",   name: "Parquet",          toolType: "area",       color: "#F97316", subject: "Parquet", label: "Chêne", layerId: "lyr_interior" },
+      { id: "tp_paint",     name: "Peinture murale",  toolType: "area",       color: "#8B5CF6", subject: "Peinture", label: "2 couches", layerId: "lyr_interior", slopeDeg: 0 },
+      { id: "tp_baseboard", name: "Plinthe",          toolType: "polylength", color: "#F97316", subject: "Plinthe", label: "MDF 8cm", layerId: "lyr_interior" },
+      { id: "tp_ceiling",   name: "Faux-plafond",     toolType: "area",       color: "#A78BFA", subject: "Faux-plafond", label: "BA13", layerId: "lyr_interior" },
+    ],
+  },
+];

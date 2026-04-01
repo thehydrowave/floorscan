@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter, LayoutGrid } from "lucide-react";
-import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS } from "@/lib/measure-types";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter, LayoutGrid, Group, Ungroup, Paintbrush, Layers, Eye, EyeOff, Lock, Unlock, Wrench } from "lucide-react";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS, MarkupGroup, MeasureLayer, DEFAULT_LAYERS, ToolChestCategory, DEFAULT_TOOL_CHEST, ToolPreset } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
@@ -57,6 +57,14 @@ interface MeasureCanvasProps {
   // Markup annotations (arrow, line, callout, cloud, rect, ellipse, highlight, pen, stamp)
   markupAnnotations?: MarkupAnnotation[];
   onMarkupAnnotationsChange?: (markups: MarkupAnnotation[]) => void;
+  // Groups
+  markupGroups?: MarkupGroup[];
+  onMarkupGroupsChange?: (groups: MarkupGroup[]) => void;
+  // Layers
+  layers?: MeasureLayer[];
+  onLayersChange?: (layers: MeasureLayer[]) => void;
+  activeLayerId?: string;
+  onActiveLayerIdChange?: (id: string) => void;
   // Export callback
   onExportPNG?: () => void;
 }
@@ -115,6 +123,8 @@ export default function MeasureCanvas({
   displayUnit = "m" as DisplayUnit,
   textAnnotations = [], onTextAnnotationsChange,
   markupAnnotations = [], onMarkupAnnotationsChange,
+  markupGroups = [], onMarkupGroupsChange,
+  layers = DEFAULT_LAYERS, onLayersChange, activeLayerId = "lyr_general", onActiveLayerIdChange,
   onExportPNG,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -165,6 +175,12 @@ export default function MeasureCanvas({
   // Text annotation in-progress state
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState("");
+
+  // Format painter
+  const [formatPainterStyle, setFormatPainterStyle] = useState<{ color: string; lineWidth?: number; fillColor?: string; fillOpacity?: number } | null>(null);
+  // Layers panel & Tool Chest panel
+  const [showLayersPanel, setShowLayersPanel] = useState(false);
+  const [showToolChest, setShowToolChest] = useState(false);
 
   // Lasso multi-select
   const [lassoStart, setLassoStart] = useState<{ x: number; y: number } | null>(null);
@@ -1025,6 +1041,32 @@ export default function MeasureCanvas({
         return;
       }
 
+      // ── Group selected zones (Ctrl+G) ──
+      if ((e.ctrlKey || e.metaKey) && e.key === "g" && !e.shiftKey && selectedZoneIds.size > 1) {
+        e.preventDefault();
+        const groupId = crypto.randomUUID();
+        const newGroup: MarkupGroup = { id: groupId, memberIds: Array.from(selectedZoneIds) };
+        onMarkupGroupsChange?.([...markupGroups, newGroup]);
+        // Tag zones with groupId
+        onZonesChangeRef.current(zonesRef.current.map(z =>
+          selectedZoneIds.has(z.id) ? { ...z, groupId } : z
+        ));
+        return;
+      }
+      // ── Ungroup (Ctrl+Shift+G) ──
+      if ((e.ctrlKey || e.metaKey) && e.key === "G" && e.shiftKey && selectedZoneId) {
+        e.preventDefault();
+        const zone = zonesRef.current.find(z => z.id === selectedZoneId);
+        if (zone?.groupId) {
+          const gid = zone.groupId;
+          onMarkupGroupsChange?.(markupGroups.filter(g => g.id !== gid));
+          onZonesChangeRef.current(zonesRef.current.map(z =>
+            z.groupId === gid ? { ...z, groupId: undefined } : z
+          ));
+        }
+        return;
+      }
+
       // ── Delete selected (Delete / Backspace) ──
       if ((e.key === "Delete" || e.key === "Backspace") && selectedZoneId) {
         e.preventDefault();
@@ -1538,6 +1580,50 @@ export default function MeasureCanvas({
             showRulers ? "bg-slate-500/20 border border-slate-400/40 text-slate-300" : "glass border border-white/10 text-slate-500 hover:text-white"
           }`}>
           <Ruler className="w-3.5 h-3.5" /> Règles
+        </button>
+
+        {/* Layers panel toggle */}
+        <button onClick={() => setShowLayersPanel(v => !v)} title="Calques / Disciplines"
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            showLayersPanel ? "bg-blue-500/20 border border-blue-500/40 text-blue-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+          }`}>
+          <Layers className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Tool Chest toggle */}
+        <button onClick={() => setShowToolChest(v => !v)} title="Boîte à outils / Presets"
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            showToolChest ? "bg-amber-500/20 border border-amber-500/40 text-amber-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+          }`}>
+          <Wrench className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Format Painter */}
+        <button
+          onClick={() => {
+            if (formatPainterStyle) { setFormatPainterStyle(null); return; }
+            // Copy style from selected zone
+            if (selectedZoneId) {
+              const zone = zones.find(z => z.id === selectedZoneId);
+              if (zone) {
+                const type = surfaceTypes.find(t => t.id === zone.typeId);
+                setFormatPainterStyle({ color: type?.color ?? "#3B82F6" });
+              }
+            }
+            // Copy style from selected markup
+            if (selectedLinearId) {
+              const lm = linearMeasures.find(m => m.id === selectedLinearId);
+              if (lm) {
+                const cat = linearCategories.find(c => c.id === lm.categoryId);
+                setFormatPainterStyle({ color: cat?.color ?? "#10B981" });
+              }
+            }
+          }}
+          title="Copier le format (sélectionnez un élément puis cliquez)"
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+          }`}>
+          <Paintbrush className="w-3.5 h-3.5" />
         </button>
 
         <button onClick={undoLast} title="Annuler (Ctrl+Z)"
@@ -2655,6 +2741,70 @@ export default function MeasureCanvas({
             </div>
           );
         })()}
+
+        {/* ── Layers panel overlay ── */}
+        {showLayersPanel && (
+          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-56 pointer-events-auto max-h-80 overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-blue-300">Calques</span>
+              <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
+            </div>
+            {layers.map(lyr => (
+              <div key={lyr.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30" : "hover:bg-white/5"
+              }`}>
+                <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l))}
+                  className="text-slate-400 hover:text-white">
+                  {lyr.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-40" />}
+                </button>
+                <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l))}
+                  className="text-slate-400 hover:text-white">
+                  {lyr.locked ? <Lock className="w-3 h-3 text-red-400" /> : <Unlock className="w-3 h-3 opacity-40" />}
+                </button>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: lyr.color }} />
+                <button onClick={() => onActiveLayerIdChange?.(lyr.id)}
+                  className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
+                  {lyr.name}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Tool Chest panel overlay ── */}
+        {showToolChest && (
+          <div className="absolute top-14 right-4 z-50 glass border border-amber-500/30 rounded-2xl p-3 shadow-2xl min-w-64 pointer-events-auto max-h-[70vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-amber-300">Boîte à outils</span>
+              <button onClick={() => setShowToolChest(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
+            </div>
+            {DEFAULT_TOOL_CHEST.map(cat => (
+              <div key={cat.id} className="mb-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 px-1">{cat.name}</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {cat.presets.map(preset => (
+                    <button key={preset.id}
+                      onClick={() => {
+                        // Apply preset: switch to the right tool, set color, layer, etc.
+                        if (preset.toolType === "area") setTool("polygon");
+                        else if (preset.toolType === "polylength") setTool("linear");
+                        else if (preset.toolType === "count") setTool("count");
+                        else if (preset.toolType === "diameter") setTool("circle");
+                        else if (preset.toolType === "angle") setTool("angle");
+                        if (preset.layerId) onActiveLayerIdChange?.(preset.layerId);
+                        setShowToolChest(false);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] text-left hover:bg-white/5 transition-colors border border-white/5"
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: preset.color }} />
+                      <span className="text-slate-300 truncate">{preset.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Callout text input overlay */}
         {calloutInputPos && (() => {

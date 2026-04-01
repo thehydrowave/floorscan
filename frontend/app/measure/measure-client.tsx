@@ -9,7 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, DEFAULT_LAYERS } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -200,6 +200,10 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
   // Markup annotations (arrow, line, callout, cloud, rect, ellipse, highlight, pen, stamp)
   const [markupAnnotations, setMarkupAnnotations] = useState<MarkupAnnotation[]>([]);
+  // Groups & Layers
+  const [markupGroups, setMarkupGroups] = useState<MarkupGroup[]>([]);
+  const [measureLayers, setMeasureLayers] = useState<MeasureLayer[]>(DEFAULT_LAYERS);
+  const [activeLayerId, setActiveLayerId] = useState("lyr_general");
 
   // Undo / Redo history
   const historyRef  = useRef<MeasureZone[][]>([]);
@@ -326,6 +330,9 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       if (s.circleMeasures) setCircleMeasures(s.circleMeasures);
       if (s.textAnnotations) setTextAnnotations(s.textAnnotations);
       if (s.markupAnnotations) setMarkupAnnotations(s.markupAnnotations);
+      if (s.markupGroups) setMarkupGroups(s.markupGroups);
+      if (s.measureLayers) setMeasureLayers(s.measureLayers);
+      if (s.activeLayerId) setActiveLayerId(s.activeLayerId);
       if (s.imageB64) {
         setImageB64(s.imageB64);
         setImageMime(s.imageMime || "image/png");
@@ -345,7 +352,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   // ── localStorage : sauvegarde à chaque changement ─────────────────────────
   useEffect(() => {
     if (!imageB64) return; // ne pas sauvegarder un projet vide
-    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations, markupAnnotations };
+    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations, markupAnnotations, markupGroups, measureLayers, activeLayerId };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -355,7 +362,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, step: 0 }));
       } catch { /* silencieux */ }
     }
-  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations, markupAnnotations]);
+  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations, markupAnnotations, markupGroups, measureLayers, activeLayerId]);
 
   // ── Warn before leaving with unsaved work ─────────────────────────────────
   useEffect(() => {
@@ -1088,6 +1095,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onTextAnnotationsChange={setTextAnnotations}
                   markupAnnotations={markupAnnotations}
                   onMarkupAnnotationsChange={setMarkupAnnotations}
+                  markupGroups={markupGroups}
+                  onMarkupGroupsChange={setMarkupGroups}
+                  layers={measureLayers}
+                  onLayersChange={setMeasureLayers}
+                  activeLayerId={activeLayerId}
+                  onActiveLayerIdChange={setActiveLayerId}
                   onExportPNG={async () => {
                     try {
                       const b64 = await renderAnnotatedPlan(imageB64, imageMime, zones, allTypes, ppm);
