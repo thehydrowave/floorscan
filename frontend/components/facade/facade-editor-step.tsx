@@ -32,11 +32,14 @@ const TYPE_I18N: Record<string, DTKey> = {
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
-/* ── Only 2 editable types in editor ── */
-const EDITOR_TYPES: FacadeElementType[] = ["other", "column"];
-const EDITOR_LABELS: Record<string, string> = { other: "Fenetres", column: "Emprise mur" };
+/* ── All types editable ── */
+const EDITOR_TYPES: FacadeElementType[] = ALL_TYPES;
+const EDITOR_LABELS: Record<string, string> = {
+  window: "Fenêtres", door: "Portes", balcony: "Balcons",
+  floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
+};
 
-type EditorTool = "select" | "add_polygon" | "add_rect" | "erase";
+type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon";
 
 /* ── Helpers ── */
 type Pt = { x: number; y: number };
@@ -89,7 +92,29 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const [elements, setElements] = useState<FacadeElement[]>(() => [...result.elements]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tool, setTool] = useState<EditorTool>("select");
-  const [addType, setAddType] = useState<FacadeElementType>("other");
+  const [addType, setAddType] = useState<FacadeElementType>("window");
+
+  // Masks from backend (editable via add/erase tools)
+  const [masks, setMasks] = useState<Record<string, string>>(() => ({
+    mask_window: result.mask_window_b64 ?? "",
+    mask_door: result.mask_door_b64 ?? "",
+    mask_balcony: result.mask_balcony_b64 ?? "",
+    mask_roof: result.mask_roof_b64 ?? "",
+    mask_column: result.mask_column_b64 ?? "",
+    mask_wall_opaque: result.mask_wall_opaque_b64 ?? "",
+  }));
+
+  // Visibility toggles per type
+  const [visibility, setVisibility] = useState<Record<string, boolean>>({
+    window: true, door: true, balcony: true, floor_line: true,
+    roof: true, column: true, other: true, wall_opaque: false,
+  });
+
+  // Active mask layer for editing
+  const [activeLayer, setActiveLayer] = useState<string>("window");
+
+  // Rect drawing for add_rect / erase_rect
+  const [rectStart, setRectStart] = useState<Pt | null>(null);
 
   // Zoom/pan
   const [zoom, setZoom] = useState(1);
@@ -260,7 +285,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       return;
     }
 
-    if (tool === "erase") {
+    if (tool === "erase_rect" || tool === "erase_polygon") {
       const p = toNorm(e);
       setElements(prev => prev.filter(el => {
         const poly = getPolyPoints(el);
@@ -463,39 +488,48 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
         <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-2 mb-2 px-2 flex-wrap">
+            {/* Selection / Add tools */}
             <div className="flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
               <button
                 onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "select" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}
-                title={d("fa_select")}
+                title="Sélection (Q)"
               >
                 <MousePointer2 className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setTool("add_polygon"); setSelectedId(null); setRectPreview(null); rectDragRef.current = null; }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "add_polygon" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Polygone"
+                className={cn("p-1.5 rounded-md text-xs", tool === "add_polygon" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white")}
+                title="Ajouter polygone"
               >
                 <Pentagon className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setTool("add_rect"); setSelectedId(null); setDrawingPoly([]); setHoverPoint(null); }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "add_rect" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Rectangle"
+                className={cn("p-1.5 rounded-md text-xs", tool === "add_rect" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white")}
+                title="Ajouter rectangle"
               >
                 <Square className="w-4 h-4" />
               </button>
+              <div className="w-px h-4 bg-white/10" />
               <button
-                onClick={() => { setTool("erase"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "erase" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
-                title={d("fa_delete")}
+                onClick={() => { setTool("erase_rect"); setDrawingPoly([]); setHoverPoint(null); }}
+                className={cn("p-1.5 rounded-md text-xs", tool === "erase_rect" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
+                title="Effacer rectangle"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => { setTool("erase_polygon"); setRectPreview(null); rectDragRef.current = null; }}
+                className={cn("p-1.5 rounded-md text-xs", tool === "erase_polygon" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
+                title="Effacer polygone"
+              >
+                <Pentagon className="w-4 h-4" style={{ opacity: 0.5 }} />
+              </button>
             </div>
 
-            {/* Add type selector */}
-            {(tool === "add_polygon" || tool === "add_rect") && (
+            {/* Type selector (for add/erase tools) */}
+            {tool !== "select" && (
               <select
                 value={addType}
                 onChange={e => setAddType(e.target.value as FacadeElementType)}
@@ -507,7 +541,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
               </select>
             )}
 
-            {/* Drawing hint */}
+            {/* Visibility toggles */}
+            <div className="flex items-center gap-0.5 ml-auto">
+              {(["window", "door", "balcony", "roof", "column", "wall_opaque"] as const).map(type => (
+                <button key={type}
+                  onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
+                  title={`${EDITOR_LABELS[type] ?? type} ${visibility[type] ? "ON" : "OFF"}`}
+                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-colors",
+                    visibility[type] ? "text-white" : "text-slate-600"
+                  )}
+                >
+                  <span className="w-3 h-3 rounded-sm" style={{
+                    background: TYPE_COLORS[type] ?? "#94a3b8",
+                    opacity: visibility[type] ? 1 : 0.2,
+                  }} />
+                </button>
+              ))}
+            </div>
+
+            {/* Drawing hints */}
             {isDrawing && (
               <span className="text-xs text-amber-300/70 animate-pulse">
                 {drawingPoly.length < 3 ? "Cliquez pour poser des points..." : "Double-clic ou clic sur le 1er point pour fermer"}
@@ -530,7 +582,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             ref={containerRef}
             className={cn("relative overflow-hidden rounded-xl bg-slate-900",
               tool === "add_polygon" || tool === "add_rect" ? "cursor-crosshair"
-              : tool === "erase" ? "cursor-cell"
+              : tool === "erase_rect" || tool === "erase_polygon" ? "cursor-cell"
               : isDraggingEl ? "cursor-grabbing"
               : "cursor-default"
             )}
@@ -560,6 +612,68 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   setImgDisplay({ w: img.clientWidth, h: img.clientHeight });
                 }}
               />
+
+              {/* ── Mask layers (from backend, editable) ── */}
+              {visibility.window && masks.mask_window && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: TYPE_COLORS.window,
+                  opacity: 0.45,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_window})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 1,
+                }} />
+              )}
+              {visibility.door && masks.mask_door && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: TYPE_COLORS.door,
+                  opacity: 0.45,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_door})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_door})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 1,
+                }} />
+              )}
+              {visibility.balcony && masks.mask_balcony && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: TYPE_COLORS.balcony,
+                  opacity: 0.45,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 1,
+                }} />
+              )}
+              {visibility.roof && masks.mask_roof && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: TYPE_COLORS.roof,
+                  opacity: 0.35,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_roof})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_roof})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 1,
+                }} />
+              )}
+              {visibility.column && masks.mask_column && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: TYPE_COLORS.column,
+                  opacity: 0.35,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_column})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_column})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 1,
+                }} />
+              )}
+              {visibility.wall_opaque && masks.mask_wall_opaque && (
+                <div className="absolute inset-0 pointer-events-none" style={{
+                  backgroundColor: "#94a3b8",
+                  opacity: 0.25,
+                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
+                  maskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
+                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                  maskMode: "luminance", zIndex: 0,
+                }} />
+              )}
 
               {/* ── Wall blue mask layer (evenodd: outer boundary minus window holes) ── */}
               {wallSvgPath && imgNat.w > 0 && (

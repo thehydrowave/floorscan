@@ -112,6 +112,14 @@ export interface FacadeAnalysisResult {
   /** ROI used for inference, normalized 0-1. Full image when absent. */
   building_roi?: { x: number; y: number; w: number; h: number };
   overlay_b64: string; plan_b64: string;
+  // Masques éditables par type (générés depuis les bounding boxes)
+  mask_window_b64?: string;
+  mask_door_b64?: string;
+  mask_balcony_b64?: string;
+  mask_roof_b64?: string;
+  mask_column_b64?: string;
+  mask_wall_opaque_b64?: string;
+  overlay_openings_b64?: string;
   is_mock?: boolean;
 }
 
