@@ -165,6 +165,16 @@ export default function MeasureCanvas({
   const isDeductionRef = useRef(false);
   useEffect(() => { isDeductionRef.current = isDeductionMode; }, [isDeductionMode]);
 
+  // Clear all selections when switching away from select tool
+  useEffect(() => {
+    if (tool !== "select") {
+      setSelectedMarkupId(null);
+      setSelectedTextId(null);
+      setSelectedCircleId(null);
+      setSelectedZoneIds(new Set());
+    }
+  }, [tool]);
+
   // Angle tool state
   const [anglePts, setAnglePts]               = useState<{ x: number; y: number }[]>([]);
   // angleMeasurements now comes from props (lifted to parent)
@@ -1086,11 +1096,15 @@ export default function MeasureCanvas({
     const onKey = (e: KeyboardEvent) => {
       if (isInInput(e)) return;
 
-      // ── Escape → cancel drawing + deselect ──
+      // ── Escape → cancel drawing + deselect ALL ──
       if (e.key === "Escape") {
         cancelDrawing();
         onSelectedZoneIdChange?.(null);
         onSelectedLinearIdChange?.(null);
+        setSelectedMarkupId(null);
+        setSelectedTextId(null);
+        setSelectedCircleId(null);
+        setSelectedZoneIds(new Set());
         return;
       }
 
@@ -1231,7 +1245,7 @@ export default function MeasureCanvas({
 
       // ── Tool switching shortcuts (only when not drawing) ──
       if (!isDrawingActive() && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const switchTool = (t: Tool) => { setTool(t); cancelDrawing(); };
+        const switchTool = (t: Tool) => { setTool(t); cancelDrawing(); onSelectedZoneIdChange?.(null); onSelectedLinearIdChange?.(null); setSelectedMarkupId(null); setSelectedTextId(null); setSelectedCircleId(null); };
         switch (e.key.toLowerCase()) {
           case "q": switchTool("select"); break;
           case "p": switchTool("polygon"); break;
