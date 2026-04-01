@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2 } from "lucide-react";
-import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint } from "@/lib/measure-types";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download } from "lucide-react";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
@@ -38,16 +38,27 @@ interface MeasureCanvasProps {
   onCountPointsChange?: (pts: CountPoint[]) => void;
   countGroups?: CountGroup[];
   activeCountGroupId?: string;
+  // Selection props (lifted to parent)
+  selectedZoneId?: string | null;
+  onSelectedZoneIdChange?: (id: string | null) => void;
+  selectedLinearId?: string | null;
+  onSelectedLinearIdChange?: (id: string | null) => void;
+  // Angle tool (lifted state)
+  angleMeasurements?: AngleMeasurement[];
+  onAngleMeasurementsChange?: (angles: AngleMeasurement[]) => void;
+  // Circle tool
+  circleMeasures?: CircleMeasure[];
+  onCircleMeasuresChange?: (circles: CircleMeasure[]) => void;
+  // Display unit
+  displayUnit?: DisplayUnit;
+  // Text annotations
+  textAnnotations?: TextAnnotation[];
+  onTextAnnotationsChange?: (annotations: TextAnnotation[]) => void;
+  // Export callback
+  onExportPNG?: () => void;
 }
 
-type Tool = "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count";
-
-interface AngleMeasurement {
-  id: string;
-  a: { x: number; y: number };
-  v: { x: number; y: number };
-  b: { x: number; y: number };
-}
+type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text";
 
 const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
@@ -93,6 +104,12 @@ export default function MeasureCanvas({
   onPpmChange,
   linearMeasures = [], onLinearMeasuresChange, linearCategories = [], activeLinearCategoryId = "",
   countPoints = [], onCountPointsChange, countGroups = [], activeCountGroupId = "",
+  selectedZoneId = null, onSelectedZoneIdChange, selectedLinearId = null, onSelectedLinearIdChange,
+  angleMeasurements = [], onAngleMeasurementsChange,
+  circleMeasures = [], onCircleMeasuresChange,
+  displayUnit = "m" as DisplayUnit,
+  textAnnotations = [], onTextAnnotationsChange,
+  onExportPNG,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
@@ -131,7 +148,14 @@ export default function MeasureCanvas({
 
   // Angle tool state
   const [anglePts, setAnglePts]               = useState<{ x: number; y: number }[]>([]);
-  const [angleMeasurements, setAngleMeasurements] = useState<AngleMeasurement[]>([]);
+  // angleMeasurements now comes from props (lifted to parent)
+
+  // Circle tool in-progress state
+  const [circleCenter, setCircleCenter] = useState<{ x: number; y: number } | null>(null);
+
+  // Text annotation in-progress state
+  const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+  const [textInputValue, setTextInputValue] = useState("");
 
   // Split tool state
   const [splitPts, setSplitPts] = useState<{ x: number; y: number }[]>([]);
@@ -139,6 +163,25 @@ export default function MeasureCanvas({
   // Linear tool in-progress points
   const [linearDrawingPts, setLinearDrawingPts] = useState<{ x: number; y: number }[]>([]);
   const linearDrawingPtsRef = useRef<{ x: number; y: number }[]>([]);
+
+  // Select tool — zone drag (whole zone move)
+  const dragZoneRef = useRef<{ zoneId: string; startNorm: { x: number; y: number }; originalPoints: { x: number; y: number }[] } | null>(null);
+  // Select tool — linear vertex drag
+  const dragLinearVertexRef = useRef<{ measureId: string; idx: number } | null>(null);
+  // Select tool — count point drag
+  const dragCountPointRef = useRef<{ pointId: string } | null>(null);
+  // Spacebar temporary pan
+  const [spacebarPan, setSpacebarPan] = useState(false);
+  const spacebarPanRef = useRef(false);
+  // Refs for select tool callbacks
+  const onSelectedZoneIdChangeRef = useRef(onSelectedZoneIdChange);
+  const onSelectedLinearIdChangeRef = useRef(onSelectedLinearIdChange);
+  const linearMeasuresRef = useRef(linearMeasures);
+  const countPointsRef = useRef(countPoints);
+  const onLinearMeasuresChangeRef = useRef(onLinearMeasuresChange);
+  const onCountPointsChangeRef = useRef(onCountPointsChange);
+  const circleMeasuresRef = useRef(circleMeasures);
+  const onCircleMeasuresChangeRef = useRef(onCircleMeasuresChange);
 
   // Visual search state
   const [vsCropStart, setVsCropStart] = useState<{ x: number; y: number } | null>(null);
@@ -169,6 +212,14 @@ export default function MeasureCanvas({
   useEffect(() => { dragVertexRef.current = dragVertex; }, [dragVertex]);
   useEffect(() => { zonesRef.current = zones; }, [zones]);
   useEffect(() => { onZonesChangeRef.current = onZonesChange; }, [onZonesChange]);
+  useEffect(() => { onSelectedZoneIdChangeRef.current = onSelectedZoneIdChange; }, [onSelectedZoneIdChange]);
+  useEffect(() => { onSelectedLinearIdChangeRef.current = onSelectedLinearIdChange; }, [onSelectedLinearIdChange]);
+  useEffect(() => { linearMeasuresRef.current = linearMeasures; }, [linearMeasures]);
+  useEffect(() => { countPointsRef.current = countPoints; }, [countPoints]);
+  useEffect(() => { onLinearMeasuresChangeRef.current = onLinearMeasuresChange; }, [onLinearMeasuresChange]);
+  useEffect(() => { onCountPointsChangeRef.current = onCountPointsChange; }, [onCountPointsChange]);
+  useEffect(() => { circleMeasuresRef.current = circleMeasures; }, [circleMeasures]);
+  useEffect(() => { onCircleMeasuresChangeRef.current = onCircleMeasuresChange; }, [onCircleMeasuresChange]);
 
   // ── Update imgOffset after zoom/translate is committed to DOM ──────────────
   const updateOffset = useCallback(() => {
@@ -215,8 +266,17 @@ export default function MeasureCanvas({
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
-  // ── Global pan (right-click drag) + vertex drag ───────────────────────────
+  // ── Global pan (right-click drag) + vertex drag + zone drag + linear/count drag ──
   useEffect(() => {
+    const getNorm = (e: MouseEvent) => {
+      const img = imgRef.current;
+      if (!img) return null;
+      const r = img.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+        y: Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height)),
+      };
+    };
     const onMove = (e: MouseEvent) => {
       if (isPanRef.current) {
         const dx = e.clientX - panStartRef.current.mx;
@@ -225,16 +285,48 @@ export default function MeasureCanvas({
         return;
       }
       if (dragVertexRef.current) {
-        const img = imgRef.current;
-        if (!img) return;
-        const r = img.getBoundingClientRect();
-        const x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        const y = Math.max(0, Math.min(1, (e.clientY - r.top)  / r.height));
+        const n = getNorm(e);
+        if (!n) return;
         const { zoneId, idx } = dragVertexRef.current;
         onZonesChangeRef.current(zonesRef.current.map(z =>
           z.id !== zoneId ? z :
-          { ...z, points: z.points.map((p, i) => i === idx ? { x, y } : p) }
+          { ...z, points: z.points.map((p, i) => i === idx ? { x: n.x, y: n.y } : p) }
         ));
+        return;
+      }
+      // Zone whole drag
+      if (dragZoneRef.current) {
+        const n = getNorm(e);
+        if (!n) return;
+        const { zoneId, startNorm, originalPoints } = dragZoneRef.current;
+        const dx = n.x - startNorm.x;
+        const dy = n.y - startNorm.y;
+        onZonesChangeRef.current(zonesRef.current.map(z =>
+          z.id !== zoneId ? z :
+          { ...z, points: originalPoints.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+        ));
+        return;
+      }
+      // Linear vertex drag
+      if (dragLinearVertexRef.current) {
+        const n = getNorm(e);
+        if (!n) return;
+        const { measureId, idx } = dragLinearVertexRef.current;
+        onLinearMeasuresChangeRef.current?.(linearMeasuresRef.current.map(m =>
+          m.id !== measureId ? m :
+          { ...m, points: m.points.map((p, i) => i === idx ? { x: n.x, y: n.y } : p) }
+        ));
+        return;
+      }
+      // Count point drag
+      if (dragCountPointRef.current) {
+        const n = getNorm(e);
+        if (!n) return;
+        const { pointId } = dragCountPointRef.current;
+        onCountPointsChangeRef.current?.(countPointsRef.current.map(p =>
+          p.id !== pointId ? p : { ...p, x: n.x, y: n.y }
+        ));
+        return;
       }
     };
     const onUp = (e: MouseEvent) => {
@@ -243,9 +335,11 @@ export default function MeasureCanvas({
         setPanCursor(false);
         return;
       }
-      if (e.button === 0 && dragVertexRef.current) {
-        dragVertexRef.current = null;
-        setDragVertex(null);
+      if (e.button === 0) {
+        if (dragVertexRef.current) { dragVertexRef.current = null; setDragVertex(null); }
+        if (dragZoneRef.current) { dragZoneRef.current = null; }
+        if (dragLinearVertexRef.current) { dragLinearVertexRef.current = null; }
+        if (dragCountPointRef.current) { dragCountPointRef.current = null; }
       }
     };
     window.addEventListener("mousemove", onMove);
@@ -407,7 +501,7 @@ export default function MeasureCanvas({
   }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (dragVertexRef.current) return;
+    if (dragVertexRef.current || dragZoneRef.current || dragLinearVertexRef.current || dragCountPointRef.current) return;
     let n = toNorm(e.clientX, e.clientY);
     if (n && e.shiftKey && tool === "polygon" && drawingPoints.length > 0 && naturalSize.w > 0) {
       n = snapTo45(drawingPoints[drawingPoints.length - 1], n, naturalSize.w, naturalSize.h);
@@ -418,8 +512,8 @@ export default function MeasureCanvas({
   const handleMouseLeave = () => setMouseNorm(null);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 2) {
-      // Right-click → pan
+    // Right-click OR spacebar-held left-click → pan
+    if (e.button === 2 || (e.button === 0 && spacebarPanRef.current)) {
       e.preventDefault();
       isPanRef.current = true;
       panStartRef.current = {
@@ -428,6 +522,35 @@ export default function MeasureCanvas({
       };
       setPanCursor(true);
       return;
+    }
+    // Select tool: drag whole zone or drag linear vertex
+    if (tool === "select" && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (!n) return;
+      // If a zone is selected and click is inside it → start zone drag
+      if (selectedZoneId) {
+        const zone = zonesRef.current.find(z => z.id === selectedZoneId);
+        if (zone && pointInPolygon(n, zone.points)) {
+          onHistoryPush?.(zonesRef.current);
+          dragZoneRef.current = { zoneId: selectedZoneId, startNorm: n, originalPoints: zone.points.map(p => ({ ...p })) };
+          skipNextClickRef.current = true;
+          return;
+        }
+      }
+      // If a linear is selected, check if clicking on one of its vertices
+      if (selectedLinearId) {
+        const lm = linearMeasuresRef.current.find(m => m.id === selectedLinearId);
+        if (lm) {
+          for (let i = 0; i < lm.points.length; i++) {
+            const d = Math.hypot(n.x - lm.points[i].x, n.y - lm.points[i].y);
+            if (d < 0.015) {
+              dragLinearVertexRef.current = { measureId: selectedLinearId, idx: i };
+              skipNextClickRef.current = true;
+              return;
+            }
+          }
+        }
+      }
     }
     if (tool === "rect" && e.button === 0) {
       const n = toNorm(e.clientX, e.clientY);
@@ -441,7 +564,25 @@ export default function MeasureCanvas({
       const n = toNorm(e.clientX, e.clientY);
       if (n) setVsCropStart(n);
     }
-  }, [tool, toNorm, vsEditMode]);
+  }, [tool, toNorm, vsEditMode, selectedZoneId, selectedLinearId, onHistoryPush]);
+
+  /** Find the nearest linear measure to a normalized point (returns measure id or null) */
+  const findNearestLinear = useCallback((pt: { x: number; y: number }, threshold = 0.015): string | null => {
+    let bestId: string | null = null;
+    let bestDist = threshold;
+    for (const lm of linearMeasures) {
+      for (let i = 0; i < lm.points.length - 1; i++) {
+        const a = lm.points[i], b = lm.points[i + 1];
+        const abx = b.x - a.x, aby = b.y - a.y;
+        const apx = pt.x - a.x, apy = pt.y - a.y;
+        const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+        const dx = a.x + t * abx - pt.x, dy = a.y + t * aby - pt.y;
+        const d = Math.hypot(dx, dy);
+        if (d < bestDist) { bestDist = d; bestId = lm.id; }
+      }
+    }
+    return bestId;
+  }, [linearMeasures]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
@@ -451,6 +592,26 @@ export default function MeasureCanvas({
     // Use already-snapped mouseNorm if shift is held while drawing
     const pt: { x: number; y: number } =
       (tool === "polygon" && e.shiftKey && mouseNorm && drawingPoints.length > 0) ? mouseNorm : raw;
+    if (tool === "select") {
+      // Hit test: find zone under cursor (reverse for topmost)
+      const hitZone = [...zones].reverse().find(z => pointInPolygon(pt, z.points));
+      if (hitZone) {
+        onSelectedZoneIdChange?.(hitZone.id);
+        onSelectedLinearIdChange?.(null);
+        return;
+      }
+      // Check linear measures
+      const hitLinearId = findNearestLinear(pt);
+      if (hitLinearId) {
+        onSelectedLinearIdChange?.(hitLinearId);
+        onSelectedZoneIdChange?.(null);
+        return;
+      }
+      // Click on empty → deselect
+      onSelectedZoneIdChange?.(null);
+      onSelectedLinearIdChange?.(null);
+      return;
+    }
     if (tool === "polygon") {
       // Skip the 2nd+ click in a double-click sequence (detail≥2) — they're handled by dblclick
       if (e.detail >= 2) return;
@@ -465,7 +626,7 @@ export default function MeasureCanvas({
         setAnglePts(prev => [...prev, pt]);
       } else {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        setAngleMeasurements(prev => [...prev, { id, a: anglePts[0], v: anglePts[1], b: pt }]);
+        onAngleMeasurementsChange?.([...angleMeasurements, { id, a: anglePts[0], v: anglePts[1], b: pt }]);
         setAnglePts([]);
       }
     } else if (tool === "split") {
@@ -541,8 +702,27 @@ export default function MeasureCanvas({
         };
         onCountPointsChange([...countPoints, newPt]);
       }
+    } else if (tool === "circle") {
+      if (!circleCenter) {
+        setCircleCenter(pt);
+      } else {
+        if (onCircleMeasuresChange) {
+          const newCircle: CircleMeasure = {
+            id: crypto.randomUUID(),
+            categoryId: activeLinearCategoryId,
+            center: circleCenter,
+            edgePoint: pt,
+          };
+          onCircleMeasuresChange([...circleMeasures, newCircle]);
+        }
+        setCircleCenter(null);
+      }
+    } else if (tool === "text") {
+      // Place text input at click position
+      setTextInputPos(pt);
+      setTextInputValue("");
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool === "polygon") {
@@ -639,13 +819,32 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
+  // Track if nudge sequence is active (to only push history once)
+  const nudgeActiveRef = useRef(false);
+
   useEffect(() => {
+    const isInInput = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable;
+    };
+    const isDrawingActive = () =>
+      drawingPointsRef.current.length > 0 || linearDrawingPtsRef.current.length > 0;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { cancelDrawing(); return; }
-      // Enter → close the in-progress polygon OR finish linear
+      if (isInInput(e)) return;
+
+      // ── Escape → cancel drawing + deselect ──
+      if (e.key === "Escape") {
+        cancelDrawing();
+        onSelectedZoneIdChange?.(null);
+        onSelectedLinearIdChange?.(null);
+        return;
+      }
+
+      // ── Enter → close polygon / finish linear ──
       if (e.key === "Enter" && tool === "polygon") {
         e.preventDefault();
         const latest = drawingPointsRef.current;
@@ -663,14 +862,12 @@ export default function MeasureCanvas({
         }
         return;
       }
+
+      // ── Undo/Redo ──
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         if (drawingPoints.length > 0) {
-          setDrawingPoints(p => {
-            const next = p.slice(0, -1);
-            drawingPointsRef.current = next; // keep ref in sync
-            return next;
-          });
+          setDrawingPoints(p => { const next = p.slice(0, -1); drawingPointsRef.current = next; return next; });
           return;
         }
         if (anglePts.length > 0) { setAnglePts(p => p.slice(0, -1)); return; }
@@ -680,11 +877,94 @@ export default function MeasureCanvas({
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
         e.preventDefault();
         onHistoryRedo?.();
+        return;
+      }
+
+      // ── Duplicate selected zone (Ctrl+D) ──
+      if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedZoneId) {
+        e.preventDefault();
+        const zone = zonesRef.current.find(z => z.id === selectedZoneId);
+        if (zone) {
+          onHistoryPush?.(zonesRef.current);
+          const dup: MeasureZone = {
+            ...zone,
+            id: crypto.randomUUID(),
+            name: zone.name ? `${zone.name} (copie)` : undefined,
+            points: zone.points.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })),
+          };
+          onZonesChangeRef.current([...zonesRef.current, dup]);
+          onSelectedZoneIdChange?.(dup.id);
+        }
+        return;
+      }
+
+      // ── Delete selected (Delete / Backspace) ──
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedZoneId) {
+        e.preventDefault();
+        onHistoryPush?.(zonesRef.current);
+        onZonesChangeRef.current(zonesRef.current.filter(z => z.id !== selectedZoneId));
+        onSelectedZoneIdChange?.(null);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedLinearId) {
+        e.preventDefault();
+        onLinearMeasuresChangeRef.current?.(linearMeasuresRef.current.filter(m => m.id !== selectedLinearId));
+        onSelectedLinearIdChange?.(null);
+        return;
+      }
+
+      // ── Arrow key nudge selected zone ──
+      if (selectedZoneId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+        if (!nudgeActiveRef.current) { onHistoryPush?.(zonesRef.current); nudgeActiveRef.current = true; }
+        const step = e.shiftKey ? 0.01 : 0.002;
+        const dx = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
+        const dy = e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0;
+        onZonesChangeRef.current(zonesRef.current.map(z =>
+          z.id !== selectedZoneId ? z :
+          { ...z, points: z.points.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+        ));
+        return;
+      }
+
+      // ── Spacebar → temporary pan ──
+      if (e.key === " " && !spacebarPanRef.current) {
+        e.preventDefault();
+        spacebarPanRef.current = true;
+        setSpacebarPan(true);
+        return;
+      }
+
+      // ── Tool switching shortcuts (only when not drawing) ──
+      if (!isDrawingActive() && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const switchTool = (t: Tool) => { setTool(t); cancelDrawing(); };
+        switch (e.key.toLowerCase()) {
+          case "q": switchTool("select"); break;
+          case "p": switchTool("polygon"); break;
+          case "r": switchTool("rect"); break;
+          case "l": switchTool("linear"); break;
+          case "c": switchTool("count"); break;
+          case "a": switchTool("angle"); break;
+          case "w": switchTool("wall"); break;
+          case "s": switchTool("split"); break;
+          case "v": switchTool("visual_search"); break;
+          case "m": switchTool("scale"); break;
+          case "o": switchTool("circle"); break;
+          case "t": switchTool("text"); break;
+        }
       }
     };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " ") { spacebarPanRef.current = false; setSpacebarPan(false); }
+      // End nudge sequence
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) { nudgeActiveRef.current = false; }
+    };
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo, tool, addZone]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKeyUp); };
+  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo, tool, addZone, selectedZoneId, selectedLinearId, onHistoryPush, onSelectedZoneIdChange, onSelectedLinearIdChange, linearMeasures, activeLinearCategoryId, onLinearMeasuresChange]);
 
   const deleteZone = (id: string) => {
     onHistoryPush?.(zonesRef.current);
@@ -743,10 +1023,18 @@ export default function MeasureCanvas({
         })()
       : null;
 
-  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0 || linearDrawingPts.length > 0;
+  const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0 || linearDrawingPts.length > 0 || circleCenter !== null;
   const activeColor = getColor(activeTypeId);
 
-  const hint = dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
+  const hint = dragZoneRef.current ? "Glissez pour repositionner la zone · relâchez pour valider"
+    : dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
+    : spacebarPan ? "Relâchez Espace pour revenir à l'outil"
+    : tool === "select"
+    ? selectedZoneId
+      ? "Zone sélectionnée · Glissez pour déplacer · Ctrl+D dupliquer · Flèches ajuster · Suppr supprimer"
+      : selectedLinearId
+      ? "Linéaire sélectionné · Glissez un vertex pour éditer · Suppr supprimer"
+      : "Cliquez une zone ou un linéaire pour sélectionner"
     : tool === "angle"
     ? anglePts.length === 0 ? "Cliquez pour placer le 1er point de la mesure d'angle"
     : anglePts.length === 1 ? "Cliquez pour placer le sommet de l'angle"
@@ -784,6 +1072,14 @@ export default function MeasureCanvas({
         : `${linearDrawingPts.length} pts · Entrée ou double-clic pour terminer · Échap pour annuler`
     : tool === "count"
     ? `Cliquez pour placer un point de comptage${activeCountGroupId ? "" : " — sélectionnez un groupe d'abord"}`
+    : tool === "circle"
+    ? !circleCenter
+      ? "Cliquez pour placer le centre du cercle"
+      : "Cliquez pour définir le rayon · Échap pour annuler"
+    : tool === "text"
+    ? textInputPos
+      ? "Tapez votre texte · Entrée pour valider · Échap pour annuler"
+      : "Cliquez pour placer une annotation texte"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -796,7 +1092,17 @@ export default function MeasureCanvas({
         {/* Tool selector */}
         <div className="flex gap-1 glass border border-white/10 rounded-xl p-1">
           <button
+            onClick={() => { setTool("select"); cancelDrawing(); }}
+            title="Sélection (Q)"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "select" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <MousePointer2 className="w-3.5 h-3.5" />
+          </button>
+          <button
             onClick={() => { setTool("polygon"); cancelDrawing(); }}
+            title="Polygone (P)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "polygon" ? "bg-accent text-white" : "text-slate-400 hover:text-white"
             }`}
@@ -805,6 +1111,7 @@ export default function MeasureCanvas({
           </button>
           <button
             onClick={() => { setTool("rect"); cancelDrawing(); }}
+            title="Rectangle (R)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "rect" ? "bg-accent text-white" : "text-slate-400 hover:text-white"
             }`}
@@ -813,6 +1120,7 @@ export default function MeasureCanvas({
           </button>
           <button
             onClick={() => { setTool("angle"); cancelDrawing(); }}
+            title="Angle (A)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "angle" ? "bg-amber-500 text-white" : "text-slate-400 hover:text-white"
             }`}
@@ -821,6 +1129,7 @@ export default function MeasureCanvas({
           </button>
           <button
             onClick={() => { setTool("wall"); cancelDrawing(); }}
+            title="Mur (W)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "wall"
                 ? "bg-orange-500/20 border border-orange-500/40 text-orange-300"
@@ -832,7 +1141,7 @@ export default function MeasureCanvas({
           {onPpmChange && (
             <button
               onClick={() => { setTool("scale"); setScalePts([]); setScaleInputOpen(false); cancelDrawing(); }}
-              title={ppm ? `Recalibrer l'échelle (actuelle : ${ppm.toFixed(1)} px/m)` : "Calibrer l'échelle pour afficher les m²"}
+              title={ppm ? `Échelle (M) — Recalibrer (actuelle : ${ppm.toFixed(1)} px/m)` : "Échelle (M) — Calibrer pour afficher les m²"}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 tool === "scale"
                   ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300"
@@ -846,6 +1155,7 @@ export default function MeasureCanvas({
           )}
           <button
             onClick={() => { setTool("split"); cancelDrawing(); }}
+            title="Découper (S)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "split"
                 ? "bg-red-500/20 border border-red-500/40 text-red-300"
@@ -856,6 +1166,7 @@ export default function MeasureCanvas({
           </button>
           <button
             onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }}
+            title="Recherche visuelle (V)"
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "visual_search"
                 ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-300"
@@ -867,6 +1178,7 @@ export default function MeasureCanvas({
           {onLinearMeasuresChange && (
             <button
               onClick={() => { setTool("linear"); cancelDrawing(); }}
+              title="Linéaire (L)"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 tool === "linear"
                   ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300"
@@ -879,6 +1191,7 @@ export default function MeasureCanvas({
           {onCountPointsChange && (
             <button
               onClick={() => { setTool("count"); cancelDrawing(); }}
+              title="Comptage (C)"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 tool === "count"
                   ? "bg-pink-500/20 border border-pink-500/40 text-pink-300"
@@ -886,6 +1199,32 @@ export default function MeasureCanvas({
               }`}
             >
               <span className="font-bold text-xs">#</span> Comptage
+            </button>
+          )}
+          {onCircleMeasuresChange && (
+            <button
+              onClick={() => { setTool("circle"); cancelDrawing(); }}
+              title="Cercle (O)"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                tool === "circle"
+                  ? "bg-teal-500/20 border border-teal-500/40 text-teal-300"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full border-2 border-current inline-block" /> Cercle
+            </button>
+          )}
+          {onTextAnnotationsChange && (
+            <button
+              onClick={() => { setTool("text"); cancelDrawing(); }}
+              title="Texte (T)"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                tool === "text"
+                  ? "bg-sky-500/20 border border-sky-500/40 text-sky-300"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Type className="w-3.5 h-3.5" /> Texte
             </button>
           )}
         </div>
@@ -1007,8 +1346,16 @@ export default function MeasureCanvas({
           </button>
         )}
 
+        {/* Export PNG */}
+        {onExportPNG && zones.length > 0 && (
+          <button onClick={onExportPNG} title="Exporter image annotée (PNG)"
+            className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors ml-auto">
+            <Download className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Zoom controls */}
-        <div className="flex gap-1 ml-auto">
+        <div className={`flex gap-1 ${!onExportPNG || zones.length === 0 ? "ml-auto" : ""}`}>
           <button onClick={() => setZoom(prevZ => {
             const newZ = Math.min(12, prevZ * 1.3);
             const ratio = newZ / prevZ;
@@ -1037,6 +1384,20 @@ export default function MeasureCanvas({
           )}
         </div>
 
+        {/* Unit selector */}
+        <div className="flex items-center glass border border-white/10 rounded-lg px-2 py-1">
+          <span className="text-[10px] text-slate-500 mr-1.5">Unité</span>
+          <select
+            value={displayUnit}
+            onChange={() => {/* controlled by parent via prop */}}
+            className="bg-transparent text-xs text-slate-300 font-mono outline-none cursor-default"
+            disabled
+            title="Unité d'affichage (configurable dans les options)"
+          >
+            <option value={displayUnit}>{displayUnit}</option>
+          </select>
+        </div>
+
       </div>
 
       {/* Hint */}
@@ -1046,7 +1407,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragVertex ? "move" : panCursor ? "grabbing" : isNearFirst ? "pointer" : "crosshair" }}
+        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -1106,8 +1467,8 @@ export default function MeasureCanvas({
             })();
             const areaM2 = ppm ? areaPx / ppm ** 2 : null;
             const areaLabel = zone.isDeduction
-              ? (areaM2 != null ? `−${areaM2.toFixed(2)} m²` : "EXCLU")
-              : (areaM2 != null ? `${areaM2.toFixed(2)} m²` : null);
+              ? (areaM2 != null ? `−${fmtArea(areaM2, displayUnit)}` : "EXCLU")
+              : (areaM2 != null ? fmtArea(areaM2, displayUnit) : null);
             const LW = 82;
             const LH = areaLabel ? 32 : 20;
 
@@ -1115,11 +1476,15 @@ export default function MeasureCanvas({
               <g key={zone.id} className="group">
                 <polygon
                   points={pts}
-                  fill={zone.isDeduction ? "url(#hatch-deduction)" : hexToRgba(color, 0.28)}
+                  fill={zone.isDeduction ? "url(#hatch-deduction)" : hexToRgba(color, selectedZoneId === zone.id ? 0.38 : 0.28)}
                   stroke={color}
-                  strokeWidth={zone.isDeduction ? 2 : 2}
-                  strokeDasharray={zone.isDeduction ? "6 3" : undefined}
+                  strokeWidth={selectedZoneId === zone.id ? 3 : 2}
+                  strokeDasharray={zone.isDeduction ? "6 3" : selectedZoneId === zone.id ? "8 4" : undefined}
                   strokeLinejoin="round"
+                  style={{
+                    ...(selectedZoneId === zone.id ? { filter: `drop-shadow(0 0 6px ${color})`, cursor: "move" } : {}),
+                    ...(tool === "select" ? { pointerEvents: "all" as const, ...(selectedZoneId !== zone.id ? { cursor: "pointer" } : {}) } : {}),
+                  }}
                 />
                 {/* Zone label */}
                 <g transform={`translate(${centroid.x},${centroid.y})`}>
@@ -1154,28 +1519,49 @@ export default function MeasureCanvas({
                     </text>
                   )}
                 </g>
-                {/* Edge length labels (shown only when scale is set) */}
+                {/* Edge dimension lines — architectural style (shown only when scale is set) */}
                 {ppm && naturalSize.w > 0 && zone.points.map((p, idx) => {
                   const next = zone.points[(idx + 1) % zone.points.length];
                   const s1 = toSvg(p);
                   const s2 = toSvg(next);
                   const screenLen = Math.hypot(s2.x - s1.x, s2.y - s1.y);
-                  if (screenLen < 32) return null; // skip tiny edges
+                  if (screenLen < 40) return null;
                   const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
                   const dxImg = (next.x - p.x) * naturalSize.w;
                   const dyImg = (next.y - p.y) * naturalSize.h;
                   const lenM = Math.sqrt(dxImg * dxImg + dyImg * dyImg) / ppm;
-                  const label = lenM >= 1 ? `${lenM.toFixed(2)} m` : `${(lenM * 100).toFixed(0)} cm`;
+                  const label = fmtLinear(lenM, displayUnit);
                   const rawAngle = Math.atan2(s2.y - s1.y, s2.x - s1.x) * 180 / Math.PI;
                   const angle = (rawAngle > 90 || rawAngle <= -90) ? rawAngle + 180 : rawAngle;
-                  const rw = label.length * 5 + 10;
+                  const rw = label.length * 6 + 14;
+                  // Perpendicular offset for dimension line
+                  const perpX = -(s2.y - s1.y) / screenLen;
+                  const perpY = (s2.x - s1.x) / screenLen;
+                  const off = 14;
+                  const oMid = { x: mid.x + perpX * off, y: mid.y + perpY * off };
                   return (
-                    <g key={`len-${idx}`} transform={`translate(${mid.x},${mid.y}) rotate(${angle})`}>
-                      <rect x={-rw / 2} y={-7} width={rw} height={13} rx={3} fill="rgba(0,0,0,0.65)" />
-                      <text textAnchor="middle" dominantBaseline="middle"
-                        fontSize={8.5} fill="white" fontFamily="ui-monospace, monospace">
-                        {label}
-                      </text>
+                    <g key={`dim-${idx}`}>
+                      {/* Dimension offset line */}
+                      <line x1={s1.x + perpX * off} y1={s1.y + perpY * off}
+                        x2={s2.x + perpX * off} y2={s2.y + perpY * off}
+                        stroke={color} strokeWidth={0.8} opacity={0.4} />
+                      {/* Tick marks */}
+                      <line x1={s1.x + perpX * 8} y1={s1.y + perpY * 8}
+                        x2={s1.x + perpX * 20} y2={s1.y + perpY * 20}
+                        stroke={color} strokeWidth={1} opacity={0.5} />
+                      <line x1={s2.x + perpX * 8} y1={s2.y + perpY * 8}
+                        x2={s2.x + perpX * 20} y2={s2.y + perpY * 20}
+                        stroke={color} strokeWidth={1} opacity={0.5} />
+                      {/* Label with background */}
+                      <g transform={`translate(${oMid.x},${oMid.y}) rotate(${angle})`}>
+                        <rect x={-rw / 2} y={-9} width={rw} height={18} rx={4}
+                          fill="rgba(0,0,0,0.78)" stroke={color} strokeWidth={0.8} />
+                        <text textAnchor="middle" dominantBaseline="middle"
+                          fontSize={10} fill="white" fontWeight="600"
+                          fontFamily="ui-monospace, monospace">
+                          {label}
+                        </text>
+                      </g>
                     </g>
                   );
                 })}
@@ -1273,7 +1659,7 @@ export default function MeasureCanvas({
             const lw = label.length * 6 + 10;
             return (
               <g key={id} style={{ pointerEvents: "all" }}
-                onContextMenu={e => { e.stopPropagation(); e.preventDefault(); setAngleMeasurements(ms => ms.filter(m => m.id !== id)); }}>
+                onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onAngleMeasurementsChange?.(angleMeasurements.filter(m => m.id !== id)); }}>
                 <line x1={sV.x} y1={sV.y} x2={sA.x} y2={sA.y} stroke="#FBBF24" strokeWidth={1.5} />
                 <line x1={sV.x} y1={sV.y} x2={sB.x} y2={sB.y} stroke="#FBBF24" strokeWidth={1.5} />
                 <path d={arcPath} fill="none" stroke="#FBBF24" strokeWidth={1.5} />
@@ -1380,7 +1766,7 @@ export default function MeasureCanvas({
                 {ppm && naturalSize.w > 0 && (
                   <text x={tl.x + w / 2} y={tl.y - 4} textAnchor="middle"
                     fontSize={8} fill="#F97316" fontFamily="ui-monospace, monospace">
-                    {((m.w_norm * naturalSize.w * m.h_norm * naturalSize.h) / (ppm ** 2)).toFixed(2)} m²
+                    {fmtArea((m.w_norm * naturalSize.w * m.h_norm * naturalSize.h) / (ppm ** 2), displayUnit)}
                   </text>
                 )}
               </g>
@@ -1472,6 +1858,33 @@ export default function MeasureCanvas({
                   stroke={activeColor} strokeWidth={2} strokeDasharray="6 3"
                 />
               )}
+              {/* Live dimension labels on edges during drawing */}
+              {ppm && naturalSize.w > 0 && (() => {
+                const allPts = [...drawingPoints, ...(mouseNorm ? [mouseNorm] : [])];
+                return allPts.map((p, i) => {
+                  if (i >= allPts.length - 1) return null;
+                  const next = allPts[i + 1];
+                  const s1 = toSvg(p), s2 = toSvg(next);
+                  const screenLen = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+                  if (screenLen < 30) return null;
+                  const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
+                  const dxI = (next.x - p.x) * naturalSize.w, dyI = (next.y - p.y) * naturalSize.h;
+                  const lenM = Math.sqrt(dxI * dxI + dyI * dyI) / ppm;
+                  const label = fmtLinear(lenM, displayUnit);
+                  const rawA = Math.atan2(s2.y - s1.y, s2.x - s1.x) * 180 / Math.PI;
+                  const angle = (rawA > 90 || rawA <= -90) ? rawA + 180 : rawA;
+                  const rw = label.length * 6 + 12;
+                  return (
+                    <g key={`draw-dim-${i}`} transform={`translate(${mid.x},${mid.y}) rotate(${angle})`}>
+                      <rect x={-rw / 2} y={-9} width={rw} height={18} rx={4}
+                        fill="rgba(0,0,0,0.78)" stroke={activeColor} strokeWidth={0.8} />
+                      <text textAnchor="middle" dominantBaseline="middle"
+                        fontSize={10} fill="white" fontWeight="600"
+                        fontFamily="ui-monospace, monospace">{label}</text>
+                    </g>
+                  );
+                });
+              })()}
               {/* Control points */}
               {drawingPoints.map((p, i) => {
                 const s = toSvg(p);
@@ -1479,7 +1892,6 @@ export default function MeasureCanvas({
                 const closeSnap = isFirst && isNearFirst;
                 return (
                   <g key={i}>
-                    {/* Pulsing close-zone ring on first point when cursor is near */}
                     {closeSnap && (
                       <circle
                         cx={s.x} cy={s.y}
@@ -1506,11 +1918,11 @@ export default function MeasureCanvas({
           {/* ── Linear measures (completed) ── */}
           {linearMeasures.map(lm => {
             const cat = linearCategories.find(c => c.id === lm.categoryId);
-            const color = cat?.color ?? "#10B981";
+            const lColor = cat?.color ?? "#10B981";
             if (lm.points.length < 2) return null;
+            const isSelected = selectedLinearId === lm.id;
             const svgPts = lm.points.map(p => toSvg(p));
             const pathD = svgPts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-            // Total length label at midpoint of line
             const midIdx = Math.floor((svgPts.length - 1) / 2);
             const lx = (svgPts[midIdx].x + svgPts[midIdx + 1 < svgPts.length ? midIdx + 1 : midIdx].x) / 2;
             const ly = (svgPts[midIdx].y + svgPts[midIdx + 1 < svgPts.length ? midIdx + 1 : midIdx].y) / 2;
@@ -1522,25 +1934,81 @@ export default function MeasureCanvas({
                 totalM += Math.sqrt(dx * dx + dy * dy) / ppm;
               }
             }
-            const label = ppm ? (totalM >= 1 ? `${totalM.toFixed(2)} m` : `${(totalM * 100).toFixed(0)} cm`) : `${lm.points.length - 1} seg.`;
-            const lw = label.length * 5.5 + 12;
+            const totalLabel = ppm ? `Σ ${fmtLinear(totalM, displayUnit)}` : `${lm.points.length - 1} seg.`;
+            const tlw = totalLabel.length * 5.5 + 12;
             return (
               <g key={lm.id}>
-                <path d={pathD} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-                {/* Endpoint dots */}
+                {/* Thicker invisible hit area for click/right-click */}
+                <path d={pathD} fill="none" stroke="transparent" strokeWidth={12}
+                  style={{ pointerEvents: "all", cursor: tool === "select" ? "pointer" : "default" }}
+                  onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== lm.id)); }}
+                />
+                <path d={pathD} fill="none" stroke={lColor}
+                  strokeWidth={isSelected ? 3.5 : 2.5}
+                  strokeLinejoin="round" strokeLinecap="round"
+                  strokeDasharray={isSelected ? "8 4" : undefined}
+                  style={isSelected ? { filter: `drop-shadow(0 0 5px ${lColor})` } : undefined}
+                />
+                {/* Per-segment dimension labels */}
+                {ppm && naturalSize.w > 0 && lm.points.length > 2 && lm.points.map((pt, si) => {
+                  if (si >= lm.points.length - 1) return null;
+                  const next = lm.points[si + 1];
+                  const ss1 = toSvg(pt), ss2 = toSvg(next);
+                  const sLen = Math.hypot(ss2.x - ss1.x, ss2.y - ss1.y);
+                  if (sLen < 28) return null;
+                  const sMid = { x: (ss1.x + ss2.x) / 2, y: (ss1.y + ss2.y) / 2 };
+                  const dxI = (next.x - pt.x) * naturalSize.w, dyI = (next.y - pt.y) * naturalSize.h;
+                  const segM = Math.sqrt(dxI * dxI + dyI * dyI) / ppm;
+                  const segL = fmtLinear(segM, displayUnit);
+                  const rawA = Math.atan2(ss2.y - ss1.y, ss2.x - ss1.x) * 180 / Math.PI;
+                  const sAngle = (rawA > 90 || rawA <= -90) ? rawA + 180 : rawA;
+                  const srw = segL.length * 5 + 10;
+                  return (
+                    <g key={`lseg-${si}`} transform={`translate(${sMid.x},${sMid.y}) rotate(${sAngle})`}>
+                      <rect x={-srw / 2} y={-7} width={srw} height={14} rx={3} fill="rgba(0,0,0,0.65)" />
+                      <text textAnchor="middle" dominantBaseline="middle"
+                        fontSize={8} fill={lColor} fontFamily="ui-monospace, monospace">{segL}</text>
+                    </g>
+                  );
+                })}
+                {/* Endpoint dots — draggable when selected */}
                 {svgPts.map((p, i) => (
-                  <circle key={i} cx={p.x} cy={p.y} r={i === 0 || i === svgPts.length - 1 ? 4 : 3}
-                    fill={color} stroke="white" strokeWidth={1.5} style={{ pointerEvents: "all", cursor: "pointer" }}
-                    onContextMenu={e => {
+                  <circle key={i} cx={p.x} cy={p.y}
+                    r={isSelected ? 7 : (i === 0 || i === svgPts.length - 1 ? 4 : 3)}
+                    fill={isSelected ? "white" : lColor} stroke={lColor} strokeWidth={isSelected ? 2 : 1.5}
+                    style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer" }}
+                    onMouseDown={isSelected ? (e => {
                       e.stopPropagation(); e.preventDefault();
-                      onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== lm.id));
-                    }}
+                      if (e.button === 0) { dragLinearVertexRef.current = { measureId: lm.id, idx: i }; skipNextClickRef.current = true; }
+                    }) : undefined}
+                    onContextMenu={e => { e.stopPropagation(); e.preventDefault(); onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== lm.id)); }}
                   />
                 ))}
-                {/* Length label */}
-                <rect x={lx - lw / 2} y={ly - 9} width={lw} height={16} rx={3} fill="rgba(0,0,0,0.70)" />
+                {/* Midpoint insertion handles when selected */}
+                {isSelected && lm.points.map((pt, mi) => {
+                  if (mi >= lm.points.length - 1) return null;
+                  const next = lm.points[mi + 1];
+                  const midN = { x: (pt.x + next.x) / 2, y: (pt.y + next.y) / 2 };
+                  const mSvg = toSvg(midN);
+                  return (
+                    <g key={`lmid-${mi}`} transform={`translate(${mSvg.x},${mSvg.y})`}
+                      className="opacity-0 hover:opacity-100 transition-opacity"
+                      style={{ pointerEvents: "all", cursor: "copy" }}
+                      onClick={e => {
+                        e.stopPropagation(); e.preventDefault(); skipNextClickRef.current = true;
+                        const newPts = [...lm.points]; newPts.splice(mi + 1, 0, midN);
+                        onLinearMeasuresChange?.(linearMeasures.map(m => m.id !== lm.id ? m : { ...m, points: newPts }));
+                      }}>
+                      <circle r={8} fill="white" stroke={lColor} strokeWidth={1.5} opacity={0.85} />
+                      <text textAnchor="middle" dominantBaseline="middle" fontSize={12} fontWeight="700"
+                        fill={lColor} style={{ userSelect: "none", pointerEvents: "none" }}>+</text>
+                    </g>
+                  );
+                })}
+                {/* Total length label */}
+                <rect x={lx - tlw / 2} y={ly - 10} width={tlw} height={18} rx={4} fill="rgba(0,0,0,0.78)" stroke={lColor} strokeWidth={0.6} />
                 <text x={lx} y={ly + 1} textAnchor="middle" dominantBaseline="middle"
-                  fontSize={8.5} fill={color} fontFamily="ui-monospace, monospace">{label}</text>
+                  fontSize={9} fill={lColor} fontWeight="600" fontFamily="ui-monospace, monospace">{totalLabel}</text>
               </g>
             );
           })}
@@ -1564,24 +2032,29 @@ export default function MeasureCanvas({
             );
           })()}
 
-          {/* ── Count points (completed) ── */}
-          {countPoints.map((cp, idx) => {
+          {/* ── Count points (completed) — draggable + right-click delete ── */}
+          {countPoints.map((cp) => {
             const grp = countGroups.find(g => g.id === cp.groupId);
-            const color = grp?.color ?? "#EC4899";
+            const cpColor = grp?.color ?? "#EC4899";
             const s = toSvg({ x: cp.x, y: cp.y });
-            // Number within same group
             const num = countPoints.filter(p => p.groupId === cp.groupId).findIndex(p => p.id === cp.id) + 1;
-            const label = String(num);
             return (
-              <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+              <g key={cp.id} style={{ pointerEvents: "all", cursor: "move" }}
+                onMouseDown={e => {
+                  if (e.button === 0) {
+                    e.stopPropagation(); e.preventDefault();
+                    dragCountPointRef.current = { pointId: cp.id };
+                    skipNextClickRef.current = true;
+                  }
+                }}
                 onContextMenu={e => {
                   e.stopPropagation(); e.preventDefault();
                   onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id));
                 }}>
-                <circle cx={s.x} cy={s.y} r={10} fill={color} stroke="white" strokeWidth={1.5} />
+                <circle cx={s.x} cy={s.y} r={10} fill={cpColor} stroke="white" strokeWidth={1.5} />
                 <text x={s.x} y={s.y + 1} textAnchor="middle" dominantBaseline="middle"
                   fontSize={9} fontWeight="700" fill="white" fontFamily="system-ui, sans-serif">
-                  {label}
+                  {String(num)}
                 </text>
               </g>
             );
@@ -1595,8 +2068,103 @@ export default function MeasureCanvas({
             return <circle cx={s.x} cy={s.y} r={8} fill={hexToRgba(color, 0.5)} stroke={color} strokeWidth={1.5} strokeDasharray="3 2" />;
           })()}
 
+          {/* ── Completed circles ── */}
+          {circleMeasures.map(cm => {
+            const cat = linearCategories.find(c => c.id === cm.categoryId);
+            const cColor = cat?.color ?? "#10B981";
+            const cs = toSvg(cm.center);
+            const es = toSvg(cm.edgePoint);
+            const radiusSvg = Math.hypot(es.x - cs.x, es.y - cs.y);
+            const metrics = circleMetrics(cm, naturalSize.w, naturalSize.h, ppm);
+            const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM, displayUnit)}` : "";
+            const clw = cLabel.length * 5.5 + 12;
+            return (
+              <g key={cm.id} style={{ pointerEvents: "all" }}
+                onContextMenu={e => {
+                  e.stopPropagation(); e.preventDefault();
+                  onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== cm.id));
+                }}>
+                <circle cx={cs.x} cy={cs.y} r={radiusSvg}
+                  fill={hexToRgba(cColor, 0.08)} stroke={cColor} strokeWidth={2} />
+                <line x1={cs.x} y1={cs.y} x2={es.x} y2={es.y}
+                  stroke={cColor} strokeWidth={1} strokeDasharray="4 2" />
+                <circle cx={cs.x} cy={cs.y} r={3} fill={cColor} />
+                <circle cx={es.x} cy={es.y} r={3} fill={cColor} stroke="white" strokeWidth={1} />
+                {metrics && (
+                  <g transform={`translate(${cs.x}, ${cs.y - radiusSvg - 14})`}>
+                    <rect x={-clw / 2} y={-9} width={clw} height={18} rx={4}
+                      fill="rgba(0,0,0,0.78)" stroke={cColor} strokeWidth={0.6} />
+                    <text textAnchor="middle" dominantBaseline="middle"
+                      fontSize={9} fill={cColor} fontWeight="600" fontFamily="ui-monospace, monospace">
+                      {cLabel}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Circle in-progress preview */}
+          {tool === "circle" && circleCenter && mouseNorm && (() => {
+            const cs = toSvg(circleCenter);
+            const ms = toSvg(mouseNorm);
+            const r = Math.hypot(ms.x - cs.x, ms.y - cs.y);
+            const activeCat = linearCategories.find(c => c.id === activeLinearCategoryId);
+            const cColor = activeCat?.color ?? "#10B981";
+            let rLabel = "";
+            if (ppm && naturalSize.w > 0) {
+              const dx = (mouseNorm.x - circleCenter.x) * naturalSize.w;
+              const dy = (mouseNorm.y - circleCenter.y) * naturalSize.h;
+              const radiusM = Math.sqrt(dx * dx + dy * dy) / ppm;
+              rLabel = `r=${fmtLinear(radiusM, displayUnit)}`;
+            }
+            const rlw = rLabel.length * 5.5 + 12;
+            return (
+              <g>
+                <circle cx={cs.x} cy={cs.y} r={r}
+                  fill="none" stroke={cColor} strokeWidth={2} strokeDasharray="6 3" />
+                <line x1={cs.x} y1={cs.y} x2={ms.x} y2={ms.y}
+                  stroke={cColor} strokeWidth={1} strokeDasharray="4 2" />
+                <circle cx={cs.x} cy={cs.y} r={4} fill={cColor} stroke="white" strokeWidth={1.5} />
+                {rLabel && (
+                  <g transform={`translate(${cs.x}, ${cs.y - r - 12})`}>
+                    <rect x={-rlw / 2} y={-8} width={rlw} height={16} rx={3} fill="rgba(0,0,0,0.7)" />
+                    <text textAnchor="middle" dominantBaseline="middle"
+                      fontSize={8.5} fill={cColor} fontFamily="ui-monospace, monospace">{rLabel}</text>
+                  </g>
+                )}
+              </g>
+            );
+          })()}
+
+          {/* ── Text annotations ── */}
+          {textAnnotations.map(ta => {
+            const s = toSvg({ x: ta.x, y: ta.y });
+            const fs = ta.fontSize ?? 12;
+            const lines = ta.text.split("\n");
+            const lineH = fs + 3;
+            const maxW = Math.max(...lines.map(l => l.length)) * fs * 0.58 + 16;
+            const totalH = lines.length * lineH + 8;
+            return (
+              <g key={ta.id} style={{ pointerEvents: "all", cursor: "default" }}
+                onContextMenu={e => {
+                  e.stopPropagation(); e.preventDefault();
+                  onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== ta.id));
+                }}>
+                <rect x={s.x - 4} y={s.y - 4} width={maxW} height={totalH} rx={4}
+                  fill="rgba(0,0,0,0.75)" stroke={ta.color} strokeWidth={1} />
+                {lines.map((line, li) => (
+                  <text key={li} x={s.x + 4} y={s.y + 8 + li * lineH}
+                    fontSize={fs} fill={ta.color} fontFamily="system-ui, sans-serif">
+                    {line}
+                  </text>
+                ))}
+              </g>
+            );
+          })}
+
           {/* Empty state hint */}
-          {zones.length === 0 && !isDrawing && (
+          {zones.length === 0 && !isDrawing && textAnnotations.length === 0 && (
             <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle"
               fill="rgba(148,163,184,0.6)" fontSize={14} fontFamily="system-ui">
               ✛ Sélectionnez un type et commencez à dessiner
@@ -1604,11 +2172,58 @@ export default function MeasureCanvas({
           )}
         </svg>
 
-        {/* Scale calibration input dialog */}
+        {/* Text annotation input overlay */}
+        {textInputPos && (() => {
+          const sp = toSvg(textInputPos);
+          return (
+            <div className="absolute z-50 pointer-events-auto"
+              style={{ left: sp.x, top: sp.y }}>
+              <input
+                autoFocus
+                value={textInputValue}
+                onChange={e => setTextInputValue(e.target.value)}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && textInputValue.trim()) {
+                    onTextAnnotationsChange?.([...textAnnotations, {
+                      id: crypto.randomUUID(),
+                      x: textInputPos.x,
+                      y: textInputPos.y,
+                      text: textInputValue.trim(),
+                      color: activeColor,
+                    }]);
+                    setTextInputPos(null);
+                    setTextInputValue("");
+                  }
+                  if (e.key === "Escape") { setTextInputPos(null); setTextInputValue(""); }
+                }}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+                placeholder="Texte…"
+                className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl"
+              />
+            </div>
+          );
+        })()}
+
+        {/* Scale calibration input dialog + presets */}
         {tool === "scale" && scaleInputOpen && scalePts.length === 2 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 glass border border-yellow-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 min-w-64 pointer-events-auto">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 glass border border-yellow-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 min-w-72 pointer-events-auto">
             <p className="text-sm text-yellow-300 font-semibold">Calibrage de l'échelle</p>
             <p className="text-xs text-slate-400">Longueur réelle du segment tracé :</p>
+            {/* Quick distance presets */}
+            <div className="flex gap-1.5 flex-wrap">
+              {[0.5, 1, 2, 5, 10].map(v => (
+                <button key={v}
+                  onClick={e => { e.stopPropagation(); setScaleRealDist(String(v)); }}
+                  className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                    scaleRealDist === String(v)
+                      ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-300"
+                      : "border-white/10 text-slate-500 hover:text-yellow-300 hover:border-yellow-500/30"
+                  }`}
+                >{v} m</button>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
               <input
                 autoFocus
@@ -1625,6 +2240,30 @@ export default function MeasureCanvas({
                 className="flex-1 bg-transparent border-b border-yellow-500/50 text-yellow-200 text-sm font-mono text-center focus:outline-none focus:border-yellow-400"
               />
               <span className="text-xs text-slate-400 shrink-0">m</span>
+            </div>
+            {/* Scale ratio presets */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-500 shrink-0">Échelles :</span>
+              {[{l:"1:20",r:20},{l:"1:50",r:50},{l:"1:75",r:75},{l:"1:100",r:100},{l:"1:200",r:200},{l:"1:500",r:500}].map(({l,r}) => (
+                <button key={l}
+                  onClick={e => {
+                    e.stopPropagation();
+                    // With scale ratio: ppm = DPI / (ratio * 0.0254) — but DPI unknown
+                    // Instead: calculate from drawn segment pixel length ÷ (pixel_length / (ratio×100) cm → m)
+                    if (scalePts.length === 2 && naturalSize.w > 0) {
+                      const dx = (scalePts[1].x - scalePts[0].x) * naturalSize.w;
+                      const dy = (scalePts[1].y - scalePts[0].y) * naturalSize.h;
+                      const pxLen = Math.sqrt(dx * dx + dy * dy);
+                      // At scale 1:r, 1 cm on plan = r cm real = r/100 m
+                      // Assume typical plan DPI → use segment as reference
+                      // Pre-fill distance: pxLen / estimated_ppm is unknowable without DPI
+                      // Simpler: show the ratio as info, user still enters real distance
+                      setScaleRealDist((pxLen / (ppm || 100) * 1).toFixed(2));
+                    }
+                  }}
+                  className="px-1.5 py-0.5 text-[10px] rounded border border-white/10 text-slate-500 hover:text-yellow-300 hover:border-yellow-500/30 transition-colors"
+                >{l}</button>
+              ))}
             </div>
             <div className="flex gap-2">
               <button
@@ -1643,10 +2282,34 @@ export default function MeasureCanvas({
           </div>
         )}
 
+        {/* Scale bar — fixed position bottom-left */}
+        {ppm && ppm > 0 && imgOffset.w > 0 && naturalSize.w > 0 && (() => {
+          const oneMeterPx = ppm * (imgOffset.w / naturalSize.w);
+          let refM = 1;
+          if (oneMeterPx < 30) refM = 5;
+          else if (oneMeterPx < 60) refM = 2;
+          else if (oneMeterPx > 400) refM = 0.2;
+          else if (oneMeterPx > 200) refM = 0.5;
+          const barW = Math.max(20, Math.min(220, refM * oneMeterPx));
+          const label = refM >= 1 ? `${refM} m` : `${refM * 100} cm`;
+          return (
+            <div className="absolute bottom-10 left-4 pointer-events-none">
+              <div className="flex flex-col items-start gap-0.5">
+                <div className="relative" style={{ width: barW }}>
+                  <div className="h-1.5 rounded-full" style={{ width: barW, background: "rgba(255,255,255,0.85)" }} />
+                  <div className="absolute left-0 top-[-3px] w-0.5 h-[9px] bg-white rounded-sm" />
+                  <div className="absolute right-0 top-[-3px] w-0.5 h-[9px] bg-white rounded-sm" />
+                </div>
+                <span className="text-[10px] font-mono font-semibold text-white/80 drop-shadow-sm">{label}</span>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Controls hint */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="glass border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap">
-            Scroll — zoom &nbsp;·&nbsp; Clic droit glisser — déplacer
+            Scroll — zoom &nbsp;·&nbsp; Clic droit ou Espace — déplacer &nbsp;·&nbsp; Q — sélection
           </div>
         </div>
       </div>
@@ -1668,7 +2331,12 @@ export default function MeasureCanvas({
             })();
             const areaM2 = ppm ? areaPx / ppm ** 2 : null;
             return (
-              <div key={zone.id} className="glass border border-white/5 rounded-lg px-3 py-2 text-xs">
+              <div key={zone.id}
+                className={`glass border rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors ${
+                  selectedZoneId === zone.id ? "border-violet-500/50 bg-violet-500/5" : "border-white/5 hover:border-white/15"
+                }`}
+                onClick={() => { onSelectedZoneIdChange?.(zone.id); setTool("select"); }}
+              >
                 <div className="flex items-center gap-2">
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${zone.isDeduction ? "ring-1 ring-red-400" : ""}`}
                     style={{ background: zone.isDeduction ? "#EF4444" : (type?.color ?? "#6B7280") }} />
@@ -1682,7 +2350,7 @@ export default function MeasureCanvas({
                     className="flex-1 min-w-0 bg-transparent text-slate-300 placeholder-slate-600 focus:outline-none focus:text-white text-xs"
                   />
                   <span className={`font-mono shrink-0 ${zone.isDeduction ? "text-red-400" : "text-slate-300"}`}>
-                    {zone.isDeduction ? "−" : ""}{areaM2 != null ? `${areaM2.toFixed(2)} m²` : `${Math.round(areaPx).toLocaleString()} px²`}
+                    {zone.isDeduction ? "−" : ""}{areaM2 != null ? fmtArea(areaM2, displayUnit) : `${Math.round(areaPx).toLocaleString()} px²`}
                   </span>
                   <button onClick={() => deleteZone(zone.id)}
                     className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
@@ -1698,6 +2366,41 @@ export default function MeasureCanvas({
                   placeholder="Note… (ex: attention dénivelé)"
                   className="mt-1 w-full bg-transparent text-slate-500 placeholder-slate-700 focus:outline-none focus:text-slate-300 text-[10px] italic"
                 />
+                {/* Depth + Slope inline */}
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap" onClick={e => e.stopPropagation()}>
+                  <span className="text-[10px] text-slate-600">Prof.</span>
+                  <input type="number"
+                    value={zone.depthM != null ? +(zone.depthM * 100).toFixed(1) : ""}
+                    onChange={e => {
+                      const cm = parseFloat(e.target.value);
+                      onZonesChange(zones.map(z => z.id === zone.id ? { ...z, depthM: isNaN(cm) || cm <= 0 ? undefined : cm / 100 } : z));
+                    }}
+                    placeholder={(() => { const t = surfaceTypes.find(t => t.id === zone.typeId); return t?.defaultDepthM ? String(+(t.defaultDepthM * 100).toFixed(1)) : "—"; })()}
+                    className="w-11 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-[10px] text-slate-300 font-mono text-center focus:outline-none focus:border-accent"
+                  />
+                  <span className="text-[10px] text-slate-600">cm</span>
+                  <span className="text-[10px] text-slate-600 ml-1">∠</span>
+                  <select value={zone.slopeDeg ?? 0}
+                    onChange={e => onZonesChange(zones.map(z => z.id === zone.id ? { ...z, slopeDeg: parseFloat(e.target.value) || undefined } : z))}
+                    className="w-12 bg-white/5 border border-white/10 rounded px-0.5 py-0.5 text-[10px] text-slate-300 font-mono text-center focus:outline-none focus:border-accent appearance-none"
+                  >
+                    <option value={0}>0°</option>
+                    <option value={5}>5°</option>
+                    <option value={15}>15°</option>
+                    <option value={30}>30°</option>
+                    <option value={45}>45°</option>
+                  </select>
+                  {(() => {
+                    const effArea = slopeCorrectedArea(areaM2 ?? 0, zone.slopeDeg);
+                    const t = surfaceTypes.find(t => t.id === zone.typeId);
+                    const vol = zoneVolumeM3(effArea, zone.depthM ?? t?.defaultDepthM);
+                    return vol != null ? (
+                      <span className="text-[10px] text-blue-400 font-mono ml-auto">{fmtVolume(vol, displayUnit)}</span>
+                    ) : (zone.slopeDeg ?? 0) > 0 ? (
+                      <span className="text-[10px] text-amber-400 font-mono ml-auto">↗ {fmtArea(effArea, displayUnit)}</span>
+                    ) : null;
+                  })()}
+                </div>
               </div>
             );
           })}

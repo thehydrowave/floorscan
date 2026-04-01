@@ -72,6 +72,7 @@ export default function DemoClient() {
   const [pageResults,setPageResults]=useState<Map<number,{ppm:number|null;analysisResult:AnalysisResult;customDetections:CustomDetection[]}>>(new Map());
   const [currentPageIdx,setCurrentPageIdx]=useState<number>(0);
   const [customDetections,setCustomDetections]=useState<CustomDetection[]>([]);
+  const [cropRect,setCropRect]=useState<{x:number;y:number;w:number;h:number}|null>(null);
   const [facadeResult,setFacadeResult]=useState<FacadeAnalysisResult|null>(null);
   const [facadeZones,setFacadeZones]=useState<FacadeZoneCrop[]>([]);
   const [measurementData,setMeasurementData]=useState<any>(null);
@@ -106,6 +107,11 @@ export default function DemoClient() {
           y:Math.max(0,Math.min(1,(p.y*imgH-y0)/ch)),
         }))})));
       }
+    }
+    // Store crop rect for admin full-plan overlay
+    if(cropBox){
+      const {x0,y0,x1,y1,imgW,imgH}=cropBox;
+      if(imgW>0&&imgH>0) setCropRect({x:x0/imgW, y:y0/imgH, w:(x1-x0)/imgW, h:(y1-y0)/imgH});
     }
     setStep(4);
   };
@@ -225,7 +231,7 @@ export default function DemoClient() {
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
                   {step===5&&sessionId&&config&&<AnalyzeStep sessionId={sessionId} config={config} ppm={ppm} onAnalyzed={handleAnalyzed} onSessionExpired={handleRestart} onBack={handleBack}/>}
                   {step===6&&analysisResult&&<ResultsStep result={analysisResult} customDetections={customDetections} onDetectionsChange={setCustomDetections} onGoEditor={handleGoEditor} onGoChantier={() => setDemoMode("chantier")} onRestart={handleRestart} pageCount={savedPdfData?.pageCount} currentPage={savedPdfData?currentPageIdx:undefined} onSwitchPage={savedPdfData&&pageResults.size>1?handleSwitchPage:undefined} analyzedPages={savedPdfData?[...pageResults.keys()]:undefined} onAddPage={savedPdfData?handleAddPage:undefined}/>}
-                  {step===7&&analysisResult&&sessionId&&<EditorStep sessionId={sessionId} initialResult={analysisResult} initialCustomDetections={customDetections} onRestart={handleRestart} onSessionExpired={handleRestart} onAddPage={savedPdfData?handleAddPage:undefined} onGoResults={handleGoResults} onMeasurementDataChange={setMeasurementData}/>}
+                  {step===7&&analysisResult&&sessionId&&<EditorStep sessionId={sessionId} initialResult={analysisResult} initialCustomDetections={customDetections} onRestart={handleRestart} onSessionExpired={handleRestart} onAddPage={savedPdfData?handleAddPage:undefined} onGoResults={handleGoResults} onMeasurementDataChange={setMeasurementData} originalImageB64={uploadedImageB64} cropRect={cropRect}/>}
                 </motion.div>
               </AnimatePresence>
             </motion.div>

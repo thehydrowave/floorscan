@@ -14,6 +14,7 @@ export interface SurfaceType {
   wastePercent?: number; // % chute (ex: 10 = 10%)
   boxSizeM2?: number;    // m² par boîte/rouleau (0 = non défini)
   assembly?: AssemblyItem[]; // template matériaux par m²
+  defaultDepthM?: number;  // profondeur par défaut du type (m) pour calcul volume
 }
 
 // ── Outil linéaire (longueur / ml) ───────────────────────────────────────────
@@ -100,6 +101,8 @@ export interface MeasureZone {
   note?: string;                       // remarque libre (ex: "attention dénivelé")
   points: { x: number; y: number }[]; // normalized 0-1 relative to image
   isDeduction?: boolean;               // si true, zone soustraite du total
+  depthM?: number;                     // profondeur en mètres (pour volume)
+  slopeDeg?: number;                   // angle de pente en degrés (pour surface corrigée)
 }
 
 export interface PlanSnapshot {
@@ -305,3 +308,117 @@ export const isRoomTypeId = (id: string) => id.startsWith("room_");
 
 /** Check if a typeId is the building footprint */
 export const isEmpriseTypeId = (id: string) => id === "room_emprise";
+
+// ── Angle measurement (lifted from canvas for persistence) ──────────────────
+
+export interface AngleMeasurement {
+  id: string;
+  a: { x: number; y: number };  // premier bras (normalized)
+  v: { x: number; y: number };  // sommet (normalized)
+  b: { x: number; y: number };  // deuxième bras (normalized)
+  label?: string;
+}
+
+/** Calcule l'angle en degrés d'un AngleMeasurement */
+export function angleDeg(am: AngleMeasurement): number {
+  const dA = { x: am.a.x - am.v.x, y: am.a.y - am.v.y };
+  const dB = { x: am.b.x - am.v.x, y: am.b.y - am.v.y };
+  const dot = dA.x * dB.x + dA.y * dB.y;
+  const magA = Math.hypot(dA.x, dA.y), magB = Math.hypot(dB.x, dB.y);
+  if (magA < 1e-9 || magB < 1e-9) return 0;
+  return Math.acos(Math.max(-1, Math.min(1, dot / (magA * magB)))) * 180 / Math.PI;
+}
+
+// ── Circle measurement ──────────────────────────────────────────────────────
+
+export interface CircleMeasure {
+  id: string;
+  categoryId: string;                     // réutilise LinearCategory
+  center: { x: number; y: number };       // normalized 0-1
+  edgePoint: { x: number; y: number };    // normalized 0-1
+}
+
+/** Métriques d'un cercle (rayon, diamètre, périmètre, surface) */
+export function circleMetrics(
+  circle: CircleMeasure,
+  imageW: number,
+  imageH: number,
+  ppm: number | null
+): { radiusM: number; diameterM: number; circumferenceM: number; areaM2: number } | null {
+  if (!ppm || ppm <= 0) return null;
+  const dx = (circle.edgePoint.x - circle.center.x) * imageW;
+  const dy = (circle.edgePoint.y - circle.center.y) * imageH;
+  const radiusM = Math.sqrt(dx * dx + dy * dy) / ppm;
+  return {
+    radiusM,
+    diameterM: radiusM * 2,
+    circumferenceM: 2 * Math.PI * radiusM,
+    areaM2: Math.PI * radiusM * radiusM,
+  };
+}
+
+// ── Volume & pente ──────────────────────────────────────────────────────────
+
+/** Surface corrigée par la pente */
+export function slopeCorrectedArea(baseAreaM2: number, slopeDeg?: number): number {
+  if (!slopeDeg || slopeDeg <= 0 || slopeDeg >= 90) return baseAreaM2;
+  return baseAreaM2 / Math.cos((slopeDeg * Math.PI) / 180);
+}
+
+/** Volume d'une zone (area × depth), avec pente optionnelle */
+export function zoneVolumeM3(
+  areaM2: number,
+  depthM?: number,
+  slopeDeg?: number
+): number | null {
+  const depth = depthM;
+  if (!depth || depth <= 0) return null;
+  const corrected = slopeCorrectedArea(areaM2, slopeDeg);
+  return corrected * depth;
+}
+
+// ── Système d'unités ────────────────────────────────────────────────────────
+
+export type DisplayUnit = "m" | "cm" | "mm" | "ft" | "in";
+
+export const UNIT_LABELS: Record<DisplayUnit, string> = { m: "m", cm: "cm", mm: "mm", ft: "ft", in: "in" };
+export const UNIT_LABELS_AREA: Record<DisplayUnit, string> = { m: "m²", cm: "cm²", mm: "mm²", ft: "ft²", in: "in²" };
+export const UNIT_LABELS_VOLUME: Record<DisplayUnit, string> = { m: "m³", cm: "cm³", mm: "mm³", ft: "ft³", in: "in³" };
+
+export const UNIT_FACTOR_LINEAR: Record<DisplayUnit, number> = { m: 1, cm: 100, mm: 1000, ft: 3.28084, in: 39.3701 };
+export const UNIT_FACTOR_AREA: Record<DisplayUnit, number> = { m: 1, cm: 10000, mm: 1e6, ft: 10.7639, in: 1550.0031 };
+export const UNIT_FACTOR_VOLUME: Record<DisplayUnit, number> = { m: 1, cm: 1e6, mm: 1e9, ft: 35.3147, in: 61023.7 };
+
+/** Format linéaire avec unité */
+export function fmtLinear(meters: number, unit: DisplayUnit = "m"): string {
+  const v = meters * UNIT_FACTOR_LINEAR[unit];
+  if (unit === "mm") return `${Math.round(v)} mm`;
+  if (unit === "cm") return `${v.toFixed(1)} cm`;
+  return `${v.toFixed(2)} ${UNIT_LABELS[unit]}`;
+}
+
+/** Format surface avec unité */
+export function fmtArea(m2: number, unit: DisplayUnit = "m"): string {
+  const v = m2 * UNIT_FACTOR_AREA[unit];
+  if (unit === "mm") return `${Math.round(v)} mm²`;
+  if (unit === "cm") return `${v.toFixed(1)} cm²`;
+  return `${v.toFixed(2)} ${UNIT_LABELS_AREA[unit]}`;
+}
+
+/** Format volume avec unité */
+export function fmtVolume(m3: number, unit: DisplayUnit = "m"): string {
+  const v = m3 * UNIT_FACTOR_VOLUME[unit];
+  if (unit === "mm") return `${Math.round(v)} mm³`;
+  if (unit === "cm") return `${v.toFixed(1)} cm³`;
+  return `${v.toFixed(2)} ${UNIT_LABELS_VOLUME[unit]}`;
+}
+
+// ── Text annotations ────────────────────────────────────────────────────────
+
+export interface TextAnnotation {
+  id: string;
+  x: number; y: number;  // normalized 0-1
+  text: string;
+  color: string;          // hex
+  fontSize?: number;      // default 12
+}

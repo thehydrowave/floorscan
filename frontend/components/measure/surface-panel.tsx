@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2 } from "lucide-react";
+import { useState, useMemo, useRef } from "react";
+import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2, Upload } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
@@ -9,6 +9,10 @@ import {
   polygonAreaPx, polygonPerimeterM,
   LinearCategory, LinearMeasure, aggregateLinearByCategory,
   CountGroup, CountPoint,
+  AngleMeasurement, angleDeg,
+  CircleMeasure, circleMetrics,
+  DisplayUnit, UNIT_LABELS_AREA, UNIT_LABELS_VOLUME,
+  slopeCorrectedArea, zoneVolumeM3,
 } from "@/lib/measure-types";
 import { useLang } from "@/lib/lang-context";
 import { dt } from "@/lib/i18n";
@@ -52,6 +56,10 @@ interface SurfacePanelProps {
   onCountPointsChange?: (pts: CountPoint[]) => void;
   activeCountGroupId?: string;
   onActiveCountGroupChange?: (id: string) => void;
+  // Wave 2 additions
+  angleMeasurements?: AngleMeasurement[];
+  circleMeasures?: CircleMeasure[];
+  displayUnit?: DisplayUnit;
 }
 
 export default function SurfacePanel({
@@ -65,6 +73,7 @@ export default function SurfacePanel({
   countGroups = [], countPoints = [],
   onCountGroupsChange, onCountPointsChange,
   activeCountGroupId = "", onActiveCountGroupChange,
+  angleMeasurements = [], circleMeasures = [], displayUnit = "m" as DisplayUnit,
 }: SurfacePanelProps) {
   const { lang } = useLang();
   const d = (k: string) => dt(k as any, lang);
@@ -136,6 +145,47 @@ export default function SurfacePanel({
   };
   const updateColor    = (id: string, color: string) => {
     onTypesChange(types.map(t => t.id === id ? { ...t, color } : t));
+  };
+
+  // ── Import CSV de prix ────────────────────────────────────────────────────
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const importPriceCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      if (!text) return;
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      let updated = [...types];
+      let matched = 0;
+      for (const line of lines) {
+        // Support ; or , as separator
+        const sep = line.includes(";") ? ";" : ",";
+        const cols = line.split(sep).map(c => c.trim().replace(/^"|"$/g, ""));
+        if (cols.length < 2) continue;
+        const name = cols[0].toLowerCase();
+        const price = parseFloat(cols[1]);
+        if (isNaN(price) || price <= 0) continue;
+        // Match by name (case insensitive)
+        const idx = updated.findIndex(t => t.name.toLowerCase() === name);
+        if (idx >= 0) {
+          updated[idx] = { ...updated[idx], pricePerM2: price };
+          matched++;
+        } else {
+          // Optional: also accept ID match
+          const idIdx = updated.findIndex(t => t.id.toLowerCase() === name);
+          if (idIdx >= 0) {
+            updated[idIdx] = { ...updated[idIdx], pricePerM2: price };
+            matched++;
+          }
+        }
+      }
+      if (matched > 0) onTypesChange(updated);
+      // Reset file input
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    };
+    reader.readAsText(file, "utf-8");
   };
 
   /** Export CSV du métré */
@@ -278,6 +328,39 @@ export default function SurfacePanel({
       XLSX.utils.book_append_sheet(wb, wsCnt, "Comptage");
     }
 
+    // ── Feuille Angles ────────────────────────────────────────────────────────
+    if (angleMeasurements.length > 0) {
+      const angRows: (string | number)[][] = [
+        ["FloorScan — Angles", "", ""],
+        [],
+        ["N°", "Angle (°)", "Label"],
+      ];
+      angleMeasurements.forEach((am, i) => {
+        angRows.push([i + 1, parseFloat(angleDeg(am).toFixed(1)), am.label ?? ""]);
+      });
+      const wsAng = XLSX.utils.aoa_to_sheet(angRows);
+      wsAng["!cols"] = [{ wch: 6 }, { wch: 12 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, wsAng, "Angles");
+    }
+
+    // ── Feuille Cercles ─────────────────────────────────────────────────────
+    if (circleMeasures.length > 0 && ppm) {
+      const circRows: (string | number)[][] = [
+        ["FloorScan — Cercles", "", "", "", ""],
+        [],
+        ["N°", "Rayon (m)", "Diamètre (m)", "Périmètre (m)", "Surface (m²)"],
+      ];
+      circleMeasures.forEach((cm, i) => {
+        const m = circleMetrics(cm, imageW, imageH, ppm);
+        if (m) {
+          circRows.push([i + 1, +m.radiusM.toFixed(3), +m.diameterM.toFixed(3), +m.circumferenceM.toFixed(2), +m.areaM2.toFixed(2)]);
+        }
+      });
+      const wsCirc = XLSX.utils.aoa_to_sheet(circRows);
+      wsCirc["!cols"] = [{ wch: 6 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, wsCirc, "Cercles");
+    }
+
     XLSX.writeFile(wb, `floorscan_metre_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -380,6 +463,51 @@ export default function SurfacePanel({
             ht:   ht ? ht.toFixed(2) : "—",
           });
         }
+      }
+
+      // ── Section angles ──────────────────────────────────────────────────
+      if (angleMeasurements.length > 0) {
+        builder.ensureSpace(60);
+        builder.drawSectionTitle("Angles");
+        const ANG_COLS = [
+          { key: "num",   label: "N.",           x: mx,       width: 40 },
+          { key: "angle", label: "Angle (deg)",  x: mx + 45,  width: 100, align: "right" as const },
+          { key: "label", label: "Label",        x: mx + 150, width: 310 },
+        ];
+        builder.drawTableHeader(ANG_COLS, lang);
+        angleMeasurements.forEach((am, i) => {
+          builder.drawTableRow(ANG_COLS, {
+            num: String(i + 1),
+            angle: angleDeg(am).toFixed(1) + "°",
+            label: am.label ?? "",
+          });
+        });
+      }
+
+      // ── Section cercles ──────────────────────────────────────────────────
+      if (circleMeasures.length > 0 && ppm) {
+        builder.ensureSpace(60);
+        builder.drawSectionTitle("Cercles");
+        const CIRC_COLS = [
+          { key: "num",   label: "N.",            x: mx,       width: 40 },
+          { key: "rad",   label: "Rayon (m)",     x: mx + 45,  width: 90,  align: "right" as const },
+          { key: "diam",  label: "Diametre (m)",  x: mx + 140, width: 90,  align: "right" as const },
+          { key: "circ",  label: "Perimetre (m)", x: mx + 235, width: 100, align: "right" as const },
+          { key: "area",  label: "Surface (m2)",  x: mx + 340, width: 120, align: "right" as const },
+        ];
+        builder.drawTableHeader(CIRC_COLS, lang);
+        circleMeasures.forEach((cm, i) => {
+          const m = circleMetrics(cm, imageW, imageH, ppm);
+          if (m) {
+            builder.drawTableRow(CIRC_COLS, {
+              num: String(i + 1),
+              rad: m.radiusM.toFixed(3),
+              diam: m.diameterM.toFixed(3),
+              circ: m.circumferenceM.toFixed(2),
+              area: m.areaM2.toFixed(2),
+            });
+          }
+        });
       }
 
       builder.finalize();
@@ -538,6 +666,12 @@ export default function SurfacePanel({
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
             <div className="flex items-center gap-1">
+              {/* Import CSV prix */}
+              <input ref={csvInputRef} type="file" accept=".csv,.txt" onChange={importPriceCSV} className="hidden" />
+              <button onClick={() => csvInputRef.current?.click()} title="Importer prix CSV (Nom;Prix/m²)"
+                className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-amber-400 transition-colors">
+                <Upload className="w-3.5 h-3.5" />
+              </button>
               {zones.length > 0 && (
                 <>
                   <button onClick={exportCSV} title="CSV"

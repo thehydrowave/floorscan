@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback, useLayoutEffect, useMemo, type ElementType } from "react";
 import { motion } from "framer-motion";
-import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2, Sparkles, Check, Columns2, BrickWall, SeparatorVertical, Home, Hash, PenOff, PaintBucket, Wrench, Ruler, Minus, Compass } from "lucide-react";
+import { Download, RotateCcw, Loader2, AlertTriangle, PenLine, Layers, Undo2, Redo2, FileDown, MousePointer2, Trash2, Eye, EyeOff, LayoutGrid, Scissors, Merge, Search, X, Save, Plus, ZoomIn, ZoomOut, Magnet, ChevronDown, Square, Eraser, DoorOpen, AppWindow, Maximize2, Sparkles, Check, Columns2, BrickWall, SeparatorVertical, Home, Hash, PenOff, PaintBucket, Wrench, Ruler, Minus, Compass, Type, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, Room, VisualSearchMatch, CustomDetection } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -13,14 +13,14 @@ import { useAuth } from "@/lib/use-auth";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import EditorTutorialOverlay, { resetEditorTutorial } from "@/components/demo/editor-tutorial-overlay";
-import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm, CountGroup, CountPoint, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonPerimeterM, pointInPolygon as pointInPolygonObj, polygonAreaNorm, CountGroup, CountPoint, DEFAULT_COUNT_GROUPS, TextAnnotation, CircleMeasure, circleMetrics, fmtLinear } from "@/lib/measure-types";
 import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
 type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | "surface" | "utilities" | null;
-type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search" | "deduct_rect" | "linear" | "angle" | "count" | "rescale";
+type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search" | "deduct_rect" | "linear" | "angle" | "count" | "rescale" | "text" | "circle";
 // ── Constantes pièces ──────────────────────────────────────────────────────────
 const ROOM_TYPES: { type: string; i18nKey: DTKey }[] = [
   { type: "bedroom",      i18nKey: "rt_bedroom" },
@@ -103,9 +103,11 @@ interface EditorStepProps {
   onAddPage?: () => void;
   onGoResults?: (updatedResult: AnalysisResult, detections?: CustomDetection[]) => void;
   onMeasurementDataChange?: (data: MeasurementSnapshot) => void;
+  originalImageB64?: string | null;
+  cropRect?: { x: number; y: number; w: number; h: number } | null;
 }
 
-export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults, onMeasurementDataChange }: EditorStepProps) {
+export default function EditorStep({ sessionId, initialResult, initialCustomDetections, onRestart, onSessionExpired, onAddPage, onGoResults, onMeasurementDataChange, originalImageB64, cropRect }: EditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
   const { isAdmin } = useAuth();
@@ -113,6 +115,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [result, setResult] = useState(initialResult);
   const [layer, setLayer] = useState<Layer>(null);
   const [tool, setTool] = useState<EditorTool>("add_rect");
+  // Toggle between cropped (AI analysis) view and original (full image) view
+  const [showOriginal, setShowOriginal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -211,6 +215,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [activeCountGroupId, setActiveCountGroupId] = useState<string>(DEFAULT_COUNT_GROUPS[0].id);
   const [countGroupVisibility, setCountGroupVisibility] = useState<Record<string, boolean>>({});
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
+
+  // Text annotations & Circle measurements (Wave 4)
+  const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
+  const [circleMeasures, setCircleMeasures] = useState<CircleMeasure[]>([]);
+  // Admin: full plan overlay
+  const [showFullPlan, setShowFullPlan] = useState(false);
+  const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+  const [textInputValue, setTextInputValue] = useState("");
+  const [circleCenter, setCircleCenter] = useState<{ x: number; y: number } | null>(null);
   const [showTuto, setShowTuto] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const allMeasureTypes = useMemo(
@@ -358,8 +371,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const pts = useRef<[number, number][]>([]);
   const startPt = useRef({ x: 0, y: 0 });
 
-  const currentOverlay =
-    (layer === "wall" || layer === "cloison")
+  const currentOverlay = showOriginal && originalImageB64
+    ? originalImageB64
+    : (layer === "wall" || layer === "cloison")
       ? result.plan_b64!
       : layer === "interior" && result.overlay_interior_b64
         ? result.overlay_interior_b64
@@ -976,6 +990,32 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       const grp = countGroups.find(g => g.id === activeCountGroupId);
       const grpTotal = countPoints.filter(p => p.groupId === activeCountGroupId).length + 1;
       toast({ title: `${grp?.name ?? "Point"} #${grpTotal}`, variant: "default" });
+      return;
+    }
+
+    // ── Utilities: text annotation ──
+    if (tool === "text") {
+      const img = imgRef.current!;
+      setTextInputPos({ x: rx / img.naturalWidth, y: ry / img.naturalHeight });
+      setTextInputValue("");
+      return;
+    }
+
+    // ── Utilities: circle measurement ──
+    if (tool === "circle") {
+      const img = imgRef.current!;
+      const normPt = { x: rx / img.naturalWidth, y: ry / img.naturalHeight };
+      if (!circleCenter) {
+        setCircleCenter(normPt);
+      } else {
+        setCircleMeasures(prev => [...prev, {
+          id: crypto.randomUUID(),
+          categoryId: "circle_default",
+          center: circleCenter,
+          edgePoint: normPt,
+        }]);
+        setCircleCenter(null);
+      }
       return;
     }
 
@@ -1831,6 +1871,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Hash className="w-2.5 h-2.5" /> {d("ut_count" as DTKey)}
                   </button>
+                  <button onClick={() => setTool("text")}
+                    title="Annotation texte : cliquez sur le plan pour placer un texte libre"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                      tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Type className="w-2.5 h-2.5" /> Texte
+                  </button>
+                  <button onClick={() => setTool("circle")}
+                    title="Mesure de cercle : cliquez le centre puis le bord pour mesurer rayon/diamètre/surface"
+                    className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                      tool === "circle" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <Circle className="w-2.5 h-2.5" /> Cercle
+                  </button>
                   <button onClick={() => setTool("rescale")}
                     title="Recalibrer l'échelle : cliquez 2 points d'une distance connue pour ajuster le rapport pixels/mètres"
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
@@ -1926,6 +1978,31 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 {Math.abs(zoom - 1) > 0.05 && (
                   <span className="text-[9px] text-slate-500 font-mono pl-0.5">{zoom.toFixed(1)}x</span>
                 )}
+                {originalImageB64 && (
+                  <>
+                    <div className="w-px h-5 bg-white/10" />
+                    <button
+                      onClick={() => { setShowOriginal(v => !v); requestAnimationFrame(fitToView); }}
+                      className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                        showOriginal
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                          : "text-slate-400 hover:text-white hover:bg-white/10"
+                      }`}
+                      title={showOriginal ? "Revenir à la vue analysée (croppée)" : "Voir l'image originale complète"}
+                    >
+                      {showOriginal ? "Vue analysée" : "Original"}
+                    </button>
+                    {isAdmin && cropRect && (
+                      <button
+                        onClick={() => setShowFullPlan(true)}
+                        className="px-2 py-1 rounded text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/40 border border-transparent transition-colors"
+                        title="Vue complète : image originale avec détections recalées (admin)"
+                      >
+                        Vue complète
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
               <div style={{
                 position: "absolute",
@@ -1935,7 +2012,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               }}>
               <div className="relative">
               <img ref={imgRef} src={`data:image/png;base64,${currentOverlay}`} alt="Plan"
-                style={{ display: "block", maxWidth: "calc(100vw - 380px)", maxHeight: "calc(100vh - 10rem)" }}
+                style={{ display: "block", maxWidth: "calc(100vw - 300px)", maxHeight: "calc(100vh - 8rem)" }}
                 draggable={false}
                 onLoad={() => { updateImgDisplaySize(); fitToView(); }} />
 
@@ -2242,6 +2319,117 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </g>
                     );
                   })}
+                </svg>
+              )}
+
+              {/* ── SVG overlay: text annotations + circle measurements ── */}
+              {imgDisplaySize.w > 0 && (textAnnotations.length > 0 || circleMeasures.length > 0) && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 4 }}
+                >
+                  {/* Text annotations */}
+                  {textAnnotations.map(ta => {
+                    const px = ta.x * imgDisplaySize.w;
+                    const py = ta.y * imgDisplaySize.h;
+                    const fs = ta.fontSize ?? 12;
+                    const lines = ta.text.split("\n");
+                    const lineH = fs + 3;
+                    const maxW = Math.max(...lines.map(l => l.length)) * fs * 0.58 + 16;
+                    const totalH = lines.length * lineH + 8;
+                    return (
+                      <g key={ta.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setTextAnnotations(prev => prev.filter(t => t.id !== ta.id))}>
+                        <rect x={px - 4} y={py - 4} width={maxW} height={totalH} rx={4}
+                          fill="rgba(0,0,0,0.75)" stroke={ta.color} strokeWidth={1} />
+                        {lines.map((line, li) => (
+                          <text key={li} x={px + 4} y={py + 8 + li * lineH}
+                            fontSize={fs} fill={ta.color} fontFamily="system-ui, sans-serif">
+                            {line}
+                          </text>
+                        ))}
+                      </g>
+                    );
+                  })}
+                  {/* Circle measurements */}
+                  {circleMeasures.map(cm => {
+                    const cx = cm.center.x * imgDisplaySize.w;
+                    const cy = cm.center.y * imgDisplaySize.h;
+                    const ex = cm.edgePoint.x * imgDisplaySize.w;
+                    const ey = cm.edgePoint.y * imgDisplaySize.h;
+                    const rSvg = Math.hypot(ex - cx, ey - cy);
+                    const metrics = ppm ? circleMetrics(cm, imageNatural.w, imageNatural.h, ppm) : null;
+                    const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM)}` : "";
+                    const clw = cLabel.length * 5.5 + 12;
+                    return (
+                      <g key={cm.id} style={{ pointerEvents: "all", cursor: "pointer" }}
+                        onClick={() => setCircleMeasures(prev => prev.filter(c => c.id !== cm.id))}>
+                        <circle cx={cx} cy={cy} r={rSvg}
+                          fill="rgba(20,184,166,0.08)" stroke="#14B8A6" strokeWidth={2} />
+                        <line x1={cx} y1={cy} x2={ex} y2={ey}
+                          stroke="#14B8A6" strokeWidth={1} strokeDasharray="4 2" />
+                        <circle cx={cx} cy={cy} r={3} fill="#14B8A6" />
+                        <circle cx={ex} cy={ey} r={3} fill="#14B8A6" stroke="white" strokeWidth={1} />
+                        {cLabel && (
+                          <g transform={`translate(${cx}, ${cy - rSvg - 12})`}>
+                            <rect x={-clw / 2} y={-8} width={clw} height={16} rx={3}
+                              fill="rgba(0,0,0,0.78)" stroke="#14B8A6" strokeWidth={0.6} />
+                            <text textAnchor="middle" dominantBaseline="middle"
+                              fontSize={9} fill="#14B8A6" fontWeight="600" fontFamily="ui-monospace, monospace">
+                              {cLabel}
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              {/* Text input overlay */}
+              {textInputPos && (() => {
+                const px = textInputPos.x * imgDisplaySize.w;
+                const py = textInputPos.y * imgDisplaySize.h;
+                return (
+                  <div className="absolute z-50 pointer-events-auto"
+                    style={{ left: px, top: py }}>
+                    <input
+                      autoFocus
+                      value={textInputValue}
+                      onChange={e => setTextInputValue(e.target.value)}
+                      onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === "Enter" && textInputValue.trim()) {
+                          setTextAnnotations(prev => [...prev, {
+                            id: crypto.randomUUID(),
+                            x: textInputPos.x,
+                            y: textInputPos.y,
+                            text: textInputValue.trim(),
+                            color: "#38BDF8",
+                          }]);
+                          setTextInputPos(null);
+                          setTextInputValue("");
+                        }
+                        if (e.key === "Escape") { setTextInputPos(null); setTextInputValue(""); }
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      placeholder="Texte…"
+                      className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl"
+                    />
+                  </div>
+                );
+              })()}
+
+              {/* Circle in-progress preview */}
+              {tool === "circle" && circleCenter && imgDisplaySize.w > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  style={{ zIndex: 4 }}>
+                  <circle
+                    cx={circleCenter.x * imgDisplaySize.w}
+                    cy={circleCenter.y * imgDisplaySize.h}
+                    r={4} fill="#14B8A6" stroke="white" strokeWidth={1.5} />
                 </svg>
               )}
 
@@ -3103,6 +3291,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <p className="text-[10px] text-slate-600 leading-relaxed mt-2">
                     {tool === "linear" && d("ed_dist_help" as DTKey)}
                     {tool === "count" && `${d("ed_annot_help" as DTKey)} "${countGroups.find(g => g.id === activeCountGroupId)?.name ?? ""}"`}
+                    {tool === "text" && "Cliquez sur le plan pour placer une annotation texte · Clic sur une annotation pour la supprimer"}
+                    {tool === "circle" && (circleCenter ? "Cliquez pour définir le rayon du cercle" : "Cliquez pour placer le centre du cercle")}
                     {tool === "rescale" && d("ed_rescale_help" as DTKey)}
                     {tool === "angle" && d("ed_angle_help" as DTKey)}
                   </p>
@@ -3274,6 +3464,118 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             </div>
           </div>
           </div>{/* /inner row canvas+sidebar */}
+        </div>
+      )}
+      {/* ── Admin: Full Plan Overlay (original image + recalibrated detections) ── */}
+      {showFullPlan && originalImageB64 && cropRect && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-3 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-amber-400">Vue complète (admin)</span>
+              <span className="text-xs text-slate-500">Image originale + détections recalées via crop ({(cropRect.x*100).toFixed(0)}%, {(cropRect.y*100).toFixed(0)}%, {(cropRect.w*100).toFixed(0)}%×{(cropRect.h*100).toFixed(0)}%)</span>
+            </div>
+            <button onClick={() => setShowFullPlan(false)}
+              className="px-3 py-1.5 text-xs text-slate-400 hover:text-white glass border border-white/10 rounded-lg transition-colors">
+              Fermer ✕
+            </button>
+          </div>
+          {/* Content — image with recalibrated SVG overlays */}
+          <div className="flex-1 overflow-auto flex items-center justify-center p-8">
+            <div className="relative">
+              <img src={`data:image/png;base64,${originalImageB64}`} alt="Plan original"
+                style={{ maxWidth: "90vw", maxHeight: "85vh" }}
+                onLoad={e => {
+                  // Store natural size for SVG viewBox
+                  const img = e.currentTarget;
+                  (img as any).__natW = img.naturalWidth;
+                  (img as any).__natH = img.naturalHeight;
+                  (img as any).__dispW = img.offsetWidth;
+                  (img as any).__dispH = img.offsetHeight;
+                }}
+              />
+              {/* SVG overlay — all detections offset by crop rect */}
+              {(() => {
+                // Crop rect is in 0-1 normalized coords of the ORIGINAL image
+                // AI detections use 0-1 coords relative to the CROPPED image
+                // To map: original_x = cropRect.x + detection_x * cropRect.w
+                const cx = cropRect.x, cy = cropRect.y, cw = cropRect.w, ch = cropRect.h;
+                const mapX = (normX: number) => `${(cx + normX * cw) * 100}%`;
+                const mapY = (normY: number) => `${(cy + normY * ch) * 100}%`;
+                return (
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    {/* Crop area outline */}
+                    <rect x={cx * 100} y={cy * 100} width={cw * 100} height={ch * 100}
+                      fill="none" stroke="#FCD34D" strokeWidth={0.3} strokeDasharray="1 0.5" />
+                    {/* Rooms */}
+                    {result.rooms?.map((room, ri) => {
+                      if (!room.polygon_norm) return null;
+                      const pts = room.polygon_norm
+                        .map(p => `${(cx + p.x * cw) * 100},${(cy + p.y * ch) * 100}`)
+                        .join(" ");
+                      const color = getRoomColor(room.type);
+                      return (
+                        <polygon key={ri} points={pts}
+                          fill={color + "25"} stroke={color} strokeWidth={0.2} />
+                      );
+                    })}
+                    {/* Walls */}
+                    {result.walls?.map((w, i) => (
+                      <line key={`w${i}`}
+                        x1={(cx + w.x1_norm * cw) * 100} y1={(cy + w.y1_norm * ch) * 100}
+                        x2={(cx + w.x2_norm * cw) * 100} y2={(cy + w.y2_norm * ch) * 100}
+                        stroke="#94a3b8" strokeWidth={0.2} />
+                    ))}
+                    {/* Custom detections */}
+                    {customDetections.map(det =>
+                      det.matches.map((m, mi) => (
+                        <rect key={`${det.id}-${mi}`}
+                          x={(cx + m.x_norm * cw) * 100}
+                          y={(cy + m.y_norm * ch) * 100}
+                          width={m.w_norm * cw * 100}
+                          height={m.h_norm * ch * 100}
+                          fill={det.color + "20"} stroke={det.color} strokeWidth={0.15} rx={0.2} />
+                      ))
+                    )}
+                    {/* Text annotations */}
+                    {textAnnotations.map(ta => (
+                      <text key={ta.id}
+                        x={(cx + ta.x * cw) * 100}
+                        y={(cy + ta.y * ch) * 100}
+                        fontSize={0.8} fill={ta.color} fontFamily="system-ui"
+                      >{ta.text}</text>
+                    ))}
+                    {/* Count points */}
+                    {countPoints.map(cp => {
+                      const grp = countGroups.find(g => g.id === cp.groupId);
+                      return (
+                        <circle key={cp.id}
+                          cx={(cx + cp.x * cw) * 100}
+                          cy={(cy + cp.y * ch) * 100}
+                          r={0.4} fill={grp?.color ?? "#38bdf8"} />
+                      );
+                    })}
+                    {/* Circles */}
+                    {circleMeasures.map(cm => {
+                      const ccx = (cx + cm.center.x * cw) * 100;
+                      const ccy = (cy + cm.center.y * ch) * 100;
+                      const ecx = (cx + cm.edgePoint.x * cw) * 100;
+                      const ecy = (cy + cm.edgePoint.y * ch) * 100;
+                      const r = Math.hypot(ecx - ccx, ecy - ccy);
+                      return (
+                        <g key={cm.id}>
+                          <ellipse cx={ccx} cy={ccy} rx={r} ry={r}
+                            fill="rgba(20,184,166,0.08)" stroke="#14B8A6" strokeWidth={0.15} />
+                          <line x1={ccx} y1={ccy} x2={ecx} y2={ecy}
+                            stroke="#14B8A6" strokeWidth={0.1} strokeDasharray="0.3 0.2" />
+                        </g>
+                      );
+                    })}
+                  </svg>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       )}
     </motion.div>

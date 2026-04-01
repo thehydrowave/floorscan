@@ -21,7 +21,7 @@ export interface CropBox { x0: number; y0: number; x1: number; y1: number; imgW:
 interface CropStepProps {
   sessionId: string;
   imageB64: string;
-  onCropped: (cropBox: CropBox) => void;
+  onCropped: (cropBox?: CropBox) => void;
   onSkip: () => void;
   onSessionExpired?: () => void;
   onBack?: () => void;

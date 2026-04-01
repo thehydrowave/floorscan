@@ -9,7 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -183,6 +183,22 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [countPoints, setCountPoints]   = useState<CountPoint[]>([]);
   const [activeCountGroupId, setActiveCountGroupId] = useState(DEFAULT_COUNT_GROUPS[0].id);
 
+  // Selection state (lifted from canvas for cross-component use)
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [selectedLinearId, setSelectedLinearId] = useState<string | null>(null);
+
+  // Display unit
+  const [displayUnit, setDisplayUnit] = useState<DisplayUnit>("m");
+
+  // Angle measurements (lifted from canvas)
+  const [angleMeasurements, setAngleMeasurements] = useState<AngleMeasurement[]>([]);
+
+  // Circle measurements
+  const [circleMeasures, setCircleMeasures] = useState<CircleMeasure[]>([]);
+
+  // Text annotations
+  const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
+
   // Undo / Redo history
   const historyRef  = useRef<MeasureZone[][]>([]);
   const futureRef   = useRef<MeasureZone[][]>([]);
@@ -303,6 +319,10 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       if (s.savedPlans)    setSavedPlans(s.savedPlans);
       if (s.currentPlanName) setCurrentPlanName(s.currentPlanName);
       if (s.activeTypeId) setActiveTypeId(s.activeTypeId);
+      if (s.displayUnit) setDisplayUnit(s.displayUnit);
+      if (s.angleMeasurements) setAngleMeasurements(s.angleMeasurements);
+      if (s.circleMeasures) setCircleMeasures(s.circleMeasures);
+      if (s.textAnnotations) setTextAnnotations(s.textAnnotations);
       if (s.imageB64) {
         setImageB64(s.imageB64);
         setImageMime(s.imageMime || "image/png");
@@ -322,7 +342,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   // ── localStorage : sauvegarde à chaque changement ─────────────────────────
   useEffect(() => {
     if (!imageB64) return; // ne pas sauvegarder un projet vide
-    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step };
+    const payload = { imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -332,7 +352,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...rest, step: 0 }));
       } catch { /* silencieux */ }
     }
-  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step]);
+  }, [imageB64, imageMime, zones, surfaceTypes, ppm, tvaRate, projectName, clientName, clientAddress, quoteNumber, quoteDate, savedPlans, currentPlanName, activeTypeId, step, displayUnit, angleMeasurements, circleMeasures, textAnnotations]);
 
   // ── Warn before leaving with unsaved work ─────────────────────────────────
   useEffect(() => {
@@ -1052,6 +1072,26 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onCountPointsChange={setCountPoints}
                   countGroups={countGroups}
                   activeCountGroupId={activeCountGroupId}
+                  selectedZoneId={selectedZoneId}
+                  onSelectedZoneIdChange={setSelectedZoneId}
+                  selectedLinearId={selectedLinearId}
+                  onSelectedLinearIdChange={setSelectedLinearId}
+                  angleMeasurements={angleMeasurements}
+                  onAngleMeasurementsChange={setAngleMeasurements}
+                  circleMeasures={circleMeasures}
+                  onCircleMeasuresChange={setCircleMeasures}
+                  displayUnit={displayUnit}
+                  textAnnotations={textAnnotations}
+                  onTextAnnotationsChange={setTextAnnotations}
+                  onExportPNG={async () => {
+                    try {
+                      const b64 = await renderAnnotatedPlan(imageB64, imageMime, zones, allTypes, ppm);
+                      const a = document.createElement("a");
+                      a.href = b64;
+                      a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`;
+                      a.click();
+                    } catch (e) { console.error("PNG export error:", e); }
+                  }}
                 />
               </div>
               <div className="lg:w-64 shrink-0">
@@ -1081,6 +1121,9 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onCountPointsChange={setCountPoints}
                   activeCountGroupId={activeCountGroupId}
                   onActiveCountGroupChange={setActiveCountGroupId}
+                  angleMeasurements={angleMeasurements}
+                  circleMeasures={circleMeasures}
+                  displayUnit={displayUnit}
                 />
               </div>
             </div>
