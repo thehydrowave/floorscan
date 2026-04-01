@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download } from "lucide-react";
-import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation } from "@/lib/measure-types";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter } from "lucide-react";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
@@ -54,11 +54,15 @@ interface MeasureCanvasProps {
   // Text annotations
   textAnnotations?: TextAnnotation[];
   onTextAnnotationsChange?: (annotations: TextAnnotation[]) => void;
+  // Markup annotations (arrow, line, callout, cloud, rect, ellipse, highlight, pen, stamp)
+  markupAnnotations?: MarkupAnnotation[];
+  onMarkupAnnotationsChange?: (markups: MarkupAnnotation[]) => void;
   // Export callback
   onExportPNG?: () => void;
 }
 
-type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text";
+type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text"
+  | "arrow" | "mk_line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp";
 
 const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
@@ -109,6 +113,7 @@ export default function MeasureCanvas({
   circleMeasures = [], onCircleMeasuresChange,
   displayUnit = "m" as DisplayUnit,
   textAnnotations = [], onTextAnnotationsChange,
+  markupAnnotations = [], onMarkupAnnotationsChange,
   onExportPNG,
 }: MeasureCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -157,6 +162,15 @@ export default function MeasureCanvas({
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState("");
 
+  // Markup in-progress state (arrow, line, callout, cloud, rect_annot, ellipse, highlight, pen)
+  const [mkStart, setMkStart] = useState<{ x: number; y: number } | null>(null);
+  const [penDrawing, setPenDrawing] = useState<{ x: number; y: number }[]>([]);
+  const penDrawingRef = useRef<{ x: number; y: number }[]>([]);
+  const [activeStamp, setActiveStamp] = useState<StampKind>("approved");
+  // Callout text input
+  const [calloutInputPos, setCalloutInputPos] = useState<{ start: { x: number; y: number }; end: { x: number; y: number } } | null>(null);
+  const [calloutInputValue, setCalloutInputValue] = useState("");
+
   // Split tool state
   const [splitPts, setSplitPts] = useState<{ x: number; y: number }[]>([]);
 
@@ -182,6 +196,9 @@ export default function MeasureCanvas({
   const onCountPointsChangeRef = useRef(onCountPointsChange);
   const circleMeasuresRef = useRef(circleMeasures);
   const onCircleMeasuresChangeRef = useRef(onCircleMeasuresChange);
+  const markupAnnotationsRef = useRef(markupAnnotations);
+  const onMarkupAnnotationsChangeRef = useRef(onMarkupAnnotationsChange);
+  const activeColorRef = useRef("");
 
   // Visual search state
   const [vsCropStart, setVsCropStart] = useState<{ x: number; y: number } | null>(null);
@@ -220,6 +237,8 @@ export default function MeasureCanvas({
   useEffect(() => { onCountPointsChangeRef.current = onCountPointsChange; }, [onCountPointsChange]);
   useEffect(() => { circleMeasuresRef.current = circleMeasures; }, [circleMeasures]);
   useEffect(() => { onCircleMeasuresChangeRef.current = onCircleMeasuresChange; }, [onCircleMeasuresChange]);
+  useEffect(() => { markupAnnotationsRef.current = markupAnnotations; }, [markupAnnotations]);
+  useEffect(() => { onMarkupAnnotationsChangeRef.current = onMarkupAnnotationsChange; }, [onMarkupAnnotationsChange]);
 
   // ── Update imgOffset after zoom/translate is committed to DOM ──────────────
   const updateOffset = useCallback(() => {
@@ -340,6 +359,16 @@ export default function MeasureCanvas({
         if (dragZoneRef.current) { dragZoneRef.current = null; }
         if (dragLinearVertexRef.current) { dragLinearVertexRef.current = null; }
         if (dragCountPointRef.current) { dragCountPointRef.current = null; }
+        // Pen tool: finalize freehand drawing on mouseup
+        if (penDrawingRef.current.length > 2) {
+          const pts = penDrawingRef.current;
+          onMarkupAnnotationsChangeRef.current?.([...markupAnnotationsRef.current, {
+            id: crypto.randomUUID(), type: "pen" as const, color: activeColorRef.current,
+            x1: pts[0].x, y1: pts[0].y, x2: pts[pts.length - 1].x, y2: pts[pts.length - 1].y,
+            penPoints: [...pts], lineWidth: 2, opacity: 1,
+          }]);
+          penDrawingRef.current = [];
+        }
       }
     };
     window.addEventListener("mousemove", onMove);
@@ -502,6 +531,11 @@ export default function MeasureCanvas({
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (dragVertexRef.current || dragZoneRef.current || dragLinearVertexRef.current || dragCountPointRef.current) return;
+    // Pen tool: accumulate freehand points
+    if (tool === "pen" && penDrawingRef.current.length > 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) { penDrawingRef.current.push(n); setPenDrawing([...penDrawingRef.current]); }
+    }
     let n = toNorm(e.clientX, e.clientY);
     if (n && e.shiftKey && tool === "polygon" && drawingPoints.length > 0 && naturalSize.w > 0) {
       n = snapTo45(drawingPoints[drawingPoints.length - 1], n, naturalSize.w, naturalSize.h);
@@ -563,6 +597,11 @@ export default function MeasureCanvas({
     if (tool === "visual_search" && vsEditMode === "search" && e.button === 0) {
       const n = toNorm(e.clientX, e.clientY);
       if (n) setVsCropStart(n);
+    }
+    // Pen tool: start freehand drawing
+    if (tool === "pen" && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) { penDrawingRef.current = [n]; setPenDrawing([n]); }
     }
   }, [tool, toNorm, vsEditMode, selectedZoneId, selectedLinearId, onHistoryPush]);
 
@@ -718,11 +757,55 @@ export default function MeasureCanvas({
         setCircleCenter(null);
       }
     } else if (tool === "text") {
-      // Place text input at click position
       setTextInputPos(pt);
       setTextInputValue("");
+    } else if (tool === "arrow" || tool === "mk_line" || tool === "rect_annot" || tool === "ellipse" || tool === "highlight") {
+      // 2-click tools: start → end
+      if (!mkStart) {
+        setMkStart(pt);
+      } else {
+        const c = activeColorRef.current || "#3B82F6";
+        const mkType: MarkupType = tool === "arrow" ? "arrow" : tool === "mk_line" ? "line" : tool === "rect_annot" ? "rect_annot" : tool === "ellipse" ? "ellipse" : "highlight";
+        onMarkupAnnotationsChange?.([...markupAnnotations, {
+          id: crypto.randomUUID(), type: mkType, color: c,
+          x1: mkStart.x, y1: mkStart.y, x2: pt.x, y2: pt.y,
+          lineWidth: 2, opacity: mkType === "highlight" ? 0.35 : 1,
+          fillOpacity: mkType === "highlight" ? 0.35 : 0.15,
+          fillColor: c,
+        }]);
+        setMkStart(null);
+      }
+    } else if (tool === "callout") {
+      if (!mkStart) {
+        setMkStart(pt);
+      } else {
+        setCalloutInputPos({ start: mkStart, end: pt });
+        setCalloutInputValue("");
+        setMkStart(null);
+      }
+    } else if (tool === "cloud") {
+      if (!mkStart) {
+        setMkStart(pt);
+      } else {
+        const c = activeColorRef.current || "#3B82F6";
+        onMarkupAnnotationsChange?.([...markupAnnotations, {
+          id: crypto.randomUUID(), type: "cloud", color: c,
+          x1: Math.min(mkStart.x, pt.x), y1: Math.min(mkStart.y, pt.y),
+          x2: Math.max(mkStart.x, pt.x), y2: Math.max(mkStart.y, pt.y),
+          lineWidth: 2, opacity: 1, fillOpacity: 0.08, fillColor: c,
+        }]);
+        setMkStart(null);
+      }
+    } else if (tool === "stamp") {
+      onMarkupAnnotationsChange?.([...markupAnnotations, {
+        id: crypto.randomUUID(), type: "stamp", color: "#EF4444",
+        x1: pt.x - 0.04, y1: pt.y - 0.015, x2: pt.x + 0.04, y2: pt.y + 0.015,
+        stampKind: activeStamp, lineWidth: 2, opacity: 0.9,
+      }]);
+    } else if (tool === "pen") {
+      // Pen: handled via mousedown/move/up, not click
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool === "polygon") {
@@ -819,7 +902,7 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); setMkStart(null); setPenDrawing([]); penDrawingRef.current = []; setCalloutInputPos(null); setCalloutInputValue(""); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   // Track if nudge sequence is active (to only push history once)
@@ -951,6 +1034,15 @@ export default function MeasureCanvas({
           case "m": switchTool("scale"); break;
           case "o": switchTool("circle"); break;
           case "t": switchTool("text"); break;
+          // Markup tools
+          case "f": switchTool("arrow"); break;     // F = flèche
+          case "n": switchTool("callout"); break;   // N = note
+          case "k": switchTool("cloud"); break;     // K = cloud (nuage)
+          case "h": switchTool("highlight"); break; // H = highlight
+          case "d": if (!e.ctrlKey && !e.metaKey) switchTool("pen"); break; // D = draw (pen)
+          case "b": switchTool("stamp"); break;     // B = tampon (Badge)
+          case "e": switchTool("ellipse"); break;   // E = ellipse
+          case "j": switchTool("mk_line"); break;   // J = ligne
         }
       }
     };
@@ -1025,6 +1117,7 @@ export default function MeasureCanvas({
 
   const isDrawing   = drawingPoints.length > 0 || rectStart !== null || wallStart !== null || splitPts.length > 0 || vsCropStart !== null || scalePts.length > 0 || linearDrawingPts.length > 0 || circleCenter !== null;
   const activeColor = getColor(activeTypeId);
+  useEffect(() => { activeColorRef.current = activeColor; }, [activeColor]);
 
   const hint = dragZoneRef.current ? "Glissez pour repositionner la zone · relâchez pour valider"
     : dragVertex ? "Glissez pour repositionner le sommet · relâchez pour valider"
@@ -1228,6 +1321,57 @@ export default function MeasureCanvas({
             </button>
           )}
         </div>
+
+        {/* ── Markup annotations toolbar ── */}
+        {onMarkupAnnotationsChange && (
+          <div className="flex gap-1 glass border border-white/10 rounded-xl p-1">
+            <button onClick={() => { setTool("arrow"); cancelDrawing(); }} title="Flèche (F)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "arrow" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("mk_line"); cancelDrawing(); }} title="Ligne (J)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "mk_line" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("callout"); cancelDrawing(); }} title="Callout (N)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "callout" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <MessageSquare className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("cloud"); cancelDrawing(); }} title="Nuage (K)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "cloud" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <Cloud className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("rect_annot"); cancelDrawing(); }} title="Rectangle"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "rect_annot" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <Square className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("ellipse"); cancelDrawing(); }} title="Ellipse (E)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "ellipse" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <CircleDot className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("highlight"); cancelDrawing(); }} title="Surligneur (H)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "highlight" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300" : "text-slate-400 hover:text-white"}`}>
+              <Highlighter className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("pen"); cancelDrawing(); }} title="Crayon (D)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "pen" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <Pen className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setTool("stamp"); cancelDrawing(); }} title="Tampon (B)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "stamp" ? "bg-red-500/20 border border-red-500/40 text-red-300" : "text-slate-400 hover:text-white"}`}>
+              <Stamp className="w-3.5 h-3.5" />
+            </button>
+            {/* Stamp kind selector — shown when stamp tool active */}
+            {tool === "stamp" && (
+              <select value={activeStamp} onChange={e => setActiveStamp(e.target.value as StampKind)}
+                className="bg-transparent text-xs text-red-300 font-mono border border-red-500/30 rounded px-1.5 py-0.5 outline-none">
+                {(Object.keys(STAMP_LABELS) as StampKind[]).map(k => (
+                  <option key={k} value={k} className="bg-slate-900">{STAMP_LABELS[k].fr}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
 
         {/* Wall thickness control — shown only when wall tool is active */}
         {tool === "wall" && (
@@ -2163,8 +2307,185 @@ export default function MeasureCanvas({
             );
           })}
 
+          {/* ── Markup annotations (arrow, line, callout, cloud, rect, ellipse, highlight, pen, stamp) ── */}
+          {markupAnnotations.map(mk => {
+            const s1 = toSvg({ x: mk.x1, y: mk.y1 });
+            const s2 = toSvg({ x: mk.x2, y: mk.y2 });
+            const lw = mk.lineWidth ?? 2;
+            const op = mk.opacity ?? 1;
+            const fc = mk.fillColor ?? mk.color;
+            const fo = mk.fillOpacity ?? 0.15;
+            const common = { style: { pointerEvents: "all" as const, cursor: "pointer", opacity: op },
+              onContextMenu: (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== mk.id)); } };
+
+            if (mk.type === "arrow" || mk.type === "line") {
+              const dx = s2.x - s1.x, dy = s2.y - s1.y;
+              const len = Math.hypot(dx, dy);
+              const ux = len > 0 ? dx / len : 1, uy = len > 0 ? dy / len : 0;
+              const headLen = Math.min(12, len * 0.3);
+              return (
+                <g key={mk.id} {...common}>
+                  <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={mk.color} strokeWidth={lw} />
+                  {/* Invisible fat hit area */}
+                  <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke="transparent" strokeWidth={12} />
+                  {mk.type === "arrow" && (
+                    <polygon points={`${s2.x},${s2.y} ${s2.x - ux * headLen + uy * headLen * 0.4},${s2.y - uy * headLen - ux * headLen * 0.4} ${s2.x - ux * headLen - uy * headLen * 0.4},${s2.y - uy * headLen + ux * headLen * 0.4}`}
+                      fill={mk.color} />
+                  )}
+                </g>
+              );
+            }
+
+            if (mk.type === "rect_annot" || mk.type === "highlight") {
+              const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+              const w = Math.abs(s2.x - s1.x), h = Math.abs(s2.y - s1.y);
+              return (
+                <g key={mk.id} {...common}>
+                  <rect x={x} y={y} width={w} height={h} rx={mk.type === "highlight" ? 0 : 3}
+                    fill={hexToRgba(fc, fo)} stroke={mk.type === "highlight" ? "none" : mk.color}
+                    strokeWidth={lw} />
+                </g>
+              );
+            }
+
+            if (mk.type === "ellipse") {
+              const cx = (s1.x + s2.x) / 2, cy = (s1.y + s2.y) / 2;
+              const rx = Math.abs(s2.x - s1.x) / 2, ry = Math.abs(s2.y - s1.y) / 2;
+              return (
+                <g key={mk.id} {...common}>
+                  <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
+                    fill={hexToRgba(fc, fo)} stroke={mk.color} strokeWidth={lw} />
+                </g>
+              );
+            }
+
+            if (mk.type === "cloud") {
+              const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+              const w = Math.abs(s2.x - s1.x), h = Math.abs(s2.y - s1.y);
+              // Cloud border: scalloped edge using arc segments
+              const bumps = Math.max(4, Math.round((2 * w + 2 * h) / 20));
+              const bumpR = Math.max(6, Math.min(14, (2 * w + 2 * h) / bumps / 1.8));
+              const pts: string[] = [];
+              // Generate points along rectangle perimeter
+              const perimPts: { x: number; y: number }[] = [];
+              const steps = bumps * 4;
+              for (let i = 0; i < steps; i++) {
+                const t = i / steps;
+                const totalPerim = 2 * w + 2 * h;
+                let d = t * totalPerim;
+                if (d < w) perimPts.push({ x: x + d, y });
+                else if (d < w + h) perimPts.push({ x: x + w, y: y + (d - w) });
+                else if (d < 2 * w + h) perimPts.push({ x: x + w - (d - w - h), y: y + h });
+                else perimPts.push({ x, y: y + h - (d - 2 * w - h) });
+              }
+              // Build scalloped path
+              let cloudPath = `M ${perimPts[0].x} ${perimPts[0].y}`;
+              const step = Math.max(1, Math.floor(steps / bumps));
+              for (let i = 0; i < perimPts.length; i += step) {
+                const next = perimPts[(i + step) % perimPts.length];
+                cloudPath += ` A ${bumpR} ${bumpR} 0 0 1 ${next.x} ${next.y}`;
+              }
+              cloudPath += " Z";
+              return (
+                <g key={mk.id} {...common}>
+                  <path d={cloudPath} fill={hexToRgba(fc, fo)} stroke={mk.color} strokeWidth={lw} />
+                </g>
+              );
+            }
+
+            if (mk.type === "callout") {
+              const textLines = (mk.text ?? "").split("\n");
+              const fs = 10;
+              const lineH = fs + 3;
+              const maxW = Math.max(60, ...textLines.map(l => l.length * fs * 0.55 + 16));
+              const totalH = Math.max(20, textLines.length * lineH + 8);
+              return (
+                <g key={mk.id} {...common}>
+                  {/* Leader line from start to text box */}
+                  <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={mk.color} strokeWidth={1.5} />
+                  <circle cx={s1.x} cy={s1.y} r={3} fill={mk.color} />
+                  {/* Text box at end point */}
+                  <rect x={s2.x} y={s2.y - totalH / 2} width={maxW} height={totalH} rx={4}
+                    fill="rgba(0,0,0,0.8)" stroke={mk.color} strokeWidth={1.5} />
+                  {textLines.map((line, li) => (
+                    <text key={li} x={s2.x + 6} y={s2.y - totalH / 2 + 12 + li * lineH}
+                      fontSize={fs} fill={mk.color} fontFamily="system-ui">{line}</text>
+                  ))}
+                </g>
+              );
+            }
+
+            if (mk.type === "pen" && mk.penPoints && mk.penPoints.length > 1) {
+              const d = mk.penPoints.map((p, i) => {
+                const s = toSvg(p);
+                return `${i === 0 ? "M" : "L"} ${s.x} ${s.y}`;
+              }).join(" ");
+              return (
+                <g key={mk.id} {...common}>
+                  <path d={d} fill="none" stroke={mk.color} strokeWidth={lw} strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
+                </g>
+              );
+            }
+
+            if (mk.type === "stamp" && mk.stampKind) {
+              const label = STAMP_LABELS[mk.stampKind]?.fr ?? mk.stampKind;
+              const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+              const w = Math.abs(s2.x - s1.x), h = Math.abs(s2.y - s1.y);
+              return (
+                <g key={mk.id} {...common} transform={`rotate(-12, ${x + w / 2}, ${y + h / 2})`}>
+                  <rect x={x} y={y} width={w} height={h} rx={3}
+                    fill="none" stroke={mk.color} strokeWidth={2.5} />
+                  <text x={x + w / 2} y={y + h / 2 + 1} textAnchor="middle" dominantBaseline="middle"
+                    fontSize={Math.min(11, h * 0.6)} fontWeight="900" fill={mk.color}
+                    fontFamily="system-ui" letterSpacing="1">{label}</text>
+                </g>
+              );
+            }
+
+            return null;
+          })}
+
+          {/* Markup in-progress preview */}
+          {mkStart && mouseNorm && (tool === "arrow" || tool === "mk_line" || tool === "callout" || tool === "cloud" || tool === "rect_annot" || tool === "ellipse" || tool === "highlight") && (() => {
+            const s1 = toSvg(mkStart);
+            const s2 = toSvg(mouseNorm);
+            if (tool === "arrow" || tool === "mk_line") {
+              return <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={activeColor} strokeWidth={2} strokeDasharray="6 3" />;
+            }
+            if (tool === "rect_annot" || tool === "highlight") {
+              const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+              return <rect x={x} y={y} width={Math.abs(s2.x - s1.x)} height={Math.abs(s2.y - s1.y)}
+                fill={hexToRgba(activeColor, 0.1)} stroke={activeColor} strokeWidth={2} strokeDasharray="6 3" />;
+            }
+            if (tool === "ellipse") {
+              return <ellipse cx={(s1.x + s2.x) / 2} cy={(s1.y + s2.y) / 2} rx={Math.abs(s2.x - s1.x) / 2} ry={Math.abs(s2.y - s1.y) / 2}
+                fill="none" stroke={activeColor} strokeWidth={2} strokeDasharray="6 3" />;
+            }
+            if (tool === "cloud" || tool === "callout") {
+              return (
+                <g>
+                  <rect x={Math.min(s1.x, s2.x)} y={Math.min(s1.y, s2.y)}
+                    width={Math.abs(s2.x - s1.x)} height={Math.abs(s2.y - s1.y)}
+                    fill="none" stroke={activeColor} strokeWidth={1.5} strokeDasharray="5 3" />
+                  {tool === "callout" && <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={activeColor} strokeWidth={1.5} strokeDasharray="4 2" />}
+                </g>
+              );
+            }
+            return null;
+          })()}
+
+          {/* Pen in-progress */}
+          {penDrawing.length > 1 && (() => {
+            const d = penDrawing.map((p, i) => {
+              const s = toSvg(p);
+              return `${i === 0 ? "M" : "L"} ${s.x} ${s.y}`;
+            }).join(" ");
+            return <path d={d} fill="none" stroke={activeColor} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />;
+          })()}
+
           {/* Empty state hint */}
-          {zones.length === 0 && !isDrawing && textAnnotations.length === 0 && (
+          {zones.length === 0 && !isDrawing && textAnnotations.length === 0 && markupAnnotations.length === 0 && (
             <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle"
               fill="rgba(148,163,184,0.6)" fontSize={14} fontFamily="system-ui">
               ✛ Sélectionnez un type et commencez à dessiner
@@ -2201,6 +2522,34 @@ export default function MeasureCanvas({
                 onMouseDown={e => e.stopPropagation()}
                 placeholder="Texte…"
                 className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl"
+              />
+            </div>
+          );
+        })()}
+
+        {/* Callout text input overlay */}
+        {calloutInputPos && (() => {
+          const sp = toSvg(calloutInputPos.end);
+          return (
+            <div className="absolute z-50 pointer-events-auto" style={{ left: sp.x, top: sp.y }}>
+              <input autoFocus value={calloutInputValue}
+                onChange={e => setCalloutInputValue(e.target.value)}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && calloutInputValue.trim()) {
+                    onMarkupAnnotationsChange?.([...markupAnnotations, {
+                      id: crypto.randomUUID(), type: "callout", color: activeColor,
+                      x1: calloutInputPos.start.x, y1: calloutInputPos.start.y,
+                      x2: calloutInputPos.end.x, y2: calloutInputPos.end.y,
+                      text: calloutInputValue.trim(), lineWidth: 1.5, opacity: 1,
+                    }]);
+                    setCalloutInputPos(null); setCalloutInputValue("");
+                  }
+                  if (e.key === "Escape") { setCalloutInputPos(null); setCalloutInputValue(""); }
+                }}
+                onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+                placeholder="Note…"
+                className="bg-black/90 border border-rose-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-rose-400 min-w-44 shadow-xl"
               />
             </div>
           );

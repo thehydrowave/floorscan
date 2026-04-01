@@ -422,3 +422,45 @@ export interface TextAnnotation {
   color: string;          // hex
   fontSize?: number;      // default 12
 }
+
+// ── Markup annotations (Bluebeam-style) ─────────────────────────────────────
+
+export type MarkupType = "arrow" | "line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp";
+
+export type StampKind = "approved" | "rejected" | "review" | "revised" | "draft" | "final" | "not_approved" | "for_info";
+
+export const STAMP_LABELS: Record<StampKind, { fr: string; en: string }> = {
+  approved:     { fr: "APPROUVÉ",       en: "APPROVED" },
+  rejected:     { fr: "REJETÉ",         en: "REJECTED" },
+  review:       { fr: "À VÉRIFIER",     en: "FOR REVIEW" },
+  revised:      { fr: "RÉVISÉ",         en: "REVISED" },
+  draft:        { fr: "BROUILLON",      en: "DRAFT" },
+  final:        { fr: "FINAL",          en: "FINAL" },
+  not_approved: { fr: "NON APPROUVÉ",   en: "NOT APPROVED" },
+  for_info:     { fr: "POUR INFO",      en: "FOR INFO" },
+};
+
+export interface MarkupAnnotation {
+  id: string;
+  type: MarkupType;
+  color: string;
+  // For arrow/line/callout: start and end points
+  x1: number; y1: number;  // normalized 0-1
+  x2: number; y2: number;  // normalized 0-1
+  // For callout: text content
+  text?: string;
+  // For cloud/rect_annot/ellipse: bounding box (x1,y1 = top-left, x2,y2 = bottom-right)
+  // For highlight: x1,y1 → x2,y2 = rectangular highlight zone
+  // For pen: freehand points
+  penPoints?: { x: number; y: number }[];
+  // For stamp
+  stampKind?: StampKind;
+  // Common
+  lineWidth?: number;   // default 2
+  opacity?: number;     // 0-1, default 1
+  fillColor?: string;   // for rect/ellipse/cloud fill
+  fillOpacity?: number; // 0-1, default 0.15
+  locked?: boolean;
+  label?: string;       // user note
+  layer?: string;       // discipline layer name
+}
