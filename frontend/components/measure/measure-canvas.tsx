@@ -925,7 +925,8 @@ export default function MeasureCanvas({
     } else if (tool === "stamp") {
       onMarkupAnnotationsChange?.([...markupAnnotations, {
         id: crypto.randomUUID(), type: "stamp", color: "#EF4444",
-        x1: pt.x - 0.04, y1: pt.y - 0.015, x2: pt.x + 0.04, y2: pt.y + 0.015,
+        x1: Math.max(0, pt.x - 0.04), y1: Math.max(0, pt.y - 0.015),
+        x2: Math.min(1, pt.x + 0.04), y2: Math.min(1, pt.y + 0.015),
         stampKind: activeStamp, lineWidth: 2, opacity: 0.9,
       }]);
     } else if (tool === "pen") {
@@ -959,8 +960,8 @@ export default function MeasureCanvas({
         setMkStart(null);
       }
     } else if (tool === "polyline_annot") {
-      // Polyline annotation: multi-click, double-click/Enter to finish
-      setDrawingPoints(prev => { const next = [...prev, pt]; drawingPointsRef.current = next; return next; });
+      // Polyline annotation: multi-click, Enter to finish
+      setLinearDrawingPts(prev => { const next = [...prev, pt]; linearDrawingPtsRef.current = next; return next; });
     }
   }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp, textAnnotations, onTextAnnotationsChange, ppm, naturalSize, displayUnit]);
 
@@ -1126,6 +1127,21 @@ export default function MeasureCanvas({
         }
         return;
       }
+      if (e.key === "Enter" && tool === "polyline_annot") {
+        e.preventDefault();
+        const latest = linearDrawingPtsRef.current;
+        if (latest.length >= 2 && onMarkupAnnotationsChange) {
+          const c = activeColorRef.current || "#3B82F6";
+          onMarkupAnnotationsChange([...markupAnnotations, {
+            id: crypto.randomUUID(), type: "polyline_annot", color: c,
+            x1: latest[0].x, y1: latest[0].y, x2: latest[latest.length - 1].x, y2: latest[latest.length - 1].y,
+            polyPoints: [...latest], lineWidth: 2, opacity: 1,
+          }]);
+          linearDrawingPtsRef.current = [];
+          setLinearDrawingPts([]);
+        }
+        return;
+      }
 
       // ── Undo/Redo ──
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
@@ -1221,17 +1237,33 @@ export default function MeasureCanvas({
         return;
       }
 
-      // ── Arrow key nudge selected zone ──
-      if (selectedZoneId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      // ── Arrow key nudge selected element ──
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && (selectedZoneId || selectedMarkupId || selectedTextId || selectedCircleId)) {
         e.preventDefault();
-        if (!nudgeActiveRef.current) { onHistoryPush?.(zonesRef.current); nudgeActiveRef.current = true; }
         const step = e.shiftKey ? 0.01 : 0.002;
         const dx = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
         const dy = e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0;
-        onZonesChangeRef.current(zonesRef.current.map(z =>
-          z.id !== selectedZoneId ? z :
-          { ...z, points: z.points.map(p => ({ x: p.x + dx, y: p.y + dy })) }
-        ));
+        if (selectedZoneId) {
+          if (!nudgeActiveRef.current) { onHistoryPush?.(zonesRef.current); nudgeActiveRef.current = true; }
+          onZonesChangeRef.current(zonesRef.current.map(z =>
+            z.id !== selectedZoneId ? z : { ...z, points: z.points.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+          ));
+        } else if (selectedMarkupId) {
+          onMarkupAnnotationsChangeRef.current?.(markupAnnotationsRef.current.map(m =>
+            m.id !== selectedMarkupId ? m : { ...m, x1: m.x1 + dx, y1: m.y1 + dy, x2: m.x2 + dx, y2: m.y2 + dy,
+              ...(m.penPoints ? { penPoints: m.penPoints.map(p => ({ x: p.x + dx, y: p.y + dy })) } : {}),
+              ...(m.polyPoints ? { polyPoints: m.polyPoints.map(p => ({ x: p.x + dx, y: p.y + dy })) } : {}),
+            }
+          ));
+        } else if (selectedTextId) {
+          onTextAnnotationsChangeRef.current?.(textAnnotationsRef.current.map(t =>
+            t.id !== selectedTextId ? t : { ...t, x: t.x + dx, y: t.y + dy }
+          ));
+        } else if (selectedCircleId) {
+          onCircleMeasuresChangeRef.current?.(circleMeasuresRef.current.map(c =>
+            c.id !== selectedCircleId ? c : { ...c, center: { x: c.center.x + dx, y: c.center.y + dy }, edgePoint: { x: c.edgePoint.x + dx, y: c.edgePoint.y + dy } }
+          ));
+        }
         return;
       }
 
@@ -1623,23 +1655,22 @@ export default function MeasureCanvas({
             <div className="w-px h-5 bg-white/10 mx-0.5" />
             <button title="Verrouiller/Déverrouiller l'élément sélectionné"
               onClick={() => {
-                if (!selectedZoneId && !selectedLinearId) return;
-                if (selectedZoneId) {
-                  onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, locked: !m.locked } : m));
+                if (selectedMarkupId) {
+                  onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, locked: !m.locked } : m));
                 }
               }}
               className="px-1.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white transition-colors">
               <Lock className="w-3 h-3" />
             </button>
             <button title="Premier plan" onClick={() => {
-              if (!selectedZoneId) return;
+              if (!selectedMarkupId) return;
               const maxZ = Math.max(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
-              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, zIndex: maxZ + 1 } : m));
+              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, zIndex: maxZ + 1 } : m));
             }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↑</button>
             <button title="Arrière-plan" onClick={() => {
-              if (!selectedZoneId) return;
+              if (!selectedMarkupId) return;
               const minZ = Math.min(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
-              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, zIndex: minZ - 1 } : m));
+              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, zIndex: minZ - 1 } : m));
             }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↓</button>
           </div>
         )}
@@ -2002,14 +2033,14 @@ export default function MeasureCanvas({
               <g key={zone.id} className="group">
                 <polygon
                   points={pts}
-                  fill={zone.isDeduction ? "url(#hatch-deduction)" : hexToRgba(color, selectedZoneId === zone.id ? 0.38 : 0.28)}
+                  fill={zone.isDeduction ? "url(#hatch-deduction)" : hexToRgba(color, (selectedZoneId === zone.id || selectedZoneIds.has(zone.id)) ? 0.38 : 0.28)}
                   stroke={color}
-                  strokeWidth={selectedZoneId === zone.id ? 3 : 2}
-                  strokeDasharray={zone.isDeduction ? "6 3" : selectedZoneId === zone.id ? "8 4" : undefined}
+                  strokeWidth={(selectedZoneId === zone.id || selectedZoneIds.has(zone.id)) ? 3 : 2}
+                  strokeDasharray={zone.isDeduction ? "6 3" : (selectedZoneId === zone.id || selectedZoneIds.has(zone.id)) ? "8 4" : undefined}
                   strokeLinejoin="round"
                   style={{
-                    ...(selectedZoneId === zone.id ? { filter: `drop-shadow(0 0 6px ${color})`, cursor: "move" } : {}),
-                    ...(tool === "select" ? { pointerEvents: "all" as const, ...(selectedZoneId !== zone.id ? { cursor: "pointer" } : {}) } : {}),
+                    ...((selectedZoneId === zone.id || selectedZoneIds.has(zone.id)) ? { filter: `drop-shadow(0 0 6px ${color})`, cursor: "move" } : {}),
+                    ...(tool === "select" || tool === "lasso" ? { pointerEvents: "all" as const, ...(!selectedZoneId || selectedZoneId !== zone.id ? { cursor: "pointer" } : {}) } : {}),
                   }}
                 />
                 {/* Zone label */}
@@ -2747,7 +2778,7 @@ export default function MeasureCanvas({
               const w = Math.abs(s2.x - s1.x), h = Math.abs(s2.y - s1.y);
               // Cloud border: scalloped edge using arc segments
               const bumps = Math.max(4, Math.round((2 * w + 2 * h) / 20));
-              const bumpR = Math.max(6, Math.min(14, (2 * w + 2 * h) / bumps / 1.8));
+              const bumpR = Math.max(4, Math.min(Math.min(w, h) / 4, 14, (2 * w + 2 * h) / bumps / 1.8));
               const pts: string[] = [];
               // Generate points along rectangle perimeter
               const perimPts: { x: number; y: number }[] = [];
@@ -2972,13 +3003,20 @@ export default function MeasureCanvas({
                 onKeyDown={e => {
                   e.stopPropagation();
                   if (e.key === "Enter" && textInputValue.trim()) {
-                    onTextAnnotationsChange?.([...textAnnotations, {
-                      id: crypto.randomUUID(),
-                      x: textInputPos.x,
-                      y: textInputPos.y,
-                      text: textInputValue.trim(),
-                      color: activeColor,
-                    }]);
+                    if (tool === "note") {
+                      // Create a sticky note markup
+                      onMarkupAnnotationsChange?.([...markupAnnotations, {
+                        id: crypto.randomUUID(), type: "note", color: "#F59E0B",
+                        x1: textInputPos.x, y1: textInputPos.y, x2: textInputPos.x + 0.08, y2: textInputPos.y + 0.03,
+                        text: textInputValue.trim(), collapsed: false, lineWidth: 1.5, opacity: 1,
+                      }]);
+                    } else {
+                      onTextAnnotationsChange?.([...textAnnotations, {
+                        id: crypto.randomUUID(),
+                        x: textInputPos.x, y: textInputPos.y,
+                        text: textInputValue.trim(), color: activeColor,
+                      }]);
+                    }
                     setTextInputPos(null);
                     setTextInputValue("");
                   }
