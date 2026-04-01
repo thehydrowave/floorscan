@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
@@ -121,6 +121,30 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   // Rectangle drawing state
   const rectDragRef = useRef<Pt | null>(null);
   const [rectPreview, setRectPreview] = useState<{ start: Pt; end: Pt } | null>(null);
+
+  // ── Blue wall overlay path (facade boundary minus window holes) ──
+  const wallSvgPath = useMemo(() => {
+    const W = imgNat.w, H = imgNat.h;
+    if (W === 0 || H === 0) return "";
+    // Outer boundary: use building_roi if available, else full image
+    let p = "";
+    const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
+    const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
+    p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
+    // Holes: visible "other" elements (Fenêtres)
+    if (showOther) {
+      elements.filter(e => e.type === "other").forEach(e => {
+        if (e.polygon_norm && e.polygon_norm.length >= 3) {
+          p += ' ' + e.polygon_norm.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z';
+        } else {
+          const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
+          const w = e.bbox_norm.w * W, h = e.bbox_norm.h * H;
+          p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
+        }
+      });
+    }
+    return p;
+  }, [imgNat, result.building_roi, elements, showOther]);
 
   useEffect(() => {
     const img = new Image();
@@ -536,6 +560,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   setImgDisplay({ w: img.clientWidth, h: img.clientHeight });
                 }}
               />
+
+              {/* ── Wall blue mask layer (evenodd: outer boundary minus window holes) ── */}
+              {wallSvgPath && imgNat.w > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+                  <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.25} />
+                </svg>
+              )}
 
               {/* ── SVG overlay ── */}
               <svg

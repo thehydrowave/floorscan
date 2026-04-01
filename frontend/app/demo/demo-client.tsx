@@ -284,7 +284,7 @@ export default function DemoClient() {
 
       <div className="fixed inset-0 pointer-events-none -z-10"><div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-64 bg-gradient-to-b from-brand-900/10 to-transparent"/><div className="absolute inset-0 bg-grid-pattern bg-grid-size opacity-30"/></div>
 
-      {demoMode&&demoMode!=="chantier"&&<ChatPanel result={demoMode==="facade"?null:analysisResult} facadeResult={demoMode==="facade"?facadeResult:null} currentStep={step} autoOpen={demoMode==="ia"||demoMode==="measure"||(demoMode==="facade"&&step>=6)} measurementData={measurementData}/>}
+      {demoMode&&demoMode!=="chantier"&&<ChatPanel result={demoMode==="facade"?null:analysisResult} facadeResult={demoMode==="facade"?facadeResult:null} currentStep={step} autoOpen={demoMode==="ia"||demoMode==="measure"} measurementData={measurementData}/>}
     </div>
   );
 }
