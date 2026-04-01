@@ -71,7 +71,7 @@ interface MeasureCanvasProps {
 
 type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text"
   | "arrow" | "mk_line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp"
-  | "lasso";
+  | "lasso" | "note" | "dimension" | "polyline_annot";
 
 const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
@@ -844,6 +844,35 @@ export default function MeasureCanvas({
       // Pen: handled via mousedown/move/up, not click
     } else if (tool === "lasso") {
       // Lasso: handled via mousedown/move/up for drag selection
+    } else if (tool === "note") {
+      // Sticky note: click to place, opens text input
+      setTextInputPos(pt);
+      setTextInputValue("");
+      // Will create a "note" markup instead of TextAnnotation
+    } else if (tool === "dimension") {
+      // Dimension line: 2-click like arrow but with measurement label
+      if (!mkStart) {
+        setMkStart(pt);
+      } else {
+        const c = activeColorRef.current || "#3B82F6";
+        // Calculate dimension value
+        let dimVal = "";
+        if (ppm && naturalSize.w > 0) {
+          const dx = (pt.x - mkStart.x) * naturalSize.w;
+          const dy = (pt.y - mkStart.y) * naturalSize.h;
+          const lenM = Math.sqrt(dx * dx + dy * dy) / ppm;
+          dimVal = fmtLinear(lenM, displayUnit);
+        }
+        onMarkupAnnotationsChange?.([...markupAnnotations, {
+          id: crypto.randomUUID(), type: "dimension", color: c,
+          x1: mkStart.x, y1: mkStart.y, x2: pt.x, y2: pt.y,
+          dimensionValue: dimVal, lineWidth: 1.5, opacity: 1,
+        }]);
+        setMkStart(null);
+      }
+    } else if (tool === "polyline_annot") {
+      // Polyline annotation: multi-click, double-click/Enter to finish
+      setDrawingPoints(prev => { const next = [...prev, pt]; drawingPointsRef.current = next; return next; });
     }
   }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp]);
 
@@ -1457,6 +1486,14 @@ export default function MeasureCanvas({
               className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "stamp" ? "bg-red-500/20 border border-red-500/40 text-red-300" : "text-slate-400 hover:text-white"}`}>
               <Stamp className="w-3.5 h-3.5" />
             </button>
+            <button onClick={() => { setTool("note"); cancelDrawing(); }} title="Note (sticky note)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "note" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300" : "text-slate-400 hover:text-white"}`}>
+              <MessageSquare className="w-3.5 h-3.5" style={{ fill: tool === "note" ? "currentColor" : "none" }} />
+            </button>
+            <button onClick={() => { setTool("dimension"); cancelDrawing(); }} title="Cotation (dimension line)"
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "dimension" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
+              <Ruler className="w-3.5 h-3.5" />
+            </button>
             {/* Stamp kind selector — shown when stamp tool active */}
             {tool === "stamp" && (
               <select value={activeStamp} onChange={e => setActiveStamp(e.target.value as StampKind)}
@@ -1466,6 +1503,28 @@ export default function MeasureCanvas({
                 ))}
               </select>
             )}
+            {/* Separator + Lock/Z-order controls */}
+            <div className="w-px h-5 bg-white/10 mx-0.5" />
+            <button title="Verrouiller/Déverrouiller l'élément sélectionné"
+              onClick={() => {
+                if (!selectedZoneId && !selectedLinearId) return;
+                if (selectedZoneId) {
+                  onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, locked: !m.locked } : m));
+                }
+              }}
+              className="px-1.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white transition-colors">
+              <Lock className="w-3 h-3" />
+            </button>
+            <button title="Premier plan" onClick={() => {
+              if (!selectedZoneId) return;
+              const maxZ = Math.max(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
+              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, zIndex: maxZ + 1 } : m));
+            }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↑</button>
+            <button title="Arrière-plan" onClick={() => {
+              if (!selectedZoneId) return;
+              const minZ = Math.min(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
+              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedZoneId ? { ...m, zIndex: minZ - 1 } : m));
+            }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↓</button>
           </div>
         )}
 
@@ -2650,11 +2709,83 @@ export default function MeasureCanvas({
               );
             }
 
+            if (mk.type === "note") {
+              const noteText = mk.text ?? "Note";
+              const collapsed = mk.collapsed !== false;
+              return (
+                <g key={mk.id} {...common}>
+                  {/* Sticky note icon */}
+                  <rect x={s1.x} y={s1.y} width={collapsed ? 20 : Math.max(80, noteText.length * 6 + 16)} height={collapsed ? 20 : 32} rx={2}
+                    fill="#FEF3C7" stroke="#F59E0B" strokeWidth={1.5} />
+                  {collapsed ? (
+                    <text x={s1.x + 10} y={s1.y + 13} textAnchor="middle" fontSize={12} fill="#92400E">📝</text>
+                  ) : (
+                    <text x={s1.x + 6} y={s1.y + 16} fontSize={9} fill="#92400E" fontFamily="system-ui">{noteText}</text>
+                  )}
+                </g>
+              );
+            }
+
+            if (mk.type === "dimension") {
+              const dx = s2.x - s1.x, dy = s2.y - s1.y;
+              const len = Math.hypot(dx, dy);
+              if (len < 5) return null;
+              const perpX = -dy / len, perpY = dx / len;
+              const off = 16;
+              const rawAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+              const angle = (rawAngle > 90 || rawAngle <= -90) ? rawAngle + 180 : rawAngle;
+              const mid = { x: (s1.x + s2.x) / 2, y: (s1.y + s2.y) / 2 };
+              const dimLabel = mk.dimensionValue ?? "";
+              const dlw = dimLabel.length * 6 + 14;
+              return (
+                <g key={mk.id} {...common}>
+                  {/* Dimension offset line */}
+                  <line x1={s1.x + perpX * off} y1={s1.y + perpY * off}
+                    x2={s2.x + perpX * off} y2={s2.y + perpY * off}
+                    stroke={mk.color} strokeWidth={1} />
+                  {/* Extension lines */}
+                  <line x1={s1.x} y1={s1.y} x2={s1.x + perpX * (off + 5)} y2={s1.y + perpY * (off + 5)}
+                    stroke={mk.color} strokeWidth={0.8} />
+                  <line x1={s2.x} y1={s2.y} x2={s2.x + perpX * (off + 5)} y2={s2.y + perpY * (off + 5)}
+                    stroke={mk.color} strokeWidth={0.8} />
+                  {/* Tick marks */}
+                  <line x1={s1.x + perpX * (off - 4)} y1={s1.y + perpY * (off - 4)}
+                    x2={s1.x + perpX * (off + 4)} y2={s1.y + perpY * (off + 4)}
+                    stroke={mk.color} strokeWidth={1.5} />
+                  <line x1={s2.x + perpX * (off - 4)} y1={s2.y + perpY * (off - 4)}
+                    x2={s2.x + perpX * (off + 4)} y2={s2.y + perpY * (off + 4)}
+                    stroke={mk.color} strokeWidth={1.5} />
+                  {/* Label */}
+                  {dimLabel && (
+                    <g transform={`translate(${mid.x + perpX * off},${mid.y + perpY * off}) rotate(${angle})`}>
+                      <rect x={-dlw / 2} y={-9} width={dlw} height={18} rx={4}
+                        fill="rgba(0,0,0,0.8)" stroke={mk.color} strokeWidth={0.8} />
+                      <text textAnchor="middle" dominantBaseline="middle"
+                        fontSize={10} fill="white" fontWeight="600" fontFamily="ui-monospace, monospace">{dimLabel}</text>
+                    </g>
+                  )}
+                </g>
+              );
+            }
+
+            if (mk.type === "polyline_annot" && mk.polyPoints && mk.polyPoints.length > 1) {
+              const d = mk.polyPoints.map((p, i) => {
+                const s = toSvg(p);
+                return `${i === 0 ? "M" : "L"} ${s.x} ${s.y}`;
+              }).join(" ");
+              return (
+                <g key={mk.id} {...common}>
+                  <path d={d} fill="none" stroke={mk.color} strokeWidth={lw} strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
+                </g>
+              );
+            }
+
             return null;
           })}
 
           {/* Markup in-progress preview */}
-          {mkStart && mouseNorm && (tool === "arrow" || tool === "mk_line" || tool === "callout" || tool === "cloud" || tool === "rect_annot" || tool === "ellipse" || tool === "highlight") && (() => {
+          {mkStart && mouseNorm && (tool === "arrow" || tool === "mk_line" || tool === "callout" || tool === "cloud" || tool === "rect_annot" || tool === "ellipse" || tool === "highlight" || tool === "dimension") && (() => {
             const s1 = toSvg(mkStart);
             const s2 = toSvg(mouseNorm);
             if (tool === "arrow" || tool === "mk_line") {
@@ -2678,6 +2809,9 @@ export default function MeasureCanvas({
                   {tool === "callout" && <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={activeColor} strokeWidth={1.5} strokeDasharray="4 2" />}
                 </g>
               );
+            }
+            if (tool === "dimension") {
+              return <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={activeColor} strokeWidth={1.5} strokeDasharray="6 3" />;
             }
             return null;
           })()}

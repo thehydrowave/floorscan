@@ -427,7 +427,7 @@ export interface TextAnnotation {
 
 // ── Markup annotations (Bluebeam-style) ─────────────────────────────────────
 
-export type MarkupType = "arrow" | "line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp";
+export type MarkupType = "arrow" | "line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp" | "note" | "image" | "polyline_annot" | "dimension";
 
 export type StampKind = "approved" | "rejected" | "review" | "revised" | "draft" | "final" | "not_approved" | "for_info";
 
@@ -457,6 +457,16 @@ export interface MarkupAnnotation {
   penPoints?: { x: number; y: number }[];
   // For stamp
   stampKind?: StampKind;
+  // For note (sticky note — collapsed by default, click to expand)
+  collapsed?: boolean;
+  // For image (placed photo/image on plan)
+  imageDataUrl?: string;  // base64 data URL of placed image
+  // For polyline_annot (multi-point annotation line, not measurement)
+  polyPoints?: { x: number; y: number }[];
+  // For dimension (CAD-style dimension line with ticks + value label)
+  dimensionValue?: string;  // override label e.g. "4.50 m"
+  // Z-order
+  zIndex?: number;
   // Common
   lineWidth?: number;   // default 2
   opacity?: number;     // 0-1, default 1

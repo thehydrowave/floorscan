@@ -9,6 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
+import MarkupsList from "@/components/measure/markups-list";
 import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, DEFAULT_LAYERS } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
@@ -1145,6 +1146,28 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                 />
               </div>
             </div>
+          )}
+          {/* ── Markups List (bottom panel, visible during step 3) ── */}
+          {step === 3 && (
+            <MarkupsList
+              zones={zones} surfaceTypes={allTypes}
+              linearMeasures={linearMeasures} linearCategories={linearCategories}
+              countPoints={countPoints} countGroups={countGroups}
+              angleMeasurements={angleMeasurements} circleMeasures={circleMeasures}
+              textAnnotations={textAnnotations} markupAnnotations={markupAnnotations}
+              imageW={imageNatural.w} imageH={imageNatural.h} ppm={ppm}
+              displayUnit={displayUnit} layers={measureLayers}
+              onSelectItem={(id) => { setSelectedZoneId(id); }}
+              onDeleteItem={(id, kind) => {
+                if (kind === "zone") setZones(z => z.filter(v => v.id !== id));
+                else if (kind === "linear") setLinearMeasures(m => m.filter(v => v.id !== id));
+                else if (kind === "angle") setAngleMeasurements(a => a.filter(v => v.id !== id));
+                else if (kind === "circle") setCircleMeasures(c => c.filter(v => v.id !== id));
+                else if (kind === "text") setTextAnnotations(t => t.filter(v => v.id !== id));
+                else if (kind === "markup") setMarkupAnnotations(m => m.filter(v => v.id !== id));
+                else if (kind === "count") setCountPoints(p => p.filter(v => v.groupId !== id));
+              }}
+            />
           )}
 
           {/* ── STEP 4: Results ── */}
