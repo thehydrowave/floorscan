@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
-import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter } from "lucide-react";
+import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter, LayoutGrid } from "lucide-react";
 import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
@@ -62,7 +62,8 @@ interface MeasureCanvasProps {
 }
 
 type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text"
-  | "arrow" | "mk_line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp";
+  | "arrow" | "mk_line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp"
+  | "lasso";
 
 const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
@@ -148,6 +149,9 @@ export default function MeasureCanvas({
 
   // Déduction mode
   const [isDeductionMode, setIsDeductionMode] = useState(false);
+  // Grid & Rulers toggles
+  const [showGrid, setShowGrid] = useState(false);
+  const [showRulers, setShowRulers] = useState(false);
   const isDeductionRef = useRef(false);
   useEffect(() => { isDeductionRef.current = isDeductionMode; }, [isDeductionMode]);
 
@@ -161,6 +165,11 @@ export default function MeasureCanvas({
   // Text annotation in-progress state
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState("");
+
+  // Lasso multi-select
+  const [lassoStart, setLassoStart] = useState<{ x: number; y: number } | null>(null);
+  const [lassoEnd, setLassoEnd] = useState<{ x: number; y: number } | null>(null);
+  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(new Set());
 
   // Markup in-progress state (arrow, line, callout, cloud, rect_annot, ellipse, highlight, pen)
   const [mkStart, setMkStart] = useState<{ x: number; y: number } | null>(null);
@@ -359,6 +368,9 @@ export default function MeasureCanvas({
         if (dragZoneRef.current) { dragZoneRef.current = null; }
         if (dragLinearVertexRef.current) { dragLinearVertexRef.current = null; }
         if (dragCountPointRef.current) { dragCountPointRef.current = null; }
+        // Lasso: finalize multi-select
+        // (handled in component via useEffect since we need access to zones state)
+
         // Pen tool: finalize freehand drawing on mouseup
         if (penDrawingRef.current.length > 2) {
           const pts = penDrawingRef.current;
@@ -536,6 +548,11 @@ export default function MeasureCanvas({
       const n = toNorm(e.clientX, e.clientY);
       if (n) { penDrawingRef.current.push(n); setPenDrawing([...penDrawingRef.current]); }
     }
+    // Lasso: update drag rect
+    if (tool === "lasso" && lassoStart) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) setLassoEnd(n);
+    }
     let n = toNorm(e.clientX, e.clientY);
     if (n && e.shiftKey && tool === "polygon" && drawingPoints.length > 0 && naturalSize.w > 0) {
       n = snapTo45(drawingPoints[drawingPoints.length - 1], n, naturalSize.w, naturalSize.h);
@@ -602,6 +619,11 @@ export default function MeasureCanvas({
     if (tool === "pen" && e.button === 0) {
       const n = toNorm(e.clientX, e.clientY);
       if (n) { penDrawingRef.current = [n]; setPenDrawing([n]); }
+    }
+    // Lasso: start drag selection
+    if (tool === "lasso" && e.button === 0) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) { setLassoStart(n); setLassoEnd(n); }
     }
   }, [tool, toNorm, vsEditMode, selectedZoneId, selectedLinearId, onHistoryPush]);
 
@@ -804,6 +826,8 @@ export default function MeasureCanvas({
       }]);
     } else if (tool === "pen") {
       // Pen: handled via mousedown/move/up, not click
+    } else if (tool === "lasso") {
+      // Lasso: handled via mousedown/move/up for drag selection
     }
   }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp]);
 
@@ -896,13 +920,33 @@ export default function MeasureCanvas({
       }
       setVsCropStart(null);
     }
-  }, [dragVertex, tool, rectStart, wallStart, wallThicknessCm, naturalSize, ppm, toNorm, addZone, vsCropStart, vsEditMode, onEnsureSession, onVsMatchesChange]);
+    // Lasso: finalize multi-select — select zones whose centroid falls in the lasso rect
+    if (tool === "lasso" && lassoStart) {
+      const n = toNorm(e.clientX, e.clientY);
+      if (n) {
+        const x0 = Math.min(lassoStart.x, n.x), y0 = Math.min(lassoStart.y, n.y);
+        const x1 = Math.max(lassoStart.x, n.x), y1 = Math.max(lassoStart.y, n.y);
+        if (x1 - x0 > 0.005 && y1 - y0 > 0.005) {
+          const hits = new Set<string>();
+          for (const z of zones) {
+            const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length;
+            const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length;
+            if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) hits.add(z.id);
+          }
+          setSelectedZoneIds(hits);
+          if (hits.size === 1) { onSelectedZoneIdChange?.(Array.from(hits)[0]); }
+        }
+      }
+      setLassoStart(null);
+      setLassoEnd(null);
+    }
+  }, [dragVertex, tool, rectStart, wallStart, wallThicknessCm, naturalSize, ppm, toNorm, addZone, vsCropStart, vsEditMode, onEnsureSession, onVsMatchesChange, lassoStart, zones, onSelectedZoneIdChange]);
 
   // Sync touch refs after these callbacks are (re)created
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); setMkStart(null); setPenDrawing([]); penDrawingRef.current = []; setCalloutInputPos(null); setCalloutInputValue(""); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); setMkStart(null); setPenDrawing([]); penDrawingRef.current = []; setCalloutInputPos(null); setCalloutInputValue(""); setLassoStart(null); setLassoEnd(null); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   // Track if nudge sequence is active (to only push history once)
@@ -1043,6 +1087,7 @@ export default function MeasureCanvas({
           case "b": switchTool("stamp"); break;     // B = tampon (Badge)
           case "e": switchTool("ellipse"); break;   // E = ellipse
           case "j": switchTool("mk_line"); break;   // J = ligne
+          case "g": setShowGrid(v => !v); break;   // G = grid toggle
         }
       }
     };
@@ -1192,6 +1237,15 @@ export default function MeasureCanvas({
             }`}
           >
             <MousePointer2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => { setTool("lasso"); cancelDrawing(); }}
+            title="Lasso — sélection multiple par zone"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "lasso" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Pentagon className="w-3.5 h-3.5" style={{ transform: "rotate(180deg)" }} />
           </button>
           <button
             onClick={() => { setTool("polygon"); cancelDrawing(); }}
@@ -1472,6 +1526,20 @@ export default function MeasureCanvas({
           {isDeductionMode ? "Déduction ON" : "Déduction"}
         </button>
 
+        {/* Grid & Rulers toggles */}
+        <button onClick={() => setShowGrid(v => !v)} title="Grille (G)"
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            showGrid ? "bg-slate-500/20 border border-slate-400/40 text-slate-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+          }`}>
+          <LayoutGrid className="w-3.5 h-3.5" /> Grille
+        </button>
+        <button onClick={() => setShowRulers(v => !v)} title="Règles"
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            showRulers ? "bg-slate-500/20 border border-slate-400/40 text-slate-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+          }`}>
+          <Ruler className="w-3.5 h-3.5" /> Règles
+        </button>
+
         <button onClick={undoLast} title="Annuler (Ctrl+Z)"
           disabled={drawingPoints.length === 0 && !canUndo}
           className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
@@ -1590,6 +1658,59 @@ export default function MeasureCanvas({
               <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(239,68,68,0.55)" strokeWidth="3" />
             </pattern>
           </defs>
+
+          {/* ── Grid overlay ── */}
+          {showGrid && ppm && imgOffset.w > 0 && naturalSize.w > 0 && (() => {
+            // Grid spacing: 1m in SVG pixels
+            const pxPerM = ppm * (imgOffset.w / naturalSize.w);
+            // Choose grid step that makes cells 30-120px on screen
+            let stepM = 1;
+            if (pxPerM < 30) stepM = 5;
+            else if (pxPerM < 60) stepM = 2;
+            else if (pxPerM > 200) stepM = 0.5;
+            else if (pxPerM > 400) stepM = 0.25;
+            const stepPx = stepM * pxPerM;
+            const lines: React.ReactNode[] = [];
+            // Vertical lines
+            for (let x = imgOffset.x; x < imgOffset.x + imgOffset.w; x += stepPx) {
+              lines.push(<line key={`gv${x}`} x1={x} y1={imgOffset.y} x2={x} y2={imgOffset.y + imgOffset.h} stroke="rgba(148,163,184,0.12)" strokeWidth={0.5} />);
+            }
+            // Horizontal lines
+            for (let y = imgOffset.y; y < imgOffset.y + imgOffset.h; y += stepPx) {
+              lines.push(<line key={`gh${y}`} x1={imgOffset.x} y1={y} x2={imgOffset.x + imgOffset.w} y2={y} stroke="rgba(148,163,184,0.12)" strokeWidth={0.5} />);
+            }
+            return <g className="pointer-events-none">{lines}</g>;
+          })()}
+
+          {/* ── Rulers overlay (top + left edges) ── */}
+          {showRulers && ppm && imgOffset.w > 0 && naturalSize.w > 0 && (() => {
+            const pxPerM = ppm * (imgOffset.w / naturalSize.w);
+            let stepM = 1;
+            if (pxPerM < 40) stepM = 5;
+            else if (pxPerM < 80) stepM = 2;
+            else if (pxPerM > 250) stepM = 0.5;
+            const stepPx = stepM * pxPerM;
+            const ticks: React.ReactNode[] = [];
+            // Top ruler
+            for (let x = imgOffset.x, i = 0; x < imgOffset.x + imgOffset.w; x += stepPx, i++) {
+              ticks.push(
+                <g key={`rt${i}`}>
+                  <line x1={x} y1={imgOffset.y} x2={x} y2={imgOffset.y + 10} stroke="rgba(148,163,184,0.5)" strokeWidth={0.8} />
+                  <text x={x + 2} y={imgOffset.y + 9} fontSize={7} fill="rgba(148,163,184,0.5)" fontFamily="ui-monospace">{(i * stepM).toFixed(stepM < 1 ? 1 : 0)}</text>
+                </g>
+              );
+            }
+            // Left ruler
+            for (let y = imgOffset.y, i = 0; y < imgOffset.y + imgOffset.h; y += stepPx, i++) {
+              ticks.push(
+                <g key={`rl${i}`}>
+                  <line x1={imgOffset.x} y1={y} x2={imgOffset.x + 10} y2={y} stroke="rgba(148,163,184,0.5)" strokeWidth={0.8} />
+                  <text x={imgOffset.x + 2} y={y - 1} fontSize={7} fill="rgba(148,163,184,0.5)" fontFamily="ui-monospace">{(i * stepM).toFixed(stepM < 1 ? 1 : 0)}</text>
+                </g>
+              );
+            }
+            return <g className="pointer-events-none">{ticks}</g>;
+          })()}
 
           {/* Completed zones */}
           {zones.map(zone => {
@@ -2473,6 +2594,14 @@ export default function MeasureCanvas({
               );
             }
             return null;
+          })()}
+
+          {/* Lasso selection rect */}
+          {tool === "lasso" && lassoStart && lassoEnd && (() => {
+            const s1 = toSvg(lassoStart), s2 = toSvg(lassoEnd);
+            const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+            return <rect x={x} y={y} width={Math.abs(s2.x - s1.x)} height={Math.abs(s2.y - s1.y)}
+              fill="rgba(139,92,246,0.08)" stroke="#8B5CF6" strokeWidth={1.5} strokeDasharray="6 3" rx={2} />;
           })()}
 
           {/* Pen in-progress */}
