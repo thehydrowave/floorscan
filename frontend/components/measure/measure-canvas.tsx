@@ -702,7 +702,7 @@ export default function MeasureCanvas({
       const n = toNorm(e.clientX, e.clientY);
       if (n) { setLassoStart(n); setLassoEnd(n); }
     }
-  }, [tool, toNorm, vsEditMode, selectedZoneId, selectedLinearId, onHistoryPush]);
+  }, [tool, toNorm, vsEditMode, selectedZoneId, selectedLinearId, onHistoryPush, selectedMarkupId, selectedTextId, selectedCircleId, markupAnnotations, textAnnotations, circleMeasures]);
 
   /** Find the nearest linear measure to a normalized point (returns measure id or null) */
   const findNearestLinear = useCallback((pt: { x: number; y: number }, threshold = 0.015): string | null => {
@@ -952,7 +952,7 @@ export default function MeasureCanvas({
       // Polyline annotation: multi-click, double-click/Enter to finish
       setDrawingPoints(prev => { const next = [...prev, pt]; drawingPointsRef.current = next; return next; });
     }
-  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp]);
+  }, [tool, toNorm, nearFirst, drawingPoints, addZone, anglePts, splitPts, onHistoryPush, vsEditMode, vsMatches, onVsMatchesChange, scalePts, scaleInputOpen, linearDrawingPts, activeCountGroupId, countPoints, onCountPointsChange, zones, findNearestLinear, onSelectedZoneIdChange, onSelectedLinearIdChange, circleCenter, circleMeasures, onCircleMeasuresChange, activeLinearCategoryId, angleMeasurements, onAngleMeasurementsChange, mkStart, markupAnnotations, onMarkupAnnotationsChange, activeStamp, textAnnotations, onTextAnnotationsChange, ppm, naturalSize, displayUnit]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (tool === "polygon") {
@@ -1268,7 +1268,7 @@ export default function MeasureCanvas({
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("keyup", onKeyUp); };
-  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo, tool, addZone, selectedZoneId, selectedLinearId, onHistoryPush, onSelectedZoneIdChange, onSelectedLinearIdChange, linearMeasures, activeLinearCategoryId, onLinearMeasuresChange]);
+  }, [cancelDrawing, drawingPoints, anglePts, onHistoryUndo, onHistoryRedo, tool, addZone, selectedZoneId, selectedLinearId, onHistoryPush, onSelectedZoneIdChange, onSelectedLinearIdChange, linearMeasures, activeLinearCategoryId, onLinearMeasuresChange, selectedMarkupId, selectedTextId, selectedCircleId, markupGroups, onMarkupGroupsChange, selectedZoneIds]);
 
   const deleteZone = (id: string) => {
     onHistoryPush?.(zonesRef.current);
