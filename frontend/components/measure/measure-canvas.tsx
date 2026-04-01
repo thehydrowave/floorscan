@@ -178,6 +178,12 @@ export default function MeasureCanvas({
 
   // Format painter
   const [formatPainterStyle, setFormatPainterStyle] = useState<{ color: string; lineWidth?: number; fillColor?: string; fillOpacity?: number } | null>(null);
+  // Extended selection (for markups, texts, circles)
+  const [selectedMarkupId, setSelectedMarkupId] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
+  // Markup drag state
+  const dragMarkupRef = useRef<{ id: string; kind: "markup" | "text" | "circle"; startNorm: { x: number; y: number }; origX1: number; origY1: number; origX2: number; origY2: number } | null>(null);
   // Layers panel & Tool Chest panel
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [showToolChest, setShowToolChest] = useState(false);
@@ -224,6 +230,8 @@ export default function MeasureCanvas({
   const markupAnnotationsRef = useRef(markupAnnotations);
   const onMarkupAnnotationsChangeRef = useRef(onMarkupAnnotationsChange);
   const activeColorRef = useRef("");
+  const textAnnotationsRef = useRef(textAnnotations);
+  const onTextAnnotationsChangeRef = useRef(onTextAnnotationsChange);
 
   // Visual search state
   const [vsCropStart, setVsCropStart] = useState<{ x: number; y: number } | null>(null);
@@ -264,6 +272,8 @@ export default function MeasureCanvas({
   useEffect(() => { onCircleMeasuresChangeRef.current = onCircleMeasuresChange; }, [onCircleMeasuresChange]);
   useEffect(() => { markupAnnotationsRef.current = markupAnnotations; }, [markupAnnotations]);
   useEffect(() => { onMarkupAnnotationsChangeRef.current = onMarkupAnnotationsChange; }, [onMarkupAnnotationsChange]);
+  useEffect(() => { textAnnotationsRef.current = textAnnotations; }, [textAnnotations]);
+  useEffect(() => { onTextAnnotationsChangeRef.current = onTextAnnotationsChange; }, [onTextAnnotationsChange]);
 
   // ── Update imgOffset after zoom/translate is committed to DOM ──────────────
   const updateOffset = useCallback(() => {
@@ -372,6 +382,29 @@ export default function MeasureCanvas({
         ));
         return;
       }
+      // Markup/text/circle drag
+      if (dragMarkupRef.current) {
+        const n = getNorm(e);
+        if (!n) return;
+        const { id, kind, startNorm, origX1, origY1, origX2, origY2 } = dragMarkupRef.current;
+        const dx = n.x - startNorm.x, dy = n.y - startNorm.y;
+        if (kind === "markup") {
+          onMarkupAnnotationsChangeRef.current?.(markupAnnotationsRef.current.map(m =>
+            m.id !== id ? m : { ...m, x1: origX1 + dx, y1: origY1 + dy, x2: origX2 + dx, y2: origY2 + dy,
+              ...(m.penPoints ? { penPoints: m.penPoints.map(p => ({ x: p.x + dx, y: p.y + dy })) } : {}),
+            }
+          ));
+        } else if (kind === "text") {
+          onTextAnnotationsChangeRef.current?.(textAnnotationsRef.current.map(t =>
+            t.id !== id ? t : { ...t, x: origX1 + dx, y: origY1 + dy }
+          ));
+        } else if (kind === "circle") {
+          onCircleMeasuresChangeRef.current?.(circleMeasuresRef.current.map(c =>
+            c.id !== id ? c : { ...c, center: { x: origX1 + dx, y: origY1 + dy }, edgePoint: { x: origX2 + dx, y: origY2 + dy } }
+          ));
+        }
+        return;
+      }
     };
     const onUp = (e: MouseEvent) => {
       if (e.button === 2) {
@@ -384,6 +417,7 @@ export default function MeasureCanvas({
         if (dragZoneRef.current) { dragZoneRef.current = null; }
         if (dragLinearVertexRef.current) { dragLinearVertexRef.current = null; }
         if (dragCountPointRef.current) { dragCountPointRef.current = null; }
+        if (dragMarkupRef.current) { dragMarkupRef.current = null; }
         // Lasso: finalize multi-select
         // (handled in component via useEffect since we need access to zones state)
 
@@ -558,7 +592,7 @@ export default function MeasureCanvas({
   }, [zones, activeTypeId, onZonesChange, onHistoryPush]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (dragVertexRef.current || dragZoneRef.current || dragLinearVertexRef.current || dragCountPointRef.current) return;
+    if (dragVertexRef.current || dragZoneRef.current || dragLinearVertexRef.current || dragCountPointRef.current || dragMarkupRef.current) return;
     // Pen tool: accumulate freehand points
     if (tool === "pen" && penDrawingRef.current.length > 0) {
       const n = toNorm(e.clientX, e.clientY);
@@ -618,6 +652,33 @@ export default function MeasureCanvas({
           }
         }
       }
+      // If a markup is selected → start drag
+      if (selectedMarkupId) {
+        const mk = markupAnnotations.find(m => m.id === selectedMarkupId);
+        if (mk) {
+          dragMarkupRef.current = { id: mk.id, kind: "markup", startNorm: n, origX1: mk.x1, origY1: mk.y1, origX2: mk.x2, origY2: mk.y2 };
+          skipNextClickRef.current = true;
+          return;
+        }
+      }
+      // If a text is selected → start drag
+      if (selectedTextId) {
+        const ta = textAnnotations.find(t => t.id === selectedTextId);
+        if (ta) {
+          dragMarkupRef.current = { id: ta.id, kind: "text", startNorm: n, origX1: ta.x, origY1: ta.y, origX2: ta.x, origY2: ta.y };
+          skipNextClickRef.current = true;
+          return;
+        }
+      }
+      // If a circle is selected → start drag
+      if (selectedCircleId) {
+        const cm = circleMeasures.find(c => c.id === selectedCircleId);
+        if (cm) {
+          dragMarkupRef.current = { id: cm.id, kind: "circle", startNorm: n, origX1: cm.center.x, origY1: cm.center.y, origX2: cm.edgePoint.x, origY2: cm.edgePoint.y };
+          skipNextClickRef.current = true;
+          return;
+        }
+      }
     }
     if (tool === "rect" && e.button === 0) {
       const n = toNorm(e.clientX, e.clientY);
@@ -670,23 +731,40 @@ export default function MeasureCanvas({
     const pt: { x: number; y: number } =
       (tool === "polygon" && e.shiftKey && mouseNorm && drawingPoints.length > 0) ? mouseNorm : raw;
     if (tool === "select") {
-      // Hit test: find zone under cursor (reverse for topmost)
+      const clearAll = () => { onSelectedZoneIdChange?.(null); onSelectedLinearIdChange?.(null); setSelectedMarkupId(null); setSelectedTextId(null); setSelectedCircleId(null); };
+
+      // 1. Check markups (reverse for topmost)
+      for (let i = markupAnnotations.length - 1; i >= 0; i--) {
+        const mk = markupAnnotations[i];
+        const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
+        const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
+        const pad = 0.015;
+        if (pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad) {
+          clearAll(); setSelectedMarkupId(mk.id); return;
+        }
+      }
+      // 2. Check text annotations
+      for (const ta of textAnnotations) {
+        if (Math.abs(pt.x - ta.x) < 0.05 && Math.abs(pt.y - ta.y) < 0.03) {
+          clearAll(); setSelectedTextId(ta.id); return;
+        }
+      }
+      // 3. Check circles
+      for (const cm of circleMeasures) {
+        const dist = Math.hypot(pt.x - cm.center.x, pt.y - cm.center.y);
+        const edgeDist = Math.hypot(cm.edgePoint.x - cm.center.x, cm.edgePoint.y - cm.center.y);
+        if (dist < edgeDist + 0.02) {
+          clearAll(); setSelectedCircleId(cm.id); return;
+        }
+      }
+      // 4. Check zones
       const hitZone = [...zones].reverse().find(z => pointInPolygon(pt, z.points));
-      if (hitZone) {
-        onSelectedZoneIdChange?.(hitZone.id);
-        onSelectedLinearIdChange?.(null);
-        return;
-      }
-      // Check linear measures
+      if (hitZone) { clearAll(); onSelectedZoneIdChange?.(hitZone.id); return; }
+      // 5. Check linears
       const hitLinearId = findNearestLinear(pt);
-      if (hitLinearId) {
-        onSelectedLinearIdChange?.(hitLinearId);
-        onSelectedZoneIdChange?.(null);
-        return;
-      }
-      // Click on empty → deselect
-      onSelectedZoneIdChange?.(null);
-      onSelectedLinearIdChange?.(null);
+      if (hitLinearId) { clearAll(); onSelectedLinearIdChange?.(hitLinearId); return; }
+      // Nothing hit → deselect all
+      clearAll();
       return;
     }
     if (tool === "polygon") {
@@ -1110,6 +1188,24 @@ export default function MeasureCanvas({
         onSelectedLinearIdChange?.(null);
         return;
       }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedMarkupId) {
+        e.preventDefault();
+        onMarkupAnnotationsChangeRef.current?.(markupAnnotationsRef.current.filter(m => m.id !== selectedMarkupId));
+        setSelectedMarkupId(null);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedTextId) {
+        e.preventDefault();
+        onTextAnnotationsChangeRef.current?.(textAnnotationsRef.current.filter(t => t.id !== selectedTextId));
+        setSelectedTextId(null);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedCircleId) {
+        e.preventDefault();
+        onCircleMeasuresChangeRef.current?.(circleMeasuresRef.current.filter(c => c.id !== selectedCircleId));
+        setSelectedCircleId(null);
+        return;
+      }
 
       // ── Arrow key nudge selected zone ──
       if (selectedZoneId && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
@@ -1243,7 +1339,13 @@ export default function MeasureCanvas({
       ? "Zone sélectionnée · Glissez pour déplacer · Ctrl+D dupliquer · Flèches ajuster · Suppr supprimer"
       : selectedLinearId
       ? "Linéaire sélectionné · Glissez un vertex pour éditer · Suppr supprimer"
-      : "Cliquez une zone ou un linéaire pour sélectionner"
+      : selectedMarkupId
+      ? "Annotation sélectionnée · Glissez pour déplacer · Suppr supprimer"
+      : selectedTextId
+      ? "Texte sélectionné · Glissez pour déplacer · Suppr supprimer"
+      : selectedCircleId
+      ? "Cercle sélectionné · Glissez pour déplacer · Suppr supprimer"
+      : "Cliquez un élément pour le sélectionner · Glissez pour déplacer · Suppr supprimer"
     : tool === "angle"
     ? anglePts.length === 0 ? "Cliquez pour placer le 1er point de la mesure d'angle"
     : anglePts.length === 1 ? "Cliquez pour placer le sommet de l'angle"
@@ -2489,7 +2591,7 @@ export default function MeasureCanvas({
             const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM, displayUnit)}` : "";
             const clw = cLabel.length * 5.5 + 12;
             return (
-              <g key={cm.id} style={{ pointerEvents: "all" }}
+              <g key={cm.id} style={{ pointerEvents: "all", cursor: tool === "select" ? (selectedCircleId === cm.id ? "move" : "pointer") : "default", ...(selectedCircleId === cm.id ? { filter: `drop-shadow(0 0 6px ${cColor})` } : {}) }}
                 onContextMenu={e => {
                   e.stopPropagation(); e.preventDefault();
                   onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== cm.id));
@@ -2556,7 +2658,7 @@ export default function MeasureCanvas({
             const maxW = Math.max(...lines.map(l => l.length)) * fs * 0.58 + 16;
             const totalH = lines.length * lineH + 8;
             return (
-              <g key={ta.id} style={{ pointerEvents: "all", cursor: "default" }}
+              <g key={ta.id} style={{ pointerEvents: "all", cursor: tool === "select" ? (selectedTextId === ta.id ? "move" : "pointer") : "default", ...(selectedTextId === ta.id ? { filter: `drop-shadow(0 0 6px ${ta.color})` } : {}) }}
                 onContextMenu={e => {
                   e.stopPropagation(); e.preventDefault();
                   onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== ta.id));
@@ -2581,7 +2683,8 @@ export default function MeasureCanvas({
             const op = mk.opacity ?? 1;
             const fc = mk.fillColor ?? mk.color;
             const fo = mk.fillOpacity ?? 0.15;
-            const common = { style: { pointerEvents: "all" as const, cursor: "pointer", opacity: op },
+            const isSel = selectedMarkupId === mk.id;
+            const common = { style: { pointerEvents: "all" as const, cursor: tool === "select" ? (isSel ? "move" : "pointer") : "default", opacity: op, ...(isSel ? { filter: `drop-shadow(0 0 6px ${mk.color})` } : {}) },
               onContextMenu: (e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== mk.id)); } };
 
             if (mk.type === "arrow" || mk.type === "line") {
