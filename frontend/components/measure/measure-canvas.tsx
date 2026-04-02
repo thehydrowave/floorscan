@@ -38,6 +38,8 @@ interface MeasureCanvasProps {
   onCountPointsChange?: (pts: CountPoint[]) => void;
   countGroups?: CountGroup[];
   activeCountGroupId?: string;
+  onActiveCountGroupIdChange?: (id: string) => void;
+  onCountGroupsChange?: (groups: CountGroup[]) => void;
   // Selection props (lifted to parent)
   selectedZoneId?: string | null;
   onSelectedZoneIdChange?: (id: string | null) => void;
@@ -116,7 +118,7 @@ export default function MeasureCanvas({
   sessionId, onEnsureSession, vsMatches = [], onVsMatchesChange, customDetections = [], onSaveDetection,
   onPpmChange,
   linearMeasures = [], onLinearMeasuresChange, linearCategories = [], activeLinearCategoryId = "",
-  countPoints = [], onCountPointsChange, countGroups = [], activeCountGroupId = "",
+  countPoints = [], onCountPointsChange, countGroups = [], activeCountGroupId = "", onActiveCountGroupIdChange, onCountGroupsChange: onCountGroupsChangeProp,
   selectedZoneId = null, onSelectedZoneIdChange, selectedLinearId = null, onSelectedLinearIdChange,
   angleMeasurements = [], onAngleMeasurementsChange,
   circleMeasures = [], onCircleMeasuresChange,
@@ -743,15 +745,36 @@ export default function MeasureCanvas({
     if (tool === "select") {
       const clearAll = () => { onSelectedZoneIdChange?.(null); onSelectedLinearIdChange?.(null); setSelectedMarkupId(null); setSelectedTextId(null); setSelectedCircleId(null); };
 
-      // 1. Check markups (reverse for topmost)
+      // 1. Check markups (reverse for topmost) — pen uses point proximity, others use bbox
       for (let i = markupAnnotations.length - 1; i >= 0; i--) {
         const mk = markupAnnotations[i];
-        const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
-        const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
         const pad = 0.015;
-        if (pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad) {
-          clearAll(); setSelectedMarkupId(mk.id); return;
+        let hit = false;
+        if (mk.type === "pen" && mk.penPoints && mk.penPoints.length > 1) {
+          // Check proximity to any segment of the pen stroke
+          for (let j = 0; j < mk.penPoints.length - 1; j++) {
+            const a = mk.penPoints[j], b = mk.penPoints[j + 1];
+            const abx = b.x - a.x, aby = b.y - a.y;
+            const apx = pt.x - a.x, apy = pt.y - a.y;
+            const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+            const dx = a.x + t * abx - pt.x, dy = a.y + t * aby - pt.y;
+            if (Math.hypot(dx, dy) < pad) { hit = true; break; }
+          }
+        } else if (mk.type === "polyline_annot" && mk.polyPoints && mk.polyPoints.length > 1) {
+          for (let j = 0; j < mk.polyPoints.length - 1; j++) {
+            const a = mk.polyPoints[j], b = mk.polyPoints[j + 1];
+            const abx = b.x - a.x, aby = b.y - a.y;
+            const apx = pt.x - a.x, apy = pt.y - a.y;
+            const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+            const dx = a.x + t * abx - pt.x, dy = a.y + t * aby - pt.y;
+            if (Math.hypot(dx, dy) < pad) { hit = true; break; }
+          }
+        } else {
+          const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
+          const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
+          hit = pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad;
         }
+        if (hit) { clearAll(); setSelectedMarkupId(mk.id); return; }
       }
       // 2. Check text annotations
       for (const ta of textAnnotations) {
@@ -1888,15 +1911,31 @@ export default function MeasureCanvas({
           )}
         </div>
 
+        {/* Layer selector */}
+        {onActiveLayerIdChange && (
+          <div className="flex items-center glass border border-white/10 rounded-lg px-2 py-1">
+            <span className="w-2 h-2 rounded-full mr-1.5" style={{ background: layers.find(l => l.id === activeLayerId)?.color ?? "#6B7280" }} />
+            <select
+              value={activeLayerId}
+              onChange={e => onActiveLayerIdChange(e.target.value)}
+              className="bg-transparent text-xs text-slate-300 outline-none cursor-pointer"
+              title="Calque actif — les nouvelles mesures seront ajoutées à ce calque"
+            >
+              {layers.map(l => (
+                <option key={l.id} value={l.id} className="bg-slate-900">{l.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Unit selector */}
         <div className="flex items-center glass border border-white/10 rounded-lg px-2 py-1">
           <span className="text-[10px] text-slate-500 mr-1.5">Unité</span>
           <select
             value={displayUnit}
-            onChange={() => {/* controlled by parent via prop */}}
+            onChange={() => {}}
             className="bg-transparent text-xs text-slate-300 font-mono outline-none cursor-default"
             disabled
-            title="Unité d'affichage (configurable dans les options)"
           >
             <option value={displayUnit}>{displayUnit}</option>
           </select>
@@ -1905,7 +1944,47 @@ export default function MeasureCanvas({
       </div>
 
       {/* Hint */}
-      <span className="text-xs text-slate-500 italic -mt-1">{hint}</span>
+      <div className="flex items-center gap-2 -mt-1">
+        <div className="glass border border-white/10 rounded-lg px-3 py-1.5 flex-1">
+          <span className="text-sm text-slate-300 font-medium">{hint}</span>
+        </div>
+        {/* Actions for selected element */}
+        {(selectedZoneId || selectedLinearId || selectedMarkupId || selectedTextId || selectedCircleId) && (
+          <div className="flex items-center gap-1">
+            <button onClick={() => {
+              // Copy selected element
+              if (selectedZoneId) {
+                const z = zones.find(v => v.id === selectedZoneId);
+                if (z) { onHistoryPush?.(zones); const dup = { ...z, id: crypto.randomUUID(), name: z.name ? `${z.name} (copie)` : undefined, points: z.points.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })) }; onZonesChange([...zones, dup]); onSelectedZoneIdChange?.(dup.id); }
+              } else if (selectedMarkupId) {
+                const mk = markupAnnotations.find(m => m.id === selectedMarkupId);
+                if (mk) { const dup = { ...mk, id: crypto.randomUUID(), x1: mk.x1 + 0.02, y1: mk.y1 + 0.02, x2: mk.x2 + 0.02, y2: mk.y2 + 0.02, ...(mk.penPoints ? { penPoints: mk.penPoints.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })) } : {}), ...(mk.polyPoints ? { polyPoints: mk.polyPoints.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })) } : {}) }; onMarkupAnnotationsChange?.([...markupAnnotations, dup]); setSelectedMarkupId(dup.id); }
+              } else if (selectedTextId) {
+                const ta = textAnnotations.find(t => t.id === selectedTextId);
+                if (ta) { const dup = { ...ta, id: crypto.randomUUID(), x: ta.x + 0.02, y: ta.y + 0.02 }; onTextAnnotationsChange?.([...textAnnotations, dup]); setSelectedTextId(dup.id); }
+              } else if (selectedCircleId) {
+                const cm = circleMeasures.find(c => c.id === selectedCircleId);
+                if (cm) { const dup = { ...cm, id: crypto.randomUUID(), center: { x: cm.center.x + 0.02, y: cm.center.y + 0.02 }, edgePoint: { x: cm.edgePoint.x + 0.02, y: cm.edgePoint.y + 0.02 } }; onCircleMeasuresChange?.([...circleMeasures, dup]); setSelectedCircleId(dup.id); }
+              } else if (selectedLinearId) {
+                const lm = linearMeasures.find(m => m.id === selectedLinearId);
+                if (lm) { const dup = { ...lm, id: crypto.randomUUID(), points: lm.points.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })) }; onLinearMeasuresChange?.([...linearMeasures, dup]); onSelectedLinearIdChange?.(dup.id); }
+              }
+            }} title="Copier (Ctrl+D)" className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors">
+              <Copy className="w-4 h-4" />
+            </button>
+            <button onClick={() => {
+              // Delete selected element
+              if (selectedZoneId) { onHistoryPush?.(zones); onZonesChange(zones.filter(z => z.id !== selectedZoneId)); onSelectedZoneIdChange?.(null); }
+              else if (selectedMarkupId) { onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== selectedMarkupId)); setSelectedMarkupId(null); }
+              else if (selectedTextId) { onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== selectedTextId)); setSelectedTextId(null); }
+              else if (selectedCircleId) { onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== selectedCircleId)); setSelectedCircleId(null); }
+              else if (selectedLinearId) { onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== selectedLinearId)); onSelectedLinearIdChange?.(null); }
+            }} title="Supprimer (Suppr)" className="glass border border-red-500/30 rounded-lg p-2 text-red-400 hover:text-red-300 hover:border-red-500/50 transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ── Canvas ── */}
       <div
@@ -3077,7 +3156,18 @@ export default function MeasureCanvas({
                         // Apply preset: switch to the right tool, set color, layer, etc.
                         if (preset.toolType === "area") setTool("polygon");
                         else if (preset.toolType === "polylength") setTool("linear");
-                        else if (preset.toolType === "count") setTool("count");
+                        else if (preset.toolType === "count") {
+                          setTool("count");
+                          // Find or create a count group matching this preset
+                          const existing = countGroups.find(g => g.name === preset.subject || g.name === preset.name);
+                          if (existing) {
+                            onActiveCountGroupIdChange?.(existing.id);
+                          } else if (onCountGroupsChangeProp) {
+                            const newGrp = { id: `cnt_${Date.now()}`, name: preset.subject || preset.name, color: preset.color };
+                            onCountGroupsChangeProp([...countGroups, newGrp]);
+                            onActiveCountGroupIdChange?.(newGrp.id);
+                          }
+                        }
                         else if (preset.toolType === "diameter") setTool("circle");
                         else if (preset.toolType === "angle") setTool("angle");
                         if (preset.layerId) onActiveLayerIdChange?.(preset.layerId);

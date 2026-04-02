@@ -388,6 +388,16 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setClientAddress(""); setQuoteNumber(""); setQuoteDate(new Date().toISOString().slice(0, 10));
     setSavedPlans([]); setCurrentPlanName("Plan 1"); setActivePlanId("plan-main");
     setActiveTypeId(DEFAULT_SURFACE_TYPES[0].id); setStep(0);
+    // Reset all new module states
+    setLinearMeasures([]); setLinearCategories(DEFAULT_LINEAR_CATEGORIES);
+    setCountPoints([]); setCountGroups(DEFAULT_COUNT_GROUPS);
+    setAngleMeasurements([]); setCircleMeasures([]);
+    setTextAnnotations([]); setMarkupAnnotations([]);
+    setMarkupGroups([]); setMeasureLayers(DEFAULT_LAYERS);
+    setActiveLayerId("lyr_general"); setDisplayUnit("m");
+    setSelectedZoneId(null); setSelectedLinearId(null);
+    setCustomDetections([]); setVsMatches([]);
+    setSessionId(null);
   };
 
   // ── Import / Export .floorscan ─────────────────────────────────────────────
@@ -1083,6 +1093,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onCountPointsChange={setCountPoints}
                   countGroups={countGroups}
                   activeCountGroupId={activeCountGroupId}
+                  onActiveCountGroupIdChange={setActiveCountGroupId}
+                  onCountGroupsChange={setCountGroups}
                   selectedZoneId={selectedZoneId}
                   onSelectedZoneIdChange={setSelectedZoneId}
                   selectedLinearId={selectedLinearId}
