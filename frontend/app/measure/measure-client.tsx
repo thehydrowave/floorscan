@@ -1013,7 +1013,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
           {/* ── STEP 3: Measure ── */}
           {step === 3 && imageB64 && (
-            <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 min-w-0">
                 {/* Multi-plan tab bar */}
                 {(savedPlans.length > 0 || true) && (
@@ -1125,7 +1125,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   }}
                 />
               </div>
-              <div className="lg:w-64 shrink-0">
+              <div className="lg:w-72 shrink-0">
                 <SurfacePanel
                   types={surfaceTypes}
                   zones={zones}

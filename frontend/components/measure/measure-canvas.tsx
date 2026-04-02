@@ -211,6 +211,9 @@ export default function MeasureCanvas({
   const [newLayerModalOpen, setNewLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerColor, setNewLayerColor] = useState("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"));
+  // Dropdown menus
+  const [showAnnotDropdown, setShowAnnotDropdown] = useState(false);
+  const [showEraserDropdown, setShowEraserDropdown] = useState(false);
 
   // Lasso multi-select
   const [lassoStart, setLassoStart] = useState<{ x: number; y: number } | null>(null);
@@ -748,6 +751,9 @@ export default function MeasureCanvas({
   }, [linearMeasures]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    // Close dropdown menus on any canvas click
+    setShowAnnotDropdown(false);
+    setShowEraserDropdown(false);
     if (skipNextClickRef.current) { skipNextClickRef.current = false; return; }
     if (e.button !== 0) return;
     const raw = toNorm(e.clientX, e.clientY);
@@ -1606,49 +1612,41 @@ export default function MeasureCanvas({
   return (
     <div className="flex flex-col gap-2">
 
-      {/* ══ BAR 1 : VISIBILITY + CONTROLS ══ */}
-      <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
-        <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">VISIBILITY</span>
+      {/* ══ BAR 1 : CALQUES ══ */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0">
+        <Layers size={12} className="text-blue-400 shrink-0" />
+        <span className="text-[9px] text-blue-400 uppercase tracking-wider font-semibold mr-1 shrink-0">CALQUES</span>
 
-        {/* Grid toggle */}
-        <button onClick={() => setShowGrid(v => !v)} title="Grille (G)"
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
-            showGrid ? "border-slate-400/30 bg-slate-500/10 text-slate-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
-          }`}>
-          <LayoutGrid size={10} className="text-slate-400" />
-          {showGrid ? <Eye className="w-2.5 h-2.5 text-slate-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        {/* ── Inline layer buttons ── */}
+        {layers.map(lyr => (
+          <button key={lyr.id}
+            onClick={() => onActiveLayerIdChange?.(lyr.id)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
+              activeLayerId === lyr.id
+                ? "border-blue-500/40 bg-blue-500/15 text-white shadow-sm shadow-blue-500/10"
+                : "border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10 hover:bg-white/5"
+            }`}>
+            <span className="w-2.5 h-2.5 rounded-full ring-1 shrink-0" style={{ background: lyr.color, ringColor: activeLayerId === lyr.id ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)" }} />
+            <span className="truncate max-w-20">{lyr.name}</span>
+            {lyr.locked && <Lock className="w-2.5 h-2.5 text-red-400 shrink-0" />}
+            {!lyr.visible && <EyeOff className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+          </button>
+        ))}
+
+        {/* Create new layer */}
+        <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
+          title="Créer un calque"
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] border border-dashed border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/50 transition-all">
+          + Nouveau
         </button>
 
-        {/* Rulers toggle */}
-        <button onClick={() => setShowRulers(v => !v)} title="Règles"
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
-            showRulers ? "border-slate-400/30 bg-slate-500/10 text-slate-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
-          }`}>
-          <Ruler size={10} className="text-slate-400" />
-          {showRulers ? <Eye className="w-2.5 h-2.5 text-slate-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        {/* Manage layers (open panel) */}
+        <button onClick={() => setShowLayersPanel(v => !v)} title="Gérer les calques"
+          className={`p-1 rounded text-slate-500 hover:text-blue-400 transition-colors ${showLayersPanel ? "text-blue-400 bg-blue-500/10" : ""}`}>
+          <Wrench size={11} />
         </button>
 
-        <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-
-        {/* Layers panel toggle */}
-        <button onClick={() => setShowLayersPanel(v => !v)} title="Calques / Disciplines"
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
-            showLayersPanel ? "border-blue-500/30 bg-blue-500/10 text-blue-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
-          }`}>
-          <Layers size={10} className="text-blue-400" />
-          {showLayersPanel ? <Eye className="w-2.5 h-2.5 text-blue-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
-        </button>
-
-        {/* Tool Chest toggle */}
-        <button onClick={() => setShowToolChest(v => !v)} title="Boîte à outils / Presets"
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
-            showToolChest ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
-          }`}>
-          <Wrench size={10} className="text-amber-400" />
-          {showToolChest ? <Eye className="w-2.5 h-2.5 text-amber-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
-        </button>
-
-        {/* ── Right side utility controls ── */}
+        {/* ── Right side controls ── */}
         <div className="ml-auto flex items-center gap-1">
           <button onClick={undoLast} title="Annuler (Ctrl+Z)"
             disabled={drawingPoints.length === 0 && !canUndo}
@@ -1697,389 +1695,170 @@ export default function MeasureCanvas({
           )}
 
           <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-
-          {/* Active layer selector */}
-          {onActiveLayerIdChange && (
-            <div className="flex items-center px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all">
-              <span className="w-2 h-2 rounded-full mr-1" style={{ background: layers.find(l => l.id === activeLayerId)?.color ?? "#6B7280" }} />
-              <select
-                value={activeLayerId}
-                onChange={e => onActiveLayerIdChange(e.target.value)}
-                className="bg-transparent text-[10px] text-slate-300 outline-none cursor-pointer"
-                title="Calque actif"
-              >
-                {layers.map(l => (
-                  <option key={l.id} value={l.id} className="bg-slate-900">{l.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Unit display */}
           <span className="text-[10px] text-slate-500 font-mono px-1">{displayUnit}</span>
         </div>
       </div>
 
-      {/* ══ BAR 2 : DRAW TOOLS ══ */}
-      <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
-        <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">DRAW</span>
+      {/* ══ BAR 2 : SURFACES ══ */}
+      <div className="flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
+        <span className="text-[9px] text-accent uppercase tracking-wider font-semibold mr-0.5 shrink-0">SURFACES</span>
 
-        {/* Tool selector */}
-        <div className="flex gap-0.5 items-center">
-          <button
-            onClick={() => { setTool("select"); cancelDrawing(); }}
-            title="Sélection (Q)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "select" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <MousePointer2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => { setTool("lasso"); cancelDrawing(); }}
-            title="Lasso — sélection multiple par zone"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "lasso" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Pentagon className="w-3.5 h-3.5" style={{ transform: "rotate(180deg)" }} />
-          </button>
-          <button
-            onClick={() => { setTool("polygon"); cancelDrawing(); }}
-            title="Polygone (P)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "polygon" ? "bg-accent text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Pentagon className="w-3.5 h-3.5" /> Polygone
-          </button>
-          <button
-            onClick={() => { setTool("rect"); cancelDrawing(); }}
-            title="Rectangle (R)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "rect" ? "bg-accent text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Square className="w-3.5 h-3.5" /> Rectangle
-          </button>
-          <button
-            onClick={() => { setTool("angle"); cancelDrawing(); }}
-            title="Angle (A)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "angle" ? "bg-amber-500 text-white" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Spline className="w-3.5 h-3.5" /> Angle
-          </button>
-          <button
-            onClick={() => { setTool("wall"); cancelDrawing(); }}
-            title="Mur (W)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "wall"
-                ? "bg-orange-500/20 border border-orange-500/40 text-orange-300"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Ruler className="w-3.5 h-3.5" /> Mur
-          </button>
-          {onPpmChange && (
-            <button
-              onClick={() => { setTool("scale"); setScalePts([]); setScaleInputOpen(false); cancelDrawing(); }}
-              title={ppm ? `Échelle (M) — Recalibrer (actuelle : ${ppm.toFixed(1)} px/m)` : "Échelle (M) — Calibrer pour afficher les m²"}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                tool === "scale"
-                  ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300"
-                  : !ppm
-                  ? "text-yellow-400 hover:text-yellow-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Ruler className="w-3.5 h-3.5" /> Échelle
-            </button>
-          )}
-          <button
-            onClick={() => { setTool("split"); cancelDrawing(); }}
-            title="Découper (S)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "split"
-                ? "bg-red-500/20 border border-red-500/40 text-red-300"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Scissors className="w-3.5 h-3.5" /> Découper
-          </button>
-          <button
-            onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }}
-            title="Recherche visuelle (V)"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              tool === "visual_search"
-                ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-300"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            <Search className="w-3.5 h-3.5" /> Recherche
-          </button>
-          {onLinearMeasuresChange && (
-            <button
-              onClick={() => { setTool("linear"); cancelDrawing(); }}
-              title="Linéaire (L)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                tool === "linear"
-                  ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Ruler className="w-3.5 h-3.5" /> Linéaire
-            </button>
-          )}
-          {onCountPointsChange && (
-            <button
-              onClick={() => { setTool("count"); cancelDrawing(); }}
-              title="Comptage (C)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                tool === "count"
-                  ? "bg-pink-500/20 border border-pink-500/40 text-pink-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <span className="font-bold text-xs">#</span> Comptage
-            </button>
-          )}
-          {onCircleMeasuresChange && (
-            <button
-              onClick={() => { setTool("circle"); cancelDrawing(); }}
-              title="Cercle (O)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                tool === "circle"
-                  ? "bg-teal-500/20 border border-teal-500/40 text-teal-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full border-2 border-current inline-block" /> Cercle
-            </button>
-          )}
-          {onTextAnnotationsChange && (
-            <button
-              onClick={() => { setTool("text"); cancelDrawing(); }}
-              title="Texte (T)"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                tool === "text"
-                  ? "bg-sky-500/20 border border-sky-500/40 text-sky-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <Type className="w-3.5 h-3.5" /> Texte
-            </button>
-          )}
-        </div>
+        {/* ── Selection ── */}
+        <button onClick={() => { setTool("select"); cancelDrawing(); }} title="Sélection (Q)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "select" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"}`}>
+          <MousePointer2 className="w-3.5 h-3.5" />
+        </button>
 
-        {/* ── Markup annotations ── */}
-        {onMarkupAnnotationsChange && (<>
-          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
-          <div className="flex gap-0.5 items-center">
-            <button onClick={() => { setTool("arrow"); cancelDrawing(); }} title="Flèche (F)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "arrow" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("mk_line"); cancelDrawing(); }} title="Ligne (J)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "mk_line" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("callout"); cancelDrawing(); }} title="Callout (N)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "callout" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <MessageSquare className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("cloud"); cancelDrawing(); }} title="Nuage (K)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "cloud" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <Cloud className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("rect_annot"); cancelDrawing(); }} title="Rectangle"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "rect_annot" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <Square className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("ellipse"); cancelDrawing(); }} title="Ellipse (E)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "ellipse" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <CircleDot className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("highlight"); cancelDrawing(); }} title="Surligneur (H)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "highlight" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300" : "text-slate-400 hover:text-white"}`}>
-              <Highlighter className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("pen"); cancelDrawing(); }} title="Crayon (D)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "pen" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <Pen className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("stamp"); cancelDrawing(); }} title="Tampon (B)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "stamp" ? "bg-red-500/20 border border-red-500/40 text-red-300" : "text-slate-400 hover:text-white"}`}>
-              <Stamp className="w-3.5 h-3.5" />
-            </button>
-            <button onClick={() => { setTool("note"); cancelDrawing(); }} title="Note (sticky note)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "note" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300" : "text-slate-400 hover:text-white"}`}>
-              <MessageSquare className="w-3.5 h-3.5" style={{ fill: tool === "note" ? "currentColor" : "none" }} />
-            </button>
-            <button onClick={() => { setTool("dimension"); cancelDrawing(); }} title="Cotation (dimension line)"
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "dimension" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
-              <Ruler className="w-3.5 h-3.5" />
-            </button>
-            {/* Stamp kind selector — shown when stamp tool active */}
-            {tool === "stamp" && (
-              <select value={activeStamp} onChange={e => setActiveStamp(e.target.value as StampKind)}
-                className="bg-transparent text-xs text-red-300 font-mono border border-red-500/30 rounded px-1.5 py-0.5 outline-none">
-                {(Object.keys(STAMP_LABELS) as StampKind[]).map(k => (
-                  <option key={k} value={k} className="bg-slate-900">{STAMP_LABELS[k].fr}</option>
-                ))}
-              </select>
-            )}
-            {/* Separator + Lock/Z-order controls */}
-            <div className="w-px h-5 bg-white/10 mx-0.5" />
-            <button title="Verrouiller/Déverrouiller l'élément sélectionné"
-              onClick={() => {
-                if (selectedMarkupId) {
-                  onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, locked: !m.locked } : m));
-                }
-              }}
-              className="px-1.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white transition-colors">
-              <Lock className="w-3 h-3" />
-            </button>
-            <button title="Premier plan" onClick={() => {
-              if (!selectedMarkupId) return;
-              const maxZ = Math.max(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
-              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, zIndex: maxZ + 1 } : m));
-            }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↑</button>
-            <button title="Arrière-plan" onClick={() => {
-              if (!selectedMarkupId) return;
-              const minZ = Math.min(0, ...markupAnnotations.map(m => m.zIndex ?? 0));
-              onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, zIndex: minZ - 1 } : m));
-            }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↓</button>
-          </div>
-        </>)}
+        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
 
-        {/* Wall thickness control — shown only when wall tool is active */}
-        {tool === "wall" && (<>
-          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
-          <div className="flex items-center gap-2 border border-orange-500/20 rounded-lg px-2 py-1">
-            <Ruler className="w-3 h-3 text-orange-400 shrink-0" />
-            <span className="text-xs text-slate-400">Épaisseur</span>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              step={1}
-              value={wallThicknessCm}
-              onChange={e => setWallThicknessCm(Math.max(1, parseInt(e.target.value) || 15))}
-              className="w-14 bg-transparent text-orange-300 text-xs font-mono text-center border-b border-orange-500/30 focus:outline-none focus:border-orange-400"
-            />
-            <span className="text-xs text-slate-500">{ppm ? "cm" : "px"}</span>
-            {ppm && (
-              <span className="text-[10px] text-slate-600 font-mono">
-                = {((wallThicknessCm / 100) * ppm).toFixed(0)} px
-              </span>
-            )}
-          </div>
-        </>)}
+        {/* ── Drawing tools ── */}
+        <button onClick={() => { setTool("polygon"); cancelDrawing(); }} title="Polygone (P)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "polygon" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}>
+          <Pentagon className="w-3.5 h-3.5" /> Polygone
+        </button>
+        <button onClick={() => { setTool("rect"); cancelDrawing(); }} title="Rectangle (R)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "rect" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}>
+          <Square className="w-3.5 h-3.5" /> Rectangle
+        </button>
+        <button onClick={() => { setTool("angle"); cancelDrawing(); }} title="Angle (A)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "angle" ? "bg-amber-500 text-white" : "text-slate-400 hover:text-white"}`}>
+          <Spline className="w-3.5 h-3.5" /> Angle
+        </button>
+        <button onClick={() => { setTool("wall"); cancelDrawing(); }} title="Mur (W)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "wall" ? "bg-orange-500/20 border border-orange-500/40 text-orange-300" : "text-slate-400 hover:text-white"}`}>
+          <Ruler className="w-3.5 h-3.5" /> Mur
+        </button>
+        {onPpmChange && (
+          <button onClick={() => { setTool("scale"); setScalePts([]); setScaleInputOpen(false); cancelDrawing(); }}
+            title={ppm ? `Échelle — Recalibrer (${ppm.toFixed(1)} px/m)` : "Échelle — Calibrer"}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "scale" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300"
+                : !ppm ? "text-yellow-400 hover:text-yellow-300" : "text-slate-400 hover:text-white"}`}>
+            <Ruler className="w-3.5 h-3.5" /> Échelle
+          </button>
+        )}
+        <button onClick={() => { setTool("split"); cancelDrawing(); }} title="Découper (S)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "split" ? "bg-red-500/20 border border-red-500/40 text-red-300" : "text-slate-400 hover:text-white"}`}>
+          <Scissors className="w-3.5 h-3.5" /> Découper
+        </button>
+        <button onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }} title="Recherche visuelle (V)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            tool === "visual_search" ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-300" : "text-slate-400 hover:text-white"}`}>
+          <Search className="w-3.5 h-3.5" /> Recherche
+        </button>
+        {onLinearMeasuresChange && (
+          <button onClick={() => { setTool("linear"); cancelDrawing(); }} title="Linéaire (L)"
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "linear" ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300" : "text-slate-400 hover:text-white"}`}>
+            <Ruler className="w-3.5 h-3.5" /> Linéaire
+          </button>
+        )}
+        {onCountPointsChange && (
+          <button onClick={() => { setTool("count"); cancelDrawing(); }} title="Comptage (C)"
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "count" ? "bg-pink-500/20 border border-pink-500/40 text-pink-300" : "text-slate-400 hover:text-white"}`}>
+            <span className="font-bold text-xs">#</span> Comptage
+          </button>
+        )}
+        {onTextAnnotationsChange && (
+          <button onClick={() => { setTool("text"); cancelDrawing(); }} title="Texte (T)"
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tool === "text" ? "bg-sky-500/20 border border-sky-500/40 text-sky-300" : "text-slate-400 hover:text-white"}`}>
+            <Type className="w-3.5 h-3.5" /> Texte
+          </button>
+        )}
 
-        {/* VS sub-toolbar */}
-        {tool === "visual_search" && (<>
-          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1 border border-cyan-500/20 rounded-lg p-0.5">
-              {(["search", "add", "remove"] as const).map(m => (
-                <button key={m} onClick={() => setVsEditMode(m)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    vsEditMode === m ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"
-                  }`}>
-                  {m === "search" ? "🔍 Chercher" : m === "add" ? "＋ Ajouter" : "− Retirer"}
-                </button>
-              ))}
-            </div>
-            {vsSearching && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
-            {vsMatches.length > 0 && (
-              <>
-                <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} trouvé{vsMatches.length > 1 ? "s" : ""}</span>
-                <button onClick={() => onVsMatchesChange?.([])}
-                  className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 border border-white/10 rounded-lg transition-colors">
-                  Effacer
-                </button>
-                <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }}
-                  className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors">
-                  <Save className="w-3 h-3" /> Sauvegarder
-                </button>
-              </>
-            )}
-            {showVsSave && (
-              <div className="flex items-center gap-1.5">
-                <input
-                  autoFocus
-                  value={vsSaveLabel}
-                  onChange={e => setVsSaveLabel(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && vsSaveLabel.trim()) {
-                      onSaveDetection?.(vsSaveLabel.trim(), vsMatches);
-                      onVsMatchesChange?.([]);
-                      setShowVsSave(false);
-                    }
-                    if (e.key === "Escape") setShowVsSave(false);
-                  }}
-                  placeholder="Nom de la détection…"
-                  className="w-40 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500"
-                />
-                <button
-                  disabled={!vsSaveLabel.trim()}
-                  onClick={() => {
-                    if (vsSaveLabel.trim()) {
-                      onSaveDetection?.(vsSaveLabel.trim(), vsMatches);
-                      onVsMatchesChange?.([]);
-                      setShowVsSave(false);
-                    }
-                  }}
-                  className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40"
-                >
-                  OK
-                </button>
+        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+
+        {/* ── Dessin libre (dropdown) ── */}
+        {onMarkupAnnotationsChange && (
+          <div className="relative">
+            <button onClick={() => { setShowAnnotDropdown(v => !v); setShowEraserDropdown(false); }}
+              title="Dessin libre — annotations, formes, surligneur…"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                showAnnotDropdown || ["arrow","mk_line","callout","cloud","rect_annot","ellipse","highlight","pen","stamp","note","dimension"].includes(tool)
+                  ? "bg-rose-500/20 border-rose-500/40 text-rose-300" : "border-transparent text-slate-400 hover:text-white"}`}>
+              <Pen className="w-3.5 h-3.5" /> Dessin libre
+              <span className="text-[8px] opacity-60">▾</span>
+            </button>
+            {showAnnotDropdown && (
+              <div className="absolute top-full left-0 mt-1 z-50 glass border border-rose-500/20 rounded-xl p-2 shadow-2xl min-w-48 pointer-events-auto"
+                onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                <p className="text-[9px] text-rose-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Dessin libre</p>
+                <div className="flex flex-col gap-0.5">
+                  {([
+                    { t: "polygon" as Tool, icon: <Pentagon className="w-3.5 h-3.5" />, label: "Polygone", c: "accent" },
+                    { t: "arrow" as Tool, icon: <ArrowRight className="w-3.5 h-3.5" />, label: "Flèche", c: "rose" },
+                    { t: "mk_line" as Tool, icon: <Minus className="w-3.5 h-3.5" />, label: "Ligne", c: "rose" },
+                    { t: "callout" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" />, label: "Callout", c: "rose" },
+                    { t: "cloud" as Tool, icon: <Cloud className="w-3.5 h-3.5" />, label: "Nuage", c: "rose" },
+                    { t: "rect_annot" as Tool, icon: <Square className="w-3.5 h-3.5" />, label: "Rectangle", c: "rose" },
+                    { t: "ellipse" as Tool, icon: <CircleDot className="w-3.5 h-3.5" />, label: "Ellipse / Cercle", c: "rose" },
+                    { t: "highlight" as Tool, icon: <Highlighter className="w-3.5 h-3.5" />, label: "Surligneur", c: "yellow" },
+                    { t: "pen" as Tool, icon: <Pen className="w-3.5 h-3.5" />, label: "Crayon libre", c: "rose" },
+                    { t: "stamp" as Tool, icon: <Stamp className="w-3.5 h-3.5" />, label: "Tampon", c: "red" },
+                    { t: "note" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" style={{ fill: "currentColor" }} />, label: "Note", c: "yellow" },
+                    { t: "dimension" as Tool, icon: <Ruler className="w-3.5 h-3.5" />, label: "Cotation", c: "rose" },
+                  ] as const).map(({ t, icon, label }) => (
+                    <button key={t} onClick={() => { setTool(t); cancelDrawing(); setShowAnnotDropdown(false); }}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors w-full text-left ${
+                        tool === t ? "bg-rose-500/15 text-rose-300" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+                {tool === "stamp" && (
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <select value={activeStamp} onChange={e => setActiveStamp(e.target.value as StampKind)}
+                      className="w-full bg-white/5 text-xs text-red-300 font-mono border border-red-500/30 rounded-lg px-2 py-1 outline-none">
+                      {(Object.keys(STAMP_LABELS) as StampKind[]).map(k => (
+                        <option key={k} value={k} className="bg-slate-900">{STAMP_LABELS[k].fr}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </>)}
+        )}
 
-        {/* Eraser tool + sub-modes */}
-        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
-        <div className="flex items-center gap-0.5">
-          <button onClick={() => { setTool("eraser"); setEraserMode("click"); cancelDrawing(); }}
-            title="Effacer au clic (X)"
-            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "click" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
-            <Trash2 className="w-3.5 h-3.5" />
+        {/* ── Gommage (dropdown) ── */}
+        <div className="relative">
+          <button onClick={() => { setShowEraserDropdown(v => !v); setShowAnnotDropdown(false); }}
+            title="Gommage — supprimer des éléments"
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              showEraserDropdown || tool === "eraser"
+                ? "bg-red-500/20 border-red-500/40 text-red-400" : "border-transparent text-slate-400 hover:text-white"}`}>
+            <Trash2 className="w-3.5 h-3.5" /> Gommage
+            <span className="text-[8px] opacity-60">▾</span>
           </button>
-          <button onClick={() => { setTool("eraser"); setEraserMode("rect"); cancelDrawing(); }}
-            title="Effacer par rectangle"
-            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
-            <Square className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => { setTool("eraser"); setEraserMode("polygon"); cancelDrawing(); }}
-            title="Effacer par polygone"
-            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "polygon" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
-            <Pentagon className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => { setTool("eraser"); setEraserMode("circle"); cancelDrawing(); }}
-            title="Effacer par cercle"
-            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "circle" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
-            <CircleDot className="w-3.5 h-3.5" />
-          </button>
+          {showEraserDropdown && (
+            <div className="absolute top-full left-0 mt-1 z-50 glass border border-red-500/20 rounded-xl p-2 shadow-2xl min-w-44 pointer-events-auto"
+              onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+              <p className="text-[9px] text-red-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Gommage</p>
+              <div className="flex flex-col gap-0.5">
+                {([
+                  { mode: "click" as const, icon: <Trash2 className="w-3.5 h-3.5" />, label: "Clic (supprimer un élément)" },
+                  { mode: "rect" as const, icon: <Square className="w-3.5 h-3.5" />, label: "Rectangle" },
+                  { mode: "polygon" as const, icon: <Pentagon className="w-3.5 h-3.5" />, label: "Polygone" },
+                  { mode: "circle" as const, icon: <CircleDot className="w-3.5 h-3.5" />, label: "Cercle" },
+                ] as const).map(({ mode, icon, label }) => (
+                  <button key={mode} onClick={() => { setTool("eraser"); setEraserMode(mode); cancelDrawing(); setShowEraserDropdown(false); }}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors w-full text-left ${
+                      tool === "eraser" && eraserMode === mode ? "bg-red-500/15 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Déduction toggle */}
-        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
-        <button
-          onClick={() => setIsDeductionMode(v => !v)}
-          title="Mode déduction — la zone dessinée sera soustraite du total"
-          className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
-            isDeductionMode
-              ? "bg-red-500/20 border-red-500/50 text-red-400"
-              : "border-transparent text-slate-400 hover:text-white"
-          }`}
-        >
-          <MinusSquare className="w-3.5 h-3.5" />
-          {isDeductionMode ? "Déduction ON" : "Déduction"}
-        </button>
 
         <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
 
@@ -2087,27 +1866,18 @@ export default function MeasureCanvas({
         <button
           onClick={() => {
             if (formatPainterStyle) { setFormatPainterStyle(null); return; }
-            // Copy style from selected zone
             if (selectedZoneId) {
               const zone = zones.find(z => z.id === selectedZoneId);
-              if (zone) {
-                const type = surfaceTypes.find(t => t.id === zone.typeId);
-                setFormatPainterStyle({ color: type?.color ?? "#3B82F6" });
-              }
+              if (zone) { const type = surfaceTypes.find(t => t.id === zone.typeId); setFormatPainterStyle({ color: type?.color ?? "#3B82F6" }); }
             }
-            // Copy style from selected markup
             if (selectedLinearId) {
               const lm = linearMeasures.find(m => m.id === selectedLinearId);
-              if (lm) {
-                const cat = linearCategories.find(c => c.id === lm.categoryId);
-                setFormatPainterStyle({ color: cat?.color ?? "#10B981" });
-              }
+              if (lm) { const cat = linearCategories.find(c => c.id === lm.categoryId); setFormatPainterStyle({ color: cat?.color ?? "#10B981" }); }
             }
           }}
-          title="Copier le format (sélectionnez un élément puis cliquez)"
+          title="Copier le format"
           className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "text-slate-400 hover:text-white"
-          }`}>
+            formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "text-slate-400 hover:text-white"}`}>
           <Paintbrush className="w-3.5 h-3.5" />
         </button>
 
@@ -2118,7 +1888,60 @@ export default function MeasureCanvas({
           </button>
         )}
 
+        {/* ── Contextual: Wall thickness ── */}
+        {tool === "wall" && (<>
+          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+          <div className="flex items-center gap-2 border border-orange-500/20 rounded-lg px-2 py-1">
+            <Ruler className="w-3 h-3 text-orange-400 shrink-0" />
+            <span className="text-xs text-slate-400">Épaisseur</span>
+            <input type="number" min={1} max={500} step={1} value={wallThicknessCm}
+              onChange={e => setWallThicknessCm(Math.max(1, parseInt(e.target.value) || 15))}
+              className="w-14 bg-transparent text-orange-300 text-xs font-mono text-center border-b border-orange-500/30 focus:outline-none focus:border-orange-400" />
+            <span className="text-xs text-slate-500">{ppm ? "cm" : "px"}</span>
+            {ppm && <span className="text-[10px] text-slate-600 font-mono">= {((wallThicknessCm / 100) * ppm).toFixed(0)} px</span>}
+          </div>
+        </>)}
 
+        {/* ── Contextual: Visual Search ── */}
+        {tool === "visual_search" && (<>
+          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex gap-1 border border-cyan-500/20 rounded-lg p-0.5">
+              {(["search", "add", "remove"] as const).map(m => (
+                <button key={m} onClick={() => setVsEditMode(m)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    vsEditMode === m ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"}`}>
+                  {m === "search" ? "🔍 Chercher" : m === "add" ? "＋ Ajouter" : "− Retirer"}
+                </button>
+              ))}
+            </div>
+            {vsSearching && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+            {vsMatches.length > 0 && (<>
+              <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} trouvé{vsMatches.length > 1 ? "s" : ""}</span>
+              <button onClick={() => onVsMatchesChange?.([])} className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 border border-white/10 rounded-lg transition-colors">Effacer</button>
+              <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors"><Save className="w-3 h-3" /> Sauvegarder</button>
+            </>)}
+            {showVsSave && (
+              <div className="flex items-center gap-1.5">
+                <input autoFocus value={vsSaveLabel} onChange={e => setVsSaveLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && vsSaveLabel.trim()) { onSaveDetection?.(vsSaveLabel.trim(), vsMatches); onVsMatchesChange?.([]); setShowVsSave(false); } if (e.key === "Escape") setShowVsSave(false); }}
+                  placeholder="Nom de la détection…" className="w-40 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500" />
+                <button disabled={!vsSaveLabel.trim()} onClick={() => { if (vsSaveLabel.trim()) { onSaveDetection?.(vsSaveLabel.trim(), vsMatches); onVsMatchesChange?.([]); setShowVsSave(false); } }}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40">OK</button>
+              </div>
+            )}
+          </div>
+        </>)}
+
+        {/* ── Contextual: Stamp kind ── */}
+        {tool === "stamp" && (
+          <select value={activeStamp} onChange={e => setActiveStamp(e.target.value as StampKind)}
+            className="bg-transparent text-xs text-red-300 font-mono border border-red-500/30 rounded px-1.5 py-0.5 outline-none">
+            {(Object.keys(STAMP_LABELS) as StampKind[]).map(k => (
+              <option key={k} value={k} className="bg-slate-900">{STAMP_LABELS[k].fr}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Hint */}

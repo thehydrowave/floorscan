@@ -618,43 +618,31 @@ export default function SurfacePanel({
     <div className="flex flex-col gap-3">
       {/* ── Tab switcher ── */}
       {(hasTabs || hasLinearTab || hasCountTab) && (
-        <div className="flex rounded-xl border border-white/10 overflow-hidden">
-          <button
-            onClick={() => onPanelModeChange?.("metre")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors border-r border-white/10 ${
-              panelMode === "metre" ? "bg-accent/20 text-accent" : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            <Ruler className="w-3 h-3" /> {d("sv_tab_metre")}
+        <div className="flex rounded-lg border border-white/10 overflow-hidden">
+          <button onClick={() => onPanelModeChange?.("metre")}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors border-r border-white/10 truncate ${
+              panelMode === "metre" ? "bg-accent/20 text-accent" : "text-slate-500 hover:text-slate-300"}`}>
+            <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_metre")}</span>
           </button>
           {hasTabs && (
-            <button
-              onClick={() => onPanelModeChange!("rooms")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors border-r border-white/10 ${
-                panelMode === "rooms" ? "bg-accent/20 text-accent" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Home className="w-3 h-3" /> {d("sv_tab_rooms")}
+            <button onClick={() => onPanelModeChange!("rooms")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors border-r border-white/10 truncate ${
+                panelMode === "rooms" ? "bg-accent/20 text-accent" : "text-slate-500 hover:text-slate-300"}`}>
+              <Home className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_rooms")}</span>
             </button>
           )}
           {hasLinearTab && (
-            <button
-              onClick={() => onPanelModeChange?.("linear")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors border-r border-white/10 ${
-                panelMode === "linear" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Ruler className="w-3 h-3" /> ml
+            <button onClick={() => onPanelModeChange?.("linear")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors border-r border-white/10 truncate ${
+                panelMode === "linear" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-500 hover:text-slate-300"}`}>
+              <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">ml</span>
             </button>
           )}
           {hasCountTab && (
-            <button
-              onClick={() => onPanelModeChange?.("count")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
-                panelMode === "count" ? "bg-pink-500/20 text-pink-400" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <Hash className="w-3 h-3" /> Comptage
+            <button onClick={() => onPanelModeChange?.("count")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
+                panelMode === "count" ? "bg-pink-500/20 text-pink-400" : "text-slate-500 hover:text-slate-300"}`}>
+              <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">Comptage</span>
             </button>
           )}
         </div>
