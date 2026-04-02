@@ -73,7 +73,7 @@ interface MeasureCanvasProps {
 
 type Tool = "select" | "polygon" | "rect" | "angle" | "wall" | "split" | "visual_search" | "scale" | "linear" | "count" | "circle" | "text"
   | "arrow" | "mk_line" | "callout" | "cloud" | "rect_annot" | "ellipse" | "highlight" | "pen" | "stamp"
-  | "lasso" | "note" | "dimension" | "polyline_annot";
+  | "lasso" | "note" | "dimension" | "polyline_annot" | "eraser";
 
 const CLOSE_RADIUS = 18; // px screen-space — generous hit area for closing polygon
 
@@ -439,7 +439,7 @@ export default function MeasureCanvas({
         if (penDrawingRef.current.length > 2) {
           const pts = penDrawingRef.current;
           onMarkupAnnotationsChangeRef.current?.([...markupAnnotationsRef.current, {
-            id: crypto.randomUUID(), type: "pen" as const, color: activeColorRef.current,
+            id: crypto.randomUUID(), type: "pen" as const, color: activeColorRef.current, layer: activeLayerId,
             x1: pts[0].x, y1: pts[0].y, x2: pts[pts.length - 1].x, y2: pts[pts.length - 1].y,
             penPoints: [...pts], lineWidth: 2, opacity: 1,
           }]);
@@ -598,6 +598,7 @@ export default function MeasureCanvas({
       id: crypto.randomUUID(),
       typeId: activeTypeId,
       points,
+      layer: activeLayerId,
       ...(isDeductionRef.current ? { isDeduction: true } : {}),
     };
     onZonesChange([...zones, newZone]);
@@ -918,7 +919,7 @@ export default function MeasureCanvas({
         const c = activeColorRef.current || "#3B82F6";
         const mkType: MarkupType = tool === "arrow" ? "arrow" : tool === "mk_line" ? "line" : tool === "rect_annot" ? "rect_annot" : tool === "ellipse" ? "ellipse" : "highlight";
         onMarkupAnnotationsChange?.([...markupAnnotations, {
-          id: crypto.randomUUID(), type: mkType, color: c,
+          id: crypto.randomUUID(), type: mkType, color: c, layer: activeLayerId,
           x1: mkStart.x, y1: mkStart.y, x2: pt.x, y2: pt.y,
           lineWidth: 2, opacity: mkType === "highlight" ? 0.35 : 1,
           fillOpacity: mkType === "highlight" ? 0.35 : 0.15,
@@ -940,7 +941,7 @@ export default function MeasureCanvas({
       } else {
         const c = activeColorRef.current || "#3B82F6";
         onMarkupAnnotationsChange?.([...markupAnnotations, {
-          id: crypto.randomUUID(), type: "cloud", color: c,
+          id: crypto.randomUUID(), type: "cloud", color: c, layer: activeLayerId,
           x1: Math.min(mkStart.x, pt.x), y1: Math.min(mkStart.y, pt.y),
           x2: Math.max(mkStart.x, pt.x), y2: Math.max(mkStart.y, pt.y),
           lineWidth: 2, opacity: 1, fillOpacity: 0.08, fillColor: c,
@@ -949,7 +950,7 @@ export default function MeasureCanvas({
       }
     } else if (tool === "stamp") {
       onMarkupAnnotationsChange?.([...markupAnnotations, {
-        id: crypto.randomUUID(), type: "stamp", color: "#EF4444",
+        id: crypto.randomUUID(), type: "stamp", color: "#EF4444", layer: activeLayerId,
         x1: Math.max(0, pt.x - 0.04), y1: Math.max(0, pt.y - 0.015),
         x2: Math.min(1, pt.x + 0.04), y2: Math.min(1, pt.y + 0.015),
         stampKind: activeStamp, lineWidth: 2, opacity: 0.9,
@@ -978,12 +979,57 @@ export default function MeasureCanvas({
           dimVal = fmtLinear(lenM, displayUnit);
         }
         onMarkupAnnotationsChange?.([...markupAnnotations, {
-          id: crypto.randomUUID(), type: "dimension", color: c,
+          id: crypto.randomUUID(), type: "dimension", color: c, layer: activeLayerId,
           x1: mkStart.x, y1: mkStart.y, x2: pt.x, y2: pt.y,
           dimensionValue: dimVal, lineWidth: 1.5, opacity: 1,
         }]);
         setMkStart(null);
       }
+    } else if (tool === "eraser") {
+      // Eraser: click on any element to delete it instantly
+      // Check zones
+      const hitZ = [...zones].reverse().find(z => pointInPolygon(pt, z.points));
+      if (hitZ) { onHistoryPush?.(zones); onZonesChange(zones.filter(z => z.id !== hitZ.id)); return; }
+      // Check markups
+      for (let i = markupAnnotations.length - 1; i >= 0; i--) {
+        const mk = markupAnnotations[i];
+        const pad = 0.015;
+        let hit = false;
+        if (mk.type === "pen" && mk.penPoints) {
+          for (let j = 0; j < mk.penPoints.length - 1; j++) {
+            const a = mk.penPoints[j], b = mk.penPoints[j + 1];
+            const abx = b.x - a.x, aby = b.y - a.y;
+            const apx = pt.x - a.x, apy = pt.y - a.y;
+            const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+            if (Math.hypot(a.x + t * abx - pt.x, a.y + t * aby - pt.y) < pad) { hit = true; break; }
+          }
+        } else {
+          const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
+          const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
+          hit = pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad;
+        }
+        if (hit) { onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== mk.id)); return; }
+      }
+      // Check texts
+      for (const ta of textAnnotations) {
+        if (Math.abs(pt.x - ta.x) < 0.05 && Math.abs(pt.y - ta.y) < 0.03) {
+          onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== ta.id)); return;
+        }
+      }
+      // Check circles
+      for (const cm of circleMeasures) {
+        const dist = Math.hypot(pt.x - cm.center.x, pt.y - cm.center.y);
+        const edgeDist = Math.hypot(cm.edgePoint.x - cm.center.x, cm.edgePoint.y - cm.center.y);
+        if (dist < edgeDist + 0.02) { onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== cm.id)); return; }
+      }
+      // Check linears
+      const hitLin = findNearestLinear(pt);
+      if (hitLin) { onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== hitLin)); return; }
+      // Check count points
+      for (const cp of countPoints) {
+        if (Math.hypot(pt.x - cp.x, pt.y - cp.y) < 0.02) { onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id)); return; }
+      }
+      return;
     } else if (tool === "polyline_annot") {
       // Polyline annotation: multi-click, Enter to finish
       setLinearDrawingPts(prev => { const next = [...prev, pt]; linearDrawingPtsRef.current = next; return next; });
@@ -1158,7 +1204,7 @@ export default function MeasureCanvas({
         if (latest.length >= 2 && onMarkupAnnotationsChange) {
           const c = activeColorRef.current || "#3B82F6";
           onMarkupAnnotationsChange([...markupAnnotations, {
-            id: crypto.randomUUID(), type: "polyline_annot", color: c,
+            id: crypto.randomUUID(), type: "polyline_annot", color: c, layer: activeLayerId,
             x1: latest[0].x, y1: latest[0].y, x2: latest[latest.length - 1].x, y2: latest[latest.length - 1].y,
             polyPoints: [...latest], lineWidth: 2, opacity: 1,
           }]);
@@ -1369,6 +1415,7 @@ export default function MeasureCanvas({
           case "e": switchTool("ellipse"); break;   // E = ellipse
           case "j": switchTool("mk_line"); break;   // J = ligne
           case "g": setShowGrid(v => !v); break;   // G = grid toggle
+          case "x": switchTool("eraser"); break;   // X = eraser
         }
       }
     };
@@ -1505,6 +1552,8 @@ export default function MeasureCanvas({
     ? textInputPos
       ? "Tapez votre texte · Entrée pour valider · Échap pour annuler"
       : "Cliquez pour placer une annotation texte"
+    : tool === "eraser"
+    ? "Cliquez sur un élément pour le supprimer · fonctionne sur tous les types"
     : "Cliquez et glissez pour dessiner un rectangle";
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1828,6 +1877,19 @@ export default function MeasureCanvas({
           </div>
         )}
 
+        {/* Eraser tool */}
+        <button
+          onClick={() => { setTool("eraser"); cancelDrawing(); }}
+          title="Effacement — cliquez sur un élément pour le supprimer (X)"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+            tool === "eraser"
+              ? "bg-red-500/20 border-red-500/50 text-red-400"
+              : "glass border-white/10 text-slate-400 hover:text-white"
+          }`}
+        >
+          <Trash2 className="w-3.5 h-3.5" /> Effacer
+        </button>
+
         {/* Déduction toggle */}
         <button
           onClick={() => setIsDeductionMode(v => !v)}
@@ -2048,7 +2110,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : "crosshair" }}
+        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : tool === "eraser" ? "cell" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -2141,8 +2203,8 @@ export default function MeasureCanvas({
             return <g className="pointer-events-none">{ticks}</g>;
           })()}
 
-          {/* Completed zones */}
-          {zones.map(zone => {
+          {/* Completed zones (filtered by layer visibility) */}
+          {zones.filter(z => { const lyr = layers.find(l => l.id === (z.layer ?? "lyr_general")); return !lyr || lyr.visible; }).map(zone => {
             const color = zone.isDeduction ? "#EF4444" : getColor(zone.typeId);
             const pts = zone.points.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(" ");
 
@@ -2879,8 +2941,8 @@ export default function MeasureCanvas({
             );
           })}
 
-          {/* ── Markup annotations (arrow, line, callout, cloud, rect, ellipse, highlight, pen, stamp) ── */}
-          {markupAnnotations.map(mk => {
+          {/* ── Markup annotations (filtered by layer visibility) ── */}
+          {markupAnnotations.filter(m => { const lyr = layers.find(l => l.id === (m.layer ?? "lyr_general")); return !lyr || lyr.visible; }).map(mk => {
             const s1 = toSvg({ x: mk.x1, y: mk.y1 });
             const s2 = toSvg({ x: mk.x2, y: mk.y2 });
             const lw = mk.lineWidth ?? 2;
@@ -3165,7 +3227,7 @@ export default function MeasureCanvas({
                     if (tool === "note") {
                       // Create a sticky note markup
                       onMarkupAnnotationsChange?.([...markupAnnotations, {
-                        id: crypto.randomUUID(), type: "note", color: "#F59E0B",
+                        id: crypto.randomUUID(), type: "note", color: "#F59E0B", layer: activeLayerId,
                         x1: textInputPos.x, y1: textInputPos.y, x2: textInputPos.x + 0.08, y2: textInputPos.y + 0.03,
                         text: textInputValue.trim(), collapsed: false, lineWidth: 1.5, opacity: 1,
                       }]);
@@ -3192,30 +3254,59 @@ export default function MeasureCanvas({
 
         {/* ── Layers panel overlay ── */}
         {showLayersPanel && (
-          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-56 pointer-events-auto max-h-80 overflow-y-auto">
+          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-64 pointer-events-auto max-h-96 overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-blue-300">Calques</span>
-              <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
-            </div>
-            {layers.map(lyr => (
-              <div key={lyr.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30" : "hover:bg-white/5"
-              }`}>
-                <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l))}
-                  className="text-slate-400 hover:text-white">
-                  {lyr.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-40" />}
-                </button>
-                <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l))}
-                  className="text-slate-400 hover:text-white">
-                  {lyr.locked ? <Lock className="w-3 h-3 text-red-400" /> : <Unlock className="w-3 h-3 opacity-40" />}
-                </button>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: lyr.color }} />
-                <button onClick={() => onActiveLayerIdChange?.(lyr.id)}
-                  className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
-                  {lyr.name}
-                </button>
+              <div className="flex items-center gap-1">
+                <button onClick={() => {
+                  const name = prompt("Nom du nouveau calque :");
+                  if (!name?.trim()) return;
+                  const color = prompt("Couleur (hex, ex: #FF6600) :", "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"));
+                  if (!color) return;
+                  const id = `lyr_${Date.now()}`;
+                  onLayersChange?.([...layers, { id, name: name.trim(), color, visible: true, locked: false }]);
+                  onActiveLayerIdChange?.(id);
+                }} className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 border border-blue-500/30 rounded">+ Créer</button>
+                <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
               </div>
-            ))}
+            </div>
+            {layers.map(lyr => {
+              // Count elements on this layer
+              const zoneCount = zones.filter(z => (z.layer ?? "lyr_general") === lyr.id).length;
+              const mkCount = markupAnnotations.filter(m => (m.layer ?? "lyr_general") === lyr.id).length;
+              const total = zoneCount + mkCount;
+              return (
+                <div key={lyr.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                  activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30" : "hover:bg-white/5"
+                }`}>
+                  <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l))}
+                    className="text-slate-400 hover:text-white" title={lyr.visible ? "Masquer" : "Afficher"}>
+                    {lyr.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-40" />}
+                  </button>
+                  <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l))}
+                    className="text-slate-400 hover:text-white" title={lyr.locked ? "Déverrouiller" : "Verrouiller"}>
+                    {lyr.locked ? <Lock className="w-3 h-3 text-red-400" /> : <Unlock className="w-3 h-3 opacity-40" />}
+                  </button>
+                  <input type="color" value={lyr.color}
+                    onChange={e => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, color: e.target.value } : l))}
+                    className="w-4 h-4 rounded-sm border-0 cursor-pointer p-0" title="Changer la couleur" />
+                  <button onClick={() => onActiveLayerIdChange?.(lyr.id)}
+                    className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
+                    {lyr.name}
+                  </button>
+                  <span className="text-[9px] text-slate-600 font-mono">{total > 0 ? total : ""}</span>
+                  {!lyr.id.startsWith("lyr_") || lyr.id === `lyr_${lyr.id.split("_").pop()}` ? null : (
+                    <button onClick={() => {
+                      if (!confirm(`Supprimer le calque "${lyr.name}" ?`)) return;
+                      onLayersChange?.(layers.filter(l => l.id !== lyr.id));
+                      if (activeLayerId === lyr.id) onActiveLayerIdChange?.("lyr_general");
+                    }} className="text-slate-600 hover:text-red-400" title="Supprimer">
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -3280,7 +3371,7 @@ export default function MeasureCanvas({
                   e.stopPropagation();
                   if (e.key === "Enter" && calloutInputValue.trim()) {
                     onMarkupAnnotationsChange?.([...markupAnnotations, {
-                      id: crypto.randomUUID(), type: "callout", color: activeColor,
+                      id: crypto.randomUUID(), type: "callout", color: activeColor, layer: activeLayerId,
                       x1: calloutInputPos.start.x, y1: calloutInputPos.start.y,
                       x2: calloutInputPos.end.x, y2: calloutInputPos.end.y,
                       text: calloutInputValue.trim(), lineWidth: 1.5, opacity: 1,
