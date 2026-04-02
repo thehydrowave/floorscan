@@ -16,13 +16,14 @@ import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:     "#60a5fa",
-  door:       "#f472b6",
-  balcony:    "#34d399",
-  floor_line: "#fb923c",
-  roof:       "#a78bfa",
-  column:     "#94a3b8",
-  other:      "#fbbf24",
+  window:      "#60a5fa",
+  door:        "#f472b6",
+  balcony:     "#34d399",
+  floor_line:  "#fb923c",
+  roof:        "#a78bfa",
+  column:      "#94a3b8",
+  other:       "#fbbf24",
+  wall_opaque: "#94a3b8",
 };
 
 const TYPE_I18N: Record<string, DTKey> = {
@@ -79,6 +80,9 @@ function dist(a: Pt, b: Pt): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
+/* ── Visibility layer types ── */
+const VISIBILITY_TYPES = ["window", "door", "balcony", "roof", "column", "wall_opaque", "floor_line"] as const;
+
 interface FacadeEditorStepProps {
   result: FacadeAnalysisResult;
   onGoResults: (updated: FacadeAnalysisResult) => void;
@@ -113,6 +117,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
 
   // Active mask layer for editing
   const [activeLayer, setActiveLayer] = useState<string>("window");
+
+  // Sidebar tab
+  const [sidebarTab, setSidebarTab] = useState<"results" | "elements" | "visibility">("results");
 
   // Rect drawing for add_rect / erase_rect
   const [rectStart, setRectStart] = useState<Pt | null>(null);
@@ -229,7 +236,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }, []);
 
-  /** Close the polygon being drawn → create a new element */
+  /** Close the polygon being drawn -> create a new element */
   const closePolygon = useCallback((pts: Pt[]) => {
     if (pts.length < 3) { setDrawingPoly([]); return; }
     const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
@@ -299,7 +306,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     if (tool !== "add_polygon" || isPanning) return;
     const p = toNorm(e);
 
-    // If clicking near first point → close polygon
+    // If clicking near first point -> close polygon
     if (drawingPoly.length >= 3) {
       const first = drawingPoly[0];
       const threshold = 12 / (imgNat.w * zoom); // ~12px threshold
@@ -474,6 +481,22 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
 
   const isDrawing = tool === "add_polygon" && drawingPoly.length > 0;
 
+  // ── Computed stats for sidebar ──
+  const windowElements = elements.filter(e => e.type === "window");
+  const windowsCount = windowElements.length;
+  const windowsArea = windowElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+  const facadeArea = result.facade_area_m2 ?? null;
+  const netFacadeArea = facadeArea != null ? facadeArea - windowsArea : null;
+
+  // Element counts by type
+  const elementCountsByType = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const el of elements) {
+      counts[el.type] = (counts[el.type] ?? 0) + 1;
+    }
+    return counts;
+  }, [elements]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
       {/* Mock warning */}
@@ -484,583 +507,680 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-        {/* ── Canvas ── */}
-        <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden">
-          {/* Toolbar */}
-          <div className="flex items-center gap-2 mb-2 px-2 flex-wrap">
-            {/* Selection / Add tools */}
-            <div className="flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
-              <button
-                onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "select" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}
-                title={d("mc_tool_select" as DTKey)}
-              >
-                <MousePointer2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => { setTool("add_polygon"); setSelectedId(null); setRectPreview(null); rectDragRef.current = null; }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "add_polygon" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Ajouter polygone"
-              >
-                <Pentagon className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => { setTool("add_rect"); setSelectedId(null); setDrawingPoly([]); setHoverPoint(null); }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "add_rect" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Ajouter rectangle"
-              >
-                <Square className="w-4 h-4" />
-              </button>
-              <div className="w-px h-4 bg-white/10" />
-              <button
-                onClick={() => { setTool("erase_rect"); setDrawingPoly([]); setHoverPoint(null); }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "erase_rect" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Effacer rectangle"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => { setTool("erase_polygon"); setRectPreview(null); rectDragRef.current = null; }}
-                className={cn("p-1.5 rounded-md text-xs", tool === "erase_polygon" ? "bg-red-600 text-white" : "text-slate-400 hover:text-white")}
-                title="Effacer polygone"
-              >
-                <Pentagon className="w-4 h-4" style={{ opacity: 0.5 }} />
-              </button>
-            </div>
-
-            {/* Type selector (for add/erase tools) */}
-            {tool !== "select" && (
-              <select
-                value={addType}
-                onChange={e => setAddType(e.target.value as FacadeElementType)}
-                className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
-              >
-                {EDITOR_TYPES.map(t => (
-                  <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
-                ))}
-              </select>
-            )}
-
-            {/* Visibility toggles */}
-            <div className="flex items-center gap-0.5 ml-auto">
-              {(["window", "wall_opaque"] as const).map(type => (
-                <button key={type}
-                  onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
-                  title={`${TYPE_I18N[type] ? d(TYPE_I18N[type]) : type} ${visibility[type] ? "ON" : "OFF"}`}
-                  className={cn("w-6 h-6 rounded flex items-center justify-center transition-colors",
-                    visibility[type] ? "text-white" : "text-slate-600"
-                  )}
-                >
-                  <span className="w-3 h-3 rounded-sm" style={{
-                    background: TYPE_COLORS[type] ?? "#94a3b8",
-                    opacity: visibility[type] ? 1 : 0.2,
-                  }} />
-                </button>
-              ))}
-            </div>
-
-            {/* Drawing hints */}
-            {isDrawing && (
-              <span className="text-xs text-amber-300/70 animate-pulse">
-                {drawingPoly.length < 3 ? "Cliquez pour poser des points..." : "Double-clic ou clic sur le 1er point pour fermer"}
-              </span>
-            )}
-            {tool === "add_rect" && (
-              <span className="text-xs text-amber-300/70 animate-pulse">
-                {rectPreview ? "Relâchez pour créer le rectangle" : "Cliquez et glissez pour dessiner un rectangle"}
-              </span>
-            )}
-
-            <div className="flex-1" />
-            <button onClick={handleZoomOut} className="p-1.5 text-slate-400 hover:text-white"><ZoomOut className="w-4 h-4" /></button>
-            <span className="text-xs text-slate-500 font-mono w-12 text-center">{(zoom * 100).toFixed(0)}%</span>
-            <button onClick={handleZoomIn} className="p-1.5 text-slate-400 hover:text-white"><ZoomIn className="w-4 h-4" /></button>
-          </div>
-
-          {/* Image area */}
-          <div
-            ref={containerRef}
-            className={cn("relative overflow-hidden rounded-xl bg-slate-900",
-              tool === "add_polygon" || tool === "add_rect" ? "cursor-crosshair"
-              : tool === "erase_rect" || tool === "erase_polygon" ? "cursor-cell"
-              : isDraggingEl ? "cursor-grabbing"
-              : "cursor-default"
-            )}
-            style={{ minHeight: 400 }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onClick={handleClick}
-            onDoubleClick={handleDoubleClick}
-            onMouseLeave={() => { setIsPanning(false); setHoverPoint(null); }}
-          >
-            <div
-              style={{
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transformOrigin: "center center",
-                transition: isPanning || dragVertex ? "none" : "transform 0.2s ease",
-              }}
-            >
-              <img
-                src={`data:image/png;base64,${result.plan_b64}`}
-                alt="Facade"
-                className="w-full select-none"
-                draggable={false}
-                onLoad={e => {
-                  const img = e.currentTarget;
-                  setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
-                  setImgDisplay({ w: img.clientWidth, h: img.clientHeight });
-                }}
-              />
-
-              {/* ── Mask layers (from backend, editable) ── */}
-              {visibility.window && masks.mask_window && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: TYPE_COLORS.window,
-                  opacity: 0.45,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_window})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 1,
-                }} />
-              )}
-              {visibility.door && masks.mask_door && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: TYPE_COLORS.door,
-                  opacity: 0.45,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_door})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_door})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 1,
-                }} />
-              )}
-              {visibility.balcony && masks.mask_balcony && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: TYPE_COLORS.balcony,
-                  opacity: 0.45,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 1,
-                }} />
-              )}
-              {visibility.roof && masks.mask_roof && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: TYPE_COLORS.roof,
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_roof})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_roof})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 1,
-                }} />
-              )}
-              {visibility.column && masks.mask_column && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: TYPE_COLORS.column,
-                  opacity: 0.35,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_column})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_column})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 1,
-                }} />
-              )}
-              {visibility.wall_opaque && masks.mask_wall_opaque && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#94a3b8",
-                  opacity: 0.25,
-                  WebkitMaskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
-                  maskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  maskMode: "luminance", zIndex: 0,
-                }} />
-              )}
-
-              {/* ── Wall blue mask layer (evenodd: outer boundary minus window holes) ── */}
-              {wallSvgPath && imgNat.w > 0 && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
-                  <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.25} />
-                </svg>
-              )}
-
-              {/* ── SVG overlay ── */}
-              <svg
-                className="absolute inset-0 w-full h-full"
-                viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
-                preserveAspectRatio="xMidYMid meet"
-                style={{ pointerEvents: "none" }}
-              >
-                {/* ── Existing elements ── */}
-                {visibleElements.map(el => {
-                  const color = TYPE_COLORS[el.type] ?? "#94a3b8";
-                  const isSelected = el.id === selectedId;
-
-                  // Floor line → special rendering
-                  if (el.type === "floor_line") {
-                    const x = el.bbox_norm.x * imgNat.w;
-                    const y = (el.bbox_norm.y + el.bbox_norm.h / 2) * imgNat.h;
-                    const x2 = (el.bbox_norm.x + el.bbox_norm.w) * imgNat.w;
-                    return (
-                      <line key={el.id}
-                        x1={x} y1={y} x2={x2} y2={y}
-                        stroke={color} strokeWidth={isSelected ? 3 : 2}
-                        strokeDasharray="8 4" opacity={isSelected ? 1 : 0.7}
-                        style={{ pointerEvents: "none" }}
-                      />
-                    );
-                  }
-
-                  const poly = getPolyPoints(el);
-                  const pts = toSvgPoints(poly, imgNat.w, imgNat.h);
-                  const c = centroid(poly);
-
-                  return (
-                    <g key={el.id}>
-                      {/* Filled polygon */}
-                      <polygon
-                        points={pts}
-                        fill={isSelected ? `${color}40` : `${color}28`}
-                        stroke={color}
-                        strokeWidth={isSelected ? 2.5 : 1.5}
-                        strokeLinejoin="round"
-                        opacity={0.85}
-                        style={{ pointerEvents: "none" }}
-                      />
-
-                      {/* Selection dashed border */}
-                      {isSelected && (
-                        <polygon
-                          points={pts}
-                          fill="none"
-                          stroke={color}
-                          strokeWidth={3}
-                          strokeDasharray="6 3"
-                          strokeLinejoin="round"
-                          style={{ pointerEvents: "none" }}
-                        />
-                      )}
-
-                      {/* Centroid label (name + area) */}
-                      {(() => {
-                        const cx = c.x * imgNat.w;
-                        const cy = c.y * imgNat.h;
-                        const label = el.label_fr || d(TYPE_I18N[el.type] ?? "fa_other");
-                        const areaStr = el.area_m2 != null ? `${el.area_m2.toFixed(2)} m\u00B2` : "";
-                        const fs = Math.max(10, Math.min(16, imgNat.w * 0.008));
-                        const pw = Math.max(50, Math.max(label.length, areaStr.length) * (fs * 0.6)) + 12;
-                        const ph = areaStr ? fs * 2.4 : fs * 1.5;
-
-                        return (
-                          <g>
-                            <rect
-                              x={cx - pw / 2} y={cy - ph / 2}
-                              width={pw} height={ph} rx={4}
-                              fill="rgba(10,16,32,0.92)"
-                              stroke={color} strokeWidth={1.5}
-                            />
-                            <text
-                              x={cx} y={areaStr ? cy - ph / 2 + fs + 2 : cy + fs * 0.35}
-                              textAnchor="middle" fill={color}
-                              fontSize={fs} fontWeight="700"
-                              fontFamily="system-ui,sans-serif"
-                            >
-                              {label}
-                            </text>
-                            {areaStr && (
-                              <text
-                                x={cx} y={cy - ph / 2 + fs * 2 + 4}
-                                textAnchor="middle" fill="#94a3b8"
-                                fontSize={fs * 0.75} fontWeight="500"
-                                fontFamily="monospace"
-                              >
-                                {areaStr}
-                              </text>
-                            )}
-                          </g>
-                        );
-                      })()}
-
-                      {/* ── Vertex handles (selected only) ── */}
-                      {isSelected && poly.map((p, idx) => {
-                        const vx = p.x * imgNat.w;
-                        const vy = p.y * imgNat.h;
-                        const isDragging = dragVertex?.elId === el.id && dragVertex?.idx === idx;
-                        return (
-                          <g key={`v-${idx}`} className="group/vtx">
-                            {/* Invisible hit area */}
-                            <circle
-                              cx={vx} cy={vy} r={14}
-                              fill="transparent"
-                              style={{ cursor: dragVertex ? "grabbing" : "grab", pointerEvents: "all" }}
-                              onMouseDown={(ev) => {
-                                ev.stopPropagation();
-                                ev.preventDefault();
-                                dragVertexRef.current = { elId: el.id, idx };
-                                setDragVertex({ elId: el.id, idx });
-                              }}
-                              onContextMenu={(ev) => {
-                                ev.stopPropagation();
-                                ev.preventDefault();
-                                const polyPts = getPolyPoints(el);
-                                if (polyPts.length <= 3) return;
-                                const newPoly = polyPts.filter((_, i) => i !== idx);
-                                const newBbox = bboxFromPoly(newPoly);
-                                const ppm = result.pixels_per_meter;
-                                setElements(prev => prev.map(e => e.id !== el.id ? e : {
-                                  ...e,
-                                  polygon_norm: newPoly,
-                                  bbox_norm: newBbox,
-                                  area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
-                                }));
-                              }}
-                            />
-                            {/* Visible vertex circle */}
-                            <circle
-                              cx={vx} cy={vy}
-                              r={isDragging ? 9 : 7}
-                              fill={isDragging ? color : "white"}
-                              stroke={color} strokeWidth={isDragging ? 3 : 2}
-                              style={{ pointerEvents: "none", transition: "r 0.1s, fill 0.1s" }}
-                            />
-                            {/* Hover glow */}
-                            <circle
-                              cx={vx} cy={vy} r={11}
-                              fill="none" stroke={color} strokeWidth={1}
-                              opacity={0}
-                              style={{ pointerEvents: "none", transition: "opacity 0.15s" }}
-                              className="group-hover/vtx:opacity-40"
-                            />
-                          </g>
-                        );
-                      })}
-
-                      {/* ── Edge midpoint handles (click to insert vertex) ── */}
-                      {isSelected && !dragVertex && poly.map((p, idx) => {
-                        const next = poly[(idx + 1) % poly.length];
-                        const mx = (p.x + next.x) / 2;
-                        const my = (p.y + next.y) / 2;
-                        return (
-                          <g key={`mid-${idx}`} className="group/mid opacity-40 hover:opacity-100 transition-opacity">
-                            <circle
-                              cx={mx * imgNat.w} cy={my * imgNat.h} r={12}
-                              fill="transparent"
-                              style={{ cursor: "copy", pointerEvents: "all" }}
-                              onMouseDown={(ev) => {
-                                ev.stopPropagation();
-                                ev.preventDefault();
-                                const polyPts = getPolyPoints(el);
-                                const newPoly = [...polyPts];
-                                newPoly.splice(idx + 1, 0, { x: mx, y: my });
-                                const ppm = result.pixels_per_meter;
-                                setElements(prev => prev.map(e => e.id !== el.id ? e : {
-                                  ...e,
-                                  polygon_norm: newPoly,
-                                  bbox_norm: bboxFromPoly(newPoly),
-                                  area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
-                                }));
-                                // Start dragging the new vertex immediately
-                                dragVertexRef.current = { elId: el.id, idx: idx + 1 };
-                                setDragVertex({ elId: el.id, idx: idx + 1 });
-                              }}
-                            />
-                            <circle
-                              cx={mx * imgNat.w} cy={my * imgNat.h} r={6}
-                              fill="white" stroke={color} strokeWidth={1.5}
-                              style={{ pointerEvents: "none" }}
-                            />
-                            <text
-                              x={mx * imgNat.w} y={my * imgNat.h + 0.5}
-                              textAnchor="middle" dominantBaseline="central"
-                              fontSize={9} fill={color} fontWeight="bold"
-                              style={{ pointerEvents: "none" }}
-                            >
-                              +
-                            </text>
-                          </g>
-                        );
-                      })}
-                    </g>
-                  );
-                })}
-
-                {/* ── Rectangle drawing preview ── */}
-                {tool === "add_rect" && rectPreview && (() => {
-                  const { start, end } = rectPreview;
-                  const rx = Math.min(start.x, end.x) * imgNat.w;
-                  const ry = Math.min(start.y, end.y) * imgNat.h;
-                  const rw = Math.abs(end.x - start.x) * imgNat.w;
-                  const rh = Math.abs(end.y - start.y) * imgNat.h;
-                  const color = TYPE_COLORS[addType] ?? "#fbbf24";
-                  return (
-                    <rect
-                      x={rx} y={ry} width={rw} height={rh}
-                      fill={`${color}20`}
-                      stroke={color}
-                      strokeWidth={2}
-                      strokeDasharray="6 3"
-                    />
-                  );
-                })()}
-
-                {/* ── Drawing preview polygon (live fill) ── */}
-                {isDrawing && (() => {
-                  const previewPts = hoverPoint ? [...drawingPoly, hoverPoint] : drawingPoly;
-                  const color = TYPE_COLORS[addType] ?? "#fbbf24";
-
-                  return (
-                    <g>
-                      {/* Filled polygon preview */}
-                      {previewPts.length >= 3 && (
-                        <polygon
-                          points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
-                          fill={`${color}20`}
-                          stroke={color}
-                          strokeWidth={2}
-                          strokeDasharray="6 3"
-                          strokeLinejoin="round"
-                        />
-                      )}
-
-                      {/* Lines connecting points (when < 3 points) */}
-                      {previewPts.length >= 2 && previewPts.length < 3 && (
-                        <polyline
-                          points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
-                          fill="none"
-                          stroke={color}
-                          strokeWidth={2}
-                          strokeDasharray="6 3"
-                        />
-                      )}
-
-                      {/* Placed vertices */}
-                      {drawingPoly.map((p, i) => (
-                        <circle
-                          key={`dp-${i}`}
-                          cx={p.x * imgNat.w} cy={p.y * imgNat.h}
-                          r={i === 0 && drawingPoly.length >= 3 ? 9 : 6}
-                          fill={i === 0 && drawingPoly.length >= 3 ? color : "white"}
-                          stroke={color}
-                          strokeWidth={2}
-                          style={{ pointerEvents: "none" }}
-                        />
-                      ))}
-
-                      {/* Close hint ring on first point */}
-                      {drawingPoly.length >= 3 && (
-                        <circle
-                          cx={drawingPoly[0].x * imgNat.w} cy={drawingPoly[0].y * imgNat.h}
-                          r={14}
-                          fill="none" stroke={color} strokeWidth={1.5}
-                          strokeDasharray="4 2" opacity={0.5}
-                        />
-                      )}
-
-                      {/* Hover point preview */}
-                      {hoverPoint && (
-                        <circle
-                          cx={hoverPoint.x * imgNat.w} cy={hoverPoint.y * imgNat.h}
-                          r={5} fill={`${color}60`} stroke={color} strokeWidth={1.5}
-                        />
-                      )}
-                    </g>
-                  );
-                })()}
-              </svg>
-            </div>
-          </div>
+      {/* ══ HEADER ══ */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {/* Undo/Redo placeholder */}
         </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={exportCSV}>
+            <Download className="w-3.5 h-3.5" /> CSV
+          </Button>
+          <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
+            <ArrowLeft className="w-3.5 h-3.5" /> {d("fa_go_results")}
+          </Button>
+        </div>
+      </div>
 
-        {/* ── Side panel ── */}
-        <div className="flex flex-col gap-4">
-          {/* Visibility toggles */}
-          <div className="glass rounded-xl border border-white/10 p-4">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">LAYERS</h4>
-            {[
-              { label: "Fenetres", on: showOther, set: setShowOther, color: "#fbbf24" },
-              { label: "Emprise mur", on: showColumns, set: setShowColumns, color: "#94a3b8" },
-            ].map(({ label, on, set, color }) => (
-              <button
-                key={label}
-                onClick={() => set(!on)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors"
-              >
-                {on ? <Eye className="w-3.5 h-3.5 text-white" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: on ? color : "#475569" }} />
-                <span className={on ? "text-white" : "text-slate-600"}>{label}</span>
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* ── Left: Canvas area ── */}
+        <div className="flex-1 min-w-0 flex flex-col">
+
+          {/* ══ BAR 1 : VISIBILITY ══ */}
+          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 mb-2">
+            <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">VISIBILITY</span>
+            {VISIBILITY_TYPES.map(type => (
+              <button key={type} onClick={() => setVisibility(v => ({...v, [type]: !v[type]}))}
+                title={TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
+                  visibility[type] ? `border-white/20 bg-white/5 text-white` : "border-white/5 hover:border-white/10"
+                }`}>
+                <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COLORS[type] ?? "#94a3b8", opacity: visibility[type] ? 1 : 0.3 }} />
+                {visibility[type] ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
               </button>
             ))}
           </div>
 
-          {/* Selected element panel */}
-          {selectedEl && (
-            <div className="glass rounded-xl border border-white/10 p-4">
-              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}</h4>
-              <div className="flex flex-col gap-3">
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">{d("fa_type")}</label>
-                  <select
-                    value={selectedEl.type}
-                    onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
-                    className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
-                  >
-                    {EDITOR_TYPES.map(t => (
-                      <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500 mb-1 block">{d("fa_floor_level")}</label>
-                  <select
-                    value={selectedEl.floor_level ?? 0}
-                    onChange={e => updateSelected({ floor_level: Number(e.target.value) })}
-                    className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
-                  >
-                    {[0, 1, 2, 3, 4, 5].map(f => (
-                      <option key={f} value={f}>{f === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${f}`}</option>
-                    ))}
-                  </select>
-                </div>
-                {selectedEl.area_m2 != null && (
-                  <div className="text-xs text-slate-400">
-                    {d("fa_facade_area")}: <span className="text-white font-mono">{selectedEl.area_m2.toFixed(2)} m\u00B2</span>
-                  </div>
-                )}
-                <div className="text-[10px] text-slate-600">
-                  {getPolyPoints(selectedEl).length} vertices &middot; Clic droit sur un vertex pour le supprimer
-                </div>
-                <Button variant="outline" size="sm" onClick={deleteSelected} className="text-red-400 border-red-500/20 hover:bg-red-500/10">
-                  <Trash2 className="w-3.5 h-3.5" /> {d("fa_delete")}
-                </Button>
-              </div>
-            </div>
-          )}
+          {/* ══ BAR 2 : EDIT LAYER ══ */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap mb-2">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">EDIT</span>
 
-          {/* Element count summary */}
-          <div className="glass rounded-xl border border-white/10 p-4">
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}s</h4>
-            <div className="flex flex-col gap-1.5">
-              {[
-                { type: "other", color: "#fbbf24" },
-                { type: "column", color: "#94a3b8" },
-              ].map(({ type, color }) => {
-                const count = elements.filter(e => e.type === type).length;
-                if (count === 0) return null;
-                return (
-                  <div key={type} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-slate-300">{TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}</span>
-                    </div>
-                    <span className="font-mono text-white">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
+            {/* Layer/type selection buttons */}
+            {(["window", "wall_opaque"] as const).map(type => (
+              <button key={type}
+                onClick={() => { setActiveLayer(type); setAddType(type === "wall_opaque" ? "other" : type as FacadeElementType); if (tool === "select") setTool("add_rect"); }}
+                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                  activeLayer === type ? `border-blue-500/40 bg-blue-500/10 text-white` : "border-white/5 text-slate-400 hover:text-white")}>
+                <span className="w-3 h-3 rounded-full" style={{ background: TYPE_COLORS[type] ?? "#94a3b8" }} />
+                {TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
+              </button>
+            ))}
+
+            <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
+
+            {/* Drawing tools */}
+            <button
+              onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
+              title="Sélection"
+              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                tool === "select" ? "border-blue-500/40 bg-blue-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
+            >
+              <MousePointer2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => { setTool("add_rect"); setSelectedId(null); setDrawingPoly([]); setHoverPoint(null); }}
+              title="Dessiner rectangle"
+              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                tool === "add_rect" ? "border-emerald-500/40 bg-emerald-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
+            >
+              <Square className="w-3.5 h-3.5" /> {d("ed_draw" as DTKey)}
+            </button>
+            <button
+              onClick={() => { setTool("add_polygon"); setSelectedId(null); setRectPreview(null); rectDragRef.current = null; }}
+              title="Dessiner polygone"
+              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                tool === "add_polygon" ? "border-emerald-500/40 bg-emerald-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
+            >
+              <Pentagon className="w-3.5 h-3.5" /> {d("ed_free_shape" as DTKey)}
+            </button>
+
+            <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
+
+            <button
+              onClick={() => { setTool("erase_rect"); setDrawingPoly([]); setHoverPoint(null); }}
+              title="Effacer rectangle"
+              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> {d("ed_erase_tool" as DTKey)}
+            </button>
+            <button
+              onClick={() => { setTool("erase_polygon"); setRectPreview(null); rectDragRef.current = null; }}
+              title="Effacer polygone"
+              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                tool === "erase_polygon" ? "border-red-500/40 bg-red-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
+            >
+              <Pentagon className="w-3.5 h-3.5" style={{opacity:0.5}} />
+            </button>
+
+            {/* Drawing hints */}
+            {isDrawing && (
+              <span className="text-xs text-amber-300/70 animate-pulse ml-2">
+                {drawingPoly.length < 3 ? "Cliquez pour poser des points..." : "Double-clic ou clic sur le 1er point pour fermer"}
+              </span>
+            )}
+            {tool === "add_rect" && !isDrawing && (
+              <span className="text-xs text-amber-300/70 animate-pulse ml-2">
+                {rectPreview ? "Relâchez pour créer le rectangle" : "Cliquez et glissez pour dessiner un rectangle"}
+              </span>
+            )}
           </div>
 
-          {/* Actions */}
-          <div className="flex flex-col gap-2">
+          {/* Image area */}
+          <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden flex-1">
+            <div
+              ref={containerRef}
+              className={cn("relative overflow-hidden rounded-xl bg-slate-900",
+                tool === "add_polygon" || tool === "add_rect" ? "cursor-crosshair"
+                : tool === "erase_rect" || tool === "erase_polygon" ? "cursor-cell"
+                : isDraggingEl ? "cursor-grabbing"
+                : "cursor-default"
+              )}
+              style={{ minHeight: 400 }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onClick={handleClick}
+              onDoubleClick={handleDoubleClick}
+              onMouseLeave={() => { setIsPanning(false); setHoverPoint(null); }}
+            >
+              {/* Floating zoom controls */}
+              <div className="absolute top-3 right-3 z-10 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+                <button onClick={handleZoomOut} className="p-1 text-slate-400 hover:text-white"><ZoomOut className="w-3.5 h-3.5" /></button>
+                <span className="text-[10px] text-slate-500 font-mono w-10 text-center">{(zoom*100).toFixed(0)}%</span>
+                <button onClick={handleZoomIn} className="p-1 text-slate-400 hover:text-white"><ZoomIn className="w-3.5 h-3.5" /></button>
+              </div>
+
+              <div
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "center center",
+                  transition: isPanning || dragVertex ? "none" : "transform 0.2s ease",
+                }}
+              >
+                <img
+                  src={`data:image/png;base64,${result.plan_b64}`}
+                  alt="Facade"
+                  className="w-full select-none"
+                  draggable={false}
+                  onLoad={e => {
+                    const img = e.currentTarget;
+                    setImgNat({ w: img.naturalWidth, h: img.naturalHeight });
+                    setImgDisplay({ w: img.clientWidth, h: img.clientHeight });
+                  }}
+                />
+
+                {/* ── Mask layers (from backend, editable) ── */}
+                {visibility.window && masks.mask_window && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: TYPE_COLORS.window,
+                    opacity: 0.45,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_window})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 1,
+                  }} />
+                )}
+                {visibility.door && masks.mask_door && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: TYPE_COLORS.door,
+                    opacity: 0.45,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_door})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_door})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 1,
+                  }} />
+                )}
+                {visibility.balcony && masks.mask_balcony && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: TYPE_COLORS.balcony,
+                    opacity: 0.45,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 1,
+                  }} />
+                )}
+                {visibility.roof && masks.mask_roof && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: TYPE_COLORS.roof,
+                    opacity: 0.35,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_roof})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_roof})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 1,
+                  }} />
+                )}
+                {visibility.column && masks.mask_column && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: TYPE_COLORS.column,
+                    opacity: 0.35,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_column})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_column})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 1,
+                  }} />
+                )}
+                {visibility.wall_opaque && masks.mask_wall_opaque && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: "#94a3b8",
+                    opacity: 0.25,
+                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
+                    maskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    maskMode: "luminance", zIndex: 0,
+                  }} />
+                )}
+
+                {/* ── Wall blue mask layer (evenodd: outer boundary minus window holes) ── */}
+                {wallSvgPath && imgNat.w > 0 && (
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
+                    <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.25} />
+                  </svg>
+                )}
+
+                {/* ── SVG overlay ── */}
+                <svg
+                  className="absolute inset-0 w-full h-full"
+                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
+                  preserveAspectRatio="xMidYMid meet"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {/* ── Existing elements ── */}
+                  {visibleElements.map(el => {
+                    const color = TYPE_COLORS[el.type] ?? "#94a3b8";
+                    const isSelected = el.id === selectedId;
+
+                    // Floor line -> special rendering
+                    if (el.type === "floor_line") {
+                      const x = el.bbox_norm.x * imgNat.w;
+                      const y = (el.bbox_norm.y + el.bbox_norm.h / 2) * imgNat.h;
+                      const x2 = (el.bbox_norm.x + el.bbox_norm.w) * imgNat.w;
+                      return (
+                        <line key={el.id}
+                          x1={x} y1={y} x2={x2} y2={y}
+                          stroke={color} strokeWidth={isSelected ? 3 : 2}
+                          strokeDasharray="8 4" opacity={isSelected ? 1 : 0.7}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      );
+                    }
+
+                    const poly = getPolyPoints(el);
+                    const pts = toSvgPoints(poly, imgNat.w, imgNat.h);
+                    const c = centroid(poly);
+
+                    return (
+                      <g key={el.id}>
+                        {/* Filled polygon */}
+                        <polygon
+                          points={pts}
+                          fill={isSelected ? `${color}40` : `${color}28`}
+                          stroke={color}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          strokeLinejoin="round"
+                          opacity={0.85}
+                          style={{ pointerEvents: "none" }}
+                        />
+
+                        {/* Selection dashed border */}
+                        {isSelected && (
+                          <polygon
+                            points={pts}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth={3}
+                            strokeDasharray="6 3"
+                            strokeLinejoin="round"
+                            style={{ pointerEvents: "none" }}
+                          />
+                        )}
+
+                        {/* Centroid label (name + area) */}
+                        {(() => {
+                          const cx = c.x * imgNat.w;
+                          const cy = c.y * imgNat.h;
+                          const label = el.label_fr || d(TYPE_I18N[el.type] ?? "fa_other");
+                          const areaStr = el.area_m2 != null ? `${el.area_m2.toFixed(2)} m\u00B2` : "";
+                          const fs = Math.max(10, Math.min(16, imgNat.w * 0.008));
+                          const pw = Math.max(50, Math.max(label.length, areaStr.length) * (fs * 0.6)) + 12;
+                          const ph = areaStr ? fs * 2.4 : fs * 1.5;
+
+                          return (
+                            <g>
+                              <rect
+                                x={cx - pw / 2} y={cy - ph / 2}
+                                width={pw} height={ph} rx={4}
+                                fill="rgba(10,16,32,0.92)"
+                                stroke={color} strokeWidth={1.5}
+                              />
+                              <text
+                                x={cx} y={areaStr ? cy - ph / 2 + fs + 2 : cy + fs * 0.35}
+                                textAnchor="middle" fill={color}
+                                fontSize={fs} fontWeight="700"
+                                fontFamily="system-ui,sans-serif"
+                              >
+                                {label}
+                              </text>
+                              {areaStr && (
+                                <text
+                                  x={cx} y={cy - ph / 2 + fs * 2 + 4}
+                                  textAnchor="middle" fill="#94a3b8"
+                                  fontSize={fs * 0.75} fontWeight="500"
+                                  fontFamily="monospace"
+                                >
+                                  {areaStr}
+                                </text>
+                              )}
+                            </g>
+                          );
+                        })()}
+
+                        {/* ── Vertex handles (selected only) ── */}
+                        {isSelected && poly.map((p, idx) => {
+                          const vx = p.x * imgNat.w;
+                          const vy = p.y * imgNat.h;
+                          const isDragging = dragVertex?.elId === el.id && dragVertex?.idx === idx;
+                          return (
+                            <g key={`v-${idx}`} className="group/vtx">
+                              {/* Invisible hit area */}
+                              <circle
+                                cx={vx} cy={vy} r={14}
+                                fill="transparent"
+                                style={{ cursor: dragVertex ? "grabbing" : "grab", pointerEvents: "all" }}
+                                onMouseDown={(ev) => {
+                                  ev.stopPropagation();
+                                  ev.preventDefault();
+                                  dragVertexRef.current = { elId: el.id, idx };
+                                  setDragVertex({ elId: el.id, idx });
+                                }}
+                                onContextMenu={(ev) => {
+                                  ev.stopPropagation();
+                                  ev.preventDefault();
+                                  const polyPts = getPolyPoints(el);
+                                  if (polyPts.length <= 3) return;
+                                  const newPoly = polyPts.filter((_, i) => i !== idx);
+                                  const newBbox = bboxFromPoly(newPoly);
+                                  const ppm = result.pixels_per_meter;
+                                  setElements(prev => prev.map(e => e.id !== el.id ? e : {
+                                    ...e,
+                                    polygon_norm: newPoly,
+                                    bbox_norm: newBbox,
+                                    area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
+                                  }));
+                                }}
+                              />
+                              {/* Visible vertex circle */}
+                              <circle
+                                cx={vx} cy={vy}
+                                r={isDragging ? 9 : 7}
+                                fill={isDragging ? color : "white"}
+                                stroke={color} strokeWidth={isDragging ? 3 : 2}
+                                style={{ pointerEvents: "none", transition: "r 0.1s, fill 0.1s" }}
+                              />
+                              {/* Hover glow */}
+                              <circle
+                                cx={vx} cy={vy} r={11}
+                                fill="none" stroke={color} strokeWidth={1}
+                                opacity={0}
+                                style={{ pointerEvents: "none", transition: "opacity 0.15s" }}
+                                className="group-hover/vtx:opacity-40"
+                              />
+                            </g>
+                          );
+                        })}
+
+                        {/* ── Edge midpoint handles (click to insert vertex) ── */}
+                        {isSelected && !dragVertex && poly.map((p, idx) => {
+                          const next = poly[(idx + 1) % poly.length];
+                          const mx = (p.x + next.x) / 2;
+                          const my = (p.y + next.y) / 2;
+                          return (
+                            <g key={`mid-${idx}`} className="group/mid opacity-40 hover:opacity-100 transition-opacity">
+                              <circle
+                                cx={mx * imgNat.w} cy={my * imgNat.h} r={12}
+                                fill="transparent"
+                                style={{ cursor: "copy", pointerEvents: "all" }}
+                                onMouseDown={(ev) => {
+                                  ev.stopPropagation();
+                                  ev.preventDefault();
+                                  const polyPts = getPolyPoints(el);
+                                  const newPoly = [...polyPts];
+                                  newPoly.splice(idx + 1, 0, { x: mx, y: my });
+                                  const ppm = result.pixels_per_meter;
+                                  setElements(prev => prev.map(e => e.id !== el.id ? e : {
+                                    ...e,
+                                    polygon_norm: newPoly,
+                                    bbox_norm: bboxFromPoly(newPoly),
+                                    area_m2: ppm ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (ppm ** 2) : e.area_m2,
+                                  }));
+                                  // Start dragging the new vertex immediately
+                                  dragVertexRef.current = { elId: el.id, idx: idx + 1 };
+                                  setDragVertex({ elId: el.id, idx: idx + 1 });
+                                }}
+                              />
+                              <circle
+                                cx={mx * imgNat.w} cy={my * imgNat.h} r={6}
+                                fill="white" stroke={color} strokeWidth={1.5}
+                                style={{ pointerEvents: "none" }}
+                              />
+                              <text
+                                x={mx * imgNat.w} y={my * imgNat.h + 0.5}
+                                textAnchor="middle" dominantBaseline="central"
+                                fontSize={9} fill={color} fontWeight="bold"
+                                style={{ pointerEvents: "none" }}
+                              >
+                                +
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </g>
+                    );
+                  })}
+
+                  {/* ── Rectangle drawing preview ── */}
+                  {tool === "add_rect" && rectPreview && (() => {
+                    const { start, end } = rectPreview;
+                    const rx = Math.min(start.x, end.x) * imgNat.w;
+                    const ry = Math.min(start.y, end.y) * imgNat.h;
+                    const rw = Math.abs(end.x - start.x) * imgNat.w;
+                    const rh = Math.abs(end.y - start.y) * imgNat.h;
+                    const color = TYPE_COLORS[addType] ?? "#fbbf24";
+                    return (
+                      <rect
+                        x={rx} y={ry} width={rw} height={rh}
+                        fill={`${color}20`}
+                        stroke={color}
+                        strokeWidth={2}
+                        strokeDasharray="6 3"
+                      />
+                    );
+                  })()}
+
+                  {/* ── Drawing preview polygon (live fill) ── */}
+                  {isDrawing && (() => {
+                    const previewPts = hoverPoint ? [...drawingPoly, hoverPoint] : drawingPoly;
+                    const color = TYPE_COLORS[addType] ?? "#fbbf24";
+
+                    return (
+                      <g>
+                        {/* Filled polygon preview */}
+                        {previewPts.length >= 3 && (
+                          <polygon
+                            points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
+                            fill={`${color}20`}
+                            stroke={color}
+                            strokeWidth={2}
+                            strokeDasharray="6 3"
+                            strokeLinejoin="round"
+                          />
+                        )}
+
+                        {/* Lines connecting points (when < 3 points) */}
+                        {previewPts.length >= 2 && previewPts.length < 3 && (
+                          <polyline
+                            points={toSvgPoints(previewPts, imgNat.w, imgNat.h)}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth={2}
+                            strokeDasharray="6 3"
+                          />
+                        )}
+
+                        {/* Placed vertices */}
+                        {drawingPoly.map((p, i) => (
+                          <circle
+                            key={`dp-${i}`}
+                            cx={p.x * imgNat.w} cy={p.y * imgNat.h}
+                            r={i === 0 && drawingPoly.length >= 3 ? 9 : 6}
+                            fill={i === 0 && drawingPoly.length >= 3 ? color : "white"}
+                            stroke={color}
+                            strokeWidth={2}
+                            style={{ pointerEvents: "none" }}
+                          />
+                        ))}
+
+                        {/* Close hint ring on first point */}
+                        {drawingPoly.length >= 3 && (
+                          <circle
+                            cx={drawingPoly[0].x * imgNat.w} cy={drawingPoly[0].y * imgNat.h}
+                            r={14}
+                            fill="none" stroke={color} strokeWidth={1.5}
+                            strokeDasharray="4 2" opacity={0.5}
+                          />
+                        )}
+
+                        {/* Hover point preview */}
+                        {hoverPoint && (
+                          <circle
+                            cx={hoverPoint.x * imgNat.w} cy={hoverPoint.y * imgNat.h}
+                            r={5} fill={`${color}60`} stroke={color} strokeWidth={1.5}
+                          />
+                        )}
+                      </g>
+                    );
+                  })()}
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right: 3-tab Sidebar ── */}
+        <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
+          {/* Tab bar */}
+          <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
+            {(["results", "elements", "visibility"] as const).map(tab => (
+              <button key={tab} onClick={() => setSidebarTab(tab)}
+                className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] font-semibold transition-colors text-center truncate",
+                  sidebarTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
+                {tab === "results" ? "Résultats" : tab === "elements" ? "Éléments" : "Visibilité"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-0.5">
+            {/* ── Tab 1: Résultats ── */}
+            {sidebarTab === "results" && (
+              <div className="glass rounded-xl border border-white/10 p-4">
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Résumé façade</h4>
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TYPE_COLORS.window }} />
+                      <span className="text-slate-300">{d("fa_window")}</span>
+                    </div>
+                    <span className="font-mono text-white">{windowsCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Surface fenêtres</span>
+                    <span className="font-mono text-white">{windowsArea.toFixed(2)} m²</span>
+                  </div>
+                  {facadeArea != null && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Surface façade</span>
+                      <span className="font-mono text-white">{facadeArea.toFixed(2)} m²</span>
+                    </div>
+                  )}
+                  {netFacadeArea != null && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Surface nette</span>
+                      <span className="font-mono text-emerald-400">{netFacadeArea.toFixed(2)} m²</span>
+                    </div>
+                  )}
+                  {result.ratio_openings != null && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Ratio ouvertures</span>
+                      <span className="font-mono text-amber-400">{(result.ratio_openings * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {result.floors_count != null && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-400">Étages détectés</span>
+                      <span className="font-mono text-white">{result.floors_count}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab 2: Éléments ── */}
+            {sidebarTab === "elements" && (
+              <>
+                {/* Element counts by type */}
+                <div className="glass rounded-xl border border-white/10 p-4">
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}s</h4>
+                  <div className="flex flex-col gap-1.5">
+                    {ALL_TYPES.map(type => {
+                      const count = elementCountsByType[type] ?? 0;
+                      if (count === 0) return null;
+                      const color = TYPE_COLORS[type] ?? "#94a3b8";
+                      return (
+                        <div key={type} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                            <span className="text-slate-300">{TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}</span>
+                          </div>
+                          <span className="font-mono text-white">{count}</span>
+                        </div>
+                      );
+                    })}
+                    {elements.length === 0 && (
+                      <p className="text-xs text-slate-600 italic">Aucun élément</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Selected element details */}
+                {selectedEl && (
+                  <div className="glass rounded-xl border border-white/10 p-4">
+                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}</h4>
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <label className="text-xs text-slate-500 mb-1 block">{d("fa_type")}</label>
+                        <select
+                          value={selectedEl.type}
+                          onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
+                          className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                        >
+                          {EDITOR_TYPES.map(t => (
+                            <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 mb-1 block">{d("fa_floor_level")}</label>
+                        <select
+                          value={selectedEl.floor_level ?? 0}
+                          onChange={e => updateSelected({ floor_level: Number(e.target.value) })}
+                          className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                        >
+                          {[0, 1, 2, 3, 4, 5].map(f => (
+                            <option key={f} value={f}>{f === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${f}`}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedEl.area_m2 != null && (
+                        <div className="text-xs text-slate-400">
+                          {d("fa_facade_area")}: <span className="text-white font-mono">{selectedEl.area_m2.toFixed(2)} m²</span>
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-600">
+                        {getPolyPoints(selectedEl).length} vertices &middot; Clic droit sur un vertex pour le supprimer
+                      </div>
+                      <Button variant="outline" size="sm" onClick={deleteSelected} className="text-red-400 border-red-500/20 hover:bg-red-500/10">
+                        <Trash2 className="w-3.5 h-3.5" /> {d("fa_delete")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── Tab 3: Visibilité ── */}
+            {sidebarTab === "visibility" && (
+              <div className="glass rounded-xl border border-white/10 p-4">
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">LAYERS</h4>
+                <div className="flex flex-col gap-1">
+                  {VISIBILITY_TYPES.map(type => {
+                    const count = elementCountsByType[type] ?? 0;
+                    const color = TYPE_COLORS[type] ?? "#94a3b8";
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
+                        className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors"
+                      >
+                        {visibility[type] ? <Eye className="w-3.5 h-3.5 text-white" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: visibility[type] ? color : "#475569" }} />
+                        <span className={visibility[type] ? "text-white" : "text-slate-600"}>
+                          {TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
+                        </span>
+                        {count > 0 && (
+                          <span className="ml-auto font-mono text-slate-500 text-[10px]">{count}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Actions below tabs */}
+          <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-white/5">
             <Button variant="outline" size="sm" onClick={exportCSV}>
               <Download className="w-3.5 h-3.5" /> {d("fa_export_csv")}
             </Button>
