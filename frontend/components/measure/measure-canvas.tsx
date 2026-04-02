@@ -2058,6 +2058,24 @@ export default function MeasureCanvas({
         {/* Actions for selected element */}
         {(selectedZoneId || selectedLinearId || selectedMarkupId || selectedTextId || selectedCircleId) && (
           <div className="flex items-center gap-1">
+            {/* Color picker for selected element */}
+            <input type="color"
+              value={(() => {
+                if (selectedMarkupId) return markupAnnotations.find(m => m.id === selectedMarkupId)?.color ?? "#3B82F6";
+                if (selectedTextId) return textAnnotations.find(t => t.id === selectedTextId)?.color ?? "#3B82F6";
+                if (selectedCircleId) { const cm = circleMeasures.find(c => c.id === selectedCircleId); const cat = linearCategories.find(c => c.id === cm?.categoryId); return cat?.color ?? "#10B981"; }
+                if (selectedZoneId) { const z = zones.find(v => v.id === selectedZoneId); const t = surfaceTypes.find(st => st.id === z?.typeId); return t?.color ?? "#3B82F6"; }
+                if (selectedLinearId) { const lm = linearMeasures.find(m => m.id === selectedLinearId); const cat = linearCategories.find(c => c.id === lm?.categoryId); return cat?.color ?? "#10B981"; }
+                return "#3B82F6";
+              })()}
+              onChange={e => {
+                const c = e.target.value;
+                if (selectedMarkupId) onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, color: c, fillColor: c } : m));
+                else if (selectedTextId) onTextAnnotationsChange?.(textAnnotations.map(t => t.id === selectedTextId ? { ...t, color: c } : t));
+              }}
+              className="w-7 h-7 rounded-lg border border-white/20 cursor-pointer p-0"
+              title="Couleur de l'élément"
+            />
             <button onClick={() => {
               // Copy selected element
               if (selectedZoneId) {
