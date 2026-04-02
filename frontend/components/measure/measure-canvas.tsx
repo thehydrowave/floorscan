@@ -1626,7 +1626,7 @@ export default function MeasureCanvas({
                 ? "border-blue-500/40 bg-blue-500/15 text-white shadow-sm shadow-blue-500/10"
                 : "border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10 hover:bg-white/5"
             }`}>
-            <span className="w-2.5 h-2.5 rounded-full ring-1 shrink-0" style={{ background: lyr.color, ringColor: activeLayerId === lyr.id ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)" }} />
+            <span className={`w-2.5 h-2.5 rounded-full ring-1 shrink-0 ${activeLayerId === lyr.id ? "ring-white/30" : "ring-white/10"}`} style={{ background: lyr.color }} />
             <span className="truncate max-w-20">{lyr.name}</span>
             {lyr.locked && <Lock className="w-2.5 h-2.5 text-red-400 shrink-0" />}
             {!lyr.visible && <EyeOff className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
