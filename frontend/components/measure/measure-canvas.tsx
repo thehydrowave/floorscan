@@ -1972,6 +1972,19 @@ export default function MeasureCanvas({
             }} title="Copier (Ctrl+D)" className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors">
               <Copy className="w-4 h-4" />
             </button>
+            {/* Toggle déduction — only for zones */}
+            {selectedZoneId && (() => {
+              const z = zones.find(v => v.id === selectedZoneId);
+              return (
+                <button onClick={() => {
+                  onHistoryPush?.(zones);
+                  onZonesChange(zones.map(v => v.id !== selectedZoneId ? v : { ...v, isDeduction: !v.isDeduction }));
+                }} title={z?.isDeduction ? "Retirer la déduction" : "Marquer comme déduction (soustrait du total)"}
+                  className={`glass border rounded-lg p-2 transition-colors ${z?.isDeduction ? "border-red-500/50 text-red-400 bg-red-500/10" : "border-white/10 text-slate-400 hover:text-red-400"}`}>
+                  <MinusSquare className="w-4 h-4" />
+                </button>
+              );
+            })()}
             <button onClick={() => {
               // Delete selected element
               if (selectedZoneId) { onHistoryPush?.(zones); onZonesChange(zones.filter(z => z.id !== selectedZoneId)); onSelectedZoneIdChange?.(null); }
