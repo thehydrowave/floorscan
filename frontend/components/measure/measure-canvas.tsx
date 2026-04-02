@@ -1613,7 +1613,7 @@ export default function MeasureCanvas({
     <div className="flex flex-col gap-2">
 
       {/* ══ BAR 1 : CALQUES ══ */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 min-w-0 overflow-x-auto overflow-y-visible">
         <Layers size={12} className="text-blue-400 shrink-0" />
         <span className="text-[9px] text-blue-400 uppercase tracking-wider font-semibold mr-1 shrink-0">CALQUES</span>
 
@@ -1700,7 +1700,7 @@ export default function MeasureCanvas({
       </div>
 
       {/* ══ BAR 2 : SURFACES ══ */}
-      <div className="relative z-20 flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
+      <div className="relative z-20 flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs min-w-0">
         <span className="text-[9px] text-accent uppercase tracking-wider font-semibold mr-0.5 shrink-0">SURFACES</span>
 
         {/* ── Selection ── */}
@@ -2022,7 +2022,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: "calc(100vh - 260px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : tool === "eraser" ? "cell" : "crosshair" }}
+        style={{ height: "calc(100vh - 230px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : tool === "eraser" ? "cell" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -3481,98 +3481,6 @@ export default function MeasureCanvas({
         </div>
       </div>
 
-      {/* ── Zones list ── */}
-      {zones.length > 0 && (
-        <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto">
-          {zones.map((zone, i) => {
-            const type = surfaceTypes.find(t => t.id === zone.typeId);
-            const areaPx = (() => {
-              if (naturalSize.w === 0) return 0;
-              let a = 0;
-              for (let j = 0; j < zone.points.length; j++) {
-                const k = (j + 1) % zone.points.length;
-                a += zone.points[j].x * naturalSize.w * zone.points[k].y * naturalSize.h;
-                a -= zone.points[k].x * naturalSize.w * zone.points[j].y * naturalSize.h;
-              }
-              return Math.abs(a) / 2;
-            })();
-            const areaM2 = ppm ? areaPx / ppm ** 2 : null;
-            return (
-              <div key={zone.id}
-                className={`glass border rounded-lg px-3 py-2 text-xs cursor-pointer transition-colors ${
-                  selectedZoneId === zone.id ? "border-violet-500/50 bg-violet-500/5" : "border-white/5 hover:border-white/15"
-                }`}
-                onClick={() => { onSelectedZoneIdChange?.(zone.id); setTool("select"); }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${zone.isDeduction ? "ring-1 ring-red-400" : ""}`}
-                    style={{ background: zone.isDeduction ? "#EF4444" : (type?.color ?? "#6B7280") }} />
-                  <input
-                    value={zone.name ?? ""}
-                    onChange={e => {
-                      const name = e.target.value;
-                      onZonesChange(zones.map(z => z.id === zone.id ? { ...z, name: name || undefined } : z));
-                    }}
-                    placeholder={`${zone.isDeduction ? "Déduction" : (type?.name ?? zone.typeId)} #${i + 1}`}
-                    className="flex-1 min-w-0 bg-transparent text-slate-300 placeholder-slate-600 focus:outline-none focus:text-white text-xs"
-                  />
-                  <span className={`font-mono shrink-0 ${zone.isDeduction ? "text-red-400" : "text-slate-300"}`}>
-                    {zone.isDeduction ? "−" : ""}{areaM2 != null ? fmtArea(areaM2, displayUnit) : `${Math.round(areaPx).toLocaleString()} px²`}
-                  </span>
-                  <button onClick={() => deleteZone(zone.id)}
-                    className="text-slate-600 hover:text-red-400 transition-colors ml-1 shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <input
-                  value={zone.note ?? ""}
-                  onChange={e => {
-                    const note = e.target.value;
-                    onZonesChange(zones.map(z => z.id === zone.id ? { ...z, note: note || undefined } : z));
-                  }}
-                  placeholder="Note… (ex: attention dénivelé)"
-                  className="mt-1 w-full bg-transparent text-slate-500 placeholder-slate-700 focus:outline-none focus:text-slate-300 text-[10px] italic"
-                />
-                {/* Depth + Slope inline */}
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap" onClick={e => e.stopPropagation()}>
-                  <span className="text-[10px] text-slate-600">Prof.</span>
-                  <input type="number"
-                    value={zone.depthM != null ? +(zone.depthM * 100).toFixed(1) : ""}
-                    onChange={e => {
-                      const cm = parseFloat(e.target.value);
-                      onZonesChange(zones.map(z => z.id === zone.id ? { ...z, depthM: isNaN(cm) || cm <= 0 ? undefined : cm / 100 } : z));
-                    }}
-                    placeholder={(() => { const t = surfaceTypes.find(t => t.id === zone.typeId); return t?.defaultDepthM ? String(+(t.defaultDepthM * 100).toFixed(1)) : "—"; })()}
-                    className="w-11 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-[10px] text-slate-300 font-mono text-center focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-[10px] text-slate-600">cm</span>
-                  <span className="text-[10px] text-slate-600 ml-1">∠</span>
-                  <select value={zone.slopeDeg ?? 0}
-                    onChange={e => onZonesChange(zones.map(z => z.id === zone.id ? { ...z, slopeDeg: parseFloat(e.target.value) || undefined } : z))}
-                    className="w-12 bg-white/5 border border-white/10 rounded px-0.5 py-0.5 text-[10px] text-slate-300 font-mono text-center focus:outline-none focus:border-accent appearance-none"
-                  >
-                    <option value={0}>0°</option>
-                    <option value={5}>5°</option>
-                    <option value={15}>15°</option>
-                    <option value={30}>30°</option>
-                    <option value={45}>45°</option>
-                  </select>
-                  {(() => {
-                    const effArea = slopeCorrectedArea(areaM2 ?? 0, zone.slopeDeg);
-                    const t = surfaceTypes.find(t => t.id === zone.typeId);
-                    const vol = zoneVolumeM3(effArea, zone.depthM ?? t?.defaultDepthM);
-                    return vol != null ? (
-                      <span className="text-[10px] text-blue-400 font-mono ml-auto">{fmtVolume(vol, displayUnit)}</span>
-                    ) : (zone.slopeDeg ?? 0) > 0 ? (
-                      <span className="text-[10px] text-amber-400 font-mono ml-auto">↗ {fmtArea(effArea, displayUnit)}</span>
-                    ) : null;
-                  })()}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
     </div>
   );
