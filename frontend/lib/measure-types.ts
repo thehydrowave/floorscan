@@ -73,11 +73,14 @@ export function aggregateLinearByCategory(
 
 // ── Outil comptage (count tool) ───────────────────────────────────────────────
 
+export type CountShape = "circle" | "triangle" | "diamond" | "square" | "checkmark" | "cross";
+
 export interface CountGroup {
   id: string;
   name: string;
   color: string;        // hex
   pricePerUnit?: number; // €/unité
+  shape?: CountShape;   // default "circle" — Bluebeam-style count shapes
 }
 
 export interface CountPoint {
@@ -520,6 +523,7 @@ export interface ToolPreset {
   depthM?: number;
   slopeDeg?: number;
   pricePerUnit?: number;
+  countShape?: CountShape; // shape for count presets
 }
 
 export interface ToolChestCategory {
@@ -552,10 +556,10 @@ export const DEFAULT_TOOL_CHEST: ToolChestCategory[] = [
   {
     id: "tc_electrical", name: "Électricité", presets: [
       { id: "tp_conduit",   name: "Gaine ⌀20",       toolType: "polylength", color: "#EF4444", subject: "Gaine ICTA", label: "⌀20 mm", layerId: "lyr_electrical" },
-      { id: "tp_outlet",    name: "Prise 2P+T",      toolType: "count",      color: "#EF4444", subject: "Prise électrique", label: "2P+T", layerId: "lyr_electrical" },
-      { id: "tp_switch",    name: "Interrupteur",     toolType: "count",      color: "#EF4444", subject: "Interrupteur", label: "Simple", layerId: "lyr_electrical" },
-      { id: "tp_panel",     name: "Tableau élec.",    toolType: "count",      color: "#EF4444", subject: "Tableau électrique", label: "", layerId: "lyr_electrical" },
-      { id: "tp_fixture",   name: "Luminaire",        toolType: "count",      color: "#EF4444", subject: "Luminaire", label: "", layerId: "lyr_electrical" },
+      { id: "tp_outlet",    name: "Prise 2P+T",      toolType: "count",      color: "#EF4444", subject: "Prise électrique", label: "2P+T", layerId: "lyr_electrical", countShape: "square" },
+      { id: "tp_switch",    name: "Interrupteur",     toolType: "count",      color: "#EF4444", subject: "Interrupteur", label: "Simple", layerId: "lyr_electrical", countShape: "diamond" },
+      { id: "tp_panel",     name: "Tableau élec.",    toolType: "count",      color: "#EF4444", subject: "Tableau électrique", label: "", layerId: "lyr_electrical", countShape: "square" },
+      { id: "tp_fixture",   name: "Luminaire",        toolType: "count",      color: "#EF4444", subject: "Luminaire", label: "", layerId: "lyr_electrical", countShape: "triangle" },
     ],
   },
   {
@@ -563,26 +567,26 @@ export const DEFAULT_TOOL_CHEST: ToolChestCategory[] = [
       { id: "tp_pipe_cu",   name: "Tube cuivre ⌀16", toolType: "polylength", color: "#06B6D4", subject: "Tube cuivre", label: "⌀16", layerId: "lyr_plumbing" },
       { id: "tp_pipe_per",  name: "Tube PER ⌀16",    toolType: "polylength", color: "#22D3EE", subject: "Tube PER", label: "⌀16", layerId: "lyr_plumbing" },
       { id: "tp_drain",     name: "Évacuation PVC",   toolType: "polylength", color: "#0891B2", subject: "Évacuation PVC", label: "⌀100", layerId: "lyr_plumbing" },
-      { id: "tp_siphon",    name: "Siphon",           toolType: "count",      color: "#06B6D4", subject: "Siphon de sol", label: "", layerId: "lyr_plumbing" },
-      { id: "tp_valve",     name: "Vanne",            toolType: "count",      color: "#06B6D4", subject: "Vanne d'arrêt", label: "", layerId: "lyr_plumbing" },
+      { id: "tp_siphon",    name: "Siphon",           toolType: "count",      color: "#06B6D4", subject: "Siphon de sol", label: "", layerId: "lyr_plumbing", countShape: "circle" },
+      { id: "tp_valve",     name: "Vanne",            toolType: "count",      color: "#06B6D4", subject: "Vanne d'arrêt", label: "", layerId: "lyr_plumbing", countShape: "diamond" },
     ],
   },
   {
     id: "tc_mechanical", name: "CVC", presets: [
       { id: "tp_duct",      name: "Gaine VMC",        toolType: "polylength", color: "#10B981", subject: "Gaine VMC", label: "⌀125", layerId: "lyr_mechanical" },
       { id: "tp_duct_rect", name: "Gaine rectangul.", toolType: "polylength", color: "#10B981", subject: "Gaine rectangulaire", label: "400×200", layerId: "lyr_mechanical" },
-      { id: "tp_diffuser",  name: "Bouche VMC",       toolType: "count",      color: "#10B981", subject: "Bouche extraction", label: "", layerId: "lyr_mechanical" },
-      { id: "tp_radiator",  name: "Radiateur",        toolType: "count",      color: "#10B981", subject: "Radiateur", label: "", layerId: "lyr_mechanical" },
-      { id: "tp_split",     name: "Unité split",      toolType: "count",      color: "#10B981", subject: "Climatisation split", label: "", layerId: "lyr_mechanical" },
+      { id: "tp_diffuser",  name: "Bouche VMC",       toolType: "count",      color: "#10B981", subject: "Bouche extraction", label: "", layerId: "lyr_mechanical", countShape: "circle" },
+      { id: "tp_radiator",  name: "Radiateur",        toolType: "count",      color: "#10B981", subject: "Radiateur", label: "", layerId: "lyr_mechanical", countShape: "square" },
+      { id: "tp_split",     name: "Unité split",      toolType: "count",      color: "#10B981", subject: "Climatisation split", label: "", layerId: "lyr_mechanical", countShape: "diamond" },
     ],
   },
   {
     id: "tc_fire", name: "Incendie / Sécurité", presets: [
-      { id: "tp_smoke",     name: "Détecteur fumée",  toolType: "count",      color: "#F59E0B", subject: "Détecteur de fumée", label: "Plafond", layerId: "lyr_fire" },
-      { id: "tp_sprinkler", name: "Sprinkler",        toolType: "count",      color: "#F59E0B", subject: "Sprinkler", label: "", layerId: "lyr_fire" },
-      { id: "tp_extinguish",name: "Extincteur",       toolType: "count",      color: "#EF4444", subject: "Extincteur", label: "ABC 6kg", layerId: "lyr_fire" },
-      { id: "tp_alarm",     name: "Alarme incendie",  toolType: "count",      color: "#EF4444", subject: "Déclencheur manuel", label: "", layerId: "lyr_fire" },
-      { id: "tp_exit",      name: "Issue de secours", toolType: "count",      color: "#22C55E", subject: "Bloc autonome", label: "BAES", layerId: "lyr_fire" },
+      { id: "tp_smoke",     name: "Détecteur fumée",  toolType: "count",      color: "#F59E0B", subject: "Détecteur de fumée", label: "Plafond", layerId: "lyr_fire", countShape: "triangle" },
+      { id: "tp_sprinkler", name: "Sprinkler",        toolType: "count",      color: "#F59E0B", subject: "Sprinkler", label: "", layerId: "lyr_fire", countShape: "circle" },
+      { id: "tp_extinguish",name: "Extincteur",       toolType: "count",      color: "#EF4444", subject: "Extincteur", label: "ABC 6kg", layerId: "lyr_fire", countShape: "square" },
+      { id: "tp_alarm",     name: "Alarme incendie",  toolType: "count",      color: "#EF4444", subject: "Déclencheur manuel", label: "", layerId: "lyr_fire", countShape: "diamond" },
+      { id: "tp_exit",      name: "Issue de secours", toolType: "count",      color: "#22C55E", subject: "Bloc autonome", label: "BAES", layerId: "lyr_fire", countShape: "checkmark" },
     ],
   },
   {

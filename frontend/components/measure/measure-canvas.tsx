@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { Trash2, Undo2, Redo2, Pentagon, Square, ZoomIn, ZoomOut, RotateCcw, Spline, MinusSquare, Ruler, Scissors, Search, Save, Loader2, MousePointer2, Copy, Type, Download, ArrowRight, Pen, Cloud, Stamp, MessageSquare, Minus, CircleDot, Highlighter, LayoutGrid, Group, Ungroup, Paintbrush, Layers, Eye, EyeOff, Lock, Unlock, Wrench } from "lucide-react";
-import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS, MarkupGroup, MeasureLayer, DEFAULT_LAYERS, ToolChestCategory, DEFAULT_TOOL_CHEST, ToolPreset } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCategory, LinearMeasure, CountGroup, CountPoint, CountShape, AngleMeasurement, CircleMeasure, circleMetrics, DisplayUnit, fmtLinear, fmtArea, fmtVolume, slopeCorrectedArea, zoneVolumeM3, TextAnnotation, MarkupAnnotation, MarkupType, StampKind, STAMP_LABELS, MarkupGroup, MeasureLayer, DEFAULT_LAYERS, ToolChestCategory, DEFAULT_TOOL_CHEST, ToolPreset } from "@/lib/measure-types";
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
@@ -190,6 +190,8 @@ export default function MeasureCanvas({
 
   // Format painter
   const [formatPainterStyle, setFormatPainterStyle] = useState<{ color: string; lineWidth?: number; fillColor?: string; fillOpacity?: number } | null>(null);
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<{ kind: string; data: any } | null>(null);
   // Extended selection (for markups, texts, circles)
   const [selectedMarkupId, setSelectedMarkupId] = useState<string | null>(null);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
@@ -1180,6 +1182,49 @@ export default function MeasureCanvas({
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
         e.preventDefault();
         onHistoryRedo?.();
+        return;
+      }
+
+      // ── Copy (Ctrl+C) — copy selected element to clipboard ──
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        if (selectedZoneId) { clipboardRef.current = { kind: "zone", data: zonesRef.current.find(z => z.id === selectedZoneId) }; }
+        else if (selectedLinearId) { clipboardRef.current = { kind: "linear", data: linearMeasuresRef.current.find(m => m.id === selectedLinearId) }; }
+        else if (selectedMarkupId) { clipboardRef.current = { kind: "markup", data: markupAnnotationsRef.current.find(m => m.id === selectedMarkupId) }; }
+        else if (selectedTextId) { clipboardRef.current = { kind: "text", data: textAnnotationsRef.current.find(t => t.id === selectedTextId) }; }
+        else if (selectedCircleId) { clipboardRef.current = { kind: "circle", data: circleMeasuresRef.current.find(c => c.id === selectedCircleId) }; }
+        return;
+      }
+
+      // ── Paste (Ctrl+V) — paste from clipboard with offset ──
+      if ((e.ctrlKey || e.metaKey) && e.key === "v" && clipboardRef.current) {
+        e.preventDefault();
+        const { kind, data } = clipboardRef.current;
+        const off = 0.02;
+        if (kind === "zone" && data) {
+          onHistoryPush?.(zonesRef.current);
+          const dup = { ...data, id: crypto.randomUUID(), name: data.name ? `${data.name} (copie)` : undefined, points: data.points.map((p: any) => ({ x: p.x + off, y: p.y + off })) };
+          onZonesChangeRef.current([...zonesRef.current, dup]);
+          onSelectedZoneIdChange?.(dup.id);
+        } else if (kind === "linear" && data) {
+          const dup = { ...data, id: crypto.randomUUID(), points: data.points.map((p: any) => ({ x: p.x + off, y: p.y + off })) };
+          onLinearMeasuresChangeRef.current?.([...linearMeasuresRef.current, dup]);
+          onSelectedLinearIdChange?.(dup.id);
+        } else if (kind === "markup" && data) {
+          const dup = { ...data, id: crypto.randomUUID(), x1: data.x1 + off, y1: data.y1 + off, x2: data.x2 + off, y2: data.y2 + off,
+            ...(data.penPoints ? { penPoints: data.penPoints.map((p: any) => ({ x: p.x + off, y: p.y + off })) } : {}),
+            ...(data.polyPoints ? { polyPoints: data.polyPoints.map((p: any) => ({ x: p.x + off, y: p.y + off })) } : {}),
+          };
+          onMarkupAnnotationsChangeRef.current?.([...markupAnnotationsRef.current, dup]);
+          setSelectedMarkupId(dup.id);
+        } else if (kind === "text" && data) {
+          const dup = { ...data, id: crypto.randomUUID(), x: data.x + off, y: data.y + off };
+          onTextAnnotationsChangeRef.current?.([...textAnnotationsRef.current, dup]);
+          setSelectedTextId(dup.id);
+        } else if (kind === "circle" && data) {
+          const dup = { ...data, id: crypto.randomUUID(), center: { x: data.center.x + off, y: data.center.y + off }, edgePoint: { x: data.edgePoint.x + off, y: data.edgePoint.y + off } };
+          onCircleMeasuresChangeRef.current?.([...circleMeasuresRef.current, dup]);
+          setSelectedCircleId(dup.id);
+        }
         return;
       }
 
@@ -2681,12 +2726,34 @@ export default function MeasureCanvas({
             );
           })()}
 
-          {/* ── Count points (completed) — draggable + right-click delete ── */}
+          {/* ── Count points (completed) — draggable + right-click delete + shapes ── */}
           {countPoints.map((cp) => {
             const grp = countGroups.find(g => g.id === cp.groupId);
             const cpColor = grp?.color ?? "#EC4899";
+            const shape = grp?.shape ?? "circle";
             const s = toSvg({ x: cp.x, y: cp.y });
             const num = countPoints.filter(p => p.groupId === cp.groupId).findIndex(p => p.id === cp.id) + 1;
+            const r = 10;
+            // Shape SVG paths
+            const shapeEl = shape === "triangle" ? (
+              <polygon points={`${s.x},${s.y - r} ${s.x - r * 0.87},${s.y + r * 0.5} ${s.x + r * 0.87},${s.y + r * 0.5}`} fill={cpColor} stroke="white" strokeWidth={1.5} />
+            ) : shape === "diamond" ? (
+              <polygon points={`${s.x},${s.y - r} ${s.x + r},${s.y} ${s.x},${s.y + r} ${s.x - r},${s.y}`} fill={cpColor} stroke="white" strokeWidth={1.5} />
+            ) : shape === "square" ? (
+              <rect x={s.x - r * 0.75} y={s.y - r * 0.75} width={r * 1.5} height={r * 1.5} rx={2} fill={cpColor} stroke="white" strokeWidth={1.5} />
+            ) : shape === "checkmark" ? (
+              <g>
+                <circle cx={s.x} cy={s.y} r={r} fill={cpColor} stroke="white" strokeWidth={1.5} />
+                <path d={`M${s.x - 4},${s.y} L${s.x - 1},${s.y + 3.5} L${s.x + 5},${s.y - 3}`} fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+            ) : shape === "cross" ? (
+              <g>
+                <circle cx={s.x} cy={s.y} r={r} fill={cpColor} stroke="white" strokeWidth={1.5} />
+                <path d={`M${s.x - 4},${s.y - 4} L${s.x + 4},${s.y + 4} M${s.x + 4},${s.y - 4} L${s.x - 4},${s.y + 4}`} fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" />
+              </g>
+            ) : (
+              <circle cx={s.x} cy={s.y} r={r} fill={cpColor} stroke="white" strokeWidth={1.5} />
+            );
             return (
               <g key={cp.id} style={{ pointerEvents: "all", cursor: "move" }}
                 onMouseDown={e => {
@@ -2700,7 +2767,7 @@ export default function MeasureCanvas({
                   e.stopPropagation(); e.preventDefault();
                   onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id));
                 }}>
-                <circle cx={s.x} cy={s.y} r={10} fill={cpColor} stroke="white" strokeWidth={1.5} />
+                {shapeEl}
                 <text x={s.x} y={s.y + 1} textAnchor="middle" dominantBaseline="middle"
                   fontSize={9} fontWeight="700" fill="white" fontFamily="system-ui, sans-serif">
                   {String(num)}
@@ -3171,12 +3238,16 @@ export default function MeasureCanvas({
                         else if (preset.toolType === "polylength") setTool("linear");
                         else if (preset.toolType === "count") {
                           setTool("count");
-                          // Find or create a count group matching this preset
+                          // Find or create a count group matching this preset with correct color + shape
                           const existing = countGroups.find(g => g.name === preset.subject || g.name === preset.name);
                           if (existing) {
+                            // Update color and shape if different
+                            if (existing.color !== preset.color || existing.shape !== preset.countShape) {
+                              onCountGroupsChangeProp?.([...countGroups.map(g => g.id === existing.id ? { ...g, color: preset.color, shape: preset.countShape } : g)]);
+                            }
                             onActiveCountGroupIdChange?.(existing.id);
                           } else if (onCountGroupsChangeProp) {
-                            const newGrp = { id: `cnt_${Date.now()}`, name: preset.subject || preset.name, color: preset.color };
+                            const newGrp: CountGroup = { id: `cnt_${Date.now()}`, name: preset.subject || preset.name, color: preset.color, shape: preset.countShape };
                             onCountGroupsChangeProp([...countGroups, newGrp]);
                             onActiveCountGroupIdChange?.(newGrp.id);
                           }
