@@ -53,6 +53,7 @@ const LABELS_FR: Record<FacadeElementType, string> = {
   roof: "Toiture",
   column: "Colonne",
   other: "Autre",
+  wall_opaque: "Mur opaque",
 };
 
 /* ── Mock facade result generator ── */

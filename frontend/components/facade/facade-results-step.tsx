@@ -123,7 +123,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   /* ── Masques: zoom / pan ── */
   const [maskZoom,     setMaskZoom]     = useState(1);
   const [maskPan,      setMaskPan]      = useState({ x: 0, y: 0 });
-  const maskPanRef     = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const [isMaskPanning, setIsMaskPanning] = useState(false);
   const maskContainerRef = useRef<HTMLDivElement>(null);
 
@@ -197,6 +196,12 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
     return Math.max(0, totalFacadeZonesM2 - fenetresAreaM2);
   }, [totalFacadeZonesM2, fenetresAreaM2]);
 
+  /* ── Sidebar stats (simplified) ── */
+  const windowCount = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").length, [result]);
+  const windowsAreaM2 = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").reduce((s, e) => s + (e.area_m2 ?? 0), 0), [result]);
+  const facadeAreaM2 = result.facade_area_m2 ?? 0;
+  const wallNetArea = Math.max(0, facadeAreaM2 - windowsAreaM2);
+
   /* ── Per-zone stats (one entry per facade zone) ── */
   const perZoneStats = useMemo(() => {
     if (facadeZones.length === 0) return null;
@@ -261,22 +266,26 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
     return () => el.removeEventListener("wheel", handler);
   }, []);
 
-  const handleMaskContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+  const panRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+
+  const handlePanStart = useCallback((e: React.MouseEvent) => {
+    if (e.button === 1 || e.button === 2 || e.altKey) {
       e.preventDefault();
-      maskPanRef.current = { startX: e.clientX, startY: e.clientY, panX: maskPan.x, panY: maskPan.y };
+      panRef.current = { startX: e.clientX, startY: e.clientY, startPanX: maskPan.x, startPanY: maskPan.y };
       setIsMaskPanning(true);
     }
   }, [maskPan]);
 
-  const handleMaskContainerMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const ref = maskPanRef.current;
-    if (!ref) return;
-    setMaskPan({ x: ref.panX + (e.clientX - ref.startX), y: ref.panY + (e.clientY - ref.startY) });
+  const handlePanMove = useCallback((e: React.MouseEvent) => {
+    if (!panRef.current) return;
+    setMaskPan({
+      x: panRef.current.startPanX + (e.clientX - panRef.current.startX),
+      y: panRef.current.startPanY + (e.clientY - panRef.current.startY),
+    });
   }, []);
 
-  const handleMaskContainerMouseUp = useCallback(() => {
-    maskPanRef.current = null;
+  const handlePanEnd = useCallback(() => {
+    panRef.current = null;
     setIsMaskPanning(false);
   }, []);
 
@@ -383,11 +392,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             <ChevronLeft className="w-4 h-4" /> {d("fr_back" as DTKey)}
           </button>
         )}
-        <button onClick={() => onGoEditor?.()}
-          className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded-xl text-sm font-medium transition-colors">
-          <PenSquare className="w-4 h-4" /> {d("fa_go_editor")}
-        </button>
-
         {/* Mask filter: Tous | Murs | Ouvertures */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
           {([
@@ -407,131 +411,134 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             ?
           </button>
         </div>
-
-        <div className="flex-1" />
-        <button onClick={() => setMaskZoom(z => Math.max(z / 1.3, 0.5))} className="p-1.5 text-slate-400 hover:text-white"><ZoomOut className="w-4 h-4" /></button>
-        <span className="text-xs text-slate-500 font-mono w-12 text-center">{(maskZoom * 100).toFixed(0)}%</span>
-        <button onClick={() => setMaskZoom(z => Math.min(z * 1.3, 8))} className="p-1.5 text-slate-400 hover:text-white"><ZoomIn className="w-4 h-4" /></button>
       </div>
 
       {/* ── Image panel (Masques view) ── */}
       <div className="glass rounded-2xl border border-white/10 p-2 mb-8 overflow-hidden">
         <FacadeTutorialOverlay forceShow={showTuto} />
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
 
             {/* Left: canvas panel */}
-            <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden">
-
-              {/* Image + zoom container */}
-              <div
+            <div
               ref={maskContainerRef}
-              className="relative overflow-hidden rounded-xl select-none bg-slate-900"
-              style={{ minHeight: 200, cursor: isMaskPanning ? "grabbing" : "default" }}
-              onMouseDown={handleMaskContainerMouseDown}
-              onMouseMove={handleMaskContainerMouseMove}
-              onMouseUp={handleMaskContainerMouseUp}
-              onMouseLeave={handleMaskContainerMouseUp}
+              className="relative overflow-hidden rounded-xl bg-slate-900"
+              style={{ height: "calc(100vh - 340px)", minHeight: 400, cursor: isMaskPanning ? "grabbing" : "default" }}
+              onMouseDown={handlePanStart}
+              onMouseMove={handlePanMove}
+              onMouseUp={handlePanEnd}
+              onMouseLeave={handlePanEnd}
+              onContextMenu={e => e.preventDefault()}
             >
-            <div style={{
-              transform: `translate(${maskPan.x}px, ${maskPan.y}px) scale(${maskZoom})`,
-              transformOrigin: "0 0",
-              willChange: "transform",
-            }}>
-            <div className="relative">
-              <img
-                src={`data:image/png;base64,${result.plan_b64}`}
-                alt="Facade plan"
-                className="w-full rounded-xl block"
-                style={{ display: "block" }}
-                onLoad={e => {
-                  const i = e.currentTarget;
-                  setImgNat({ w: i.naturalWidth, h: i.naturalHeight });
-                }}
-              />
+              {/* Centered + transformed image container */}
+              <div style={{
+                position: "absolute",
+                top: "50%", left: "50%",
+                transform: `translate(calc(-50% + ${maskPan.x}px), calc(-50% + ${maskPan.y}px)) scale(${maskZoom})`,
+                transformOrigin: "center center",
+              }}>
+                <div className="relative">
+                  <img
+                    src={`data:image/png;base64,${result.plan_b64}`}
+                    alt="Facade"
+                    className="block select-none"
+                    style={{ maxWidth: "80vw", maxHeight: "calc(100vh - 360px)" }}
+                    draggable={false}
+                    onLoad={e => {
+                      const i = e.currentTarget;
+                      setImgNat({ w: i.naturalWidth, h: i.naturalHeight });
+                    }}
+                  />
 
-              {/* Surface murale layer: static, evenodd path = ROI − opening holes */}
-              {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (                <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                  <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.3} />
-                </svg>
-              )}
+                  {/* Surface murale layer: static, evenodd path = ROI - opening holes */}
+                  {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
+                    <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                      viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
+                      <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.3} />
+                    </svg>
+                  )}
 
-              {/* Per-type mask layers: read-only overlays */}
-              {imgNat.w > 0 && (
-                <svg
-                  ref={maskSvgRef}
-                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
-                  preserveAspectRatio="xMinYMin meet"
-                >
+                  {/* Per-type mask layers: read-only overlays */}
+                  {imgNat.w > 0 && (
+                    <svg
+                      ref={maskSvgRef}
+                      className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                      viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
+                      preserveAspectRatio="xMinYMin meet"
+                    >
+                      {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
+                        const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
+                        return (
+                          <g key={layer.id}>
+                            {layerEls.map(el => {
+                              if (el.type === "floor_line") {
+                                const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                                const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
+                                return (
+                                  <line key={el.id}
+                                    x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
+                                    stroke={layer.color} strokeWidth={3} strokeOpacity={0.75}
+                                  />
+                                );
+                              }
+                              if (el.polygon_norm && el.polygon_norm.length >= 3) {
+                                const pts = el.polygon_norm.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
+                                return (
+                                  <polygon key={el.id} points={pts}
+                                    fill={layer.color} fillOpacity={0.42}
+                                    stroke={layer.color} strokeWidth={1.5}
+                                  />
+                                );
+                              }
+                              const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
+                              const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
+                              return (
+                                <rect key={el.id}
+                                  x={x} y={y} width={w} height={h}
+                                  fill={layer.color} fillOpacity={0.42}
+                                  stroke={layer.color} strokeWidth={1.5} rx="2"
+                                />
+                              );
+                            })}
+                          </g>
+                        );
+                      })}
 
-                  {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
-                    const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
-                    return (
-                      <g key={layer.id}>
-                        {layerEls.map(el => {
-                          if (el.type === "floor_line") {
-                            const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
-                            const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
-                            return (
-                              <line key={el.id}
-                                x1={x} y1={y + h / 2} x2={x + w} y2={y + h / 2}
-                                stroke={layer.color} strokeWidth={3} strokeOpacity={0.75}
-                              />
-                            );
-                          }
-                          if (el.polygon_norm && el.polygon_norm.length >= 3) {
-                            const pts = el.polygon_norm.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
-                            return (
-                              <polygon key={el.id} points={pts}
-                                fill={layer.color} fillOpacity={0.42}
-                                stroke={layer.color} strokeWidth={1.5}
-                              />
-                            );
-                          }
-                          const x = el.bbox_norm.x * imgNat.w, y = el.bbox_norm.y * imgNat.h;
-                          const w = el.bbox_norm.w * imgNat.w, h = el.bbox_norm.h * imgNat.h;
-                          return (
-                            <rect key={el.id}
-                              x={x} y={y} width={w} height={h}
-                              fill={layer.color} fillOpacity={0.42}
-                              stroke={layer.color} strokeWidth={1.5} rx="2"
+                      {/* Facade polygon zones (read-only) */}
+                      {facadeZones.map(zone => {
+                        const ptStr = zone.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
+                        return (
+                          <g key={zone.id}>
+                            <polygon points={ptStr}
+                              fill="#64748b" fillOpacity={0.18}
+                              stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="7 3"
                             />
-                          );
-                        })}
-                      </g>
-                    );
-                  })}
+                            {(() => {
+                              const a = facadeZoneAreaM2(zone.pts);
+                              const cx = zone.pts.reduce((s, p) => s + p.x, 0) / 4 * imgNat.w;
+                              const cy = zone.pts.reduce((s, p) => s + p.y, 0) / 4 * imgNat.h;
+                              return a > 0 ? (
+                                <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+                                  fill="#f59e0b" fontSize={Math.max(10, imgNat.w * 0.013)}
+                                  fontFamily="monospace" fontWeight="bold">
+                                  {a.toFixed(1)} m²
+                                </text>
+                              ) : null;
+                            })()}
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  )}
+                </div>{/* /relative inner */}
+              </div>{/* /centered transform */}
 
-                  {/* Facade polygon zones (read-only) */}
-                  {facadeZones.map(zone => {
-                    const ptStr = zone.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
-                    return (
-                      <g key={zone.id}>
-                        <polygon points={ptStr}
-                          fill="#64748b" fillOpacity={0.18}
-                          stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="7 3"
-                        />
-                        {(() => {
-                          const a = facadeZoneAreaM2(zone.pts);
-                          const cx = zone.pts.reduce((s, p) => s + p.x, 0) / 4 * imgNat.w;
-                          const cy = zone.pts.reduce((s, p) => s + p.y, 0) / 4 * imgNat.h;
-                          return a > 0 ? (
-                            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
-                              fill="#f59e0b" fontSize={Math.max(10, imgNat.w * 0.013)}
-                              fontFamily="monospace" fontWeight="bold">
-                              {a.toFixed(1)} m²
-                            </text>
-                          ) : null;
-                        })()}
-                      </g>
-                    );
-                  })}
-                </svg>
-              )}
-
-            </div>{/* /relative inner */}
-            </div>{/* /transform */}
+              {/* Floating zoom controls */}
+              <div className="absolute top-3 right-3 z-10 flex items-center gap-1 glass border border-white/10 rounded-lg p-1 pointer-events-auto">
+                <button onClick={() => setMaskZoom(z => Math.max(z / 1.3, 0.5))} className="p-1.5 text-slate-400 hover:text-white"><ZoomOut className="w-3.5 h-3.5" /></button>
+                <span className="text-[10px] text-slate-500 font-mono w-10 text-center">{(maskZoom * 100).toFixed(0)}%</span>
+                <button onClick={() => setMaskZoom(z => Math.min(z * 1.3, 8))} className="p-1.5 text-slate-400 hover:text-white"><ZoomIn className="w-3.5 h-3.5" /></button>
+                <button onClick={() => { setMaskZoom(1); setMaskPan({ x: 0, y: 0 }); }} className="p-1.5 text-slate-400 hover:text-white"><RotateCcw className="w-3.5 h-3.5" /></button>
+              </div>
 
               {/* Demo badge */}
               {result.is_mock && (
@@ -540,72 +547,63 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   <AlertTriangle className="w-3 h-3" /> {d("fr_demo" as DTKey)}
                 </div>
               )}
-            </div>{/* /overflow zoom container */}
-            </div>{/* /canvas panel glass */}
+            </div>{/* /canvas panel */}
 
             {/* ── Right panel ── */}
-            <div className="flex flex-col gap-4">
-
-              {/* CALQUES — limited to fenêtres (window) and murs (surface_murale) */}
+            <div className="w-[260px] shrink-0 flex flex-col gap-3">
+              {/* Stats panel */}
               <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fr_layers" as DTKey)}</h4>
-                {MASK_LAYERS.filter(l => l.id === "surface_murale" || l.id === "window").map(layer => {
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Résumé façade</h4>
+                <div className="flex flex-col gap-3">
+                  {/* Windows */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-sm" style={{ background: "#00CCFF" }} />
+                      <span className="text-xs text-slate-300">Fenêtres</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm text-white font-mono font-semibold">{windowCount}</span>
+                      {windowsAreaM2 > 0 && <span className="text-[10px] text-slate-500 font-mono ml-1">{windowsAreaM2.toFixed(1)} m²</span>}
+                    </div>
+                  </div>
+                  {/* Wall net */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-sm" style={{ background: "#94a3b8" }} />
+                      <span className="text-xs text-slate-300">Mur net</span>
+                    </div>
+                    <span className="text-sm text-white font-mono font-semibold">{wallNetArea.toFixed(1)} m²</span>
+                  </div>
+                  {/* Total delimited */}
+                  <div className="border-t border-white/5 pt-2 flex items-center justify-between">
+                    <span className="text-xs text-slate-400">Surface totale</span>
+                    <span className="text-sm text-accent font-mono font-semibold">{facadeAreaM2.toFixed(1)} m²</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit masks button - PROMINENT */}
+              <button onClick={() => onGoEditor?.()}
+                className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-accent hover:bg-accent/80 text-white rounded-xl text-sm font-semibold transition-colors">
+                <PenSquare className="w-4 h-4" /> Éditer les masques
+              </button>
+
+              {/* Visibility toggles (compact) */}
+              <div className="glass rounded-xl border border-white/10 p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Affichage</p>
+                {filteredMaskLayers.map(layer => {
                   const layerHidden = hiddenLayers.has(layer.id);
-                  const count = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
                   return (
                     <button key={layer.id}
                       onClick={() => setHiddenLayers(prev => { const n = new Set(prev); n.has(layer.id) ? n.delete(layer.id) : n.add(layer.id); return n; })}
-                      className={cn("flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors", layerHidden ? "opacity-40" : "opacity-100")}>
-                      {layerHidden ? <EyeOff className="w-3.5 h-3.5 text-slate-600" /> : <Eye className="w-3.5 h-3.5 text-white" />}
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: layerHidden ? "#475569" : layer.color }} />
-                      <span className={cn("flex-1 text-left", layerHidden ? "text-slate-600" : "text-white")}>{TYPE_I18N[layer.id] ? d(TYPE_I18N[layer.id]) : layer.label}</span>
-                      {count != null && <span className="font-mono text-slate-500">{count}</span>}
+                      className={cn("flex items-center gap-2 w-full px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors", layerHidden ? "opacity-40" : "opacity-100")}>
+                      {layerHidden ? <EyeOff className="w-3 h-3 text-slate-600" /> : <Eye className="w-3 h-3 text-white" />}
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: layerHidden ? "#475569" : layer.color }} />
+                      <span className={cn("flex-1 text-left text-[11px]", layerHidden ? "text-slate-600" : "text-slate-300")}>{TYPE_I18N[layer.id] ? d(TYPE_I18N[layer.id]) : layer.label}</span>
                     </button>
                   );
                 })}
               </div>
-
-              {/* ÉLÉMENTS count — limited to fenêtres (window) and murs (surface_murale) */}
-              <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fr_elements" as DTKey)}</h4>
-                <div className="flex flex-col gap-1.5">
-                  {MASK_LAYERS.filter(l => (l.id === "window") && !l.isSurface).map(l => {
-                    const count = localElements.filter(e => e.type === l.id && !hiddenElements.has(e.id)).length;
-                    if (count === 0) return null;
-                    return (
-                      <div key={l.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/3">
-                        <span className="flex items-center gap-2 text-xs text-slate-300">
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
-                          {TYPE_I18N[l.id] ? d(TYPE_I18N[l.id]) : l.label}
-                        </span>
-                        <span className="font-mono text-sm font-bold" style={{ color: l.color }}>{count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* SURFACES */}
-              {(fenetresAreaM2 > 0 || facadeNetteM2 != null) && (
-                <div className="glass rounded-xl border border-white/10 p-4 space-y-3">
-                  {fenetresAreaM2 > 0 && (
-                    <div>
-                      <div className="text-xs text-amber-500/80 uppercase tracking-wider mb-0.5">{d("fr_windows_area" as DTKey)}</div>
-                      <div className="text-base font-mono font-semibold text-amber-300">{fenetresAreaM2.toFixed(1)} m²</div>
-                    </div>
-                  )}
-                  {facadeNetteM2 != null && (
-                    <div>
-                      <div className="text-xs text-blue-400/80 uppercase tracking-wider mb-0.5">{d("fr_net_area" as DTKey)}</div>
-                      <div className="text-xl font-mono font-bold text-blue-400">{facadeNetteM2.toFixed(1)} m²</div>
-                      {totalFacadeZonesM2 > 0 && fenetresAreaM2 > 0 && (
-                        <div className="text-xs text-slate-500 mt-0.5">{((fenetresAreaM2 / totalFacadeZonesM2) * 100).toFixed(0)}{d("fr_openings_pct" as DTKey)}</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
             </div>{/* /right panel */}
           </div>{/* /grid */}
       </div>

@@ -76,6 +76,7 @@ const TYPE_COLORS: Record<FacadeElementType, string> = {
   roof: "#a78bfa",
   column: "#fb923c",
   other: "#94a3b8",
+  wall_opaque: "#64748b",
 };
 
 const TYPE_LABELS_FR: Record<FacadeElementType, string> = {
@@ -86,6 +87,7 @@ const TYPE_LABELS_FR: Record<FacadeElementType, string> = {
   roof: "Toiture",
   column: "Colonne",
   other: "Autre",
+  wall_opaque: "Mur opaque",
 };
 
 const TYPE_LABELS_EN: Record<FacadeElementType, string> = {
@@ -96,6 +98,7 @@ const TYPE_LABELS_EN: Record<FacadeElementType, string> = {
   roof: "Roof",
   column: "Column",
   other: "Other",
+  wall_opaque: "Opaque wall",
 };
 
 /* ── Props ── */
@@ -220,26 +223,26 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
               {/* Row 1 : Core KPI cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiCard
-                  label={isFr ? "Elements detectes" : "Elements detected"}
-                  value={totalElements.toString()}
-                  color="#22d3ee"
-                  icon="🔍"
-                />
-                <KpiCard
-                  label={isFr ? "Fenetres" : "Windows"}
+                  label={isFr ? "Fenêtres" : "Windows"}
                   value={result.windows_count.toString()}
                   color="#60a5fa"
                   icon="🪟"
                 />
                 <KpiCard
-                  label={isFr ? "Portes" : "Doors"}
-                  value={result.doors_count.toString()}
-                  color="#f472b6"
-                  icon="🚪"
+                  label={isFr ? "Surface fenêtres" : "Windows area"}
+                  value={openingsArea > 0 ? `${openingsArea.toFixed(1)} m²` : "—"}
+                  color="#22d3ee"
+                  icon="📐"
                 />
                 <KpiCard
-                  label={isFr ? "Niveaux" : "Floors"}
-                  value={result.floors_count.toString()}
+                  label={isFr ? "Mur net" : "Net wall"}
+                  value={wallArea > 0 ? `${wallArea.toFixed(1)} m²` : "—"}
+                  color="#94a3b8"
+                  icon="🧱"
+                />
+                <KpiCard
+                  label={isFr ? "Surface totale" : "Total area"}
+                  value={facadeArea > 0 ? `${facadeArea.toFixed(1)} m²` : "—"}
                   color="#a78bfa"
                   icon="🏢"
                 />
@@ -342,74 +345,6 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                 </div>
               )}
 
-              {/* Row 4 : Distribution by floor level */}
-              {floorDistribution.length > 1 && (
-                <div className="glass rounded-xl border border-white/10 p-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    {isFr ? "Distribution par etage" : "Distribution by floor"}
-                  </p>
-                  <div className="space-y-2">
-                    {floorDistribution.map(({ floor, count, label }) => (
-                      <HBar
-                        key={floor}
-                        label={label}
-                        value={count}
-                        maxValue={maxFloorCount}
-                        color="#818cf8"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Row 5 : Confidence stats */}
-              {confidenceStats && (
-                <div className="glass rounded-xl border border-white/10 p-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    {isFr ? "Statistiques de confiance" : "Confidence statistics"}
-                  </p>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-emerald-400">
-                        {(confidenceStats.avg * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Moyenne" : "Average"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-amber-400">
-                        {(confidenceStats.min * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Minimum" : "Minimum"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-sky-400">
-                        {(confidenceStats.max * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Maximum" : "Maximum"}</p>
-                    </div>
-                  </div>
-                  {/* Confidence bar visualization */}
-                  <div className="mt-3 relative h-2 bg-white/5 rounded-full overflow-hidden">
-                    {/* Range indicator */}
-                    <div
-                      className="absolute h-full bg-emerald-500/30 rounded-full"
-                      style={{
-                        left: `${confidenceStats.min * 100}%`,
-                        width: `${(confidenceStats.max - confidenceStats.min) * 100}%`,
-                      }}
-                    />
-                    {/* Average marker */}
-                    <div
-                      className="absolute top-0 w-1 h-full bg-emerald-400 rounded-full"
-                      style={{ left: `${confidenceStats.avg * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[9px] text-slate-600">0%</span>
-                    <span className="text-[9px] text-slate-600">100%</span>
-                  </div>
-                </div>
-              )}
             </div>
           </motion.div>
         )}

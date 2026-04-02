@@ -85,7 +85,7 @@ export interface CustomDetection {
   total_area_m2: number | null; total_area_px2: number;
 }
 
-export type FacadeElementType = "window" | "door" | "balcony" | "floor_line" | "roof" | "column" | "other";
+export type FacadeElementType = "window" | "door" | "balcony" | "floor_line" | "roof" | "column" | "other" | "wall_opaque";
 
 export interface FacadeElement {
   id: number; type: FacadeElementType; label_fr: string;

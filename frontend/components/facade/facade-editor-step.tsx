@@ -35,7 +35,7 @@ const TYPE_I18N: Record<string, DTKey> = {
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
 /* ── Only windows and walls editable in facade editor ── */
-const EDITOR_TYPES: FacadeElementType[] = ["window"];
+const EDITOR_TYPES: FacadeElementType[] = ["window", "wall_opaque"];
 const EDITOR_LABELS: Record<string, string> = {
   window: "Fenêtres", door: "Portes", balcony: "Balcons",
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
@@ -81,7 +81,7 @@ function dist(a: Pt, b: Pt): number {
 }
 
 /* ── Visibility layer types ── */
-const VISIBILITY_TYPES = ["window", "door", "balcony", "roof", "column", "wall_opaque", "floor_line"] as const;
+const VISIBILITY_TYPES = ["window", "wall_opaque"] as const;
 
 interface FacadeEditorStepProps {
   result: FacadeAnalysisResult;
@@ -94,7 +94,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const d = (key: DTKey) => dt(key, lang);
 
   // Editable elements (local copy)
-  const [elements, setElements] = useState<FacadeElement[]>(() => [...result.elements]);
+  const [elements, setElements] = useState<FacadeElement[]>(() =>
+    (result.elements ?? []).map(el => el.type === "other" ? { ...el, type: "window" as FacadeElementType } : el)
+  );
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tool, setTool] = useState<EditorTool>("select");
   const [addType, setAddType] = useState<FacadeElementType>("window");
@@ -239,6 +241,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   /** Close the polygon being drawn -> create a new element */
   const closePolygon = useCallback((pts: Pt[]) => {
     if (pts.length < 3) { setDrawingPoly([]); return; }
+
+    // Wall_opaque mode: delete window elements whose centroid is inside the drawn polygon
+    if (addType === "wall_opaque") {
+      const deleted = elements.filter(el => {
+        if (el.type !== "window") return false;
+        const poly = getPolyPoints(el);
+        const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length;
+        const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length;
+        return pointInPolygon({ x: cx, y: cy }, pts);
+      });
+      if (deleted.length > 0) {
+        setElements(prev => prev.filter(el => !deleted.some(del => del.id === el.id)));
+        toast({ title: `${deleted.length} fenêtre(s) supprimée(s)`, description: "Zone restaurée comme mur", variant: "default" });
+      }
+      setDrawingPoly([]);
+      setHoverPoint(null);
+      return; // Don't create a wall element
+    }
+
     const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
     const ppm = result.pixels_per_meter;
     const bbox = bboxFromPoly(pts);
@@ -263,7 +284,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   // ── Mouse handlers ──
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && e.altKey)) {
       setIsPanning(true);
       panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       return;
@@ -303,6 +324,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   };
 
   const handleClick = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
     if (tool !== "add_polygon" || isPanning) return;
     const p = toNorm(e);
 
@@ -441,6 +463,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       ? openingElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0)
       : null;
 
+    const wallArea = result.facade_area_m2
+      ? result.facade_area_m2 - (openings_area_m2 ?? 0)
+      : null;
+
     const updated: FacadeAnalysisResult = {
       ...result,
       elements,
@@ -449,6 +475,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       balconies_count: elements.filter(e => e.type === "balcony").length,
       floors_count: Math.max(1, new Set(elements.map(e => e.floor_level ?? 0)).size),
       openings_area_m2,
+      surface_mur_net: wallArea,
       ratio_openings: result.facade_area_m2 && openings_area_m2
         ? openings_area_m2 / result.facade_area_m2
         : null,
@@ -548,7 +575,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
             {/* Layer/type selection buttons */}
             {(["window", "wall_opaque"] as const).map(type => (
               <button key={type}
-                onClick={() => { setActiveLayer(type); setAddType(type === "wall_opaque" ? "other" : type as FacadeElementType); if (tool === "select") setTool("add_rect"); }}
+                onClick={() => { setActiveLayer(type); setAddType(type as FacadeElementType); if (tool === "select") setTool("add_rect"); }}
                 className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                   activeLayer === type ? `border-blue-500/40 bg-blue-500/10 text-white` : "border-white/5 text-slate-400 hover:text-white")}>
                 <span className="w-3 h-3 rounded-full" style={{ background: TYPE_COLORS[type] ?? "#94a3b8" }} />
@@ -627,6 +654,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                 : "cursor-default"
               )}
               style={{ minHeight: 400 }}
+              onContextMenu={e => e.preventDefault()}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
