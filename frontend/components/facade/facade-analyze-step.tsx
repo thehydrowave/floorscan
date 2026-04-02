@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
-import { Brain, Loader2, ArrowRight, AlertTriangle, Zap, Crop, X, Scan } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Brain, ArrowRight, AlertTriangle, Zap, Crop, X, Scan,
+  ScanLine, AppWindow, Building2, FileCheck,
+  CheckCircle2, Clock, ChevronLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -12,12 +16,32 @@ import { cn } from "@/lib/utils";
 
 import { BACKEND } from "@/lib/backend";
 
+/* ── Pipeline stage definitions (facade) ───────────────────────────────── */
+interface Stage {
+  icon: typeof Brain;
+  labelKey?: DTKey;
+  labelFr: string;
+  color: string;
+}
+
+const STAGES: Stage[] = [
+  { icon: ScanLine,   labelKey: "an_step_prep",   labelFr: "Préparation",    color: "#818cf8" },  // Indigo
+  { icon: Brain,      labelKey: "an_step_detect",  labelFr: "Détection IA",   color: "#22d3ee" },  // Cyan
+  { icon: AppWindow,                               labelFr: "Fenêtres",       color: "#60a5fa" },  // Blue
+  { icon: Building2,                               labelFr: "Murs",           color: "#34d399" },  // Emerald
+  { icon: FileCheck,  labelKey: "an_step_report",  labelFr: "Rapport final",  color: "#f59e0b" },  // Amber
+];
+
+// Timing schedule: when each stage starts (seconds)
+const STAGE_TIMINGS = [0, 3, 8, 16, 24];
+
 interface FacadeAnalyzeStepProps {
   sessionId: string;
   imageB64: string;
   apiKey: string;
   ppm?: number | null;
   onAnalyzed: (result: FacadeAnalysisResult) => void;
+  onBack?: () => void;
 }
 
 /* ── Labels français par type ── */
@@ -155,14 +179,57 @@ interface RoiRect { x: number; y: number; w: number; h: number }
 interface DragState { startX: number; startY: number }
 
 export default function FacadeAnalyzeStep({
-  sessionId, imageB64, apiKey, ppm, onAnalyzed,
+  sessionId, imageB64, apiKey, ppm, onAnalyzed, onBack,
 }: FacadeAnalyzeStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
+  /* Helper to resolve stage label (i18n key if available, else hardcoded French) */
+  const stageLabel = (stage: Stage) =>
+    stage.labelKey ? dt(stage.labelKey, lang) : stage.labelFr;
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState("");
+  const [activeStage, setActiveStage] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const elapsedRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Update active stage based on elapsed time
+  useEffect(() => {
+    if (!loading) return;
+    for (let i = STAGE_TIMINGS.length - 1; i >= 0; i--) {
+      if (elapsed >= STAGE_TIMINGS[i]) {
+        setActiveStage(i);
+        break;
+      }
+    }
+  }, [elapsed, loading]);
+
+  const startTimer = () => {
+    elapsedRef.current = 0;
+    setElapsed(0);
+    setActiveStage(0);
+    timerRef.current = setInterval(() => {
+      elapsedRef.current += 0.1;
+      setElapsed(elapsedRef.current);
+    }, 100);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  // Progress bar percentage (estimated from stage timing)
+  const maxTime = 30;
+  const progressPct = loading
+    ? Math.min(95, (elapsed / maxTime) * 100)
+    : activeStage >= STAGES.length
+    ? 100
+    : 0;
 
   // ROI state
   const [roiEnabled, setRoiEnabled] = useState(false);
@@ -224,20 +291,7 @@ export default function FacadeAnalyzeStep({
   const runAnalysis = async () => {
     setLoading(true);
     setError(null);
-
-    const steps = [
-      d("an_p1"),
-      d("fa_analyzing"),
-      d("an_p4"),
-      d("an_p5"),
-      d("an_p6"),
-    ];
-    let i = 0;
-    setProgress(steps[0]);
-    const interval = setInterval(() => {
-      i = Math.min(i + 1, steps.length - 1);
-      setProgress(steps[i]);
-    }, 1500);
+    startTimer();
 
     try {
       const r = await fetch(`${BACKEND}/analyze-facade`, {
@@ -252,29 +306,38 @@ export default function FacadeAnalyzeStep({
         }),
       });
 
-      clearInterval(interval);
+      stopTimer();
 
       if (r.ok) {
         const data = await r.json();
         data.session_id = sessionId;
+
+        // Set all stages to complete
+        setActiveStage(STAGES.length);
+
         toast({
           title: d("fa_title"),
           description: `${data.windows_count} ${d("fa_windows").toLowerCase()} · ${data.doors_count} ${d("fa_doors").toLowerCase()} · ${data.floors_count} ${d("fa_floors").toLowerCase()}`,
           variant: "success",
         });
-        setLoading(false);
-        setProgress("");
-        onAnalyzed(data as FacadeAnalysisResult);
+
+        // Small delay so user sees the completed state
+        setTimeout(() => {
+          setLoading(false);
+          onAnalyzed(data as FacadeAnalysisResult);
+        }, 600);
         return;
       }
       throw new Error("no-backend");
     } catch {
-      clearInterval(interval);
+      stopTimer();
     }
 
     // ── Generate mock results ──
-    setProgress(d("fa_no_model"));
     await new Promise(res => setTimeout(res, 800));
+
+    // Set all stages to complete for mock too
+    setActiveStage(STAGES.length);
 
     const mockResult = generateMockFacadeResult(
       sessionId, imageB64, ppm ?? null,
@@ -287,184 +350,323 @@ export default function FacadeAnalyzeStep({
       variant: "default",
     });
 
-    setLoading(false);
-    setProgress("");
-    onAnalyzed(mockResult);
+    setTimeout(() => {
+      setLoading(false);
+      onAnalyzed(mockResult);
+    }, 600);
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto">
+      {/* Header */}
       <div className="text-center mb-8">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-4">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-4 shadow-glow">
           <Brain className="w-8 h-8 text-white" />
         </div>
         <h2 className="font-display text-2xl font-700 text-white mb-2">{d("fa_title")}</h2>
-        <p className="text-slate-400 text-sm">{d("fa_subtitle")}</p>
+        <p className="text-slate-400 text-sm max-w-md mx-auto">
+          {loading ? d("an_noclose") : d("fa_subtitle")}
+        </p>
       </div>
 
-      <div className="glass rounded-2xl border border-white/10 p-8 flex flex-col items-center gap-6">
-        {/* Config info */}
-        <div className="w-full glass rounded-xl border border-white/5 p-4 text-xs font-mono text-slate-500 flex flex-col gap-2">
-          <div className="flex justify-between">
-            <span>Module</span>
-            <span className="text-amber-400">{d("fa_title")}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Session</span>
-            <span className="text-slate-400">{sessionId.slice(0, 8)}...</span>
-          </div>
-          <div className="flex justify-between">
-            <span>{d("fa_st_scale")}</span>
-            <span className={ppm ? "text-accent-green" : "text-slate-500"}>
-              {ppm ? `${ppm.toFixed(1)} px/m` : "Auto"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span>Status</span>
-            <span className="text-amber-400 flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" /> {d("fa_wip")}
-            </span>
-          </div>
-        </div>
-
-        {/* Mock warning */}
-        <div className="w-full glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-300/80 leading-relaxed">{d("fa_mock_warn")}</p>
-        </div>
-
-        {/* ── ROI Section ── */}
-        <div className="w-full flex flex-col gap-3">
-          {/* Toggle ROI */}
-          <button
-            onClick={() => { setRoiEnabled(v => !v); if (roiEnabled) { setRoi(null); } }}
-            className={cn(
-              "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
-              roiEnabled
-                ? "border-cyan-500/40 bg-cyan-500/5 text-cyan-300"
-                : "border-white/10 bg-white/2 text-slate-400 hover:border-white/20 hover:text-slate-300"
-            )}
-          >
-            <Crop className={cn("w-4 h-4 shrink-0", roiEnabled ? "text-cyan-400" : "text-slate-500")} />
-            <div className="flex-1">
-              <div className="text-xs font-medium">Délimiter le bâtiment (optionnel)</div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                Dessinez un rectangle sur l'image pour restreindre l'analyse à une zone
+      <div className="glass rounded-2xl border border-white/10 p-6 sm:p-8">
+        <AnimatePresence mode="wait">
+          {/* ── Pre-launch state ── */}
+          {!loading && activeStage < STAGES.length && (
+            <motion.div
+              key="ready"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center gap-6"
+            >
+              {/* Config info */}
+              <div className="w-full glass rounded-xl border border-white/5 p-4 text-xs font-mono text-slate-500 flex flex-col gap-2">
+                <div className="flex justify-between">
+                  <span>Module</span>
+                  <span className="text-amber-400">{d("fa_title")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Session</span>
+                  <span className="text-slate-400">{sessionId.slice(0, 8)}...</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>{d("fa_st_scale")}</span>
+                  <span className={ppm ? "text-accent-green" : "text-slate-500"}>
+                    {ppm ? `${ppm.toFixed(1)} px/m` : "Auto"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Status</span>
+                  <span className="text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> {d("fa_wip")}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className={cn(
-              "w-8 h-4 rounded-full transition-all flex items-center shrink-0",
-              roiEnabled ? "bg-cyan-500 justify-end pr-0.5" : "bg-white/10 justify-start pl-0.5"
-            )}>
-              <div className="w-3 h-3 rounded-full bg-white" />
-            </div>
-          </button>
 
-          {/* ROI Drawing Canvas */}
-          {roiEnabled && (
-            <div className="w-full flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                  <Scan className="w-3 h-3 text-cyan-400" />
-                  Glissez sur l'image pour délimiter
-                </span>
-                {roi && (
-                  <button
-                    onClick={() => setRoi(null)}
-                    className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 transition-colors"
-                  >
-                    <X className="w-3 h-3" /> Effacer
-                  </button>
+              {/* Mock warning */}
+              <div className="w-full glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-300/80 leading-relaxed">{d("fa_mock_warn")}</p>
+              </div>
+
+              {/* ── ROI Section ── */}
+              <div className="w-full flex flex-col gap-3">
+                {/* Toggle ROI */}
+                <button
+                  onClick={() => { setRoiEnabled(v => !v); if (roiEnabled) { setRoi(null); } }}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                    roiEnabled
+                      ? "border-cyan-500/40 bg-cyan-500/5 text-cyan-300"
+                      : "border-white/10 bg-white/2 text-slate-400 hover:border-white/20 hover:text-slate-300"
+                  )}
+                >
+                  <Crop className={cn("w-4 h-4 shrink-0", roiEnabled ? "text-cyan-400" : "text-slate-500")} />
+                  <div className="flex-1">
+                    <div className="text-xs font-medium">Délimiter le bâtiment (optionnel)</div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Dessinez un rectangle sur l'image pour restreindre l'analyse à une zone
+                    </div>
+                  </div>
+                  <div className={cn(
+                    "w-8 h-4 rounded-full transition-all flex items-center shrink-0",
+                    roiEnabled ? "bg-cyan-500 justify-end pr-0.5" : "bg-white/10 justify-start pl-0.5"
+                  )}>
+                    <div className="w-3 h-3 rounded-full bg-white" />
+                  </div>
+                </button>
+
+                {/* ROI Drawing Canvas */}
+                {roiEnabled && (
+                  <div className="w-full flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <Scan className="w-3 h-3 text-cyan-400" />
+                        Glissez sur l'image pour délimiter
+                      </span>
+                      {roi && (
+                        <button
+                          onClick={() => setRoi(null)}
+                          className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 transition-colors"
+                        >
+                          <X className="w-3 h-3" /> Effacer
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Image with ROI overlay */}
+                    <div
+                      ref={imgContainerRef}
+                      className="relative w-full rounded-xl overflow-hidden select-none border border-white/10"
+                      style={{ cursor: roiEnabled ? "crosshair" : "default" }}
+                      onMouseDown={onMouseDown}
+                      onMouseMove={onMouseMove}
+                      onMouseUp={onMouseUp}
+                      onMouseLeave={() => {
+                        if (dragState && currentDrag && currentDrag.w > 0.02 && currentDrag.h > 0.02) {
+                          setRoi(currentDrag);
+                        }
+                        setDragState(null);
+                        setCurrentDrag(null);
+                      }}
+                    >
+                      <img
+                        ref={imgRef}
+                        src={`data:image/jpeg;base64,${imageB64}`}
+                        alt="Facade"
+                        className="w-full block"
+                        draggable={false}
+                      />
+                      {/* ROI rectangle overlay */}
+                      {displayRect && displayRect.w > 0.005 && (
+                        <div
+                          className="absolute pointer-events-none"
+                          style={{
+                            left:   `${displayRect.x * 100}%`,
+                            top:    `${displayRect.y * 100}%`,
+                            width:  `${displayRect.w * 100}%`,
+                            height: `${displayRect.h * 100}%`,
+                            border: "2px solid #22d3ee",
+                            backgroundColor: "rgba(34,211,238,0.08)",
+                            borderRadius: "2px",
+                            boxShadow: "0 0 0 1px rgba(34,211,238,0.3)",
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* ROI coords display */}
+                    {roi && (
+                      <div className="text-[10px] font-mono text-cyan-400/70 bg-cyan-500/5 border border-cyan-500/20 rounded-lg px-3 py-2 flex gap-4">
+                        <span>X: {(roi.x * 100).toFixed(1)}%</span>
+                        <span>Y: {(roi.y * 100).toFixed(1)}%</span>
+                        <span>W: {(roi.w * 100).toFixed(1)}%</span>
+                        <span>H: {(roi.h * 100).toFixed(1)}%</span>
+                      </div>
+                    )}
+                    {!roi && (
+                      <div className="text-[11px] text-slate-600 text-center italic">Aucune zone définie — analyse sur toute l'image</div>
+                    )}
+                  </div>
                 )}
               </div>
 
-              {/* Image with ROI overlay */}
-              <div
-                ref={imgContainerRef}
-                className="relative w-full rounded-xl overflow-hidden select-none border border-white/10"
-                style={{ cursor: roiEnabled ? "crosshair" : "default" }}
-                onMouseDown={onMouseDown}
-                onMouseMove={onMouseMove}
-                onMouseUp={onMouseUp}
-                onMouseLeave={() => {
-                  if (dragState && currentDrag && currentDrag.w > 0.02 && currentDrag.h > 0.02) {
-                    setRoi(currentDrag);
-                  }
-                  setDragState(null);
-                  setCurrentDrag(null);
-                }}
-              >
-                <img
-                  ref={imgRef}
-                  src={`data:image/jpeg;base64,${imageB64}`}
-                  alt="Facade"
-                  className="w-full block"
-                  draggable={false}
-                />
-                {/* ROI rectangle overlay */}
-                {displayRect && displayRect.w > 0.005 && (
-                  <div
-                    className="absolute pointer-events-none"
-                    style={{
-                      left:   `${displayRect.x * 100}%`,
-                      top:    `${displayRect.y * 100}%`,
-                      width:  `${displayRect.w * 100}%`,
-                      height: `${displayRect.h * 100}%`,
-                      border: "2px solid #22d3ee",
-                      backgroundColor: "rgba(34,211,238,0.08)",
-                      borderRadius: "2px",
-                      boxShadow: "0 0 0 1px rgba(34,211,238,0.3)",
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* ROI coords display */}
-              {roi && (
-                <div className="text-[10px] font-mono text-cyan-400/70 bg-cyan-500/5 border border-cyan-500/20 rounded-lg px-3 py-2 flex gap-4">
-                  <span>X: {(roi.x * 100).toFixed(1)}%</span>
-                  <span>Y: {(roi.y * 100).toFixed(1)}%</span>
-                  <span>W: {(roi.w * 100).toFixed(1)}%</span>
-                  <span>H: {(roi.h * 100).toFixed(1)}%</span>
+              {/* Error */}
+              {error && (
+                <div className="w-full glass rounded-xl border border-red-500/25 p-4 flex items-start gap-3">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-600 text-red-400 mb-1">{d("an_err_label")}</p>
+                    <p className="text-xs text-red-300/80 leading-relaxed">{error}</p>
+                  </div>
                 </div>
               )}
-              {!roi && (
-                <div className="text-[11px] text-slate-600 text-center italic">Aucune zone définie — analyse sur toute l'image</div>
-              )}
-            </div>
+
+              {/* Launch button */}
+              <div className="flex gap-3 w-full">
+                {onBack && (
+                  <Button variant="ghost" size="lg" onClick={onBack}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                )}
+                <Button onClick={runAnalysis} className="flex-1 bg-amber-600 hover:bg-amber-700" size="lg">
+                  <Zap className="w-4 h-4" />
+                  {error ? d("an_relance") : d("an_launch")}
+                  {roiEnabled && roi && <Crop className="w-3.5 h-3.5 opacity-70" />}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <p className="text-slate-600 text-xs text-center">{d("an_tip")}</p>
+            </motion.div>
           )}
-        </div>
 
-        {/* Loader */}
-        {loading && (
-          <div className="flex flex-col items-center gap-4 w-full">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center">
-              <Brain className="w-7 h-7 text-amber-400 animate-pulse" />
-            </div>
-            <p className="text-slate-300 text-sm font-medium text-center">{progress}</p>
-            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full animate-pulse w-3/4" />
-            </div>
-          </div>
-        )}
+          {/* ── Loading / Pipeline progress ── */}
+          {(loading || activeStage >= STAGES.length) && (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col gap-5"
+            >
+              {/* Global progress bar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium">
+                    {activeStage >= STAGES.length
+                      ? d("an_done_title")
+                      : stageLabel(STAGES[activeStage])}
+                  </span>
+                  <span className="text-slate-500 font-mono flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {elapsed.toFixed(1)}s
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{
+                      background: activeStage >= STAGES.length
+                        ? "linear-gradient(90deg, #34d399, #22d3ee)"
+                        : `linear-gradient(90deg, ${STAGES[Math.min(activeStage, STAGES.length - 1)].color}, ${STAGES[Math.min(activeStage + 1, STAGES.length - 1)].color})`,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progressPct}%` }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
 
-        {/* Error */}
-        {error && (
-          <div className="w-full glass rounded-xl border border-red-500/25 p-4 flex items-start gap-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300/80">{error}</p>
-          </div>
-        )}
+              {/* Stage list */}
+              <div className="space-y-1">
+                {STAGES.map((stage, idx) => {
+                  const isComplete = idx < activeStage || activeStage >= STAGES.length;
+                  const isCurrent = idx === activeStage && loading;
+                  const isPending = idx > activeStage && activeStage < STAGES.length;
+                  const Icon = stage.icon;
 
-        {/* Launch button */}
-        {!loading && (
-          <Button onClick={runAnalysis} className="w-full bg-amber-600 hover:bg-amber-700" size="lg">
-            <Zap className="w-4 h-4" />
-            {d("an_launch")}
-            {roiEnabled && roi && <Crop className="w-3.5 h-3.5 opacity-70" />}
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        )}
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300",
+                        isCurrent && "bg-white/5 border border-white/10",
+                        isComplete && "opacity-90",
+                        isPending && "opacity-40",
+                      )}
+                    >
+                      {/* Status icon */}
+                      <div
+                        className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-300",
+                          isComplete && "bg-accent-green/15",
+                          isCurrent && "bg-white/10",
+                          isPending && "bg-white/5",
+                        )}
+                        style={isCurrent ? { backgroundColor: `${stage.color}15` } : undefined}
+                      >
+                        {isComplete ? (
+                          <CheckCircle2 className="w-4 h-4 text-accent-green" />
+                        ) : isCurrent ? (
+                          <Icon className="w-4 h-4 animate-pulse" style={{ color: stage.color }} />
+                        ) : (
+                          <Icon className="w-4 h-4 text-slate-600" />
+                        )}
+                      </div>
+
+                      {/* Label */}
+                      <span
+                        className={cn(
+                          "text-sm font-medium transition-colors duration-300",
+                          isComplete && "text-accent-green",
+                          isCurrent && "text-white",
+                          isPending && "text-slate-600",
+                        )}
+                      >
+                        {stageLabel(stage)}
+                      </span>
+
+                      {/* Active indicator */}
+                      {isCurrent && (
+                        <div className="ml-auto flex items-center gap-2">
+                          <div className="flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: stage.color, animationDelay: "0ms" }} />
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: stage.color, animationDelay: "150ms" }} />
+                            <span className="w-1 h-1 rounded-full animate-bounce" style={{ backgroundColor: stage.color, animationDelay: "300ms" }} />
+                          </div>
+                        </div>
+                      )}
+                      {isComplete && (
+                        <span className="ml-auto text-[10px] text-accent-green/60 font-mono">OK</span>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom message */}
+              <div className="text-center pt-2">
+                {activeStage >= STAGES.length ? (
+                  <motion.p
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-accent-green font-600 text-sm flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {d("an_done_title")} — {elapsed.toFixed(1)}s
+                  </motion.p>
+                ) : (
+                  <p className="text-slate-600 text-xs">{d("an_noclose")}</p>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );

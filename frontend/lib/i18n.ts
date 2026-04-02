@@ -1510,6 +1510,7 @@ export const DEMO_T = {
   cr_facade_zones:     { fr:"Zones façade", en:"Facade zones", es:"Zonas fachada", de:"Fassadenzonen", it:"Zone facciata" },
   cr_new_facade:       { fr:"Nouvelle façade", en:"New facade", es:"Nueva fachada", de:"Neue Fassade", it:"Nuova facciata" },
   cr_cancel:           { fr:"Annuler", en:"Cancel", es:"Cancelar", de:"Abbrechen", it:"Annulla" },
+  fa_zone_required:    { fr:"Tracez au moins 1 zone façade avant de continuer", en:"Draw at least 1 facade zone before continuing", es:"Dibuje al menos 1 zona de fachada antes de continuar", de:"Zeichnen Sie mindestens 1 Fassadenzone, bevor Sie fortfahren", it:"Disegna almeno 1 zona facciata prima di continuare" },
   // ── Tutorial / onboarding ──
   tuto_welcome:        { fr:"Bienvenue dans l'éditeur de masques", en:"Welcome to the mask editor", es:"Bienvenido al editor de máscaras", de:"Willkommen im Masken-Editor", it:"Benvenuto nell'editor di maschere" },
   tuto_step1:          { fr:"Calques : cliquez l'icône œil pour masquer/afficher chaque type de zone (fenêtres, portes, murs...)", en:"Layers: click the eye icon to show/hide each zone type (windows, doors, walls...)", es:"Capas: haga clic en el icono del ojo para mostrar/ocultar cada tipo de zona", de:"Ebenen: Klicken Sie auf das Augensymbol, um Zonentypen ein-/auszublenden", it:"Livelli: clicca l'icona occhio per mostrare/nascondere ogni tipo di zona" },

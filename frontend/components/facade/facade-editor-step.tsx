@@ -32,8 +32,8 @@ const TYPE_I18N: Record<string, DTKey> = {
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
-/* ── All types editable ── */
-const EDITOR_TYPES: FacadeElementType[] = ALL_TYPES;
+/* ── Only windows and walls editable in facade editor ── */
+const EDITOR_TYPES: FacadeElementType[] = ["window"];
 const EDITOR_LABELS: Record<string, string> = {
   window: "Fenêtres", door: "Portes", balcony: "Balcons",
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
@@ -543,7 +543,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
 
             {/* Visibility toggles */}
             <div className="flex items-center gap-0.5 ml-auto">
-              {(["window", "door", "balcony", "roof", "column", "wall_opaque"] as const).map(type => (
+              {(["window", "wall_opaque"] as const).map(type => (
                 <button key={type}
                   onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
                   title={`${EDITOR_LABELS[type] ?? type} ${visibility[type] ? "ON" : "OFF"}`}

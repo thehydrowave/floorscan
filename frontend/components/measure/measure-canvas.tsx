@@ -1788,7 +1788,7 @@ export default function MeasureCanvas({
           <Wrench size={11} />
         </button>
 
-        {/* ── Right side controls ── */}
+        {/* ── Right side: just undo/redo ── */}
         <div className="ml-auto flex items-center gap-1">
           <button onClick={undoLast} title="Annuler (Ctrl+Z)"
             disabled={drawingPoints.length === 0 && !canUndo}
@@ -1800,44 +1800,6 @@ export default function MeasureCanvas({
             className="p-1 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30">
             <Redo2 className="w-3.5 h-3.5" />
           </button>
-
-          <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-
-          {onExportPNG && zones.length > 0 && (
-            <button onClick={onExportPNG} title="Exporter image annotée (PNG)"
-              className="p-1 rounded text-slate-400 hover:text-cyan-400 transition-colors">
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          <button onClick={() => setZoom(prevZ => {
-            const newZ = Math.min(12, prevZ * 1.3);
-            const ratio = newZ / prevZ;
-            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
-            return newZ;
-          })} title="Zoom +"
-            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => setZoom(prevZ => {
-            const newZ = Math.max(1, prevZ / 1.3);
-            const ratio = newZ / prevZ;
-            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
-            return newZ;
-          })} title="Zoom -"
-            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={resetView} title="Réinitialiser la vue"
-            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-          {zoom > 1.05 && (
-            <span className="text-[10px] text-slate-500 font-mono">×{zoom.toFixed(1)}</span>
-          )}
-
-          <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
-          <span className="text-[10px] text-slate-500 font-mono px-1">{displayUnit}</span>
         </div>
       </div>
 

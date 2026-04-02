@@ -33,6 +33,7 @@ import type { FacadeZoneCrop, CropBox } from "@/components/demo/crop-step";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/use-toast";
 import { useAuth } from "@/lib/use-auth";
 
 const DEFAULT_CONFIG: RoboflowConfig = { apiKey: "tyCM9PZp8cs3KtifPUaQ", modelName: "cubicasa5k-2-qpmsa-1gd2e/1" };
@@ -47,11 +48,11 @@ function clearSession() { try{localStorage.removeItem(SESSION_STORAGE_KEY);}catc
 const FACADE_STEP_ICONS=[KeyRound,Upload,Crop,Ruler,Brain,BarChart3,PenSquare];
 const FACADE_STEP_KEYS:DTKey[]=["fa_st_connect","fa_st_upload","fa_st_crop","fa_st_scale","fa_st_analyze","fa_st_results","fa_st_editor"];
 
-function FacadeStepper({currentStep,lang}:{currentStep:number;lang:string}) {
+function FacadeStepper({currentStep,lang,onStepClick}:{currentStep:number;lang:string;onStepClick?:(step:number)=>void}) {
   const d=(key:DTKey)=>dt(key,lang as any);
   return (
     <div className="flex items-center w-full max-w-3xl mx-auto">
-      {FACADE_STEP_ICONS.map((Icon,index)=>{const sn=index+1;const isActive=sn===currentStep;const isDone=sn<currentStep;const isLast=index===FACADE_STEP_ICONS.length-1;return(<div key={index} className="flex items-center flex-1"><div className="flex flex-col items-center gap-1.5 flex-shrink-0"><div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",isActive&&"step-active text-white",isDone&&"step-done text-accent-green",!isActive&&!isDone&&"step-inactive text-slate-500")}>{isDone?<Check className="w-3.5 h-3.5"/>:<Icon className="w-3.5 h-3.5"/>}</div><span className={cn("text-xs font-medium transition-colors hidden sm:block",isActive&&"text-white",isDone&&"text-accent-green",!isActive&&!isDone&&"text-slate-600")}>{d(FACADE_STEP_KEYS[index])}</span></div>{!isLast&&<div className={cn("flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",isDone?"bg-accent-green/40":"bg-white/5")}/>}</div>);})}
+      {FACADE_STEP_ICONS.map((Icon,index)=>{const sn=index+1;const isActive=sn===currentStep;const isDone=sn<currentStep;const isLast=index===FACADE_STEP_ICONS.length-1;const isClickable=isDone&&!!onStepClick;return(<div key={index} className="flex items-center flex-1"><div className={cn("flex flex-col items-center gap-1.5 flex-shrink-0",isClickable&&"cursor-pointer")} onClick={isClickable?()=>onStepClick(sn):undefined}><div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",isActive&&"step-active text-white",isDone&&"step-done text-accent-green",!isActive&&!isDone&&"step-inactive text-slate-500")}>{isDone?<Check className="w-3.5 h-3.5"/>:<Icon className="w-3.5 h-3.5"/>}</div><span className={cn("text-xs font-medium transition-colors hidden sm:block",isActive&&"text-white",isDone&&"text-accent-green",!isActive&&!isDone&&"text-slate-600")}>{d(FACADE_STEP_KEYS[index])}</span></div>{!isLast&&<div className={cn("flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",isDone?"bg-accent-green/40":"bg-white/5")}/>}</div>);})}
     </div>
   );
 }
@@ -270,15 +271,15 @@ export default function DemoClient() {
 
           {demoMode==="facade"&&(
             <motion.div key="facade" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}} transition={{duration:0.2}}>
-              <div className="mb-10"><FacadeStepper currentStep={step} lang={lang}/></div>
+              <div className="mb-10"><FacadeStepper currentStep={step} lang={lang} onStepClick={handleStepClick}/></div>
               <AnimatePresence mode="wait">
                 <motion.div key={step} initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:0.25}}>
                   {step===1&&<ConnectStep onConnected={handleConnected}/>}
                   {step===2&&<UploadStep onUploaded={handleUploaded}/>}
-                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart} showFacadeDelimitation initialFacadeZones={facadeZones} onFacadeZonesChange={setFacadeZones}/>}
-                  {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled}/>}
-                  {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} onAnalyzed={handleFacadeAnalyzed}/>}
-                  {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart} initialFacadeZones={facadeZones}/>}
+                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={(cropBox)=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped(cropBox);}} onSkip={()=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped();}} onSessionExpired={handleRestart} onBack={handleBack} showFacadeDelimitation initialFacadeZones={facadeZones} onFacadeZonesChange={setFacadeZones}/>}
+                  {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
+                  {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} onAnalyzed={handleFacadeAnalyzed} onBack={handleBack}/>}
+                  {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart} onBack={()=>setStep(5)} initialFacadeZones={facadeZones}/>}
                   {step===7&&facadeResult&&<FacadeEditorStep result={facadeResult} onGoResults={handleFacadeGoResults} onRestart={handleRestart}/>}
                 </motion.div>
               </AnimatePresence>
