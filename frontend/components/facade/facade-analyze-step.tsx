@@ -25,11 +25,11 @@ interface Stage {
 }
 
 const STAGES: Stage[] = [
-  { icon: ScanLine,   labelKey: "an_step_prep",   labelFr: "Préparation",    color: "#818cf8" },  // Indigo
-  { icon: Brain,      labelKey: "an_step_detect",  labelFr: "Détection IA",   color: "#22d3ee" },  // Cyan
-  { icon: AppWindow,                               labelFr: "Fenêtres",       color: "#60a5fa" },  // Blue
-  { icon: Building2,                               labelFr: "Murs",           color: "#34d399" },  // Emerald
-  { icon: FileCheck,  labelKey: "an_step_report",  labelFr: "Rapport final",  color: "#f59e0b" },  // Amber
+  { icon: ScanLine,   labelKey: "fa_stage_prep",      labelFr: "Préparation",    color: "#818cf8" },  // Indigo
+  { icon: Brain,      labelKey: "fa_stage_detect",     labelFr: "Détection IA",   color: "#22d3ee" },  // Cyan
+  { icon: AppWindow,  labelKey: "fa_stage_windows",    labelFr: "Fenêtres",       color: "#60a5fa" },  // Blue
+  { icon: Building2,  labelKey: "fa_stage_walls",      labelFr: "Murs",           color: "#34d399" },  // Emerald
+  { icon: FileCheck,  labelKey: "fa_stage_report",     labelFr: "Rapport final",  color: "#f59e0b" },  // Amber
 ];
 
 // Timing schedule: when each stage starts (seconds)
@@ -424,9 +424,9 @@ export default function FacadeAnalyzeStep({
                 >
                   <Crop className={cn("w-4 h-4 shrink-0", roiEnabled ? "text-cyan-400" : "text-slate-500")} />
                   <div className="flex-1">
-                    <div className="text-xs font-medium">Délimiter le bâtiment (optionnel)</div>
+                    <div className="text-xs font-medium">{d("fa_roi_title" as DTKey)}</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      Dessinez un rectangle sur l'image pour restreindre l'analyse à une zone
+                      {d("fa_roi_help" as DTKey)}
                     </div>
                   </div>
                   <div className={cn(
@@ -443,14 +443,14 @@ export default function FacadeAnalyzeStep({
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-slate-500 flex items-center gap-1">
                         <Scan className="w-3 h-3 text-cyan-400" />
-                        Glissez sur l'image pour délimiter
+                        {d("fa_roi_draw" as DTKey)}
                       </span>
                       {roi && (
                         <button
                           onClick={() => setRoi(null)}
                           className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-red-400 transition-colors"
                         >
-                          <X className="w-3 h-3" /> Effacer
+                          <X className="w-3 h-3" /> {d("fa_roi_clear" as DTKey)}
                         </button>
                       )}
                     </div>
@@ -506,7 +506,7 @@ export default function FacadeAnalyzeStep({
                       </div>
                     )}
                     {!roi && (
-                      <div className="text-[11px] text-slate-600 text-center italic">Aucune zone définie — analyse sur toute l'image</div>
+                      <div className="text-[11px] text-slate-600 text-center italic">{d("fa_no_roi" as DTKey)}</div>
                     )}
                   </div>
                 )}

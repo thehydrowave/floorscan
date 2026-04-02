@@ -28,6 +28,7 @@ const TYPE_COLORS: Record<string, string> = {
 const TYPE_I18N: Record<string, DTKey> = {
   window: "fa_window", door: "fa_door", balcony: "fa_balcony",
   floor_line: "fa_floor_line", roof: "fa_roof", column: "fa_column", other: "fa_other",
+  wall_opaque: "fr_opaque_wall",
 };
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
@@ -493,7 +494,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
               <button
                 onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
                 className={cn("p-1.5 rounded-md text-xs", tool === "select" ? "bg-accent text-white" : "text-slate-400 hover:text-white")}
-                title="Sélection (Q)"
+                title={d("mc_tool_select" as DTKey)}
               >
                 <MousePointer2 className="w-4 h-4" />
               </button>
@@ -536,7 +537,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                 className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-xs text-white"
               >
                 {EDITOR_TYPES.map(t => (
-                  <option key={t} value={t}>{EDITOR_LABELS[t] ?? t}</option>
+                  <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
                 ))}
               </select>
             )}
@@ -546,7 +547,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
               {(["window", "wall_opaque"] as const).map(type => (
                 <button key={type}
                   onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
-                  title={`${EDITOR_LABELS[type] ?? type} ${visibility[type] ? "ON" : "OFF"}`}
+                  title={`${TYPE_I18N[type] ? d(TYPE_I18N[type]) : type} ${visibility[type] ? "ON" : "OFF"}`}
                   className={cn("w-6 h-6 rounded flex items-center justify-center transition-colors",
                     visibility[type] ? "text-white" : "text-slate-600"
                   )}
@@ -1004,7 +1005,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                     className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
                   >
                     {EDITOR_TYPES.map(t => (
-                      <option key={t} value={t}>{EDITOR_LABELS[t] ?? t}</option>
+                      <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
                     ))}
                   </select>
                 </div>
@@ -1049,7 +1050,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                   <div key={type} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="text-slate-300">{EDITOR_LABELS[type] ?? type}</span>
+                      <span className="text-slate-300">{TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}</span>
                     </div>
                     <span className="font-mono text-white">{count}</span>
                   </div>

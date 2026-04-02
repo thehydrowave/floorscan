@@ -6,6 +6,8 @@ import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCat
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 // @ts-ignore — no types for polygon-clipping
 import polygonClipping from "polygon-clipping";
 
@@ -262,6 +264,9 @@ export default function MeasureCanvas({
   layers = DEFAULT_LAYERS, onLayersChange, activeLayerId = "lyr_general", onActiveLayerIdChange,
   onExportPNG,
 }: MeasureCanvasProps) {
+  const { lang } = useLang();
+  const d = (k: DTKey) => dt(k, lang);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef       = useRef<HTMLImageElement>(null);
 
@@ -1777,25 +1782,25 @@ export default function MeasureCanvas({
 
         {/* Create new layer */}
         <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
-          title="Créer un calque"
+          title={d("mc_create_layer" as DTKey)}
           className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] border border-dashed border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/50 transition-all">
-          + Nouveau
+          {d("mc_new_layer" as DTKey)}
         </button>
 
         {/* Manage layers (open panel) */}
-        <button onClick={() => setShowLayersPanel(v => !v)} title="Gérer les calques"
+        <button onClick={() => setShowLayersPanel(v => !v)} title={d("mc_manage_layers" as DTKey)}
           className={`p-1 rounded text-slate-500 hover:text-blue-400 transition-colors ${showLayersPanel ? "text-blue-400 bg-blue-500/10" : ""}`}>
           <Wrench size={11} />
         </button>
 
         {/* ── Right side: just undo/redo ── */}
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={undoLast} title="Annuler (Ctrl+Z)"
+          <button onClick={undoLast} title={d("common_undo" as DTKey)}
             disabled={drawingPoints.length === 0 && !canUndo}
             className="p-1 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30">
             <Undo2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onHistoryRedo?.()} title="Rétablir (Ctrl+Y)"
+          <button onClick={() => onHistoryRedo?.()} title={d("common_redo" as DTKey)}
             disabled={!canRedo}
             className="p-1 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30">
             <Redo2 className="w-3.5 h-3.5" />
@@ -1805,10 +1810,10 @@ export default function MeasureCanvas({
 
       {/* ══ BAR 2 : SURFACES ══ */}
       <div className="relative z-20 flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs min-w-0">
-        <span className="text-[9px] text-accent uppercase tracking-wider font-semibold mr-0.5 shrink-0">SURFACES</span>
+        <span className="text-[9px] text-accent uppercase tracking-wider font-semibold mr-0.5 shrink-0">{d("mc_surfaces" as DTKey)}</span>
 
         {/* ── Selection ── */}
-        <button onClick={() => { setTool("select"); cancelDrawing(); }} title="Sélection (Q)"
+        <button onClick={() => { setTool("select"); cancelDrawing(); }} title={d("mc_tool_select" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "select" ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "text-slate-400 hover:text-white"}`}>
           <MousePointer2 className="w-3.5 h-3.5" />
@@ -1817,64 +1822,64 @@ export default function MeasureCanvas({
         <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
 
         {/* ── Drawing tools ── */}
-        <button onClick={() => { setTool("polygon"); cancelDrawing(); }} title="Polygone (P)"
+        <button onClick={() => { setTool("polygon"); cancelDrawing(); }} title={d("mc_tool_polygon" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "polygon" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}>
-          <Pentagon className="w-3.5 h-3.5" /> Polygone
+          <Pentagon className="w-3.5 h-3.5" /> {d("mc_tool_polygon" as DTKey)}
         </button>
-        <button onClick={() => { setTool("rect"); cancelDrawing(); }} title="Rectangle (R)"
+        <button onClick={() => { setTool("rect"); cancelDrawing(); }} title={d("mc_tool_rect" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "rect" ? "bg-accent text-white" : "text-slate-400 hover:text-white"}`}>
-          <Square className="w-3.5 h-3.5" /> Rectangle
+          <Square className="w-3.5 h-3.5" /> {d("mc_tool_rect" as DTKey)}
         </button>
-        <button onClick={() => { setTool("angle"); cancelDrawing(); }} title="Angle (A)"
+        <button onClick={() => { setTool("angle"); cancelDrawing(); }} title={d("mc_tool_angle" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "angle" ? "bg-amber-500 text-white" : "text-slate-400 hover:text-white"}`}>
-          <Spline className="w-3.5 h-3.5" /> Angle
+          <Spline className="w-3.5 h-3.5" /> {d("mc_tool_angle" as DTKey)}
         </button>
-        <button onClick={() => { setTool("wall"); cancelDrawing(); }} title="Mur (W)"
+        <button onClick={() => { setTool("wall"); cancelDrawing(); }} title={d("mc_tool_wall" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "wall" ? "bg-orange-500/20 border border-orange-500/40 text-orange-300" : "text-slate-400 hover:text-white"}`}>
-          <Ruler className="w-3.5 h-3.5" /> Mur
+          <Ruler className="w-3.5 h-3.5" /> {d("mc_tool_wall" as DTKey)}
         </button>
         {onPpmChange && (
           <button onClick={() => { setTool("scale"); setScalePts([]); setScaleInputOpen(false); cancelDrawing(); }}
-            title={ppm ? `Échelle — Recalibrer (${ppm.toFixed(1)} px/m)` : "Échelle — Calibrer"}
+            title={d("mc_tool_scale" as DTKey)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "scale" ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-300"
                 : !ppm ? "text-yellow-400 hover:text-yellow-300" : "text-slate-400 hover:text-white"}`}>
-            <Ruler className="w-3.5 h-3.5" /> Échelle
+            <Ruler className="w-3.5 h-3.5" /> {d("mc_tool_scale" as DTKey)}
           </button>
         )}
-        <button onClick={() => { setTool("split"); cancelDrawing(); }} title="Découper (S)"
+        <button onClick={() => { setTool("split"); cancelDrawing(); }} title={d("mc_tool_split" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "split" ? "bg-red-500/20 border border-red-500/40 text-red-300" : "text-slate-400 hover:text-white"}`}>
-          <Scissors className="w-3.5 h-3.5" /> Découper
+          <Scissors className="w-3.5 h-3.5" /> {d("mc_tool_split" as DTKey)}
         </button>
-        <button onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }} title="Recherche visuelle (V)"
+        <button onClick={() => { setTool("visual_search"); cancelDrawing(); setVsEditMode("search"); }} title={d("mc_tool_search" as DTKey)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             tool === "visual_search" ? "bg-cyan-500/20 border border-cyan-500/40 text-cyan-300" : "text-slate-400 hover:text-white"}`}>
-          <Search className="w-3.5 h-3.5" /> Recherche
+          <Search className="w-3.5 h-3.5" /> {d("mc_tool_search" as DTKey)}
         </button>
         {onLinearMeasuresChange && (
-          <button onClick={() => { setTool("linear"); cancelDrawing(); }} title="Linéaire (L)"
+          <button onClick={() => { setTool("linear"); cancelDrawing(); }} title={d("mc_tool_linear" as DTKey)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "linear" ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-300" : "text-slate-400 hover:text-white"}`}>
-            <Ruler className="w-3.5 h-3.5" /> Linéaire
+            <Ruler className="w-3.5 h-3.5" /> {d("mc_tool_linear" as DTKey)}
           </button>
         )}
         {onCountPointsChange && (
-          <button onClick={() => { setTool("count"); cancelDrawing(); }} title="Comptage (C)"
+          <button onClick={() => { setTool("count"); cancelDrawing(); }} title={d("mc_tool_count" as DTKey)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "count" ? "bg-pink-500/20 border border-pink-500/40 text-pink-300" : "text-slate-400 hover:text-white"}`}>
-            <span className="font-bold text-xs">#</span> Comptage
+            <span className="font-bold text-xs">#</span> {d("mc_tool_count" as DTKey)}
           </button>
         )}
         {onTextAnnotationsChange && (
-          <button onClick={() => { setTool("text"); cancelDrawing(); }} title="Texte (T)"
+          <button onClick={() => { setTool("text"); cancelDrawing(); }} title={d("mc_tool_text" as DTKey)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               tool === "text" ? "bg-sky-500/20 border border-sky-500/40 text-sky-300" : "text-slate-400 hover:text-white"}`}>
-            <Type className="w-3.5 h-3.5" /> Texte
+            <Type className="w-3.5 h-3.5" /> {d("mc_tool_text" as DTKey)}
           </button>
         )}
 
@@ -1884,32 +1889,32 @@ export default function MeasureCanvas({
         {onMarkupAnnotationsChange && (
           <div className="relative">
             <button onClick={() => { setShowAnnotDropdown(v => !v); setShowEraserDropdown(false); }}
-              title="Dessin libre — annotations, formes, surligneur…"
+              title={d("mc_freedraw" as DTKey)}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 showAnnotDropdown || ["arrow","mk_line","callout","cloud","rect_annot","ellipse","highlight","pen","stamp","note","dimension"].includes(tool)
                   ? "bg-rose-500/20 border-rose-500/40 text-rose-300" : "border-transparent text-slate-400 hover:text-white"}`}>
-              <Pen className="w-3.5 h-3.5" /> Dessin libre
+              <Pen className="w-3.5 h-3.5" /> {d("mc_freedraw" as DTKey)}
               <span className="text-[8px] opacity-60">▾</span>
             </button>
             {showAnnotDropdown && (
               <div className="absolute top-full left-0 mt-1 z-50 glass border border-rose-500/20 rounded-xl p-2 shadow-2xl min-w-48 pointer-events-auto"
                 onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                <p className="text-[9px] text-rose-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Dessin libre</p>
+                <p className="text-[9px] text-rose-400 uppercase tracking-wider font-semibold mb-1.5 px-1">{d("mc_freedraw" as DTKey)}</p>
                 <div className="flex flex-col gap-0.5">
                   {([
-                    { t: "polygon" as Tool, icon: <Pentagon className="w-3.5 h-3.5" />, label: "Polygone", c: "accent" },
-                    { t: "arrow" as Tool, icon: <ArrowRight className="w-3.5 h-3.5" />, label: "Flèche", c: "rose" },
-                    { t: "mk_line" as Tool, icon: <Minus className="w-3.5 h-3.5" />, label: "Ligne", c: "rose" },
-                    { t: "callout" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" />, label: "Callout", c: "rose" },
-                    { t: "cloud" as Tool, icon: <Cloud className="w-3.5 h-3.5" />, label: "Nuage", c: "rose" },
-                    { t: "rect_annot" as Tool, icon: <Square className="w-3.5 h-3.5" />, label: "Rectangle", c: "rose" },
-                    { t: "ellipse" as Tool, icon: <CircleDot className="w-3.5 h-3.5" />, label: "Ellipse / Cercle", c: "rose" },
-                    { t: "highlight" as Tool, icon: <Highlighter className="w-3.5 h-3.5" />, label: "Surligneur", c: "yellow" },
-                    { t: "pen" as Tool, icon: <Pen className="w-3.5 h-3.5" />, label: "Crayon libre", c: "rose" },
-                    { t: "stamp" as Tool, icon: <Stamp className="w-3.5 h-3.5" />, label: "Tampon", c: "red" },
-                    { t: "note" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" style={{ fill: "currentColor" }} />, label: "Note", c: "yellow" },
-                    { t: "dimension" as Tool, icon: <Ruler className="w-3.5 h-3.5" />, label: "Cotation", c: "rose" },
-                  ] as const).map(({ t, icon, label }) => (
+                    { t: "polygon" as Tool, icon: <Pentagon className="w-3.5 h-3.5" />, label: d("mc_mk_polygon" as DTKey), c: "accent" },
+                    { t: "arrow" as Tool, icon: <ArrowRight className="w-3.5 h-3.5" />, label: d("mc_mk_arrow" as DTKey), c: "rose" },
+                    { t: "mk_line" as Tool, icon: <Minus className="w-3.5 h-3.5" />, label: d("mc_mk_line" as DTKey), c: "rose" },
+                    { t: "callout" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" />, label: d("mc_mk_callout" as DTKey), c: "rose" },
+                    { t: "cloud" as Tool, icon: <Cloud className="w-3.5 h-3.5" />, label: d("mc_mk_cloud" as DTKey), c: "rose" },
+                    { t: "rect_annot" as Tool, icon: <Square className="w-3.5 h-3.5" />, label: d("mc_mk_rect" as DTKey), c: "rose" },
+                    { t: "ellipse" as Tool, icon: <CircleDot className="w-3.5 h-3.5" />, label: d("mc_mk_ellipse" as DTKey), c: "rose" },
+                    { t: "highlight" as Tool, icon: <Highlighter className="w-3.5 h-3.5" />, label: d("mc_mk_highlight" as DTKey), c: "yellow" },
+                    { t: "pen" as Tool, icon: <Pen className="w-3.5 h-3.5" />, label: d("mc_mk_pen" as DTKey), c: "rose" },
+                    { t: "stamp" as Tool, icon: <Stamp className="w-3.5 h-3.5" />, label: d("mc_mk_stamp" as DTKey), c: "red" },
+                    { t: "note" as Tool, icon: <MessageSquare className="w-3.5 h-3.5" style={{ fill: "currentColor" }} />, label: d("mc_mk_note" as DTKey), c: "yellow" },
+                    { t: "dimension" as Tool, icon: <Ruler className="w-3.5 h-3.5" />, label: d("mc_mk_dimension" as DTKey), c: "rose" },
+                  ] as Array<{ t: Tool; icon: any; label: string; c: string }>).map(({ t, icon, label }) => (
                     <button key={t} onClick={() => { setTool(t); cancelDrawing(); setShowAnnotDropdown(false); }}
                       className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors w-full text-left ${
                         tool === t ? "bg-rose-500/15 text-rose-300" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
@@ -1935,24 +1940,24 @@ export default function MeasureCanvas({
         {/* ── Gommage (dropdown) ── */}
         <div className="relative">
           <button onClick={() => { setShowEraserDropdown(v => !v); setShowAnnotDropdown(false); }}
-            title="Gommage — supprimer des éléments"
+            title={d("mc_eraser" as DTKey)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
               showEraserDropdown || tool === "eraser"
                 ? "bg-red-500/20 border-red-500/40 text-red-400" : "border-transparent text-slate-400 hover:text-white"}`}>
-            <Trash2 className="w-3.5 h-3.5" /> Gommage
+            <Trash2 className="w-3.5 h-3.5" /> {d("mc_eraser" as DTKey)}
             <span className="text-[8px] opacity-60">▾</span>
           </button>
           {showEraserDropdown && (
             <div className="absolute top-full left-0 mt-1 z-50 glass border border-red-500/20 rounded-xl p-2 shadow-2xl min-w-44 pointer-events-auto"
               onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-              <p className="text-[9px] text-red-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Gommage</p>
+              <p className="text-[9px] text-red-400 uppercase tracking-wider font-semibold mb-1.5 px-1">{d("mc_eraser" as DTKey)}</p>
               <div className="flex flex-col gap-0.5">
                 {([
-                  { mode: "click" as const, icon: <Trash2 className="w-3.5 h-3.5" />, label: "Clic (supprimer un élément)" },
-                  { mode: "rect" as const, icon: <Square className="w-3.5 h-3.5" />, label: "Rectangle" },
-                  { mode: "polygon" as const, icon: <Pentagon className="w-3.5 h-3.5" />, label: "Polygone" },
-                  { mode: "circle" as const, icon: <CircleDot className="w-3.5 h-3.5" />, label: "Cercle" },
-                ] as const).map(({ mode, icon, label }) => (
+                  { mode: "click" as const, icon: <Trash2 className="w-3.5 h-3.5" />, label: d("mc_eraser_click" as DTKey) },
+                  { mode: "rect" as const, icon: <Square className="w-3.5 h-3.5" />, label: d("mc_mk_rect" as DTKey) },
+                  { mode: "polygon" as const, icon: <Pentagon className="w-3.5 h-3.5" />, label: d("mc_mk_polygon" as DTKey) },
+                  { mode: "circle" as const, icon: <CircleDot className="w-3.5 h-3.5" />, label: d("ml_kind_circle" as DTKey) },
+                ] as Array<{ mode: "click" | "rect" | "polygon" | "circle"; icon: any; label: string }>).map(({ mode, icon, label }) => (
                   <button key={mode} onClick={() => { setTool("eraser"); setEraserMode(mode); cancelDrawing(); setShowEraserDropdown(false); }}
                     className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors w-full text-left ${
                       tool === "eraser" && eraserMode === mode ? "bg-red-500/15 text-red-400" : "text-slate-400 hover:text-white hover:bg-white/5"}`}>
@@ -1979,7 +1984,7 @@ export default function MeasureCanvas({
               if (lm) { const cat = linearCategories.find(c => c.id === lm.categoryId); setFormatPainterStyle({ color: cat?.color ?? "#10B981" }); }
             }
           }}
-          title="Copier le format"
+          title={d("mc_copy_format" as DTKey)}
           className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "text-slate-400 hover:text-white"}`}>
           <Paintbrush className="w-3.5 h-3.5" />
@@ -1988,7 +1993,7 @@ export default function MeasureCanvas({
         {isDrawing && (
           <button onClick={cancelDrawing}
             className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg border border-white/5 hover:border-red-500/30">
-            Annuler (Échap)
+            {d("mc_cancel_esc" as DTKey)}
           </button>
         )}
 
@@ -1997,7 +2002,7 @@ export default function MeasureCanvas({
           <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
           <div className="flex items-center gap-2 border border-orange-500/20 rounded-lg px-2 py-1">
             <Ruler className="w-3 h-3 text-orange-400 shrink-0" />
-            <span className="text-xs text-slate-400">Épaisseur</span>
+            <span className="text-xs text-slate-400">{d("mc_thickness" as DTKey)}</span>
             <input type="number" min={1} max={500} step={1} value={wallThicknessCm}
               onChange={e => setWallThicknessCm(Math.max(1, parseInt(e.target.value) || 15))}
               className="w-14 bg-transparent text-orange-300 text-xs font-mono text-center border-b border-orange-500/30 focus:outline-none focus:border-orange-400" />
@@ -2015,21 +2020,21 @@ export default function MeasureCanvas({
                 <button key={m} onClick={() => setVsEditMode(m)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                     vsEditMode === m ? "bg-cyan-500/30 text-cyan-200" : "text-slate-400 hover:text-white"}`}>
-                  {m === "search" ? "🔍 Chercher" : m === "add" ? "＋ Ajouter" : "− Retirer"}
+                  {m === "search" ? `🔍 ${d("mc_vs_search" as DTKey)}` : m === "add" ? `＋ ${d("mc_vs_add" as DTKey)}` : `− ${d("mc_vs_remove" as DTKey)}`}
                 </button>
               ))}
             </div>
             {vsSearching && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
             {vsMatches.length > 0 && (<>
-              <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} trouvé{vsMatches.length > 1 ? "s" : ""}</span>
-              <button onClick={() => onVsMatchesChange?.([])} className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 border border-white/10 rounded-lg transition-colors">Effacer</button>
-              <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors"><Save className="w-3 h-3" /> Sauvegarder</button>
+              <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} {d("mc_vs_found" as DTKey)}</span>
+              <button onClick={() => onVsMatchesChange?.([])} className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 border border-white/10 rounded-lg transition-colors">{d("mc_vs_clear" as DTKey)}</button>
+              <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors"><Save className="w-3 h-3" /> {d("mc_vs_save" as DTKey)}</button>
             </>)}
             {showVsSave && (
               <div className="flex items-center gap-1.5">
                 <input autoFocus value={vsSaveLabel} onChange={e => setVsSaveLabel(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && vsSaveLabel.trim()) { onSaveDetection?.(vsSaveLabel.trim(), vsMatches); onVsMatchesChange?.([]); setShowVsSave(false); } if (e.key === "Escape") setShowVsSave(false); }}
-                  placeholder="Nom de la détection…" className="w-40 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500" />
+                  placeholder={d("mc_vs_name_ph" as DTKey)} className="w-40 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500" />
                 <button disabled={!vsSaveLabel.trim()} onClick={() => { if (vsSaveLabel.trim()) { onSaveDetection?.(vsSaveLabel.trim(), vsMatches); onVsMatchesChange?.([]); setShowVsSave(false); } }}
                   className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40">OK</button>
               </div>
@@ -2072,7 +2077,7 @@ export default function MeasureCanvas({
                 else if (selectedTextId) onTextAnnotationsChange?.(textAnnotations.map(t => t.id === selectedTextId ? { ...t, color: c } : t));
               }}
               className="w-7 h-7 rounded-lg border border-white/20 cursor-pointer p-0"
-              title="Couleur de l'élément"
+              title={d("common_color" as DTKey)}
             />
             <button onClick={() => {
               // Copy selected element
@@ -2092,7 +2097,7 @@ export default function MeasureCanvas({
                 const lm = linearMeasures.find(m => m.id === selectedLinearId);
                 if (lm) { const dup = { ...lm, id: crypto.randomUUID(), points: lm.points.map(p => ({ x: p.x + 0.02, y: p.y + 0.02 })) }; onLinearMeasuresChange?.([...linearMeasures, dup]); onSelectedLinearIdChange?.(dup.id); }
               }
-            }} title="Copier (Ctrl+D)" className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors">
+            }} title={d("common_copy" as DTKey)} className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors">
               <Copy className="w-4 h-4" />
             </button>
             {/* Toggle déduction — only for zones */}
@@ -2115,7 +2120,7 @@ export default function MeasureCanvas({
               else if (selectedTextId) { onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== selectedTextId)); setSelectedTextId(null); }
               else if (selectedCircleId) { onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== selectedCircleId)); setSelectedCircleId(null); }
               else if (selectedLinearId) { onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== selectedLinearId)); onSelectedLinearIdChange?.(null); }
-            }} title="Supprimer (Suppr)" className="glass border border-red-500/30 rounded-lg p-2 text-red-400 hover:text-red-300 hover:border-red-500/50 transition-colors">
+            }} title={d("common_delete" as DTKey)} className="glass border border-red-500/30 rounded-lg p-2 text-red-400 hover:text-red-300 hover:border-red-500/50 transition-colors">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -3289,11 +3294,11 @@ export default function MeasureCanvas({
           <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-72 pointer-events-auto max-h-96 overflow-y-auto"
             onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Calques</span>
+              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">{d("mc_layers" as DTKey)}</span>
               <div className="flex items-center gap-1.5">
                 <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
                   className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-[10px] px-2 py-1 border border-blue-500/30 rounded-lg hover:bg-blue-500/10 transition-all">
-                  + Créer
+                  + {d("mc_layer_create" as DTKey)}
                 </button>
                 <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white p-0.5 rounded hover:bg-white/5 transition-colors">
                   <span className="text-xs">✕</span>
@@ -3304,7 +3309,7 @@ export default function MeasureCanvas({
             {/* New layer creation form (inline modal) */}
             {newLayerModalOpen && (
               <div className="mb-3 p-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                <p className="text-[10px] text-blue-300 font-medium mb-2 uppercase tracking-wider">Nouveau calque</p>
+                <p className="text-[10px] text-blue-300 font-medium mb-2 uppercase tracking-wider">{d("mc_new_layer_title" as DTKey)}</p>
                 <div className="flex flex-col gap-2">
                   <input
                     autoFocus
@@ -3321,11 +3326,11 @@ export default function MeasureCanvas({
                       }
                       if (e.key === "Escape") setNewLayerModalOpen(false);
                     }}
-                    placeholder="Nom du calque…"
+                    placeholder={d("mc_layer_name_ph" as DTKey)}
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/40"
                   />
                   <div className="flex items-center gap-2">
-                    <label className="text-[10px] text-slate-500 shrink-0">Couleur</label>
+                    <label className="text-[10px] text-slate-500 shrink-0">{d("mc_layer_color" as DTKey)}</label>
                     <input type="color" value={newLayerColor}
                       onChange={e => setNewLayerColor(e.target.value)}
                       className="w-6 h-6 rounded-lg border border-white/20 cursor-pointer p-0 shrink-0" />
@@ -3341,11 +3346,11 @@ export default function MeasureCanvas({
                         setNewLayerModalOpen(false);
                       }}
                       className="flex-1 py-1.5 text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-30">
-                      Créer
+                      {d("mc_layer_create" as DTKey)}
                     </button>
                     <button onClick={() => setNewLayerModalOpen(false)}
                       className="px-3 py-1.5 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
-                      Annuler
+                      {d("common_cancel" as DTKey)}
                     </button>
                   </div>
                 </div>
@@ -3480,8 +3485,8 @@ export default function MeasureCanvas({
         {/* Scale calibration input dialog + presets */}
         {tool === "scale" && scaleInputOpen && scalePts.length === 2 && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 glass border border-yellow-500/40 rounded-2xl p-4 shadow-2xl flex flex-col gap-3 min-w-72 pointer-events-auto">
-            <p className="text-sm text-yellow-300 font-semibold">Calibrage de l'échelle</p>
-            <p className="text-xs text-slate-400">Longueur réelle du segment tracé :</p>
+            <p className="text-sm text-yellow-300 font-semibold">{d("mc_scale_title" as DTKey)}</p>
+            <p className="text-xs text-slate-400">{d("mc_scale_real_length" as DTKey)}</p>
             {/* Quick distance presets */}
             <div className="flex gap-1.5 flex-wrap">
               {[0.5, 1, 2, 5, 10].map(v => (
@@ -3514,7 +3519,7 @@ export default function MeasureCanvas({
             </div>
             {/* Scale ratio presets */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-500 shrink-0">Échelles :</span>
+              <span className="text-[10px] text-slate-500 shrink-0">{d("mc_scale_presets" as DTKey)}</span>
               {[{l:"1:20",r:20},{l:"1:50",r:50},{l:"1:75",r:75},{l:"1:100",r:100},{l:"1:200",r:200},{l:"1:500",r:500}].map(({l,r}) => (
                 <button key={l}
                   onClick={e => {
@@ -3541,13 +3546,13 @@ export default function MeasureCanvas({
                 onClick={e => { e.stopPropagation(); confirmScale(); }}
                 className="flex-1 py-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 text-xs rounded-lg hover:bg-yellow-500/30 transition-colors"
               >
-                Confirmer
+                {d("mc_scale_confirm" as DTKey)}
               </button>
               <button
                 onClick={e => { e.stopPropagation(); setScalePts([]); setScaleInputOpen(false); setTool("polygon"); }}
                 className="px-3 py-1.5 glass border border-white/10 text-slate-400 text-xs rounded-lg hover:text-white transition-colors"
               >
-                Annuler
+                {d("common_cancel" as DTKey)}
               </button>
             </div>
           </div>
@@ -3580,7 +3585,7 @@ export default function MeasureCanvas({
         {/* Controls hint */}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none">
           <div className="glass border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-500 whitespace-nowrap">
-            Scroll — zoom &nbsp;·&nbsp; Clic droit ou Espace — déplacer &nbsp;·&nbsp; Q — sélection
+            {d("mc_hint_scroll" as DTKey)}
           </div>
         </div>
       </div>

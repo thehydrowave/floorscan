@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { Trash2, Download, ChevronUp, ChevronDown, Filter } from "lucide-react";
+import { useLang } from "@/lib/lang-context";
+import { dt, DTKey } from "@/lib/i18n";
 import {
   MeasureZone, SurfaceType, LinearMeasure, LinearCategory, CountGroup, CountPoint,
   AngleMeasurement, angleDeg, CircleMeasure, circleMetrics,
@@ -59,6 +61,9 @@ export default function MarkupsList({
   imageW, imageH, ppm, displayUnit, layers,
   onSelectItem, onDeleteItem,
 }: MarkupsListProps) {
+  const { lang } = useLang();
+  const d = (k: DTKey) => dt(k, lang);
+
   const [sortKey, setSortKey] = useState<keyof MarkupRow>("kind");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [filterKind, setFilterKind] = useState<string>("all");
@@ -162,9 +167,9 @@ export default function MarkupsList({
     // Markup annotations
     for (const mk of markupAnnotations) {
       const typeLabels: Record<string, string> = {
-        arrow: "Flèche", line: "Ligne", callout: "Callout", cloud: "Nuage",
-        rect_annot: "Rectangle", ellipse: "Ellipse", highlight: "Surligneur",
-        pen: "Crayon", stamp: "Tampon", note: "Note", dimension: "Cotation",
+        arrow: d("mc_mk_arrow"), line: d("mc_mk_line"), callout: d("mc_mk_callout"), cloud: d("mc_mk_cloud"),
+        rect_annot: d("mc_mk_rect"), ellipse: d("mc_mk_ellipse"), highlight: d("mc_mk_highlight"),
+        pen: d("mc_mk_pen"), stamp: d("mc_mk_stamp"), note: d("mc_mk_note"), dimension: d("mc_mk_dimension"),
         polyline_annot: "Polyligne", image: "Image",
       };
       result.push({
@@ -179,7 +184,7 @@ export default function MarkupsList({
     return result;
   }, [zones, surfaceTypes, linearMeasures, linearCategories, countPoints, countGroups,
       angleMeasurements, circleMeasures, textAnnotations, markupAnnotations,
-      imageW, imageH, ppm, displayUnit]);
+      imageW, imageH, ppm, displayUnit, lang]);
 
   // Filter & sort
   const filtered = useMemo(() => {
@@ -193,7 +198,7 @@ export default function MarkupsList({
   }, [rows, filterKind, sortKey, sortDir]);
 
   const toggleSort = (key: keyof MarkupRow) => {
-    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    if (sortKey === key) setSortDir(prev => prev === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("asc"); }
   };
 
@@ -252,13 +257,13 @@ export default function MarkupsList({
     XLSX.writeFile(wb, `floorscan_markups_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  if (rows.length === 0) return null;
-
   // Kind labels for display
-  const kindLabels: Record<string, string> = {
-    zone: "Surface", linear: "Linéaire", count: "Comptage",
-    angle: "Angle", circle: "Cercle", text: "Texte", markup: "Annotation",
-  };
+  const kindLabels = useMemo<Record<string, string>>(() => ({
+    zone: d("ml_kind_zone"), linear: d("ml_kind_linear"), count: d("ml_kind_count"),
+    angle: d("ml_kind_angle"), circle: d("ml_kind_circle"), text: d("ml_kind_text"), markup: d("ml_kind_markup"),
+  }), [lang]);
+
+  if (rows.length === 0) return null;
 
   // Summary stats
   const totalArea = rows.filter(r => r.area && r.area > 0).reduce((s, r) => s + (r.area ?? 0), 0);
@@ -271,7 +276,7 @@ export default function MarkupsList({
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
         <button onClick={() => setCollapsed(v => !v)} className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors">
           {collapsed ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-          <span className="uppercase tracking-wide text-[10px]">Résumé des éléments</span>
+          <span className="uppercase tracking-wide text-[10px]">{d("ml_summary")}</span>
           <span className="text-[10px] font-mono text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">{rows.length}</span>
         </button>
         <div className="flex items-center gap-2">
@@ -287,24 +292,24 @@ export default function MarkupsList({
             <Filter className="w-3 h-3 text-slate-600" />
             <select value={filterKind} onChange={e => setFilterKind(e.target.value)}
               className="bg-transparent text-[10px] text-slate-400 border border-white/10 rounded-md px-1.5 py-0.5 outline-none hover:border-white/20 transition-colors cursor-pointer">
-              <option value="all" className="bg-slate-900">Tous</option>
-              <option value="zone" className="bg-slate-900">Surfaces</option>
-              <option value="linear" className="bg-slate-900">Linéaires</option>
-              <option value="count" className="bg-slate-900">Comptages</option>
-              <option value="angle" className="bg-slate-900">Angles</option>
-              <option value="circle" className="bg-slate-900">Cercles</option>
-              <option value="text" className="bg-slate-900">Textes</option>
-              <option value="markup" className="bg-slate-900">Annotations</option>
+              <option value="all" className="bg-slate-900">{d("ml_all")}</option>
+              <option value="zone" className="bg-slate-900">{d("ml_surfaces")}</option>
+              <option value="linear" className="bg-slate-900">{d("ml_linear")}</option>
+              <option value="count" className="bg-slate-900">{d("ml_counts")}</option>
+              <option value="angle" className="bg-slate-900">{d("ml_angles")}</option>
+              <option value="circle" className="bg-slate-900">{d("ml_circles")}</option>
+              <option value="text" className="bg-slate-900">{d("ml_texts")}</option>
+              <option value="markup" className="bg-slate-900">{d("ml_annotations")}</option>
             </select>
           </div>
 
           <div className="w-px h-4 bg-white/10" />
 
           {/* Export */}
-          <button onClick={exportUnifiedCSV} title="Exporter CSV" className="text-slate-500 hover:text-white p-1 rounded hover:bg-white/5 transition-colors">
+          <button onClick={exportUnifiedCSV} title={d("ml_export_csv")} className="text-slate-500 hover:text-white p-1 rounded hover:bg-white/5 transition-colors">
             <Download className="w-3.5 h-3.5" />
           </button>
-          <button onClick={exportUnifiedXLSX} title="Exporter Excel" className="text-slate-500 hover:text-emerald-400 p-1 rounded hover:bg-white/5 transition-colors text-[10px] font-bold font-mono">
+          <button onClick={exportUnifiedXLSX} title={d("ml_export_xlsx")} className="text-slate-500 hover:text-emerald-400 p-1 rounded hover:bg-white/5 transition-colors text-[10px] font-bold font-mono">
             XLSX
           </button>
         </div>
@@ -317,22 +322,22 @@ export default function MarkupsList({
             <thead className="bg-white/[0.03] sticky top-0 z-10">
               <tr className="border-b border-white/10">
                 <th className="px-3 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("kind")}>
-                  <span className="flex items-center gap-0.5">Type <SortIcon k="kind" /></span>
+                  <span className="flex items-center gap-0.5">{d("ml_col_type")} <SortIcon k="kind" /></span>
                 </th>
                 <th className="px-2 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("subject")}>
-                  <span className="flex items-center gap-0.5">Élément <SortIcon k="subject" /></span>
+                  <span className="flex items-center gap-0.5">{d("ml_col_element")} <SortIcon k="subject" /></span>
                 </th>
                 <th className="px-2 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("label")}>
-                  <span className="flex items-center gap-0.5">Détail <SortIcon k="label" /></span>
+                  <span className="flex items-center gap-0.5">{d("ml_col_detail")} <SortIcon k="label" /></span>
                 </th>
                 <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("area")}>
-                  <span className="flex items-center justify-end gap-0.5">Surface <SortIcon k="area" /></span>
+                  <span className="flex items-center justify-end gap-0.5">{d("ml_col_area")} <SortIcon k="area" /></span>
                 </th>
                 <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("length")}>
-                  <span className="flex items-center justify-end gap-0.5">Longueur <SortIcon k="length" /></span>
+                  <span className="flex items-center justify-end gap-0.5">{d("ml_col_length")} <SortIcon k="length" /></span>
                 </th>
                 <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("count")}>
-                  <span className="flex items-center justify-end gap-0.5">Qté <SortIcon k="count" /></span>
+                  <span className="flex items-center justify-end gap-0.5">{d("ml_col_qty")} <SortIcon k="count" /></span>
                 </th>
                 <th className="px-3 py-2 w-8"></th>
               </tr>

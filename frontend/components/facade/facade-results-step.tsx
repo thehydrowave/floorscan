@@ -31,13 +31,14 @@ type IconComp = React.ComponentType<{ className?: string; style?: React.CSSPrope
 
 /* ── i18n key per element type ── */
 const TYPE_I18N: Record<string, DTKey> = {
-  window:     "fa_window",
-  door:       "fa_door",
-  balcony:    "fa_balcony",
-  floor_line: "fa_floor_line",
-  roof:       "fa_roof",
-  column:     "fa_column",
-  other:      "fa_other",
+  window:          "fa_window",
+  door:            "fa_door",
+  balcony:         "fa_balcony",
+  floor_line:      "fa_floor_line",
+  roof:            "fa_roof",
+  column:          "fa_column",
+  other:           "fa_other",
+  surface_murale:  "fr_opaque_wall",
 };
 
 /* ── Mask layer definitions (Masques tab) ── */
@@ -315,13 +316,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           {perZoneStats.map((zs) => (
             <div key={zs.zone.id} className="glass rounded-xl border border-white/10 p-4">
               <div className="text-xs font-semibold text-amber-400 uppercase tracking-wide mb-3">
-                Façade {zs.idx + 1}
+                {d("fr_facade" as DTKey)} {zs.idx + 1}
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
                   <AppWindow className="w-5 h-5 mx-auto text-amber-400 mb-1" />
                   <div className="text-xl font-mono font-bold text-amber-400">{zs.fenetresCount}</div>
-                  <div className="text-xs text-slate-500">Fenêtres</div>
+                  <div className="text-xs text-slate-500">{d("fa_windows" as DTKey)}</div>
                   {zs.fenetresArea > 0 && (
                     <div className="text-xs text-amber-400/70 font-mono mt-0.5">{zs.fenetresArea.toFixed(1)} m²</div>
                   )}
@@ -329,14 +330,14 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <div className="text-center">
                   <Crop className="w-5 h-5 mx-auto text-slate-400 mb-1" />
                   <div className="text-xl font-mono font-bold text-slate-200">{zs.zoneArea.toFixed(0)} m²</div>
-                  <div className="text-xs text-slate-500">Délimitée</div>
+                  <div className="text-xs text-slate-500">{d("fr_delimited" as DTKey)}</div>
                 </div>
                 <div className="text-center">
                   <Building2 className="w-5 h-5 mx-auto text-blue-400 mb-1" />
                   <div className="text-xl font-mono font-bold text-blue-400">
                     {zs.nette != null ? `${zs.nette.toFixed(0)} m²` : "—"}
                   </div>
-                  <div className="text-xs text-slate-500">Surface nette</div>
+                  <div className="text-xs text-slate-500">{d("fr_net_surface" as DTKey)}</div>
                 </div>
               </div>
             </div>
@@ -350,7 +351,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             <div className="text-2xl font-mono font-bold mt-1 text-amber-400">
               {localElements.filter(e => e.type === "other").length}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5">Fenêtres</div>
+            <div className="text-xs text-slate-500 mt-0.5">{d("fa_windows" as DTKey)}</div>
             {fenetresAreaM2 > 0 && (
               <div className="text-xs text-amber-400/70 font-mono mt-0.5">{fenetresAreaM2.toFixed(1)} m²</div>
             )}
@@ -361,7 +362,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             <div className="text-2xl font-mono font-bold mt-1 text-slate-200">
               {totalFacadeZonesM2 > 0 ? `${totalFacadeZonesM2.toFixed(0)} m²` : "—"}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5">Façade délimitée</div>
+            <div className="text-xs text-slate-500 mt-0.5">{d("fr_delimited" as DTKey)}</div>
           </div>
           {/* Surface nette */}
           <div className="glass rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-center">
@@ -369,7 +370,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             <div className="text-2xl font-mono font-bold mt-1 text-blue-400">
               {facadeNetteM2 != null ? `${facadeNetteM2.toFixed(0)} m²` : "—"}
             </div>
-            <div className="text-xs text-slate-500 mt-0.5">Surface façade nette</div>
+            <div className="text-xs text-slate-500 mt-0.5">{d("fr_net_area" as DTKey)}</div>
           </div>
         </div>
       )}
@@ -379,7 +380,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         {onBack && (
           <button onClick={onBack}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all">
-            <ChevronLeft className="w-4 h-4" /> Retour
+            <ChevronLeft className="w-4 h-4" /> {d("fr_back" as DTKey)}
           </button>
         )}
         <button onClick={() => onGoEditor?.()}
@@ -390,9 +391,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         {/* Mask filter: Tous | Murs | Ouvertures */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
           {([
-            { id: "all" as MaskFilterMode, label: "Tous" },
-            { id: "walls" as MaskFilterMode, label: "Murs" },
-            { id: "openings" as MaskFilterMode, label: "Ouvertures" },
+            { id: "all" as MaskFilterMode, label: d("fr_filter_all" as DTKey) },
+            { id: "walls" as MaskFilterMode, label: d("fr_filter_walls" as DTKey) },
+            { id: "openings" as MaskFilterMode, label: d("fr_filter_openings" as DTKey) },
           ]).map(f => (
             <button key={f.id}
               onClick={() => setMaskFilter(f.id)}
@@ -401,7 +402,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {f.label}
             </button>
           ))}
-          <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title="Tutoriel"
+          <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
             className="px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-white hover:bg-white/10 transition-all">
             ?
           </button>
@@ -536,7 +537,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {result.is_mock && (
                 <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
                   bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                  <AlertTriangle className="w-3 h-3" /> Démo
+                  <AlertTriangle className="w-3 h-3" /> {d("fr_demo" as DTKey)}
                 </div>
               )}
             </div>{/* /overflow zoom container */}
@@ -547,7 +548,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
               {/* CALQUES — limited to fenêtres (window) and murs (surface_murale) */}
               <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Calques</h4>
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fr_layers" as DTKey)}</h4>
                 {MASK_LAYERS.filter(l => l.id === "surface_murale" || l.id === "window").map(layer => {
                   const layerHidden = hiddenLayers.has(layer.id);
                   const count = layer.isSurface ? undefined : localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id)).length;
@@ -557,7 +558,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                       className={cn("flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors", layerHidden ? "opacity-40" : "opacity-100")}>
                       {layerHidden ? <EyeOff className="w-3.5 h-3.5 text-slate-600" /> : <Eye className="w-3.5 h-3.5 text-white" />}
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: layerHidden ? "#475569" : layer.color }} />
-                      <span className={cn("flex-1 text-left", layerHidden ? "text-slate-600" : "text-white")}>{layer.label}</span>
+                      <span className={cn("flex-1 text-left", layerHidden ? "text-slate-600" : "text-white")}>{TYPE_I18N[layer.id] ? d(TYPE_I18N[layer.id]) : layer.label}</span>
                       {count != null && <span className="font-mono text-slate-500">{count}</span>}
                     </button>
                   );
@@ -566,7 +567,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
               {/* ÉLÉMENTS count — limited to fenêtres (window) and murs (surface_murale) */}
               <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Éléments</h4>
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fr_elements" as DTKey)}</h4>
                 <div className="flex flex-col gap-1.5">
                   {MASK_LAYERS.filter(l => (l.id === "window") && !l.isSurface).map(l => {
                     const count = localElements.filter(e => e.type === l.id && !hiddenElements.has(e.id)).length;
@@ -575,7 +576,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                       <div key={l.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/3">
                         <span className="flex items-center gap-2 text-xs text-slate-300">
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: l.color }} />
-                          {l.label}
+                          {TYPE_I18N[l.id] ? d(TYPE_I18N[l.id]) : l.label}
                         </span>
                         <span className="font-mono text-sm font-bold" style={{ color: l.color }}>{count}</span>
                       </div>
@@ -589,16 +590,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <div className="glass rounded-xl border border-white/10 p-4 space-y-3">
                   {fenetresAreaM2 > 0 && (
                     <div>
-                      <div className="text-xs text-amber-500/80 uppercase tracking-wider mb-0.5">Surface fenêtres</div>
+                      <div className="text-xs text-amber-500/80 uppercase tracking-wider mb-0.5">{d("fr_windows_area" as DTKey)}</div>
                       <div className="text-base font-mono font-semibold text-amber-300">{fenetresAreaM2.toFixed(1)} m²</div>
                     </div>
                   )}
                   {facadeNetteM2 != null && (
                     <div>
-                      <div className="text-xs text-blue-400/80 uppercase tracking-wider mb-0.5">Surface façade nette</div>
+                      <div className="text-xs text-blue-400/80 uppercase tracking-wider mb-0.5">{d("fr_net_area" as DTKey)}</div>
                       <div className="text-xl font-mono font-bold text-blue-400">{facadeNetteM2.toFixed(1)} m²</div>
                       {totalFacadeZonesM2 > 0 && fenetresAreaM2 > 0 && (
-                        <div className="text-xs text-slate-500 mt-0.5">{((fenetresAreaM2 / totalFacadeZonesM2) * 100).toFixed(0)}% ouvertures</div>
+                        <div className="text-xs text-slate-500 mt-0.5">{((fenetresAreaM2 / totalFacadeZonesM2) * 100).toFixed(0)}{d("fr_openings_pct" as DTKey)}</div>
                       )}
                     </div>
                   )}
