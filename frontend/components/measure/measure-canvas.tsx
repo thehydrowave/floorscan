@@ -6,6 +6,8 @@ import { SurfaceType, MeasureZone, pointInPolygon, splitPolygonByLine, LinearCat
 import type { VisualSearchMatch, CustomDetection } from "@/lib/types";
 
 import { BACKEND } from "@/lib/backend";
+// @ts-ignore — no types for polygon-clipping
+import polygonClipping from "polygon-clipping";
 
 interface MeasureCanvasProps {
   imageB64: string;
@@ -109,6 +111,83 @@ function getCentroid(points: { x: number; y: number }[]) {
     x: points.reduce((s, p) => s + p.x, 0) / points.length,
     y: points.reduce((s, p) => s + p.y, 0) / points.length,
   };
+}
+
+/** Convert a circle to a polygon approximation (N points) in normalized coords */
+function circleToPolygon(center: { x: number; y: number }, edge: { x: number; y: number }, n = 48): { x: number; y: number }[] {
+  const r = Math.hypot(edge.x - center.x, edge.y - center.y);
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = (2 * Math.PI * i) / n;
+    pts.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
+  }
+  return pts;
+}
+
+/** Convert a rect (2 corners) to a polygon */
+function rectToPolygon(a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number }[] {
+  const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
+  const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
+  return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+}
+
+/**
+ * Subtract an eraser polygon from all zones. Returns the new zones array.
+ * Zones fully inside the eraser are removed.
+ * Zones partially intersecting are clipped (boolean difference).
+ * Zones outside are kept unchanged.
+ */
+function subtractEraserFromZones(
+  zones: MeasureZone[],
+  eraserPoly: { x: number; y: number }[],
+): MeasureZone[] {
+  if (eraserPoly.length < 3) return zones;
+  // polygon-clipping format: [[[x,y], [x,y], ...]]
+  const clip: [number, number][][] = [eraserPoly.map(p => [p.x, p.y] as [number, number])];
+  // Close the clip ring if not closed
+  if (clip[0].length > 0) {
+    const first = clip[0][0], last = clip[0][clip[0].length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) clip[0].push([first[0], first[1]]);
+  }
+
+  const result: MeasureZone[] = [];
+  for (const zone of zones) {
+    const subject: [number, number][][] = [zone.points.map(p => [p.x, p.y] as [number, number])];
+    // Close the subject ring
+    if (subject[0].length > 0) {
+      const first = subject[0][0], last = subject[0][subject[0].length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) subject[0].push([first[0], first[1]]);
+    }
+
+    try {
+      const diff = polygonClipping.difference([subject], [clip]);
+      if (!diff || diff.length === 0) {
+        // Zone fully erased — skip it
+        continue;
+      }
+      // Each result polygon becomes a zone
+      for (let i = 0; i < diff.length; i++) {
+        const ring = diff[i][0]; // outer ring (ignore holes for simplicity)
+        if (!ring || ring.length < 3) continue;
+        // Remove closing point if it matches the first
+        const pts = ring.map((c: [number, number]) => ({ x: c[0], y: c[1] }));
+        if (pts.length > 1 && Math.abs(pts[0].x - pts[pts.length - 1].x) < 1e-9 && Math.abs(pts[0].y - pts[pts.length - 1].y) < 1e-9) {
+          pts.pop();
+        }
+        if (pts.length < 3) continue;
+        result.push({
+          ...zone,
+          id: i === 0 ? zone.id : crypto.randomUUID(),
+          points: pts,
+          name: i === 0 ? zone.name : (zone.name ? `${zone.name} (${i + 1})` : undefined),
+        });
+      }
+    } catch {
+      // If clipping fails, keep original zone
+      result.push(zone);
+    }
+  }
+  return result;
 }
 
 export default function MeasureCanvas({
@@ -1036,15 +1115,19 @@ export default function MeasureCanvas({
           if (Math.hypot(pt.x - cp.x, pt.y - cp.y) < 0.02) { onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id)); return; }
         }
       } else if (eraserMode === "rect") {
-        // Rect eraser: 2 clicks define area, delete everything inside
+        // Rect eraser: 2 clicks define area → subtract shape from zones, delete other elements inside
         if (!eraserStart) { setEraserStart(pt); }
         else {
-          const x0 = Math.min(eraserStart.x, pt.x), y0 = Math.min(eraserStart.y, pt.y);
-          const x1 = Math.max(eraserStart.x, pt.x), y1 = Math.max(eraserStart.y, pt.y);
-          const inBox = (px: number, py: number) => px >= x0 && px <= x1 && py >= y0 && py <= y1;
-          // Delete zones whose centroid is in the box
+          const eraserPoly = rectToPolygon(eraserStart, pt);
+          const inBox = (px: number, py: number) => {
+            const x0 = Math.min(eraserStart.x, pt.x), y0 = Math.min(eraserStart.y, pt.y);
+            const x1 = Math.max(eraserStart.x, pt.x), y1 = Math.max(eraserStart.y, pt.y);
+            return px >= x0 && px <= x1 && py >= y0 && py <= y1;
+          };
           onHistoryPush?.(zones);
-          onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !inBox(cx, cy); }));
+          // Boolean subtract from surface zones
+          onZonesChange(subtractEraserFromZones(zones, eraserPoly));
+          // Delete other elements whose centroid is inside
           onMarkupAnnotationsChange?.(markupAnnotations.filter(m => { const cx = (m.x1 + m.x2) / 2, cy = (m.y1 + m.y2) / 2; return !inBox(cx, cy); }));
           onCircleMeasuresChange?.(circleMeasures.filter(c => !inBox(c.center.x, c.center.y)));
           onLinearMeasuresChange?.(linearMeasures.filter(m => { const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length; const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length; return !inBox(cx, cy); }));
@@ -1052,13 +1135,16 @@ export default function MeasureCanvas({
           setEraserStart(null);
         }
       } else if (eraserMode === "circle") {
-        // Circle eraser: 2 clicks (center + edge), delete everything inside radius
+        // Circle eraser: 2 clicks (center + edge) → subtract circle from zones
         if (!eraserStart) { setEraserStart(pt); }
         else {
+          const eraserPoly = circleToPolygon(eraserStart, pt);
           const r = Math.hypot(pt.x - eraserStart.x, pt.y - eraserStart.y);
           const inCircle = (px: number, py: number) => Math.hypot(px - eraserStart.x, py - eraserStart.y) <= r;
           onHistoryPush?.(zones);
-          onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !inCircle(cx, cy); }));
+          // Boolean subtract from surface zones
+          onZonesChange(subtractEraserFromZones(zones, eraserPoly));
+          // Delete other elements whose centroid is inside
           onMarkupAnnotationsChange?.(markupAnnotations.filter(m => !inCircle((m.x1 + m.x2) / 2, (m.y1 + m.y2) / 2)));
           onCircleMeasuresChange?.(circleMeasures.filter(c => !inCircle(c.center.x, c.center.y)));
           onLinearMeasuresChange?.(linearMeasures.filter(m => { const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length; const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length; return !inCircle(cx, cy); }));
@@ -1100,7 +1186,9 @@ export default function MeasureCanvas({
       const poly = eraserDrawingPoly.slice(0, -1); // remove dblclick duplicate
       if (poly.length >= 3) {
         onHistoryPush?.(zones);
-        onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !pointInPolygon({ x: cx, y: cy }, poly); }));
+        // Boolean subtract polygon from surface zones
+        onZonesChange(subtractEraserFromZones(zones, poly));
+        // Delete other elements whose centroid is inside the polygon
         onMarkupAnnotationsChange?.(markupAnnotations.filter(m => !pointInPolygon({ x: (m.x1 + m.x2) / 2, y: (m.y1 + m.y2) / 2 }, poly)));
         onCircleMeasuresChange?.(circleMeasures.filter(c => !pointInPolygon(c.center, poly)));
         onCountPointsChange?.(countPoints.filter(p => !pointInPolygon({ x: p.x, y: p.y }, poly)));
