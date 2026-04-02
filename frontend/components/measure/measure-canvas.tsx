@@ -207,6 +207,10 @@ export default function MeasureCanvas({
   // Layers panel & Tool Chest panel
   const [showLayersPanel, setShowLayersPanel] = useState(false);
   const [showToolChest, setShowToolChest] = useState(false);
+  // Layer creation modal
+  const [newLayerModalOpen, setNewLayerModalOpen] = useState(false);
+  const [newLayerName, setNewLayerName] = useState("");
+  const [newLayerColor, setNewLayerColor] = useState("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"));
 
   // Lasso multi-select
   const [lassoStart, setLassoStart] = useState<{ x: number; y: number } | null>(null);
@@ -1600,13 +1604,128 @@ export default function MeasureCanvas({
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
 
-      {/* ── Toolbar — Row 1: Drawing tools ── */}
-      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+      {/* ══ BAR 1 : VISIBILITY + CONTROLS ══ */}
+      <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
+        <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">VISIBILITY</span>
+
+        {/* Grid toggle */}
+        <button onClick={() => setShowGrid(v => !v)} title="Grille (G)"
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
+            showGrid ? "border-slate-400/30 bg-slate-500/10 text-slate-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
+          }`}>
+          <LayoutGrid size={10} className="text-slate-400" />
+          {showGrid ? <Eye className="w-2.5 h-2.5 text-slate-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        </button>
+
+        {/* Rulers toggle */}
+        <button onClick={() => setShowRulers(v => !v)} title="Règles"
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
+            showRulers ? "border-slate-400/30 bg-slate-500/10 text-slate-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
+          }`}>
+          <Ruler size={10} className="text-slate-400" />
+          {showRulers ? <Eye className="w-2.5 h-2.5 text-slate-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        </button>
+
+        <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+        {/* Layers panel toggle */}
+        <button onClick={() => setShowLayersPanel(v => !v)} title="Calques / Disciplines"
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
+            showLayersPanel ? "border-blue-500/30 bg-blue-500/10 text-blue-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
+          }`}>
+          <Layers size={10} className="text-blue-400" />
+          {showLayersPanel ? <Eye className="w-2.5 h-2.5 text-blue-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        </button>
+
+        {/* Tool Chest toggle */}
+        <button onClick={() => setShowToolChest(v => !v)} title="Boîte à outils / Presets"
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
+            showToolChest ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-white/5 hover:border-white/10 hover:bg-white/5"
+          }`}>
+          <Wrench size={10} className="text-amber-400" />
+          {showToolChest ? <Eye className="w-2.5 h-2.5 text-amber-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+        </button>
+
+        {/* ── Right side utility controls ── */}
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={undoLast} title="Annuler (Ctrl+Z)"
+            disabled={drawingPoints.length === 0 && !canUndo}
+            className="p-1 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30">
+            <Undo2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => onHistoryRedo?.()} title="Rétablir (Ctrl+Y)"
+            disabled={!canRedo}
+            className="p-1 rounded text-slate-400 hover:text-white transition-colors disabled:opacity-30">
+            <Redo2 className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+          {onExportPNG && zones.length > 0 && (
+            <button onClick={onExportPNG} title="Exporter image annotée (PNG)"
+              className="p-1 rounded text-slate-400 hover:text-cyan-400 transition-colors">
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          <button onClick={() => setZoom(prevZ => {
+            const newZ = Math.min(12, prevZ * 1.3);
+            const ratio = newZ / prevZ;
+            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
+            return newZ;
+          })} title="Zoom +"
+            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => setZoom(prevZ => {
+            const newZ = Math.max(1, prevZ / 1.3);
+            const ratio = newZ / prevZ;
+            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
+            return newZ;
+          })} title="Zoom -"
+            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={resetView} title="Réinitialiser la vue"
+            className="p-1 rounded text-slate-400 hover:text-white transition-colors">
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+          {zoom > 1.05 && (
+            <span className="text-[10px] text-slate-500 font-mono">×{zoom.toFixed(1)}</span>
+          )}
+
+          <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+          {/* Active layer selector */}
+          {onActiveLayerIdChange && (
+            <div className="flex items-center px-1.5 py-0.5 rounded border border-white/5 hover:border-white/10 transition-all">
+              <span className="w-2 h-2 rounded-full mr-1" style={{ background: layers.find(l => l.id === activeLayerId)?.color ?? "#6B7280" }} />
+              <select
+                value={activeLayerId}
+                onChange={e => onActiveLayerIdChange(e.target.value)}
+                className="bg-transparent text-[10px] text-slate-300 outline-none cursor-pointer"
+                title="Calque actif"
+              >
+                {layers.map(l => (
+                  <option key={l.id} value={l.id} className="bg-slate-900">{l.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Unit display */}
+          <span className="text-[10px] text-slate-500 font-mono px-1">{displayUnit}</span>
+        </div>
+      </div>
+
+      {/* ══ BAR 2 : DRAW TOOLS ══ */}
+      <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
+        <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">DRAW</span>
 
         {/* Tool selector */}
-        <div className="flex gap-1 glass border border-white/10 rounded-xl p-1">
+        <div className="flex gap-0.5 items-center">
           <button
             onClick={() => { setTool("select"); cancelDrawing(); }}
             title="Sélection (Q)"
@@ -1754,9 +1873,10 @@ export default function MeasureCanvas({
           )}
         </div>
 
-        {/* ── Markup annotations toolbar ── */}
-        {onMarkupAnnotationsChange && (
-          <div className="flex gap-1 glass border border-white/10 rounded-xl p-1">
+        {/* ── Markup annotations ── */}
+        {onMarkupAnnotationsChange && (<>
+          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+          <div className="flex gap-0.5 items-center">
             <button onClick={() => { setTool("arrow"); cancelDrawing(); }} title="Flèche (F)"
               className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${tool === "arrow" ? "bg-rose-500/20 border border-rose-500/40 text-rose-300" : "text-slate-400 hover:text-white"}`}>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -1832,11 +1952,12 @@ export default function MeasureCanvas({
               onMarkupAnnotationsChange?.(markupAnnotations.map(m => m.id === selectedMarkupId ? { ...m, zIndex: minZ - 1 } : m));
             }} className="px-1 py-1.5 rounded-lg text-[9px] text-slate-500 hover:text-white transition-colors">↓</button>
           </div>
-        )}
+        </>)}
 
         {/* Wall thickness control — shown only when wall tool is active */}
-        {tool === "wall" && (
-          <div className="flex items-center gap-2 glass border border-orange-500/20 rounded-xl px-3 py-1.5">
+        {tool === "wall" && (<>
+          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+          <div className="flex items-center gap-2 border border-orange-500/20 rounded-lg px-2 py-1">
             <Ruler className="w-3 h-3 text-orange-400 shrink-0" />
             <span className="text-xs text-slate-400">Épaisseur</span>
             <input
@@ -1855,12 +1976,13 @@ export default function MeasureCanvas({
               </span>
             )}
           </div>
-        )}
+        </>)}
 
         {/* VS sub-toolbar */}
-        {tool === "visual_search" && (
+        {tool === "visual_search" && (<>
+          <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex gap-1 glass border border-cyan-500/20 rounded-xl p-1">
+            <div className="flex gap-1 border border-cyan-500/20 rounded-lg p-0.5">
               {(["search", "add", "remove"] as const).map(m => (
                 <button key={m} onClick={() => setVsEditMode(m)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
@@ -1875,11 +1997,11 @@ export default function MeasureCanvas({
               <>
                 <span className="text-xs text-cyan-400 font-mono">{vsMatches.length} trouvé{vsMatches.length > 1 ? "s" : ""}</span>
                 <button onClick={() => onVsMatchesChange?.([])}
-                  className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 glass border border-white/10 rounded-lg transition-colors">
+                  className="text-xs text-slate-500 hover:text-red-400 px-2 py-1 border border-white/10 rounded-lg transition-colors">
                   Effacer
                 </button>
                 <button onClick={() => { setShowVsSave(true); setVsSaveLabel(""); }}
-                  className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 glass border border-cyan-500/20 rounded-lg transition-colors">
+                  className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors">
                   <Save className="w-3 h-3" /> Sauvegarder
                 </button>
               </>
@@ -1910,17 +2032,18 @@ export default function MeasureCanvas({
                       setShowVsSave(false);
                     }
                   }}
-                  className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 glass border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40"
+                  className="text-xs text-cyan-400 hover:text-cyan-300 px-2 py-1 border border-cyan-500/20 rounded-lg transition-colors disabled:opacity-40"
                 >
                   OK
                 </button>
               </div>
             )}
           </div>
-        )}
+        </>)}
 
         {/* Eraser tool + sub-modes */}
-        <div className="flex items-center gap-0.5 glass border border-white/10 rounded-xl p-1">
+        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
+        <div className="flex items-center gap-0.5">
           <button onClick={() => { setTool("eraser"); setEraserMode("click"); cancelDrawing(); }}
             title="Effacer au clic (X)"
             className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "click" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
@@ -1944,48 +2067,21 @@ export default function MeasureCanvas({
         </div>
 
         {/* Déduction toggle */}
+        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
         <button
           onClick={() => setIsDeductionMode(v => !v)}
           title="Mode déduction — la zone dessinée sera soustraite du total"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
             isDeductionMode
               ? "bg-red-500/20 border-red-500/50 text-red-400"
-              : "glass border-white/10 text-slate-400 hover:text-white"
+              : "border-transparent text-slate-400 hover:text-white"
           }`}
         >
           <MinusSquare className="w-3.5 h-3.5" />
           {isDeductionMode ? "Déduction ON" : "Déduction"}
         </button>
 
-        {/* Grid & Rulers toggles */}
-        <button onClick={() => setShowGrid(v => !v)} title="Grille (G)"
-          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            showGrid ? "bg-slate-500/20 border border-slate-400/40 text-slate-300" : "glass border border-white/10 text-slate-500 hover:text-white"
-          }`}>
-          <LayoutGrid className="w-3.5 h-3.5" /> Grille
-        </button>
-        <button onClick={() => setShowRulers(v => !v)} title="Règles"
-          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            showRulers ? "bg-slate-500/20 border border-slate-400/40 text-slate-300" : "glass border border-white/10 text-slate-500 hover:text-white"
-          }`}>
-          <Ruler className="w-3.5 h-3.5" /> Règles
-        </button>
-
-        {/* Layers panel toggle */}
-        <button onClick={() => setShowLayersPanel(v => !v)} title="Calques / Disciplines"
-          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            showLayersPanel ? "bg-blue-500/20 border border-blue-500/40 text-blue-300" : "glass border border-white/10 text-slate-500 hover:text-white"
-          }`}>
-          <Layers className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Tool Chest toggle */}
-        <button onClick={() => setShowToolChest(v => !v)} title="Boîte à outils / Presets"
-          className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            showToolChest ? "bg-amber-500/20 border border-amber-500/40 text-amber-300" : "glass border border-white/10 text-slate-500 hover:text-white"
-          }`}>
-          <Wrench className="w-3.5 h-3.5" />
-        </button>
+        <div className="w-px h-5 bg-white/10 shrink-0 mx-0.5" />
 
         {/* Format Painter */}
         <button
@@ -2010,96 +2106,18 @@ export default function MeasureCanvas({
           }}
           title="Copier le format (sélectionnez un élément puis cliquez)"
           className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "glass border border-white/10 text-slate-500 hover:text-white"
+            formatPainterStyle ? "bg-purple-500/20 border border-purple-500/40 text-purple-300" : "text-slate-400 hover:text-white"
           }`}>
           <Paintbrush className="w-3.5 h-3.5" />
         </button>
 
-        <button onClick={undoLast} title="Annuler (Ctrl+Z)"
-          disabled={drawingPoints.length === 0 && !canUndo}
-          className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
-          <Undo2 className="w-4 h-4" />
-        </button>
-        <button onClick={() => onHistoryRedo?.()} title="Rétablir (Ctrl+Y)"
-          disabled={!canRedo}
-          className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-30">
-          <Redo2 className="w-4 h-4" />
-        </button>
-
         {isDrawing && (
           <button onClick={cancelDrawing}
-            className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1.5 glass border border-white/10 rounded-lg">
+            className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg border border-white/5 hover:border-red-500/30">
             Annuler (Échap)
           </button>
         )}
 
-        {/* Export PNG */}
-        {onExportPNG && zones.length > 0 && (
-          <button onClick={onExportPNG} title="Exporter image annotée (PNG)"
-            className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-cyan-400 transition-colors ml-auto">
-            <Download className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Zoom controls */}
-        <div className={`flex gap-1 ${!onExportPNG || zones.length === 0 ? "ml-auto" : ""}`}>
-          <button onClick={() => setZoom(prevZ => {
-            const newZ = Math.min(12, prevZ * 1.3);
-            const ratio = newZ / prevZ;
-            // Adjust translate so zoom feels centered on the current view, not image origin
-            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
-            return newZ;
-          })} title="Zoom + (molette aussi)"
-            className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button onClick={() => setZoom(prevZ => {
-            const newZ = Math.max(1, prevZ / 1.3);
-            const ratio = newZ / prevZ;
-            setTranslate(t => ({ x: t.x * ratio, y: t.y * ratio }));
-            return newZ;
-          })} title="Zoom -"
-            className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button onClick={resetView} title="Réinitialiser la vue"
-            className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white transition-colors">
-            <RotateCcw className="w-4 h-4" />
-          </button>
-          {zoom > 1.05 && (
-            <span className="self-center text-xs text-slate-500 font-mono ml-1">×{zoom.toFixed(1)}</span>
-          )}
-        </div>
-
-        {/* Layer selector */}
-        {onActiveLayerIdChange && (
-          <div className="flex items-center glass border border-white/10 rounded-lg px-2 py-1">
-            <span className="w-2 h-2 rounded-full mr-1.5" style={{ background: layers.find(l => l.id === activeLayerId)?.color ?? "#6B7280" }} />
-            <select
-              value={activeLayerId}
-              onChange={e => onActiveLayerIdChange(e.target.value)}
-              className="bg-transparent text-xs text-slate-300 outline-none cursor-pointer"
-              title="Calque actif — les nouvelles mesures seront ajoutées à ce calque"
-            >
-              {layers.map(l => (
-                <option key={l.id} value={l.id} className="bg-slate-900">{l.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Unit selector */}
-        <div className="flex items-center glass border border-white/10 rounded-lg px-2 py-1">
-          <span className="text-[10px] text-slate-500 mr-1.5">Unité</span>
-          <select
-            value={displayUnit}
-            onChange={() => {}}
-            className="bg-transparent text-xs text-slate-300 font-mono outline-none cursor-default"
-            disabled
-          >
-            <option value={displayUnit}>{displayUnit}</option>
-          </select>
-        </div>
 
       </div>
 
@@ -2181,7 +2199,7 @@ export default function MeasureCanvas({
       <div
         ref={containerRef}
         className="relative overflow-hidden rounded-2xl border border-white/10 bg-white select-none"
-        style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : tool === "eraser" ? "cell" : "crosshair" }}
+        style={{ height: "calc(100vh - 260px)", minHeight: 400, cursor: dragZoneRef.current ? "move" : dragVertex ? "move" : panCursor ? "grabbing" : spacebarPan ? "grab" : isNearFirst ? "pointer" : tool === "select" ? "default" : tool === "eraser" ? "cell" : "crosshair" }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
@@ -3341,59 +3359,116 @@ export default function MeasureCanvas({
 
         {/* ── Layers panel overlay ── */}
         {showLayersPanel && (
-          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-64 pointer-events-auto max-h-96 overflow-y-auto">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-blue-300">Calques</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => {
-                  const name = prompt("Nom du nouveau calque :");
-                  if (!name?.trim()) return;
-                  const color = prompt("Couleur (hex, ex: #FF6600) :", "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"));
-                  if (!color) return;
-                  const id = `lyr_${Date.now()}`;
-                  onLayersChange?.([...layers, { id, name: name.trim(), color, visible: true, locked: false }]);
-                  onActiveLayerIdChange?.(id);
-                }} className="text-blue-400 hover:text-blue-300 text-xs px-1.5 py-0.5 border border-blue-500/30 rounded">+ Créer</button>
-                <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white text-xs">✕</button>
+          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-72 pointer-events-auto max-h-96 overflow-y-auto"
+            onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">Calques</span>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
+                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-[10px] px-2 py-1 border border-blue-500/30 rounded-lg hover:bg-blue-500/10 transition-all">
+                  + Créer
+                </button>
+                <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white p-0.5 rounded hover:bg-white/5 transition-colors">
+                  <span className="text-xs">✕</span>
+                </button>
               </div>
             </div>
-            {layers.map(lyr => {
-              // Count elements on this layer
-              const zoneCount = zones.filter(z => (z.layer ?? "lyr_general") === lyr.id).length;
-              const mkCount = markupAnnotations.filter(m => (m.layer ?? "lyr_general") === lyr.id).length;
-              const total = zoneCount + mkCount;
-              return (
-                <div key={lyr.id} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
-                  activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30" : "hover:bg-white/5"
-                }`}>
-                  <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l))}
-                    className="text-slate-400 hover:text-white" title={lyr.visible ? "Masquer" : "Afficher"}>
-                    {lyr.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-40" />}
-                  </button>
-                  <button onClick={() => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l))}
-                    className="text-slate-400 hover:text-white" title={lyr.locked ? "Déverrouiller" : "Verrouiller"}>
-                    {lyr.locked ? <Lock className="w-3 h-3 text-red-400" /> : <Unlock className="w-3 h-3 opacity-40" />}
-                  </button>
-                  <input type="color" value={lyr.color}
-                    onChange={e => onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, color: e.target.value } : l))}
-                    className="w-4 h-4 rounded-sm border-0 cursor-pointer p-0" title="Changer la couleur" />
-                  <button onClick={() => onActiveLayerIdChange?.(lyr.id)}
-                    className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
-                    {lyr.name}
-                  </button>
-                  <span className="text-[9px] text-slate-600 font-mono">{total > 0 ? total : ""}</span>
-                  {!lyr.id.startsWith("lyr_") || lyr.id === `lyr_${lyr.id.split("_").pop()}` ? null : (
-                    <button onClick={() => {
-                      if (!confirm(`Supprimer le calque "${lyr.name}" ?`)) return;
-                      onLayersChange?.(layers.filter(l => l.id !== lyr.id));
-                      if (activeLayerId === lyr.id) onActiveLayerIdChange?.("lyr_general");
-                    }} className="text-slate-600 hover:text-red-400" title="Supprimer">
-                      <Trash2 className="w-2.5 h-2.5" />
+
+            {/* New layer creation form (inline modal) */}
+            {newLayerModalOpen && (
+              <div className="mb-3 p-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                <p className="text-[10px] text-blue-300 font-medium mb-2 uppercase tracking-wider">Nouveau calque</p>
+                <div className="flex flex-col gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newLayerName}
+                    onChange={e => setNewLayerName(e.target.value)}
+                    onKeyDown={e => {
+                      e.stopPropagation();
+                      if (e.key === "Enter" && newLayerName.trim()) {
+                        const id = `lyr_${Date.now()}`;
+                        onLayersChange?.([...layers, { id, name: newLayerName.trim(), color: newLayerColor, visible: true, locked: false }]);
+                        onActiveLayerIdChange?.(id);
+                        setNewLayerModalOpen(false);
+                      }
+                      if (e.key === "Escape") setNewLayerModalOpen(false);
+                    }}
+                    placeholder="Nom du calque…"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/40"
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] text-slate-500 shrink-0">Couleur</label>
+                    <input type="color" value={newLayerColor}
+                      onChange={e => setNewLayerColor(e.target.value)}
+                      className="w-6 h-6 rounded-lg border border-white/20 cursor-pointer p-0 shrink-0" />
+                    <span className="text-[10px] text-slate-500 font-mono">{newLayerColor}</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      disabled={!newLayerName.trim()}
+                      onClick={() => {
+                        const id = `lyr_${Date.now()}`;
+                        onLayersChange?.([...layers, { id, name: newLayerName.trim(), color: newLayerColor, visible: true, locked: false }]);
+                        onActiveLayerIdChange?.(id);
+                        setNewLayerModalOpen(false);
+                      }}
+                      className="flex-1 py-1.5 text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-30">
+                      Créer
                     </button>
-                  )}
+                    <button onClick={() => setNewLayerModalOpen(false)}
+                      className="px-3 py-1.5 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
+                      Annuler
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            {/* Layer list */}
+            <div className="flex flex-col gap-0.5">
+              {layers.map(lyr => {
+                const zoneCount = zones.filter(z => (z.layer ?? "lyr_general") === lyr.id).length;
+                const mkCount = markupAnnotations.filter(m => (m.layer ?? "lyr_general") === lyr.id).length;
+                const total = zoneCount + mkCount;
+                return (
+                  <div key={lyr.id} className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs transition-all cursor-pointer ${
+                    activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30 shadow-sm" : "border border-transparent hover:bg-white/5 hover:border-white/5"
+                  }`}
+                    onClick={() => onActiveLayerIdChange?.(lyr.id)}>
+                    <button onClick={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l)); }}
+                      className="text-slate-400 hover:text-white shrink-0" title={lyr.visible ? "Masquer" : "Afficher"}>
+                      {lyr.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 opacity-40" />}
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l)); }}
+                      className="text-slate-400 hover:text-white shrink-0" title={lyr.locked ? "Déverrouiller" : "Verrouiller"}>
+                      {lyr.locked ? <Lock className="w-3.5 h-3.5 text-red-400" /> : <Unlock className="w-3.5 h-3.5 opacity-40" />}
+                    </button>
+                    <span className="w-4 h-4 rounded-md ring-1 ring-white/20 shrink-0 cursor-pointer relative overflow-hidden group/color"
+                      style={{ background: lyr.color }}>
+                      <input type="color" value={lyr.color}
+                        onChange={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, color: e.target.value } : l)); }}
+                        onClick={e => e.stopPropagation()}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" title="Changer la couleur" />
+                    </span>
+                    <span className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
+                      {lyr.name}
+                    </span>
+                    {total > 0 && <span className="text-[9px] text-slate-600 font-mono bg-white/5 px-1.5 py-0.5 rounded-md">{total}</span>}
+                    {lyr.id !== "lyr_general" && lyr.id !== "lyr_structure" && lyr.id !== "lyr_annotation" && (
+                      <button onClick={e => {
+                        e.stopPropagation();
+                        if (!confirm(`Supprimer le calque "${lyr.name}" ?`)) return;
+                        onLayersChange?.(layers.filter(l => l.id !== lyr.id));
+                        if (activeLayerId === lyr.id) onActiveLayerIdChange?.("lyr_general");
+                      }} className="text-slate-600 hover:text-red-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Supprimer">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
