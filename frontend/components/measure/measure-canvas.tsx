@@ -131,10 +131,68 @@ function rectToPolygon(a: { x: number; y: number }, b: { x: number; y: number })
   return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
 }
 
+/** Close a ring if not already closed */
+function closeRing(ring: [number, number][]): [number, number][] {
+  if (ring.length < 2) return ring;
+  const f = ring[0], l = ring[ring.length - 1];
+  if (f[0] !== l[0] || f[1] !== l[1]) return [...ring, [f[0], f[1]]];
+  return ring;
+}
+
+/** Remove closing point from a ring (our zone format doesn't repeat first point) */
+function openRing(ring: [number, number][]): { x: number; y: number }[] {
+  const pts = ring.map(c => ({ x: c[0], y: c[1] }));
+  if (pts.length > 1 && Math.abs(pts[0].x - pts[pts.length - 1].x) < 1e-9 && Math.abs(pts[0].y - pts[pts.length - 1].y) < 1e-9) pts.pop();
+  return pts;
+}
+
+/**
+ * Bridge holes into the outer ring to create a single polygon.
+ * Uses a thin slit (zero-width bridge) connecting each hole to the outer ring.
+ * Standard technique for polygon systems that don't support holes.
+ */
+function bridgeHoles(outer: [number, number][], holes: [number, number][][]): [number, number][] {
+  if (holes.length === 0) return outer;
+  // Work with open rings (no closing duplicate)
+  let ring = [...outer];
+  if (ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) ring.pop();
+
+  for (const hole of holes) {
+    let hRing = [...hole];
+    if (hRing.length > 1 && hRing[0][0] === hRing[hRing.length - 1][0] && hRing[0][1] === hRing[hRing.length - 1][1]) hRing.pop();
+    if (hRing.length < 3) continue;
+
+    // Find closest pair of points between outer ring and hole
+    let bestDist = Infinity, bestO = 0, bestH = 0;
+    for (let i = 0; i < ring.length; i++) {
+      for (let j = 0; j < hRing.length; j++) {
+        const d = (ring[i][0] - hRing[j][0]) ** 2 + (ring[i][1] - hRing[j][1]) ** 2;
+        if (d < bestDist) { bestDist = d; bestO = i; bestH = j; }
+      }
+    }
+
+    // Reorder hole ring to start at the closest point
+    const reordered = [...hRing.slice(bestH), ...hRing.slice(0, bestH)];
+
+    // Splice hole into outer ring with a bridge:
+    // ... outer[bestO] → hole[0] → hole[1] → ... → hole[N-1] → hole[0] → outer[bestO] → outer[bestO+1] ...
+    const bridged: [number, number][] = [
+      ...ring.slice(0, bestO + 1),
+      ...reordered,
+      reordered[0],       // close the hole loop back to start
+      ring[bestO],        // bridge back to outer ring point
+      ...ring.slice(bestO + 1),
+    ];
+    ring = bridged;
+  }
+  return ring;
+}
+
 /**
  * Subtract an eraser polygon from all zones. Returns the new zones array.
  * Zones fully inside the eraser are removed.
  * Zones partially intersecting are clipped (boolean difference).
+ * If clipping creates holes, they are bridged into the outer ring.
  * Zones outside are kept unchanged.
  */
 function subtractEraserFromZones(
@@ -142,39 +200,35 @@ function subtractEraserFromZones(
   eraserPoly: { x: number; y: number }[],
 ): MeasureZone[] {
   if (eraserPoly.length < 3) return zones;
-  // polygon-clipping format: [[[x,y], [x,y], ...]]
-  const clip: [number, number][][] = [eraserPoly.map(p => [p.x, p.y] as [number, number])];
-  // Close the clip ring if not closed
-  if (clip[0].length > 0) {
-    const first = clip[0][0], last = clip[0][clip[0].length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) clip[0].push([first[0], first[1]]);
-  }
+  const clip: [number, number][][] = [closeRing(eraserPoly.map(p => [p.x, p.y] as [number, number]))];
 
   const result: MeasureZone[] = [];
   for (const zone of zones) {
-    const subject: [number, number][][] = [zone.points.map(p => [p.x, p.y] as [number, number])];
-    // Close the subject ring
-    if (subject[0].length > 0) {
-      const first = subject[0][0], last = subject[0][subject[0].length - 1];
-      if (first[0] !== last[0] || first[1] !== last[1]) subject[0].push([first[0], first[1]]);
-    }
+    const subject: [number, number][][] = [closeRing(zone.points.map(p => [p.x, p.y] as [number, number]))];
 
     try {
       const diff = polygonClipping.difference([subject], [clip]);
       if (!diff || diff.length === 0) {
-        // Zone fully erased — skip it
+        // Zone fully erased → skip
         continue;
       }
       // Each result polygon becomes a zone
       for (let i = 0; i < diff.length; i++) {
-        const ring = diff[i][0]; // outer ring (ignore holes for simplicity)
-        if (!ring || ring.length < 3) continue;
-        // Remove closing point if it matches the first
-        const pts = ring.map((c: [number, number]) => ({ x: c[0], y: c[1] }));
-        if (pts.length > 1 && Math.abs(pts[0].x - pts[pts.length - 1].x) < 1e-9 && Math.abs(pts[0].y - pts[pts.length - 1].y) < 1e-9) {
-          pts.pop();
+        const outerRing = diff[i][0];
+        const holeRings = diff[i].slice(1);
+        if (!outerRing || outerRing.length < 3) continue;
+
+        // If there are holes, bridge them into the outer ring
+        let finalRing: [number, number][];
+        if (holeRings.length > 0) {
+          finalRing = bridgeHoles(outerRing, holeRings);
+        } else {
+          finalRing = outerRing;
         }
+
+        const pts = openRing(finalRing);
         if (pts.length < 3) continue;
+
         result.push({
           ...zone,
           id: i === 0 ? zone.id : crypto.randomUUID(),
