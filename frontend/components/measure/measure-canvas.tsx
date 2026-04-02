@@ -188,6 +188,12 @@ export default function MeasureCanvas({
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState("");
 
+  // Eraser sub-modes
+  type EraserMode = "click" | "rect" | "polygon" | "circle";
+  const [eraserMode, setEraserMode] = useState<EraserMode>("click");
+  const [eraserStart, setEraserStart] = useState<{ x: number; y: number } | null>(null);
+  const [eraserDrawingPoly, setEraserDrawingPoly] = useState<{ x: number; y: number }[]>([]);
+
   // Format painter
   const [formatPainterStyle, setFormatPainterStyle] = useState<{ color: string; lineWidth?: number; fillColor?: string; fillOpacity?: number } | null>(null);
   // Clipboard for copy/paste
@@ -986,48 +992,72 @@ export default function MeasureCanvas({
         setMkStart(null);
       }
     } else if (tool === "eraser") {
-      // Eraser: click on any element to delete it instantly
-      // Check zones
-      const hitZ = [...zones].reverse().find(z => pointInPolygon(pt, z.points));
-      if (hitZ) { onHistoryPush?.(zones); onZonesChange(zones.filter(z => z.id !== hitZ.id)); return; }
-      // Check markups
-      for (let i = markupAnnotations.length - 1; i >= 0; i--) {
-        const mk = markupAnnotations[i];
-        const pad = 0.015;
-        let hit = false;
-        if (mk.type === "pen" && mk.penPoints) {
-          for (let j = 0; j < mk.penPoints.length - 1; j++) {
-            const a = mk.penPoints[j], b = mk.penPoints[j + 1];
-            const abx = b.x - a.x, aby = b.y - a.y;
-            const apx = pt.x - a.x, apy = pt.y - a.y;
-            const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
-            if (Math.hypot(a.x + t * abx - pt.x, a.y + t * aby - pt.y) < pad) { hit = true; break; }
+      if (eraserMode === "click") {
+        // Click mode: delete element under cursor
+        const hitZ = [...zones].reverse().find(z => pointInPolygon(pt, z.points));
+        if (hitZ) { onHistoryPush?.(zones); onZonesChange(zones.filter(z => z.id !== hitZ.id)); return; }
+        for (let i = markupAnnotations.length - 1; i >= 0; i--) {
+          const mk = markupAnnotations[i];
+          const pad = 0.015;
+          let hit = false;
+          if (mk.type === "pen" && mk.penPoints) {
+            for (let j = 0; j < mk.penPoints.length - 1; j++) {
+              const a = mk.penPoints[j], b = mk.penPoints[j + 1];
+              const abx = b.x - a.x, aby = b.y - a.y;
+              const apx = pt.x - a.x, apy = pt.y - a.y;
+              const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / (abx * abx + aby * aby || 1)));
+              if (Math.hypot(a.x + t * abx - pt.x, a.y + t * aby - pt.y) < pad) { hit = true; break; }
+            }
+          } else {
+            const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
+            const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
+            hit = pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad;
           }
-        } else {
-          const x0 = Math.min(mk.x1, mk.x2), y0 = Math.min(mk.y1, mk.y2);
-          const x1 = Math.max(mk.x1, mk.x2), y1 = Math.max(mk.y1, mk.y2);
-          hit = pt.x >= x0 - pad && pt.x <= x1 + pad && pt.y >= y0 - pad && pt.y <= y1 + pad;
+          if (hit) { onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== mk.id)); return; }
         }
-        if (hit) { onMarkupAnnotationsChange?.(markupAnnotations.filter(m => m.id !== mk.id)); return; }
-      }
-      // Check texts
-      for (const ta of textAnnotations) {
-        if (Math.abs(pt.x - ta.x) < 0.05 && Math.abs(pt.y - ta.y) < 0.03) {
-          onTextAnnotationsChange?.(textAnnotations.filter(t => t.id !== ta.id)); return;
+        for (const cm of circleMeasures) {
+          const dist = Math.hypot(pt.x - cm.center.x, pt.y - cm.center.y);
+          const edgeDist = Math.hypot(cm.edgePoint.x - cm.center.x, cm.edgePoint.y - cm.center.y);
+          if (dist < edgeDist + 0.02) { onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== cm.id)); return; }
         }
-      }
-      // Check circles
-      for (const cm of circleMeasures) {
-        const dist = Math.hypot(pt.x - cm.center.x, pt.y - cm.center.y);
-        const edgeDist = Math.hypot(cm.edgePoint.x - cm.center.x, cm.edgePoint.y - cm.center.y);
-        if (dist < edgeDist + 0.02) { onCircleMeasuresChange?.(circleMeasures.filter(c => c.id !== cm.id)); return; }
-      }
-      // Check linears
-      const hitLin = findNearestLinear(pt);
-      if (hitLin) { onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== hitLin)); return; }
-      // Check count points
-      for (const cp of countPoints) {
-        if (Math.hypot(pt.x - cp.x, pt.y - cp.y) < 0.02) { onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id)); return; }
+        const hitLin = findNearestLinear(pt);
+        if (hitLin) { onLinearMeasuresChange?.(linearMeasures.filter(m => m.id !== hitLin)); return; }
+        for (const cp of countPoints) {
+          if (Math.hypot(pt.x - cp.x, pt.y - cp.y) < 0.02) { onCountPointsChange?.(countPoints.filter(p => p.id !== cp.id)); return; }
+        }
+      } else if (eraserMode === "rect") {
+        // Rect eraser: 2 clicks define area, delete everything inside
+        if (!eraserStart) { setEraserStart(pt); }
+        else {
+          const x0 = Math.min(eraserStart.x, pt.x), y0 = Math.min(eraserStart.y, pt.y);
+          const x1 = Math.max(eraserStart.x, pt.x), y1 = Math.max(eraserStart.y, pt.y);
+          const inBox = (px: number, py: number) => px >= x0 && px <= x1 && py >= y0 && py <= y1;
+          // Delete zones whose centroid is in the box
+          onHistoryPush?.(zones);
+          onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !inBox(cx, cy); }));
+          onMarkupAnnotationsChange?.(markupAnnotations.filter(m => { const cx = (m.x1 + m.x2) / 2, cy = (m.y1 + m.y2) / 2; return !inBox(cx, cy); }));
+          onCircleMeasuresChange?.(circleMeasures.filter(c => !inBox(c.center.x, c.center.y)));
+          onLinearMeasuresChange?.(linearMeasures.filter(m => { const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length; const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length; return !inBox(cx, cy); }));
+          onCountPointsChange?.(countPoints.filter(p => !inBox(p.x, p.y)));
+          setEraserStart(null);
+        }
+      } else if (eraserMode === "circle") {
+        // Circle eraser: 2 clicks (center + edge), delete everything inside radius
+        if (!eraserStart) { setEraserStart(pt); }
+        else {
+          const r = Math.hypot(pt.x - eraserStart.x, pt.y - eraserStart.y);
+          const inCircle = (px: number, py: number) => Math.hypot(px - eraserStart.x, py - eraserStart.y) <= r;
+          onHistoryPush?.(zones);
+          onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !inCircle(cx, cy); }));
+          onMarkupAnnotationsChange?.(markupAnnotations.filter(m => !inCircle((m.x1 + m.x2) / 2, (m.y1 + m.y2) / 2)));
+          onCircleMeasuresChange?.(circleMeasures.filter(c => !inCircle(c.center.x, c.center.y)));
+          onLinearMeasuresChange?.(linearMeasures.filter(m => { const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length; const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length; return !inCircle(cx, cy); }));
+          onCountPointsChange?.(countPoints.filter(p => !inCircle(p.x, p.y)));
+          setEraserStart(null);
+        }
+      } else if (eraserMode === "polygon") {
+        // Polygon eraser: click to add points, double-click to finalize
+        setEraserDrawingPoly(prev => [...prev, pt]);
       }
       return;
     } else if (tool === "polyline_annot") {
@@ -1055,8 +1085,20 @@ export default function MeasureCanvas({
       onLinearMeasuresChange([...linearMeasures, newMeasure]);
       linearDrawingPtsRef.current = [];
       setLinearDrawingPts([]);
+    } else if (tool === "eraser" && eraserMode === "polygon" && eraserDrawingPoly.length >= 3) {
+      e.preventDefault();
+      const poly = eraserDrawingPoly.slice(0, -1); // remove dblclick duplicate
+      if (poly.length >= 3) {
+        onHistoryPush?.(zones);
+        onZonesChange(zones.filter(z => { const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length; const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length; return !pointInPolygon({ x: cx, y: cy }, poly); }));
+        onMarkupAnnotationsChange?.(markupAnnotations.filter(m => !pointInPolygon({ x: (m.x1 + m.x2) / 2, y: (m.y1 + m.y2) / 2 }, poly)));
+        onCircleMeasuresChange?.(circleMeasures.filter(c => !pointInPolygon(c.center, poly)));
+        onCountPointsChange?.(countPoints.filter(p => !pointInPolygon({ x: p.x, y: p.y }, poly)));
+        onLinearMeasuresChange?.(linearMeasures.filter(m => { const cx = m.points.reduce((s, p) => s + p.x, 0) / m.points.length; const cy = m.points.reduce((s, p) => s + p.y, 0) / m.points.length; return !pointInPolygon({ x: cx, y: cy }, poly); }));
+      }
+      setEraserDrawingPoly([]);
     }
-  }, [tool, addZone, linearDrawingPts, linearMeasures, onLinearMeasuresChange, activeLinearCategoryId]);
+  }, [tool, addZone, linearDrawingPts, linearMeasures, onLinearMeasuresChange, activeLinearCategoryId, eraserMode, eraserDrawingPoly, zones, markupAnnotations, circleMeasures, countPoints, onHistoryPush, onZonesChange, onMarkupAnnotationsChange, onCircleMeasuresChange, onCountPointsChange, onLinearMeasuresChange]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
     if (dragVertex) return; // handled by global listener
@@ -1151,7 +1193,7 @@ export default function MeasureCanvas({
   useEffect(() => { addZoneRef.current = addZone; }, [addZone]);
   useEffect(() => { nearFirstRef.current = nearFirst; }, [nearFirst]);
 
-  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); setMkStart(null); setPenDrawing([]); penDrawingRef.current = []; setCalloutInputPos(null); setCalloutInputValue(""); setLassoStart(null); setLassoEnd(null); }, []);
+  const cancelDrawing = useCallback(() => { drawingPointsRef.current = []; setDrawingPoints([]); setRectStart(null); setWallStart(null); setAnglePts([]); setSplitPts([]); setVsCropStart(null); setScalePts([]); setScaleInputOpen(false); linearDrawingPtsRef.current = []; setLinearDrawingPts([]); setCircleCenter(null); setTextInputPos(null); setTextInputValue(""); setMkStart(null); setPenDrawing([]); penDrawingRef.current = []; setCalloutInputPos(null); setCalloutInputValue(""); setLassoStart(null); setLassoEnd(null); setEraserStart(null); setEraserDrawingPoly([]); }, []);
   const resetView     = useCallback(() => { setZoom(1); setTranslate({ x: 0, y: 0 }); }, []);
 
   // Track if nudge sequence is active (to only push history once)
@@ -1560,8 +1602,8 @@ export default function MeasureCanvas({
   return (
     <div className="flex flex-col gap-3">
 
-      {/* ── Toolbar ── */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* ── Toolbar — Row 1: Drawing tools ── */}
+      <div className="flex items-center gap-1.5 flex-wrap text-xs">
 
         {/* Tool selector */}
         <div className="flex gap-1 glass border border-white/10 rounded-xl p-1">
@@ -1877,18 +1919,29 @@ export default function MeasureCanvas({
           </div>
         )}
 
-        {/* Eraser tool */}
-        <button
-          onClick={() => { setTool("eraser"); cancelDrawing(); }}
-          title="Effacement — cliquez sur un élément pour le supprimer (X)"
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-            tool === "eraser"
-              ? "bg-red-500/20 border-red-500/50 text-red-400"
-              : "glass border-white/10 text-slate-400 hover:text-white"
-          }`}
-        >
-          <Trash2 className="w-3.5 h-3.5" /> Effacer
-        </button>
+        {/* Eraser tool + sub-modes */}
+        <div className="flex items-center gap-0.5 glass border border-white/10 rounded-xl p-1">
+          <button onClick={() => { setTool("eraser"); setEraserMode("click"); cancelDrawing(); }}
+            title="Effacer au clic (X)"
+            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "click" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setTool("eraser"); setEraserMode("rect"); cancelDrawing(); }}
+            title="Effacer par rectangle"
+            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "rect" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
+            <Square className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setTool("eraser"); setEraserMode("polygon"); cancelDrawing(); }}
+            title="Effacer par polygone"
+            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "polygon" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
+            <Pentagon className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setTool("eraser"); setEraserMode("circle"); cancelDrawing(); }}
+            title="Effacer par cercle"
+            className={`p-1.5 rounded-md ${tool === "eraser" && eraserMode === "circle" ? "bg-red-500/20 text-red-400" : "text-slate-400 hover:text-white"}`}>
+            <CircleDot className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {/* Déduction toggle */}
         <button
@@ -3201,6 +3254,22 @@ export default function MeasureCanvas({
               return <line x1={s1.x} y1={s1.y} x2={s2.x} y2={s2.y} stroke={activeColor} strokeWidth={1.5} strokeDasharray="6 3" />;
             }
             return null;
+          })()}
+
+          {/* Eraser rect/circle/polygon preview */}
+          {tool === "eraser" && eraserStart && mouseNorm && (eraserMode === "rect" || eraserMode === "circle") && (() => {
+            const s1 = toSvg(eraserStart), s2 = toSvg(mouseNorm);
+            if (eraserMode === "rect") {
+              return <rect x={Math.min(s1.x, s2.x)} y={Math.min(s1.y, s2.y)} width={Math.abs(s2.x - s1.x)} height={Math.abs(s2.y - s1.y)}
+                fill="rgba(239,68,68,0.08)" stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3" rx={2} />;
+            }
+            const r = Math.hypot(s2.x - s1.x, s2.y - s1.y);
+            return <circle cx={s1.x} cy={s1.y} r={r} fill="rgba(239,68,68,0.08)" stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3" />;
+          })()}
+          {tool === "eraser" && eraserMode === "polygon" && eraserDrawingPoly.length > 0 && (() => {
+            const pts = [...eraserDrawingPoly, ...(mouseNorm ? [mouseNorm] : [])];
+            const d = pts.map((p, i) => { const s = toSvg(p); return `${i === 0 ? "M" : "L"} ${s.x} ${s.y}`; }).join(" ") + (pts.length > 2 ? " Z" : "");
+            return <path d={d} fill="rgba(239,68,68,0.05)" stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3" />;
           })()}
 
           {/* Lasso selection rect */}
