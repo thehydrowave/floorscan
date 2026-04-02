@@ -254,86 +254,109 @@ export default function MarkupsList({
 
   if (rows.length === 0) return null;
 
+  // Kind labels for display
+  const kindLabels: Record<string, string> = {
+    zone: "Surface", linear: "Linéaire", count: "Comptage",
+    angle: "Angle", circle: "Cercle", text: "Texte", markup: "Annotation",
+  };
+
+  // Summary stats
+  const totalArea = rows.filter(r => r.area && r.area > 0).reduce((s, r) => s + (r.area ?? 0), 0);
+  const totalLength = rows.filter(r => r.length).reduce((s, r) => s + (r.length ?? 0), 0);
+  const totalCount = rows.filter(r => r.count).reduce((s, r) => s + (r.count ?? 0), 0);
+
   return (
     <div className="glass border border-white/10 rounded-xl overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-        <button onClick={() => setCollapsed(v => !v)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-          {collapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          Markups List ({rows.length})
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
+        <button onClick={() => setCollapsed(v => !v)} className="flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white transition-colors">
+          {collapsed ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          <span className="uppercase tracking-wide text-[10px]">Résumé des éléments</span>
+          <span className="text-[10px] font-mono text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">{rows.length}</span>
         </button>
-        <div className="flex items-center gap-1.5">
-          {/* Filter dropdown */}
-          <select value={filterKind} onChange={e => setFilterKind(e.target.value)}
-            className="bg-transparent text-[10px] text-slate-400 border border-white/10 rounded px-1.5 py-0.5 outline-none">
-            <option value="all" className="bg-slate-900">Tous</option>
-            <option value="zone" className="bg-slate-900">Surfaces</option>
-            <option value="linear" className="bg-slate-900">Linéaires</option>
-            <option value="count" className="bg-slate-900">Comptages</option>
-            <option value="angle" className="bg-slate-900">Angles</option>
-            <option value="circle" className="bg-slate-900">Cercles</option>
-            <option value="text" className="bg-slate-900">Textes</option>
-            <option value="markup" className="bg-slate-900">Annotations</option>
-          </select>
-          <button onClick={exportUnifiedCSV} title="Exporter CSV unifié" className="text-slate-500 hover:text-white p-1">
+        <div className="flex items-center gap-2">
+          {/* Quick stats */}
+          {!collapsed && totalArea > 0 && <span className="text-[10px] font-mono text-accent">{totalArea.toFixed(1)} m²</span>}
+          {!collapsed && totalLength > 0 && <span className="text-[10px] font-mono text-emerald-400">{totalLength.toFixed(1)} ml</span>}
+          {!collapsed && totalCount > 0 && <span className="text-[10px] font-mono text-pink-400">{totalCount}×</span>}
+
+          <div className="w-px h-4 bg-white/10" />
+
+          {/* Filter */}
+          <div className="flex items-center gap-1">
+            <Filter className="w-3 h-3 text-slate-600" />
+            <select value={filterKind} onChange={e => setFilterKind(e.target.value)}
+              className="bg-transparent text-[10px] text-slate-400 border border-white/10 rounded-md px-1.5 py-0.5 outline-none hover:border-white/20 transition-colors cursor-pointer">
+              <option value="all" className="bg-slate-900">Tous</option>
+              <option value="zone" className="bg-slate-900">Surfaces</option>
+              <option value="linear" className="bg-slate-900">Linéaires</option>
+              <option value="count" className="bg-slate-900">Comptages</option>
+              <option value="angle" className="bg-slate-900">Angles</option>
+              <option value="circle" className="bg-slate-900">Cercles</option>
+              <option value="text" className="bg-slate-900">Textes</option>
+              <option value="markup" className="bg-slate-900">Annotations</option>
+            </select>
+          </div>
+
+          <div className="w-px h-4 bg-white/10" />
+
+          {/* Export */}
+          <button onClick={exportUnifiedCSV} title="Exporter CSV" className="text-slate-500 hover:text-white p-1 rounded hover:bg-white/5 transition-colors">
             <Download className="w-3.5 h-3.5" />
           </button>
-          <button onClick={exportUnifiedXLSX} title="Exporter XLSX unifié" className="text-slate-500 hover:text-emerald-400 p-1 text-[10px] font-bold">
-            XLS
+          <button onClick={exportUnifiedXLSX} title="Exporter Excel" className="text-slate-500 hover:text-emerald-400 p-1 rounded hover:bg-white/5 transition-colors text-[10px] font-bold font-mono">
+            XLSX
           </button>
         </div>
       </div>
 
       {/* Table */}
       {!collapsed && (
-        <div className="max-h-48 overflow-y-auto">
+        <div className="max-h-52 overflow-y-auto">
           <table className="w-full text-[10px]">
-            <thead className="bg-white/5 sticky top-0">
-              <tr>
-                <th className="px-2 py-1.5 text-left text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("kind")}>
-                  Type <SortIcon k="kind" />
+            <thead className="bg-white/[0.03] sticky top-0 z-10">
+              <tr className="border-b border-white/10">
+                <th className="px-3 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("kind")}>
+                  <span className="flex items-center gap-0.5">Type <SortIcon k="kind" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-left text-slate-500 font-medium w-4">⬤</th>
-                <th className="px-2 py-1.5 text-left text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("subject")}>
-                  Sujet <SortIcon k="subject" />
+                <th className="px-2 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("subject")}>
+                  <span className="flex items-center gap-0.5">Élément <SortIcon k="subject" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-left text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("label")}>
-                  Label <SortIcon k="label" />
+                <th className="px-2 py-2 text-left text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("label")}>
+                  <span className="flex items-center gap-0.5">Détail <SortIcon k="label" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-right text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("area")}>
-                  Surface <SortIcon k="area" />
+                <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("area")}>
+                  <span className="flex items-center justify-end gap-0.5">Surface <SortIcon k="area" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-right text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("length")}>
-                  Longueur <SortIcon k="length" />
+                <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("length")}>
+                  <span className="flex items-center justify-end gap-0.5">Longueur <SortIcon k="length" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-right text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("volume")}>
-                  Volume <SortIcon k="volume" />
+                <th className="px-2 py-2 text-right text-[9px] text-slate-500 font-semibold uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors" onClick={() => toggleSort("count")}>
+                  <span className="flex items-center justify-end gap-0.5">Qté <SortIcon k="count" /></span>
                 </th>
-                <th className="px-2 py-1.5 text-right text-slate-500 font-medium cursor-pointer hover:text-white" onClick={() => toggleSort("count")}>
-                  Qté <SortIcon k="count" />
-                </th>
-                <th className="px-2 py-1.5 text-right text-slate-500 font-medium">∠</th>
-                <th className="px-2 py-1.5 text-center text-slate-500 font-medium w-8">🗑</th>
+                <th className="px-3 py-2 w-8"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-white/[0.04]">
               {filtered.map(row => (
                 <tr key={row.id}
-                  className="border-t border-white/5 hover:bg-white/5 cursor-pointer transition-colors"
+                  className="hover:bg-white/[0.03] cursor-pointer transition-colors group"
                   onClick={() => onSelectItem?.(row.originalId)}
                 >
-                  <td className="px-2 py-1 text-slate-500 font-mono">{row.kind}</td>
-                  <td className="px-2 py-1"><span className="w-2 h-2 rounded-full inline-block" style={{ background: row.color }} /></td>
-                  <td className="px-2 py-1 text-slate-300 truncate max-w-28">{row.subject}</td>
-                  <td className="px-2 py-1 text-slate-400 truncate max-w-32">{row.label}</td>
-                  <td className="px-2 py-1 text-right text-slate-300 font-mono">{row.area != null ? fmtArea(Math.abs(row.area), displayUnit) : ""}</td>
-                  <td className="px-2 py-1 text-right text-slate-300 font-mono">{row.length != null ? fmtLinear(row.length, displayUnit) : ""}</td>
-                  <td className="px-2 py-1 text-right text-blue-400 font-mono">{row.volume != null ? fmtVolume(row.volume, displayUnit) : ""}</td>
-                  <td className="px-2 py-1 text-right text-slate-300 font-mono">{row.count ?? ""}</td>
-                  <td className="px-2 py-1 text-right text-amber-400 font-mono">{row.angle != null ? `${row.angle.toFixed(1)}°` : ""}</td>
-                  <td className="px-2 py-1 text-center">
+                  <td className="px-3 py-1.5">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: row.color }} />
+                      <span className="text-slate-500 font-medium">{kindLabels[row.kind] ?? row.kind}</span>
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5 text-slate-200 font-medium truncate max-w-32">{row.subject}</td>
+                  <td className="px-2 py-1.5 text-slate-500 truncate max-w-28">{row.label}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-300">{row.area != null ? fmtArea(Math.abs(row.area), displayUnit) : <span className="text-slate-700">—</span>}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-300">{row.length != null ? fmtLinear(row.length, displayUnit) : <span className="text-slate-700">—</span>}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-slate-300">{row.count ?? (row.angle != null ? <span className="text-amber-400">{row.angle.toFixed(1)}°</span> : <span className="text-slate-700">—</span>)}</td>
+                  <td className="px-3 py-1.5 text-center">
                     <button onClick={e => { e.stopPropagation(); onDeleteItem?.(row.originalId, row.kind); }}
-                      className="text-slate-600 hover:text-red-400 transition-colors">
+                      className="text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </td>

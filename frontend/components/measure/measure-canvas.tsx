@@ -1700,7 +1700,7 @@ export default function MeasureCanvas({
       </div>
 
       {/* ══ BAR 2 : SURFACES ══ */}
-      <div className="flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
+      <div className="relative z-20 flex items-center gap-1 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap text-xs">
         <span className="text-[9px] text-accent uppercase tracking-wider font-semibold mr-0.5 shrink-0">SURFACES</span>
 
         {/* ── Selection ── */}

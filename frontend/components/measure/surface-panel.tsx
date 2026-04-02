@@ -615,7 +615,7 @@ export default function SurfacePanel({
   }, 0);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 overflow-x-hidden min-w-0">
       {/* ── Tab switcher ── */}
       {(hasTabs || hasLinearTab || hasCountTab) && (
         <div className="flex rounded-lg border border-white/10 overflow-hidden">
@@ -748,18 +748,18 @@ export default function SurfacePanel({
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 px-3 pb-1.5" onClick={e => e.stopPropagation()}>
-                    <span className="text-xs text-slate-600">€/m²</span>
+                  <div className="flex items-center gap-1.5 px-3 pb-1.5 flex-wrap min-w-0" onClick={e => e.stopPropagation()}>
+                    <span className="text-[10px] text-slate-600 shrink-0">€/m²</span>
                     <input type="number" value={type.pricePerM2 ?? ""} onChange={e => updatePrice(type.id, e.target.value)}
                       placeholder="0" min={0} step={1}
-                      className="w-16 bg-white/5 border border-white/10 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent" />
-                    <span className="text-xs text-slate-600 ml-1">Chute</span>
+                      className="w-14 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent shrink-0" />
+                    <span className="text-[10px] text-slate-600 shrink-0">Chute</span>
                     <input type="number" value={type.wastePercent ?? 10} onChange={e => updateWaste(type.id, e.target.value)}
                       placeholder="10" min={0} max={100} step={1}
-                      className="w-12 bg-white/5 border border-white/10 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent" />
-                    <span className="text-xs text-slate-600">%</span>
+                      className="w-11 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent shrink-0" />
+                    <span className="text-[10px] text-slate-600 shrink-0">%</span>
                     {lineTotal !== null && (
-                      <span className="ml-auto text-xs text-accent font-mono">
+                      <span className="ml-auto text-[10px] text-accent font-mono shrink-0">
                         {lineTotal.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                       </span>
                     )}
@@ -1051,8 +1051,8 @@ export default function SurfacePanel({
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2 px-3 pb-2" onClick={e => e.stopPropagation()}>
-                    <span className="text-xs text-slate-600">€/ml</span>
+                  <div className="flex items-center gap-2 px-3 pb-2 min-w-0" onClick={e => e.stopPropagation()}>
+                    <span className="text-[10px] text-slate-600 shrink-0">€/ml</span>
                     <input type="number" value={cat.pricePerM ?? ""} min={0} step={0.5}
                       onChange={e => {
                         const v = parseFloat(e.target.value);
@@ -1061,7 +1061,7 @@ export default function SurfacePanel({
                         ));
                       }}
                       placeholder="0"
-                      className="w-20 bg-white/5 border border-white/10 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500" />
+                      className="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500 shrink-0" />
                   </div>
                 </div>
               );
@@ -1171,8 +1171,8 @@ export default function SurfacePanel({
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2 px-3 pb-2" onClick={e => e.stopPropagation()}>
-                    <span className="text-xs text-slate-600">€/u</span>
+                  <div className="flex items-center gap-2 px-3 pb-2 min-w-0 flex-wrap" onClick={e => e.stopPropagation()}>
+                    <span className="text-[10px] text-slate-600 shrink-0">€/u</span>
                     <input type="number" value={grp.pricePerUnit ?? ""} min={0} step={1}
                       onChange={e => {
                         const v = parseFloat(e.target.value);
@@ -1181,12 +1181,12 @@ export default function SurfacePanel({
                         ));
                       }}
                       placeholder="0"
-                      className="w-20 bg-white/5 border border-white/10 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-pink-500" />
+                      className="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-pink-500 shrink-0" />
                     {qty > 0 && (
                       <button onClick={e => {
                         e.stopPropagation();
                         onCountPointsChange?.(countPoints.filter(p => p.groupId !== grp.id));
-                      }} className="ml-auto text-xs text-slate-600 hover:text-red-400 transition-colors">
+                      }} className="ml-auto text-[10px] text-slate-600 hover:text-red-400 transition-colors shrink-0">
                         Effacer {qty}×
                       </button>
                     )}
