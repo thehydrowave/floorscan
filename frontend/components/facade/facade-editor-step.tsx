@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
+  AppWindow, Building2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -535,7 +536,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   }, [elements]);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       {/* Mock warning */}
       {result.is_mock && (
         <div className="mb-4 glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
@@ -544,93 +545,93 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         </div>
       )}
 
-      {/* ══ HEADER ══ */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          {/* Undo/Redo placeholder */}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="w-3.5 h-3.5" /> CSV
-          </Button>
-          <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
-            <ArrowLeft className="w-3.5 h-3.5" /> {d("fa_go_results")}
-          </Button>
-        </div>
-      </div>
+      <div className="flex gap-2">
+        {/* ── Left: Canvas + toolbars ── */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        {/* ── Left: Canvas area ── */}
-        <div className="flex-1 min-w-0 flex flex-col">
+          {/* ══ HEADER ══ */}
+          <div className="flex items-center gap-2 h-11 mb-1.5">
+            <div className="flex-1" />
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" onClick={exportCSV}>
+                <Download className="w-3.5 h-3.5" /> CSV
+              </Button>
+              <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
+                <ArrowLeft className="w-3.5 h-3.5" /> Résultats
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
+            </div>
+          </div>
 
           {/* ══ BAR 1 : VISIBILITY ══ */}
-          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 mb-2">
+          <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0">
             <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono mr-0.5 shrink-0">VISIBILITY</span>
-            {VISIBILITY_TYPES.map(type => (
-              <button key={type} onClick={() => setVisibility(v => ({...v, [type]: !v[type]}))}
-                title={TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all ${
-                  visibility[type] ? `border-white/20 bg-white/5 text-white` : "border-white/5 hover:border-white/10"
-                }`}>
-                <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COLORS[type] ?? "#94a3b8", opacity: visibility[type] ? 1 : 0.3 }} />
-                {visibility[type] ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
-              </button>
-            ))}
+            {/* Window toggle */}
+            <button onClick={() => setVisibility(v => ({...v, window: !v.window}))}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                visibility.window ? "border-amber-500/30 bg-amber-500/10 text-amber-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <AppWindow size={10} className="text-amber-400" />
+              {visibility.window ? <Eye className="w-2.5 h-2.5 text-amber-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
+            {/* Wall toggle */}
+            <button onClick={() => setVisibility(v => ({...v, wall_opaque: !v.wall_opaque}))}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                visibility.wall_opaque ? "border-blue-500/30 bg-blue-500/10 text-blue-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Building2 size={10} className="text-blue-400" />
+              {visibility.wall_opaque ? <Eye className="w-2.5 h-2.5 text-blue-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
           </div>
 
           {/* ══ BAR 2 : EDIT LAYER ══ */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap mb-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">EDIT</span>
 
-            {/* Layer/type selection buttons */}
-            {(["window", "wall_opaque"] as const).map(type => (
-              <button key={type}
-                onClick={() => { setActiveLayer(type); setAddType(type as FacadeElementType); if (tool === "select") setTool("add_rect"); }}
-                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                  activeLayer === type ? `border-blue-500/40 bg-blue-500/10 text-white` : "border-white/5 text-slate-400 hover:text-white")}>
-                <span className="w-3 h-3 rounded-full" style={{ background: TYPE_COLORS[type] ?? "#94a3b8" }} />
-                {TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
+            {/* Layer buttons: Window + Surface nette */}
+            <button onClick={() => { setAddType("window"); setActiveLayer("window"); if (tool === "select") setTool("add_rect"); }}
+              className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                addType === "window" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <AppWindow className={cn("w-4 h-4 shrink-0", "text-amber-400")} />
+              <span className={addType === "window" ? "" : "text-slate-400"}>Fenêtres</span>
+            </button>
+            <button onClick={() => { setAddType("wall_opaque"); setActiveLayer("wall_opaque"); if (tool === "select") setTool("add_rect"); }}
+              className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                addType === "wall_opaque" ? "border-blue-500/40 bg-blue-500/10 text-blue-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Building2 className={cn("w-4 h-4 shrink-0", "text-blue-400")} />
+              <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
+            </button>
+
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+            {/* Tools */}
+            <button onClick={() => { setTool("select"); setDrawingPoly([]); }} title="Sélection"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <MousePointer2 className="w-3 h-3" /> Sélection
+            </button>
+            <button onClick={() => { setTool("add_rect"); setSelectedId(null); }} title="Dessiner rectangle"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "add_rect" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Square className="w-3 h-3" /> Dessiner
+            </button>
+            <button onClick={() => { setTool("add_polygon"); setSelectedId(null); }} title="Forme libre"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "add_polygon" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Pentagon className="w-3 h-3" /> Forme libre
+            </button>
+            <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Effacer"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Trash2 className="w-3 h-3" /> Effacer
+            </button>
+
+            {/* Deselect X */}
+            {tool !== "select" && (
+              <button onClick={() => { setTool("select"); setDrawingPoly([]); }}
+                className="ml-0.5 p-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                <X className="w-3 h-3" />
               </button>
-            ))}
+            )}
 
-            <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
-
-            {/* Drawing tools */}
-            <button
-              onClick={() => { setTool("select"); setDrawingPoly([]); setHoverPoint(null); setRectPreview(null); rectDragRef.current = null; }}
-              title="Sélection"
-              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                tool === "select" ? "border-blue-500/40 bg-blue-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
-            >
-              <MousePointer2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => { setTool("add_rect"); setSelectedId(null); setDrawingPoly([]); setHoverPoint(null); }}
-              title="Dessiner rectangle"
-              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                tool === "add_rect" ? "border-emerald-500/40 bg-emerald-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
-            >
-              <Square className="w-3.5 h-3.5" /> {d("ed_draw" as DTKey)}
-            </button>
-            <button
-              onClick={() => { setTool("add_polygon"); setSelectedId(null); setRectPreview(null); rectDragRef.current = null; }}
-              title="Dessiner polygone"
-              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                tool === "add_polygon" ? "border-emerald-500/40 bg-emerald-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
-            >
-              <Pentagon className="w-3.5 h-3.5" /> {d("ed_free_shape" as DTKey)}
-            </button>
-
-            <div className="w-px h-5 bg-white/10 shrink-0 mx-1" />
-
-            <button
-              onClick={() => { setTool("erase_rect"); setDrawingPoly([]); setHoverPoint(null); }}
-              title="Effacer rectangle"
-              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
-            >
-              <Trash2 className="w-3.5 h-3.5" /> {d("ed_erase_tool" as DTKey)}
-            </button>
             {/* Drawing hints */}
             {isDrawing && (
               <span className="text-xs text-amber-300/70 animate-pulse ml-2">
@@ -644,43 +645,53 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             )}
           </div>
 
-          {/* Image area */}
-          <div className="glass rounded-2xl border border-white/10 p-2 overflow-hidden flex-1">
-            <div
-              ref={containerRef}
-              className={cn("relative overflow-hidden rounded-xl bg-slate-900",
-                tool === "add_polygon" || tool === "add_rect" ? "cursor-crosshair"
-                : tool === "erase_rect" || tool === "erase_polygon" ? "cursor-cell"
-                : isDraggingEl ? "cursor-grabbing"
-                : "cursor-default"
-              )}
-              style={{ minHeight: 400 }}
-              onContextMenu={e => e.preventDefault()}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onClick={handleClick}
-              onDoubleClick={handleDoubleClick}
-              onMouseLeave={() => { setIsPanning(false); setHoverPoint(null); }}
-            >
-              {/* Floating zoom controls */}
-              <div className="absolute top-3 right-3 z-10 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
-                <button onClick={handleZoomOut} className="p-1 text-slate-400 hover:text-white"><ZoomOut className="w-3.5 h-3.5" /></button>
-                <span className="text-[10px] text-slate-500 font-mono w-10 text-center">{(zoom*100).toFixed(0)}%</span>
-                <button onClick={handleZoomIn} className="p-1 text-slate-400 hover:text-white"><ZoomIn className="w-3.5 h-3.5" /></button>
-              </div>
+          {/* ══ CANVAS ══ */}
+          <div
+            ref={containerRef}
+            className="flex-1 rounded-xl border border-white/10 relative overflow-hidden"
+            style={{
+              cursor: isPanning ? "grabbing" : tool === "select" ? "default" : "crosshair",
+              background: "#0d1117",
+              backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.13) 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+              minHeight: "calc(100vh - 280px)",
+            }}
+            onContextMenu={e => e.preventDefault()}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onMouseLeave={() => { setIsPanning(false); setHoverPoint(null); }}
+          >
+            {/* Floating zoom controls — top-right glass pill */}
+            <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+              <button onClick={handleZoomIn} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom +">
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={handleZoomOut} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom −">
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <div className="w-px h-5 bg-white/10" />
+              <button onClick={() => { setZoom(1); setPan({x:0,y:0}); }} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Réinitialiser">
+                <RotateCcw className="w-3 h-3" />
+              </button>
+              {Math.abs(zoom - 1) > 0.05 && <span className="text-[9px] text-slate-500 font-mono pl-0.5">{zoom.toFixed(1)}x</span>}
+            </div>
 
-              <div
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transformOrigin: "center center",
-                  transition: isPanning || dragVertex ? "none" : "transform 0.2s ease",
-                }}
-              >
+            {/* Transform wrapper — center pattern */}
+            <div style={{
+              position: "absolute",
+              top: "50%", left: "50%",
+              transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${zoom})`,
+              transformOrigin: "center center",
+            }}>
+              <div className="relative">
                 <img
                   src={`data:image/png;base64,${result.plan_b64}`}
                   alt="Facade"
-                  className="w-full select-none"
+                  style={{ display: "block", maxWidth: "calc(100vw - 300px)", maxHeight: "calc(100vh - 300px)" }}
+                  className="select-none"
                   draggable={false}
                   onLoad={e => {
                     const img = e.currentTarget;
@@ -740,6 +751,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     maskMode: "luminance", zIndex: 1,
                   }} />
                 )}
+
                 {/* ── Wall net surface: SVG (building ROI minus all window holes) ── */}
                 {visibility.wall_opaque && wallSvgPath && imgNat.w > 0 && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"
@@ -1195,19 +1207,6 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Actions below tabs */}
-          <div className="flex flex-col gap-2 shrink-0 pt-2 border-t border-white/5">
-            <Button variant="outline" size="sm" onClick={exportCSV}>
-              <Download className="w-3.5 h-3.5" /> {d("fa_export_csv")}
-            </Button>
-            <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
-              <ArrowLeft className="w-3.5 h-3.5" /> {d("fa_go_results")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={onRestart} className="text-slate-400">
-              <RotateCcw className="w-3.5 h-3.5" /> {d("re_restart")}
-            </Button>
           </div>
         </div>
       </div>

@@ -421,8 +421,14 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             {/* Left: canvas panel */}
             <div
               ref={maskContainerRef}
-              className="relative overflow-hidden rounded-xl bg-slate-900"
-              style={{ height: "calc(100vh - 340px)", minHeight: 400, cursor: isMaskPanning ? "grabbing" : "default" }}
+              className="flex-1 rounded-xl border border-white/10 relative overflow-hidden"
+              style={{
+                background: "#0d1117",
+                backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.13) 1px, transparent 1px)",
+                backgroundSize: "24px 24px",
+                minHeight: "calc(100vh - 340px)",
+                cursor: isMaskPanning ? "grabbing" : "default",
+              }}
               onMouseDown={handlePanStart}
               onMouseMove={handlePanMove}
               onMouseUp={handlePanEnd}
@@ -440,8 +446,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   <img
                     src={`data:image/png;base64,${result.plan_b64}`}
                     alt="Facade"
-                    className="block select-none"
-                    style={{ maxWidth: "80vw", maxHeight: "calc(100vh - 360px)" }}
+                    className="select-none"
+                    style={{ display: "block", maxWidth: "calc(100vw - 300px)", maxHeight: "calc(100vh - 360px)" }}
                     draggable={false}
                     onLoad={e => {
                       const i = e.currentTarget;
@@ -467,6 +473,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                     >
                       {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
                         const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
+                        const isWindowLayer = layer.id === "window" || layer.id === "other";
+                        const layerFillOpacity = isWindowLayer ? 0.55 : 0.42;
                         return (
                           <g key={layer.id}>
                             {layerEls.map(el => {
@@ -484,7 +492,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                                 const pts = el.polygon_norm.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ");
                                 return (
                                   <polygon key={el.id} points={pts}
-                                    fill={layer.color} fillOpacity={0.42}
+                                    fill={layer.color} fillOpacity={layerFillOpacity}
                                     stroke={layer.color} strokeWidth={1.5}
                                   />
                                 );
@@ -494,7 +502,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                               return (
                                 <rect key={el.id}
                                   x={x} y={y} width={w} height={h}
-                                  fill={layer.color} fillOpacity={0.42}
+                                  fill={layer.color} fillOpacity={layerFillOpacity}
                                   stroke={layer.color} strokeWidth={1.5} rx="2"
                                 />
                               );
@@ -533,11 +541,21 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               </div>{/* /centered transform */}
 
               {/* Floating zoom controls */}
-              <div className="absolute top-3 right-3 z-10 flex items-center gap-1 glass border border-white/10 rounded-lg p-1 pointer-events-auto">
-                <button onClick={() => setMaskZoom(z => Math.max(z / 1.3, 0.5))} className="p-1.5 text-slate-400 hover:text-white"><ZoomOut className="w-3.5 h-3.5" /></button>
-                <span className="text-[10px] text-slate-500 font-mono w-10 text-center">{(maskZoom * 100).toFixed(0)}%</span>
-                <button onClick={() => setMaskZoom(z => Math.min(z * 1.3, 8))} className="p-1.5 text-slate-400 hover:text-white"><ZoomIn className="w-3.5 h-3.5" /></button>
-                <button onClick={() => { setMaskZoom(1); setMaskPan({ x: 0, y: 0 }); }} className="p-1.5 text-slate-400 hover:text-white"><RotateCcw className="w-3.5 h-3.5" /></button>
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+                <button onClick={() => setMaskZoom(z => Math.min(12, z * 1.3))}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom +">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => setMaskZoom(z => Math.max(0.3, z / 1.3))}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom −">
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-5 bg-white/10" />
+                <button onClick={() => { setMaskZoom(1); setMaskPan({x:0,y:0}); }}
+                  className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Réinitialiser">
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+                {Math.abs(maskZoom - 1) > 0.05 && <span className="text-[9px] text-slate-500 font-mono pl-0.5">{maskZoom.toFixed(1)}x</span>}
               </div>
 
               {/* Demo badge */}
