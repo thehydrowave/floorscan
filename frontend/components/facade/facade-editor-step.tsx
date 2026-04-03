@@ -29,7 +29,7 @@ const TYPE_COLORS: Record<string, string> = {
 const TYPE_I18N: Record<string, DTKey> = {
   window: "fa_window", door: "fa_door", balcony: "fa_balcony",
   floor_line: "fa_floor_line", roof: "fa_roof", column: "fa_column", other: "fa_other",
-  wall_opaque: "fr_opaque_wall",
+  wall_opaque: "fr_net_surface",
 };
 
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
