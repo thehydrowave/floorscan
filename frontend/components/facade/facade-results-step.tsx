@@ -18,9 +18,7 @@ import { dt, DTKey } from "@/lib/i18n";
 import Facade3dPanel from "./facade-3d-panel";
 import FacadeDashboardPanel from "./facade-dashboard-panel";
 import FacadeChatPanel from "./facade-chat-panel";
-import FacadeMetrePanel from "./facade-metre-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
-import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
 import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
@@ -45,7 +43,7 @@ const TYPE_I18N: Record<string, DTKey> = {
 interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
 const MASK_LAYERS: MaskLayerDef[] = [
   { id: "surface_murale", label: "Mur opaque",              icon: Building2,      color: "#64748b", isSurface: true },
-  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#60a5fa" },
+  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#fbbf24" },
   { id: "door",           label: "Portes",                  icon: DoorOpen,       color: "#f472b6" },
   { id: "balcony",        label: "Balcons",                 icon: LayoutPanelTop, color: "#34d399" },
   { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
@@ -558,7 +556,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {/* Windows */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-sm" style={{ background: "#00CCFF" }} />
+                      <span className="w-3 h-3 rounded-sm" style={{ background: "#fbbf24" }} />
                       <span className="text-xs text-slate-300">Fenêtres</span>
                     </div>
                     <div className="text-right">
@@ -588,44 +586,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <PenSquare className="w-4 h-4" /> Éditer les masques
               </button>
 
-              {/* Visibility toggles (compact) */}
-              <div className="glass rounded-xl border border-white/10 p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Affichage</p>
-                {filteredMaskLayers.map(layer => {
-                  const layerHidden = hiddenLayers.has(layer.id);
-                  return (
-                    <button key={layer.id}
-                      onClick={() => setHiddenLayers(prev => { const n = new Set(prev); n.has(layer.id) ? n.delete(layer.id) : n.add(layer.id); return n; })}
-                      className={cn("flex items-center gap-2 w-full px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors", layerHidden ? "opacity-40" : "opacity-100")}>
-                      {layerHidden ? <EyeOff className="w-3 h-3 text-slate-600" /> : <Eye className="w-3 h-3 text-white" />}
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: layerHidden ? "#475569" : layer.color }} />
-                      <span className={cn("flex-1 text-left text-[11px]", layerHidden ? "text-slate-600" : "text-slate-300")}>{TYPE_I18N[layer.id] ? d(TYPE_I18N[layer.id]) : layer.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
             </div>{/* /right panel */}
           </div>{/* /grid */}
-      </div>
-
-      {/* ── ITE & Retours de tableau ── */}
-      <div className="mb-4">
-        <FacadeIsolationPanel
-          result={result}
-          localElements={localElements}
-          facadeAreaOverride={totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : null}
-          imgSize={imgNat}
-        />
       </div>
 
       {/* ── Dashboard Overview ── */}
       <div className="mb-4">
         <FacadeDashboardPanel result={result} />
-      </div>
-
-      {/* ── Métré (surfaces) ── */}
-      <div className="mb-4">
-        <FacadeMetrePanel result={result} />
       </div>
 
       {/* ── 3D Facade View ── */}

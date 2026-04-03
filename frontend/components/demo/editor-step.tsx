@@ -1605,13 +1605,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {/* Separator */}
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
             {/* Surfaces toggle */}
+            {isAdmin && (
             <button onClick={() => setShowSurfaces(v => !v)} title={d("ed_surfaces_label" as DTKey)}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
                 showSurfaces ? "border-violet-500/30 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               <PaintBucket size={10} className="text-violet-400" />
               {showSurfaces ? <Eye className="w-2.5 h-2.5 text-violet-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
             </button>
+            )}
             {/* Annotations toggle (all count points) */}
+            {isAdmin && (
             <button onClick={() => {
               const allVisible = countGroups.every(g => countGroupVisibility[g.id] !== false);
               const newVis: Record<string, boolean> = {};
@@ -1624,12 +1627,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <Hash size={10} className="text-sky-400" />
               <span className="text-[8px]">A</span>
             </button>
+            )}
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
           <div data-tuto="edit-bar" className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">{d("ed_element")}</span>
-            {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).map(l => {
+            {(["door", "window", "french_door", "wall", "cloison", "interior", "rooms", "surface", "utilities"] as const).filter(l => {
+              if (l === "surface" && !isAdmin) return false;
+              if (l === "utilities" && !isAdmin) return false;
+              return true;
+            }).map(l => {
               const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string; tooltip: string }> = {
                 door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", tooltip: "Portes : dessinez, effacez ou corrigez les masques de portes d\u00e9tect\u00e9es par l'IA" },
                 window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400",    tooltip: "Fen\u00eatres : dessinez, effacez ou corrigez les masques de fen\u00eatres d\u00e9tect\u00e9es par l'IA" },

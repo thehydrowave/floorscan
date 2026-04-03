@@ -16,7 +16,7 @@ import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:      "#60a5fa",
+  window:      "#fbbf24",
   door:        "#f472b6",
   balcony:     "#34d399",
   floor_line:  "#fb923c",

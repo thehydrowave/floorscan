@@ -69,7 +69,7 @@ function HBar({ label, value, maxValue, color }: { label: string; value: number;
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<FacadeElementType, string> = {
-  window: "#60a5fa",
+  window: "#fbbf24",
   door: "#f472b6",
   balcony: "#34d399",
   floor_line: "#fbbf24",
@@ -225,7 +225,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                 <KpiCard
                   label={isFr ? "Fenêtres" : "Windows"}
                   value={result.windows_count.toString()}
-                  color="#60a5fa"
+                  color="#fbbf24"
                   icon="🪟"
                 />
                 <KpiCard
@@ -292,7 +292,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           className="h-full transition-all"
                           style={{
                             width: `${facadeArea > 0 ? (openingsArea / facadeArea) * 100 : 50}%`,
-                            backgroundColor: "#60a5fa",
+                            backgroundColor: "#fbbf24",
                             minWidth: "2px",
                           }}
                           title={`${isFr ? "Ouvertures" : "Openings"}: ${openingsArea.toFixed(1)} m²`}
@@ -306,7 +306,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           <span className="text-slate-600 font-mono">{wallArea.toFixed(1)} m²</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "#fbbf24" }} />
                           <span className="text-slate-400">{isFr ? "Ouvertures" : "Openings"}</span>
                           <span className="text-slate-600 font-mono">{openingsArea.toFixed(1)} m²</span>
                         </div>
