@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
-  AppWindow, Building2, X,
+  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -42,7 +42,7 @@ const EDITOR_LABELS: Record<string, string> = {
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
 };
 
-type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon";
+type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search";
 
 /* ── Helpers ── */
 type Pt = { x: number; y: number };
@@ -158,6 +158,26 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // Rectangle drawing state
   const rectDragRef = useRef<Pt | null>(null);
   const [rectPreview, setRectPreview] = useState<{ start: Pt; end: Pt } | null>(null);
+
+  // Measurement tools
+  const linearPtsRef = useRef<{x:number;y:number}[]>([]);
+  const [linearMeasures, setLinearMeasures] = useState<Array<{id: string; p1: {x:number;y:number}; p2: {x:number;y:number}; distPx: number}>>([]);
+  const [countPoints, setCountPoints] = useState<Array<{id: string; groupId: string; x: number; y: number}>>([]);
+  const [countGroups] = useState([{id: "default", name: "Points", color: "#38bdf8"}]);
+  const [activeCountGroupId] = useState("default");
+  const [textAnnotations, setTextAnnotations] = useState<Array<{id: string; x: number; y: number; text: string; color: string}>>([]);
+  const [textInputPos, setTextInputPos] = useState<{x:number;y:number} | null>(null);
+  const [textInputValue, setTextInputValue] = useState("");
+
+  // Visual search
+  const [vsMatches, setVsMatches] = useState<Array<{x_norm:number;y_norm:number;w_norm:number;h_norm:number;score:number}>>([]);
+  const [vsSearching, setVsSearching] = useState(false);
+  const [vsCrop, setVsCrop] = useState<{x:number;y:number;w:number;h:number} | null>(null);
+  const vsDrawing = useRef(false);
+  const vsStart = useRef({x:0,y:0});
+  const [vsEditMode, setVsEditMode] = useState<"search"|"add"|"remove">("search");
+  const [vsSaveOpen, setVsSaveOpen] = useState(false);
+  const [vsSaveLabel, setVsSaveLabel] = useState("");
 
   // ── Blue wall overlay path (facade boundary minus window holes) ──
   // Facade delimitation zones (user-drawn polygons BEFORE crop)
@@ -300,6 +320,19 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       return;
     }
 
+    if (tool === "visual_search") {
+      const normPt = toNorm(e);
+      if (vsEditMode === "remove" && vsMatches.length > 0) {
+        const hitIdx = vsMatches.findIndex(m => normPt.x >= m.x_norm && normPt.x <= m.x_norm + m.w_norm && normPt.y >= m.y_norm && normPt.y <= m.y_norm + m.h_norm);
+        if (hitIdx >= 0) { setVsMatches(prev => prev.filter((_, i) => i !== hitIdx)); }
+        return;
+      }
+      vsDrawing.current = true;
+      vsStart.current = { x: normPt.x * 100, y: normPt.y * 100 };
+      setVsCrop({ x: normPt.x * 100, y: normPt.y * 100, w: 0, h: 0 });
+      return;
+    }
+
     if (tool === "select") {
       const p = toNorm(e);
       // Find element under click using point-in-polygon
@@ -335,8 +368,59 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
   const handleClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    if (tool !== "add_polygon" || isPanning) return;
-    const p = toNorm(e);
+    if (isPanning) return;
+    const normPt = toNorm(e);
+
+    // Linear: 2 clicks = measure distance
+    if (tool === "linear") {
+      if (!linearPtsRef.current) linearPtsRef.current = [];
+      linearPtsRef.current.push(normPt);
+      if (linearPtsRef.current.length >= 2) {
+        const p1 = linearPtsRef.current[0], p2 = linearPtsRef.current[1];
+        const dx = (p2.x - p1.x) * imgNat.w, dy = (p2.y - p1.y) * imgNat.h;
+        const distPx = Math.sqrt(dx*dx + dy*dy);
+        setLinearMeasures(prev => [...prev, { id: crypto.randomUUID(), p1, p2, distPx }]);
+        linearPtsRef.current = [];
+      }
+      return;
+    }
+
+    // Count: click = add point
+    if (tool === "count") {
+      setCountPoints(prev => [...prev, { id: crypto.randomUUID(), groupId: activeCountGroupId, x: normPt.x, y: normPt.y }]);
+      return;
+    }
+
+    // Text: click = open input
+    if (tool === "text") {
+      setTextInputPos(normPt);
+      setTextInputValue("");
+      return;
+    }
+
+    // Rescale: 2 clicks, then prompt for meters
+    if (tool === "rescale") {
+      if (!linearPtsRef.current) linearPtsRef.current = [];
+      linearPtsRef.current.push(normPt);
+      if (linearPtsRef.current.length >= 2) {
+        const p1 = linearPtsRef.current[0], p2 = linearPtsRef.current[1];
+        const dx = (p2.x - p1.x) * imgNat.w, dy = (p2.y - p1.y) * imgNat.h;
+        const distPx = Math.sqrt(dx*dx + dy*dy);
+        const input = prompt("Distance réelle (mètres) :");
+        if (input) {
+          const meters = parseFloat(input);
+          if (meters > 0) {
+            toast({ title: `Échelle: ${(distPx/meters).toFixed(1)} px/m`, variant: "success" });
+          }
+        }
+        linearPtsRef.current = [];
+      }
+      return;
+    }
+
+    // Only continue for add_polygon tool
+    if (tool !== "add_polygon") return;
+    const p = normPt;
 
     // If clicking near first point -> close polygon
     if (drawingPoly.length >= 3) {
@@ -369,6 +453,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     }
 
     const p = toNorm(e);
+
+    // Visual search crop drawing
+    if (vsDrawing.current && vsCrop) {
+      setVsCrop({ x: Math.min(vsStart.current.x, p.x * 100), y: Math.min(vsStart.current.y, p.y * 100), w: Math.abs(p.x * 100 - vsStart.current.x), h: Math.abs(p.y * 100 - vsStart.current.y) });
+    }
 
     // Hover preview for polygon drawing
     if (tool === "add_polygon" && drawingPoly.length > 0) {
@@ -422,6 +511,19 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
   const handleMouseUp = () => {
     if (isPanning) { setIsPanning(false); return; }
+
+    // Visual search: finish crop drawing
+    if (vsDrawing.current && tool === "visual_search") {
+      vsDrawing.current = false;
+      if (vsCrop && vsCrop.w > 0.5 && vsCrop.h > 0.5) {
+        if (vsEditMode === "add") {
+          setVsMatches(prev => [...prev, { x_norm: vsCrop.x/100, y_norm: vsCrop.y/100, w_norm: vsCrop.w/100, h_norm: vsCrop.h/100, score: 1.0 }]);
+          setVsCrop(null);
+        }
+        // Search mode would need backend call - for now just clear
+        else { setVsCrop(null); }
+      } else { setVsCrop(null); }
+    }
 
     // Rectangle: create 4-point polygon on mouseup
     if (tool === "add_rect" && rectDragRef.current && rectPreview) {
@@ -623,6 +725,59 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Trash2 className="w-3 h-3" /> Effacer
             </button>
+
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+            {/* Measurement tools */}
+            <button onClick={() => setTool("linear")} title="Mesure de distance"
+              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Ruler className="w-2.5 h-2.5" /> Linéaire
+            </button>
+            <button onClick={() => setTool("count")} title="Annotation points"
+              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Hash className="w-2.5 h-2.5" /> Comptage
+            </button>
+            <button onClick={() => setTool("text")} title="Annotation texte"
+              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Type className="w-2.5 h-2.5" /> Texte
+            </button>
+            <button onClick={() => setTool("rescale")} title="Recalibrer l'échelle"
+              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Ruler className="w-2.5 h-2.5" /> Échelle
+            </button>
+
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+            {/* Visual Search */}
+            <button onClick={() => { setTool("visual_search"); setVsEditMode("search"); }}
+              title="Détecter similaires"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Search className="w-3 h-3" /> Détecter
+            </button>
+
+            {/* VS sub-toolbar */}
+            {tool === "visual_search" && (
+              <div className="flex items-center gap-1.5">
+                {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Recherche...</span>}
+                {!vsSearching && vsMatches.length === 0 && <span className="text-[10px] text-slate-500 italic">Dessinez un rectangle autour d&apos;un élément</span>}
+                {vsMatches.length > 0 && (<>
+                  {(["search","add","remove"] as const).map(m => (
+                    <button key={m} onClick={() => setVsEditMode(m)}
+                      className={cn("px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                        vsEditMode === m ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                      {m === "search" ? "Chercher" : m === "add" ? "Ajouter" : "Retirer"}
+                    </button>
+                  ))}
+                  <span className="text-[10px] font-semibold text-amber-400">{vsMatches.length} trouvé(s)</span>
+                  <button onClick={() => { setVsMatches([]); setVsCrop(null); }} className="text-slate-500 hover:text-white"><X className="w-3 h-3" /></button>
+                </>)}
+              </div>
+            )}
 
             {/* Deselect X */}
             {tool !== "select" && (
@@ -960,6 +1115,65 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     );
                   })}
 
+                  {/* ── Linear measurements ── */}
+                  {linearMeasures.map(lm => {
+                    const x1 = lm.p1.x * imgNat.w, y1 = lm.p1.y * imgNat.h;
+                    const x2 = lm.p2.x * imgNat.w, y2 = lm.p2.y * imgNat.h;
+                    const mx = (x1+x2)/2, my = (y1+y2)/2;
+                    const ppm = result.pixels_per_meter;
+                    const distM = ppm ? lm.distPx / ppm : null;
+                    const label = distM ? `${distM.toFixed(2)} m` : `${Math.round(lm.distPx)} px`;
+                    return (
+                      <g key={lm.id} style={{pointerEvents:"all",cursor:"pointer"}} onClick={() => setLinearMeasures(p => p.filter(m => m.id !== lm.id))}>
+                        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth={2} strokeDasharray="4 2" />
+                        <circle cx={x1} cy={y1} r={4} fill="#38bdf8" />
+                        <circle cx={x2} cy={y2} r={4} fill="#38bdf8" />
+                        <rect x={mx-30} y={my-9} width={60} height={18} rx={4} fill="rgba(10,16,32,0.92)" stroke="#38bdf8" strokeWidth={1} />
+                        <text x={mx} y={my+4} textAnchor="middle" fill="#38bdf8" fontSize={10} fontWeight="600" fontFamily="monospace">{label}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* ── Count points ── */}
+                  {countPoints.map((cp, idx) => {
+                    const grp = countGroups.find(g => g.id === cp.groupId);
+                    const color = grp?.color ?? "#38bdf8";
+                    const px = cp.x * imgNat.w, py = cp.y * imgNat.h;
+                    return (
+                      <g key={cp.id} style={{pointerEvents:"all",cursor:"pointer"}} onClick={() => setCountPoints(p => p.filter(pt => pt.id !== cp.id))}>
+                        <circle cx={px} cy={py} r={14} fill={color} fillOpacity={0.4} stroke={color} strokeWidth={2.5} />
+                        <text x={px} y={py+4.5} textAnchor="middle" fill="white" fontSize={10} fontWeight="800" fontFamily="monospace">{idx+1}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* ── Text annotations ── */}
+                  {textAnnotations.map(ta => {
+                    const px = ta.x * imgNat.w, py = ta.y * imgNat.h;
+                    const w = ta.text.length * 7 + 16;
+                    return (
+                      <g key={ta.id} style={{pointerEvents:"all",cursor:"pointer"}} onClick={() => setTextAnnotations(p => p.filter(t => t.id !== ta.id))}>
+                        <rect x={px-4} y={py-12} width={w} height={20} rx={4} fill="rgba(0,0,0,0.75)" stroke={ta.color} strokeWidth={1} />
+                        <text x={px+4} y={py+2} fill={ta.color} fontSize={11} fontFamily="system-ui">{ta.text}</text>
+                      </g>
+                    );
+                  })}
+
+                  {/* ── VS matches ── */}
+                  {vsMatches.map((m, i) => (
+                    <rect key={`vs-${i}`} x={m.x_norm * imgNat.w} y={m.y_norm * imgNat.h} width={m.w_norm * imgNat.w} height={m.h_norm * imgNat.h}
+                      fill="rgba(251,191,36,0.15)" stroke="#fbbf24" strokeWidth={2} strokeDasharray="4 2" rx={3}
+                      style={{pointerEvents: vsEditMode === "remove" ? "all" : "none", cursor: vsEditMode === "remove" ? "pointer" : "default"}}
+                      onClick={() => { if (vsEditMode === "remove") setVsMatches(prev => prev.filter((_, j) => j !== i)); }}
+                    />
+                  ))}
+
+                  {/* ── VS crop rectangle ── */}
+                  {vsCrop && vsCrop.w > 0 && vsCrop.h > 0 && (
+                    <rect x={vsCrop.x/100 * imgNat.w} y={vsCrop.y/100 * imgNat.h} width={vsCrop.w/100 * imgNat.w} height={vsCrop.h/100 * imgNat.h}
+                      fill="rgba(251,191,36,0.1)" stroke="#fbbf24" strokeWidth={2} strokeDasharray="6 3" />
+                  )}
+
                   {/* ── Rectangle drawing preview ── */}
                   {tool === "add_rect" && rectPreview && (() => {
                     const { start, end } = rectPreview;
@@ -1043,6 +1257,28 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     );
                   })()}
                 </svg>
+
+                {/* Text input overlay */}
+                {textInputPos && (() => {
+                  const px = textInputPos.x * imgNat.w;
+                  const py = textInputPos.y * imgNat.h;
+                  return (
+                    <div className="absolute z-50 pointer-events-auto" style={{ left: px, top: py }}>
+                      <input autoFocus value={textInputValue} onChange={e => setTextInputValue(e.target.value)}
+                        onKeyDown={e => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" && textInputValue.trim()) {
+                            setTextAnnotations(prev => [...prev, { id: crypto.randomUUID(), x: textInputPos.x, y: textInputPos.y, text: textInputValue.trim(), color: "#38BDF8" }]);
+                            setTextInputPos(null); setTextInputValue("");
+                          }
+                          if (e.key === "Escape") { setTextInputPos(null); setTextInputValue(""); }
+                        }}
+                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+                        placeholder="Texte…"
+                        className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl" />
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
