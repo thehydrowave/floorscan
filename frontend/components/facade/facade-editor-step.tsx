@@ -320,7 +320,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       return;
     }
 
-    if (tool === "visual_search") {
+    if (tool === "visual_search" && e.button === 0) {
       const normPt = toNorm(e);
       if (vsEditMode === "remove" && vsMatches.length > 0) {
         const hitIdx = vsMatches.findIndex(m => normPt.x >= m.x_norm && normPt.x <= m.x_norm + m.w_norm && normPt.y >= m.y_norm && normPt.y <= m.y_norm + m.h_norm);
@@ -328,8 +328,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         return;
       }
       vsDrawing.current = true;
-      vsStart.current = { x: normPt.x * 100, y: normPt.y * 100 };
-      setVsCrop({ x: normPt.x * 100, y: normPt.y * 100, w: 0, h: 0 });
+      const pctX = normPt.x * 100, pctY = normPt.y * 100;
+      vsStart.current = { x: pctX, y: pctY };
+      setVsCrop({ x: pctX, y: pctY, w: 0, h: 0 });
       return;
     }
 
@@ -516,12 +517,39 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     if (vsDrawing.current && tool === "visual_search") {
       vsDrawing.current = false;
       if (vsCrop && vsCrop.w > 0.5 && vsCrop.h > 0.5) {
+        const cropNorm = { x: vsCrop.x / 100, y: vsCrop.y / 100, w: vsCrop.w / 100, h: vsCrop.h / 100 };
         if (vsEditMode === "add") {
-          setVsMatches(prev => [...prev, { x_norm: vsCrop.x/100, y_norm: vsCrop.y/100, w_norm: vsCrop.w/100, h_norm: vsCrop.h/100, score: 1.0 }]);
-          setVsCrop(null);
+          // Manually add a match rectangle
+          setVsMatches(prev => [...prev, { x_norm: cropNorm.x, y_norm: cropNorm.y, w_norm: cropNorm.w, h_norm: cropNorm.h, score: 1.0 }]);
+        } else {
+          // Search mode: find all elements that look similar (same type, similar size)
+          const refEl = elements.find(el => {
+            const cx = el.bbox_norm.x + el.bbox_norm.w / 2;
+            const cy = el.bbox_norm.y + el.bbox_norm.h / 2;
+            return cx >= cropNorm.x && cx <= cropNorm.x + cropNorm.w && cy >= cropNorm.y && cy <= cropNorm.y + cropNorm.h;
+          });
+          if (refEl) {
+            // Find all elements of same type with similar aspect ratio
+            const refAR = refEl.bbox_norm.w / (refEl.bbox_norm.h || 0.001);
+            const refArea = refEl.bbox_norm.w * refEl.bbox_norm.h;
+            const similar = elements.filter(el => {
+              if (el.id === refEl.id) return false;
+              if (el.type !== refEl.type) return false;
+              const ar = el.bbox_norm.w / (el.bbox_norm.h || 0.001);
+              const area = el.bbox_norm.w * el.bbox_norm.h;
+              return Math.abs(ar - refAR) / refAR < 0.5 && Math.abs(area - refArea) / refArea < 0.8;
+            });
+            const matches = similar.map(el => ({
+              x_norm: el.bbox_norm.x, y_norm: el.bbox_norm.y,
+              w_norm: el.bbox_norm.w, h_norm: el.bbox_norm.h, score: 0.9,
+            }));
+            setVsMatches(matches);
+            toast({ title: `${matches.length} élément(s) similaire(s) trouvé(s)`, variant: matches.length > 0 ? "success" : "default" });
+          } else {
+            toast({ title: "Aucun élément dans la zone sélectionnée", variant: "default" });
+          }
         }
-        // Search mode would need backend call - for now just clear
-        else { setVsCrop(null); }
+        setVsCrop(null);
       } else { setVsCrop(null); }
     }
 
@@ -1258,30 +1286,34 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   })()}
                 </svg>
 
-                {/* Text input overlay */}
-                {textInputPos && (() => {
-                  const px = textInputPos.x * imgNat.w;
-                  const py = textInputPos.y * imgNat.h;
-                  return (
-                    <div className="absolute z-50 pointer-events-auto" style={{ left: px, top: py }}>
-                      <input autoFocus value={textInputValue} onChange={e => setTextInputValue(e.target.value)}
-                        onKeyDown={e => {
-                          e.stopPropagation();
-                          if (e.key === "Enter" && textInputValue.trim()) {
-                            setTextAnnotations(prev => [...prev, { id: crypto.randomUUID(), x: textInputPos.x, y: textInputPos.y, text: textInputValue.trim(), color: "#38BDF8" }]);
-                            setTextInputPos(null); setTextInputValue("");
-                          }
-                          if (e.key === "Escape") { setTextInputPos(null); setTextInputValue(""); }
-                        }}
-                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
-                        placeholder="Texte…"
-                        className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl" />
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           </div>
+          {/* Text input overlay — OUTSIDE transform wrapper, uses screen coords */}
+          {textInputPos && (() => {
+            const imgEl = containerRef.current?.querySelector("img");
+            if (!imgEl) return null;
+            const containerRect = containerRef.current!.getBoundingClientRect();
+            const imgRect = imgEl.getBoundingClientRect();
+            const px = imgRect.left - containerRect.left + textInputPos.x * imgRect.width;
+            const py = imgRect.top - containerRect.top + textInputPos.y * imgRect.height;
+            return (
+              <div className="absolute z-50 pointer-events-auto" style={{ left: px, top: py }}>
+                <input autoFocus value={textInputValue} onChange={e => setTextInputValue(e.target.value)}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && textInputValue.trim()) {
+                      setTextAnnotations(prev => [...prev, { id: crypto.randomUUID(), x: textInputPos.x, y: textInputPos.y, text: textInputValue.trim(), color: "#38BDF8" }]);
+                      setTextInputPos(null); setTextInputValue("");
+                    }
+                    if (e.key === "Escape") { setTextInputPos(null); setTextInputValue(""); }
+                  }}
+                  onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+                  placeholder="Texte…"
+                  className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl" />
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Right: 3-tab Sidebar ── */}
