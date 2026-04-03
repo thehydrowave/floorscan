@@ -87,8 +87,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   const [showRapport, setShowRapport] = useState(false);
   const [showDevis, setShowDevis] = useState(false);
 
-  /* ── Mask editor: mutable local copy of elements ── */
+  /* ── Mask editor: mutable local copy of elements — syncs when result changes (e.g. returning from editor) ── */
   const [localElements, setLocalElements] = useState<FacadeElement[]>(result.elements);
+  useEffect(() => { setLocalElements(result.elements); }, [result.elements]);
 
   /* ── Image natural dimensions ── */
   const [imgNat, setImgNat] = useState({ w: 800, h: 600 });
