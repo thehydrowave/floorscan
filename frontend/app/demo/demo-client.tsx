@@ -280,7 +280,7 @@ export default function DemoClient() {
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
                   {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} onAnalyzed={handleFacadeAnalyzed} onBack={handleBack}/>}
                   {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart} onBack={()=>setStep(5)} initialFacadeZones={facadeZones}/>}
-                  {step===7&&facadeResult&&<FacadeEditorStep result={facadeResult} onGoResults={handleFacadeGoResults} onRestart={handleRestart}/>}
+                  {step===7&&facadeResult&&<FacadeEditorStep result={facadeResult} onGoResults={handleFacadeGoResults} onRestart={handleRestart} initialFacadeZones={facadeZones}/>}
                 </motion.div>
               </AnimatePresence>
             </motion.div>

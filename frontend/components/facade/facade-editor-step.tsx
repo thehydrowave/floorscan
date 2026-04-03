@@ -87,9 +87,10 @@ interface FacadeEditorStepProps {
   result: FacadeAnalysisResult;
   onGoResults: (updated: FacadeAnalysisResult) => void;
   onRestart: () => void;
+  initialFacadeZones?: Array<{ id: number; pts: Array<{ x: number; y: number }> }>;
 }
 
-export default function FacadeEditorStep({ result, onGoResults, onRestart }: FacadeEditorStepProps) {
+export default function FacadeEditorStep({ result, onGoResults, onRestart, initialFacadeZones }: FacadeEditorStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -158,15 +159,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
   const [rectPreview, setRectPreview] = useState<{ start: Pt; end: Pt } | null>(null);
 
   // ── Blue wall overlay path (facade boundary minus window holes) ──
+  // Facade delimitation zones (user-drawn polygons BEFORE crop)
+  const facadeZones = useMemo(() => (initialFacadeZones ?? []), [initialFacadeZones]);
+
   const wallSvgPath = useMemo(() => {
     const W = imgNat.w, H = imgNat.h;
     if (W === 0 || H === 0) return "";
-    // Outer boundary: use building_roi if available, else full image
     let p = "";
-    const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
-    const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
-    p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
-    // Holes: all window elements (net surface = ROI minus windows)
+    // Outer boundary: facade zones (user-defined) > building_roi > full image
+    if (facadeZones.length > 0) {
+      facadeZones.forEach(zone => {
+        if (zone.pts.length < 3) return;
+        p += zone.pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z ';
+      });
+    } else {
+      const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
+      const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
+      p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
+    }
+    // Holes: all window elements (net surface = facade contour minus windows)
     elements.filter(e => e.type === "window" || e.type === "other").forEach(e => {
       if (e.polygon_norm && e.polygon_norm.length >= 3) {
         p += ' ' + e.polygon_norm.map((pt: {x:number;y:number}, i: number) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z';
@@ -177,7 +188,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
       }
     });
     return p;
-  }, [imgNat, result.building_roi, elements]);
+  }, [imgNat, result.building_roi, elements, facadeZones]);
 
   useEffect(() => {
     const img = new Image();
