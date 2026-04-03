@@ -16,9 +16,10 @@ const FacadeScene = dynamic(() => import("./facade-scene"), { ssr: false });
 
 interface Facade3dPanelProps {
   result: FacadeAnalysisResult;
+  facadeZones?: Array<{ id: number; pts: Array<{ x: number; y: number }> }>;
 }
 
-export default function Facade3dPanel({ result }: Facade3dPanelProps) {
+export default function Facade3dPanel({ result, facadeZones }: Facade3dPanelProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -144,6 +145,7 @@ export default function Facade3dPanel({ result }: Facade3dPanelProps) {
                       floorHeight={floorHeight}
                       wireframe={wireframe}
                       resetSignal={resetSignal}
+                      facadeZones={facadeZones}
                     />
                   </Suspense>
                 </div>

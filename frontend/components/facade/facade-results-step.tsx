@@ -599,7 +599,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
       {/* ── 3D Facade View ── */}
       <div className="mb-4">
-        <Facade3dPanel result={result} />
+        <Facade3dPanel result={result} facadeZones={facadeZones} />
       </div>
 
       {/* ── Chat IA ── */}

@@ -2,33 +2,30 @@
 
 /**
  * FacadeScene — React Three Fiber 3D scene for facade analysis.
- * Shows a flat building front wall with colored boxes for each detected element
- * (windows=blue, doors=pink, balconies=green), floor separator lines, and orbit controls.
- * Camera starts at a slight angle for depth perception.
+ * Each facade delimitation zone = a separate wall panel placed side by side.
+ * Windows are yellow cutout boxes on the wall panels.
  */
 
-import { useEffect, useRef } from "react";
-import { Canvas, useThree, useFrame } from "@react-three/fiber";
+import { useEffect, useRef, useMemo } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { FacadeElement } from "@/lib/types";
 
-/* ── Color constants matching TYPE_COLORS ── */
-const ELEMENT_COLORS: Record<string, string> = {
-  window:     "#60a5fa",
-  door:       "#f472b6",
-  balcony:    "#34d399",
-  floor_line: "#fb923c",
-  roof:       "#a78bfa",
-  column:     "#94a3b8",
-  other:      "#fbbf24",
-};
+/* ── Color constants ── */
+const WINDOW_COLOR = "#fbbf24";
+const WALL_COLOR = "#3b82f6";
 
-function hexToRgb(hex: string): [number, number, number] {
+function hexToThree(hex: string): THREE.Color {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
-  return [r, g, b];
+  return new THREE.Color(r, g, b);
+}
+
+interface FacadeZone {
+  id: number;
+  pts: Array<{ x: number; y: number }>;
 }
 
 interface FacadeSceneProps {
@@ -38,145 +35,161 @@ interface FacadeSceneProps {
   floorHeight: number;
   wireframe: boolean;
   resetSignal: number;
+  facadeZones?: FacadeZone[];
 }
 
-/* ── Building facade geometry ── */
-function FacadeGeometry({ elements, floorsCount, floorHeight, wireframe }: {
+/** Check if a point is inside a polygon (ray casting) */
+function pointInPoly(pt: { x: number; y: number }, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    if ((poly[i].y > pt.y) !== (poly[j].y > pt.y) &&
+      pt.x < (poly[j].x - poly[i].x) * (pt.y - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Polygon bounding box */
+function polyBbox(pts: { x: number; y: number }[]) {
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+}
+
+/* ── Single facade panel with its windows ── */
+function FacadePanel({ zone, elements, panelWidth, panelHeight, xOffset, wireframe }: {
+  zone: FacadeZone;
+  elements: FacadeElement[];
+  panelWidth: number;
+  panelHeight: number;
+  xOffset: number;
+  wireframe: boolean;
+}) {
+  const wallDepth = 0.25;
+  const bbox = polyBbox(zone.pts);
+
+  return (
+    <group position={[xOffset, 0, 0]}>
+      {/* Wall panel */}
+      <mesh position={[0, panelHeight / 2, 0]} receiveShadow castShadow>
+        <boxGeometry args={[panelWidth, panelHeight, wallDepth]} />
+        <meshStandardMaterial
+          color={hexToThree(WALL_COLOR)}
+          roughness={0.7}
+          metalness={0.05}
+          wireframe={wireframe}
+          transparent
+          opacity={wireframe ? 0.4 : 0.85}
+        />
+      </mesh>
+
+      {/* Window elements on this panel */}
+      {elements.map(el => {
+        // Map element bbox from zone-local normalized coords to panel coords
+        const relX = bbox.w > 0 ? (el.bbox_norm.x + el.bbox_norm.w / 2 - bbox.x) / bbox.w : 0.5;
+        const relY = bbox.h > 0 ? (el.bbox_norm.y + el.bbox_norm.h / 2 - bbox.y) / bbox.h : 0.5;
+        const relW = bbox.w > 0 ? el.bbox_norm.w / bbox.w : 0.1;
+        const relH = bbox.h > 0 ? el.bbox_norm.h / bbox.h : 0.1;
+
+        const bx = (relX - 0.5) * panelWidth;
+        const by = (1 - relY) * panelHeight;
+        const bw = Math.min(relW * panelWidth, panelWidth * 0.4);
+        const bh = Math.min(relH * panelHeight, panelHeight * 0.3);
+
+        if (bw < 0.05 || bh < 0.05) return null;
+
+        const zOffset = wallDepth / 2 + 0.03;
+        const winColor = hexToThree(WINDOW_COLOR);
+
+        return (
+          <group key={el.id}>
+            {/* Window glass */}
+            <mesh position={[bx, by, zOffset]} castShadow>
+              <boxGeometry args={[bw, bh, 0.04]} />
+              <meshStandardMaterial
+                color={winColor}
+                roughness={0.1}
+                metalness={0.3}
+                transparent
+                opacity={0.7}
+                wireframe={wireframe}
+              />
+            </mesh>
+            {/* Window frame */}
+            {!wireframe && (
+              <group position={[bx, by, zOffset + 0.025]}>
+                <mesh position={[0, bh / 2 + 0.015, 0]}>
+                  <boxGeometry args={[bw + 0.04, 0.03, 0.015]} />
+                  <meshStandardMaterial color={winColor} roughness={0.3} />
+                </mesh>
+                <mesh position={[0, -(bh / 2 + 0.015), 0]}>
+                  <boxGeometry args={[bw + 0.04, 0.03, 0.015]} />
+                  <meshStandardMaterial color={winColor} roughness={0.3} />
+                </mesh>
+                <mesh position={[-(bw / 2 + 0.015), 0, 0]}>
+                  <boxGeometry args={[0.03, bh, 0.015]} />
+                  <meshStandardMaterial color={winColor} roughness={0.3} />
+                </mesh>
+                <mesh position={[bw / 2 + 0.015, 0, 0]}>
+                  <boxGeometry args={[0.03, bh, 0.015]} />
+                  <meshStandardMaterial color={winColor} roughness={0.3} />
+                </mesh>
+              </group>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+/* ── Fallback: single wall when no facade zones defined ── */
+function SingleFacade({ elements, floorsCount, floorHeight, wireframe }: {
   elements: FacadeElement[];
   floorsCount: number;
   floorHeight: number;
   wireframe: boolean;
 }) {
-  // Estimate facade dimensions from element bounding boxes or use defaults
-  // Normalize: building width = 10 units, height based on floor count
   const facadeW = 10;
   const facadeH = floorsCount * floorHeight;
-  const wallDepth = 0.3;
+  const wallDepth = 0.25;
 
   return (
     <group>
-      {/* ── Main wall ── */}
       <mesh position={[0, facadeH / 2, 0]} receiveShadow castShadow>
         <boxGeometry args={[facadeW, facadeH, wallDepth]} />
-        <meshStandardMaterial
-          color="#475569"
-          roughness={0.8}
-          metalness={0.05}
-          wireframe={wireframe}
-          transparent
-          opacity={wireframe ? 0.5 : 0.9}
-        />
+        <meshStandardMaterial color={hexToThree(WALL_COLOR)} roughness={0.7} wireframe={wireframe} transparent opacity={wireframe ? 0.4 : 0.85} />
       </mesh>
 
-      {/* ── Floor separator lines ── */}
-      {Array.from({ length: floorsCount - 1 }, (_, i) => {
-        const y = (i + 1) * floorHeight;
-        return (
-          <mesh key={`floor-${i}`} position={[0, y, wallDepth / 2 + 0.01]}>
-            <boxGeometry args={[facadeW, 0.06, 0.02]} />
-            <meshStandardMaterial color="#fb923c" roughness={0.5} />
-          </mesh>
-        );
-      })}
-
-      {/* ── Elements (windows, doors, balconies) ── */}
       {elements
-        .filter(e => ["window", "door", "balcony"].includes(e.type))
+        .filter(e => ["window", "other"].includes(e.type))
         .map(el => {
-          const color = ELEMENT_COLORS[el.type] ?? "#94a3b8";
-          const [r, g, b] = hexToRgb(color);
-          const threeColor = new THREE.Color(r, g, b);
-
-          // Map normalized bbox to 3D coords
-          // bbox_norm: x/y are top-left corner, w/h are size, all 0-1
           const bx = (el.bbox_norm.x + el.bbox_norm.w / 2 - 0.5) * facadeW;
-          // Flip Y: bbox_norm.y=0 is top, in 3D y increases upward
           const by = (1 - el.bbox_norm.y - el.bbox_norm.h / 2) * facadeH;
           const bw = el.bbox_norm.w * facadeW;
           const bh = el.bbox_norm.h * facadeH;
-
-          // Only render if reasonable size
           if (bw < 0.05 || bh < 0.05) return null;
-
-          const depth = el.type === "balcony" ? 0.6 : 0.05;
-          const zOffset = wallDepth / 2 + depth / 2 + 0.01;
-
+          const zOffset = wallDepth / 2 + 0.03;
+          const winColor = hexToThree(WINDOW_COLOR);
           return (
             <group key={el.id}>
-              {/* Element box */}
               <mesh position={[bx, by, zOffset]} castShadow>
-                <boxGeometry args={[bw, bh, depth]} />
-                <meshStandardMaterial
-                  color={threeColor}
-                  roughness={el.type === "window" ? 0.1 : 0.6}
-                  metalness={el.type === "window" ? 0.4 : 0.1}
-                  transparent
-                  opacity={el.type === "window" ? 0.65 : 0.85}
-                  wireframe={wireframe}
-                />
+                <boxGeometry args={[bw, bh, 0.04]} />
+                <meshStandardMaterial color={winColor} roughness={0.1} metalness={0.3} transparent opacity={0.7} wireframe={wireframe} />
               </mesh>
-
-              {/* Window frame: thin border boxes (top, bottom, left, right) */}
-              {el.type === "window" && !wireframe && (
-                <group position={[bx, by, zOffset + depth / 2 + 0.005]}>
-                  {/* top */}
-                  <mesh position={[0, bh / 2 + 0.02, 0]}>
-                    <boxGeometry args={[bw + 0.06, 0.04, 0.02]} />
-                    <meshStandardMaterial color={threeColor} roughness={0.3} />
-                  </mesh>
-                  {/* bottom */}
-                  <mesh position={[0, -(bh / 2 + 0.02), 0]}>
-                    <boxGeometry args={[bw + 0.06, 0.04, 0.02]} />
-                    <meshStandardMaterial color={threeColor} roughness={0.3} />
-                  </mesh>
-                  {/* left */}
-                  <mesh position={[-(bw / 2 + 0.02), 0, 0]}>
-                    <boxGeometry args={[0.04, bh, 0.02]} />
-                    <meshStandardMaterial color={threeColor} roughness={0.3} />
-                  </mesh>
-                  {/* right */}
-                  <mesh position={[bw / 2 + 0.02, 0, 0]}>
-                    <boxGeometry args={[0.04, bh, 0.02]} />
-                    <meshStandardMaterial color={threeColor} roughness={0.3} />
-                  </mesh>
+              {!wireframe && (
+                <group position={[bx, by, zOffset + 0.025]}>
+                  <mesh position={[0, bh / 2 + 0.015, 0]}><boxGeometry args={[bw + 0.04, 0.03, 0.015]} /><meshStandardMaterial color={winColor} roughness={0.3} /></mesh>
+                  <mesh position={[0, -(bh / 2 + 0.015), 0]}><boxGeometry args={[bw + 0.04, 0.03, 0.015]} /><meshStandardMaterial color={winColor} roughness={0.3} /></mesh>
+                  <mesh position={[-(bw / 2 + 0.015), 0, 0]}><boxGeometry args={[0.03, bh, 0.015]} /><meshStandardMaterial color={winColor} roughness={0.3} /></mesh>
+                  <mesh position={[bw / 2 + 0.015, 0, 0]}><boxGeometry args={[0.03, bh, 0.015]} /><meshStandardMaterial color={winColor} roughness={0.3} /></mesh>
                 </group>
               )}
             </group>
           );
         })}
 
-      {/* ── Column elements ── */}
-      {elements
-        .filter(e => e.type === "column")
-        .map(el => {
-          const bx = (el.bbox_norm.x + el.bbox_norm.w / 2 - 0.5) * facadeW;
-          const by = (1 - el.bbox_norm.y - el.bbox_norm.h / 2) * facadeH;
-          const bw = el.bbox_norm.w * facadeW;
-          const bh = el.bbox_norm.h * facadeH;
-          if (bw < 0.02 || bh < 0.02) return null;
-          return (
-            <mesh key={el.id} position={[bx, by, wallDepth / 2 + 0.06]}>
-              <boxGeometry args={[Math.max(bw, 0.1), bh, 0.1]} />
-              <meshStandardMaterial color="#94a3b8" roughness={0.7} wireframe={wireframe} />
-            </mesh>
-          );
-        })}
-
-      {/* ── Roof line ── */}
-      {elements
-        .filter(e => e.type === "roof")
-        .slice(0, 1)
-        .map(el => {
-          const by = (1 - el.bbox_norm.y) * facadeH;
-          return (
-            <mesh key={`roof-${el.id}`} position={[0, by, wallDepth / 2 + 0.01]}>
-              <boxGeometry args={[facadeW + 0.4, 0.1, 0.05]} />
-              <meshStandardMaterial color="#a78bfa" roughness={0.6} wireframe={wireframe} />
-            </mesh>
-          );
-        })}
-
-      {/* ── Ground plane ── */}
+      {/* Ground plane */}
       <mesh position={[0, -0.02, 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[facadeW + 4, 6]} />
         <meshStandardMaterial color="#1e293b" roughness={1} />
@@ -186,57 +199,99 @@ function FacadeGeometry({ elements, floorsCount, floorHeight, wireframe }: {
 }
 
 /* ── Camera controller ── */
-function CameraController({ resetSignal, facadeH }: { resetSignal: number; facadeH: number }) {
+function CameraController({ resetSignal, centerY, cameraZ }: { resetSignal: number; centerY: number; cameraZ: number }) {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
-    camera.position.set(0, facadeH * 0.5, facadeH * 1.6);
-    camera.lookAt(0, facadeH * 0.5, 0);
+    camera.position.set(0, centerY, cameraZ);
+    camera.lookAt(0, centerY, 0);
     if (controlsRef.current) {
-      controlsRef.current.target.set(0, facadeH * 0.5, 0);
+      controlsRef.current.target.set(0, centerY, 0);
       controlsRef.current.update();
     }
-  }, [resetSignal, facadeH, camera]);
+  }, [resetSignal, centerY, cameraZ, camera]);
 
-  return <OrbitControls ref={controlsRef} target={[0, facadeH * 0.5, 0]} enableDamping dampingFactor={0.08} />;
+  return <OrbitControls ref={controlsRef} target={[0, centerY, 0]} enableDamping dampingFactor={0.08} />;
 }
 
 /* ── Main exported component ── */
 export default function FacadeScene({
-  elements, facadeAreaM2, floorsCount, floorHeight, wireframe, resetSignal,
+  elements, facadeAreaM2, floorsCount, floorHeight, wireframe, resetSignal, facadeZones,
 }: FacadeSceneProps) {
   const facadeH = floorsCount * floorHeight;
+  const GAP = 1.5;
+
+  // Assign elements to their respective facade zones
+  const zoneData = useMemo(() => {
+    if (!facadeZones || facadeZones.length === 0) return null;
+
+    return facadeZones.map(zone => {
+      const bbox = polyBbox(zone.pts);
+      // Width proportional to zone bbox width (relative to total)
+      const panelWidth = Math.max(3, bbox.w * 15); // Scale for visual clarity
+      // Find elements whose centroid is inside this zone
+      const zoneElements = elements.filter(el => {
+        const cx = el.bbox_norm.x + el.bbox_norm.w / 2;
+        const cy = el.bbox_norm.y + el.bbox_norm.h / 2;
+        return (["window", "other"].includes(el.type)) && pointInPoly({ x: cx, y: cy }, zone.pts);
+      });
+      return { zone, panelWidth, elements: zoneElements };
+    });
+  }, [facadeZones, elements]);
+
+  // Calculate total width and offsets
+  const { totalWidth, offsets } = useMemo(() => {
+    if (!zoneData) return { totalWidth: 10, offsets: [0] };
+    const widths = zoneData.map(z => z.panelWidth);
+    const total = widths.reduce((s, w) => s + w, 0) + GAP * (widths.length - 1);
+    const offs: number[] = [];
+    let x = -total / 2;
+    for (const w of widths) {
+      offs.push(x + w / 2);
+      x += w + GAP;
+    }
+    return { totalWidth: total, offsets: offs };
+  }, [zoneData]);
+
+  const cameraZ = Math.max(facadeH * 1.5, totalWidth * 0.8);
 
   return (
     <Canvas
       shadows
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      camera={{ position: [0, facadeH * 0.5, facadeH * 1.6] as any, fov: 45, near: 0.1, far: 1000 }}
+      camera={{ position: [0, facadeH * 0.5, cameraZ] as any, fov: 45, near: 0.1, far: 1000 }}
       gl={{ antialias: true, alpha: false }}
       style={{ background: "transparent" }}
     >
-      {/* Lighting */}
       <ambientLight intensity={0.5} />
-      <directionalLight
-        position={[10, facadeH * 2, 8]}
-        intensity={1.4}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-      />
+      <directionalLight position={[10, facadeH * 2, 8]} intensity={1.4} castShadow shadow-mapSize={[2048, 2048]} />
       <directionalLight position={[-6, facadeH, 4]} intensity={0.4} color="#e0e8ff" />
       <pointLight position={[0, facadeH + 2, facadeH]} intensity={0.5} color="#fbbf24" decay={2} />
 
-      {/* Camera controls with reset */}
-      <CameraController resetSignal={resetSignal} facadeH={facadeH} />
+      <CameraController resetSignal={resetSignal} centerY={facadeH * 0.5} cameraZ={cameraZ} />
 
-      {/* Facade geometry */}
-      <FacadeGeometry
-        elements={elements}
-        floorsCount={floorsCount}
-        floorHeight={floorHeight}
-        wireframe={wireframe}
-      />
+      {zoneData ? (
+        <>
+          {zoneData.map((zd, i) => (
+            <FacadePanel
+              key={zd.zone.id}
+              zone={zd.zone}
+              elements={zd.elements}
+              panelWidth={zd.panelWidth}
+              panelHeight={facadeH}
+              xOffset={offsets[i]}
+              wireframe={wireframe}
+            />
+          ))}
+          {/* Ground plane */}
+          <mesh position={[0, -0.02, 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <planeGeometry args={[totalWidth + 4, 6]} />
+            <meshStandardMaterial color="#1e293b" roughness={1} />
+          </mesh>
+        </>
+      ) : (
+        <SingleFacade elements={elements} floorsCount={floorsCount} floorHeight={floorHeight} wireframe={wireframe} />
+      )}
     </Canvas>
   );
 }

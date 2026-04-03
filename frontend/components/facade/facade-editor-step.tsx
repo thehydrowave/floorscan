@@ -467,7 +467,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
   // Build updated result and go back to results
   const goResults = () => {
-    const openingElements = elements.filter(e => ["window", "door", "balcony"].includes(e.type));
+    const openingElements = elements.filter(e => ["window", "door", "balcony", "other"].includes(e.type));
     const openings_area_m2 = result.pixels_per_meter
       ? openingElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0)
       : null;
@@ -479,7 +479,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     const updated: FacadeAnalysisResult = {
       ...result,
       elements,
-      windows_count: elements.filter(e => e.type === "window").length,
+      windows_count: elements.filter(e => e.type === "window" || e.type === "other").length,
       doors_count: elements.filter(e => e.type === "door").length,
       balconies_count: elements.filter(e => e.type === "balcony").length,
       floors_count: Math.max(1, new Set(elements.map(e => e.floor_level ?? 0)).size),
@@ -508,9 +508,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     toast({ title: d("fa_export_csv"), variant: "success" });
   };
 
-  // Visible elements filter (non-editable AI types always visible)
+  // Visible elements filter — respects visibility toggles
   const visibleElements = elements.filter(e => {
-    if (e.type === "other" && !showOther) return false;
+    if (e.type === "window" && !visibility.window) return false;
+    if (e.type === "other" && !visibility.window) return false; // "other" = remapped window
     if (e.type === "column" && !showColumns) return false;
     return true;
   });
@@ -630,15 +631,6 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             >
               <Trash2 className="w-3.5 h-3.5" /> {d("ed_erase_tool" as DTKey)}
             </button>
-            <button
-              onClick={() => { setTool("erase_polygon"); setRectPreview(null); rectDragRef.current = null; }}
-              title="Effacer polygone"
-              className={cn("flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                tool === "erase_polygon" ? "border-red-500/40 bg-red-500/10 text-white" : "border-white/5 text-slate-400 hover:text-white")}
-            >
-              <Pentagon className="w-3.5 h-3.5" style={{opacity:0.5}} />
-            </button>
-
             {/* Drawing hints */}
             {isDrawing && (
               <span className="text-xs text-amber-300/70 animate-pulse ml-2">
@@ -817,7 +809,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                         {(() => {
                           const cx = c.x * imgNat.w;
                           const cy = c.y * imgNat.h;
-                          const label = el.label_fr || d(TYPE_I18N[el.type] ?? "fa_other");
+                          const label = d(TYPE_I18N[el.type] ?? "fa_window");
                           const areaStr = el.area_m2 != null ? `${el.area_m2.toFixed(2)} m\u00B2` : "";
                           const fs = Math.max(10, Math.min(16, imgNat.w * 0.008));
                           const pw = Math.max(50, Math.max(label.length, areaStr.length) * (fs * 0.6)) + 12;
