@@ -23,7 +23,7 @@ const TYPE_COLORS: Record<string, string> = {
   roof:        "#a78bfa",
   column:      "#94a3b8",
   other:       "#fbbf24",
-  wall_opaque: "#94a3b8",
+  wall_opaque: "#3b82f6",
 };
 
 const TYPE_I18N: Record<string, DTKey> = {
@@ -752,7 +752,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 {visibility.wall_opaque && wallSvgPath && imgNat.w > 0 && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"
                     viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet" style={{ zIndex: 0 }}>
-                    <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.3} />
+                    <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.35} />
                   </svg>
                 )}
 
