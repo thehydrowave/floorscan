@@ -115,17 +115,24 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
 
   const hasArea = result.facade_area_m2 != null && result.facade_area_m2 > 0;
 
+  /* ── Remap "other" → "window" for metrics (model often misclassifies) ── */
+  const remappedElements = useMemo(() =>
+    result.elements.map(el => el.type === "other" ? { ...el, type: "window" as FacadeElementType } : el),
+    [result.elements]);
+  const windowsCount = useMemo(() => remappedElements.filter(e => e.type === "window").length, [remappedElements]);
+  const windowsArea = useMemo(() => remappedElements.filter(e => e.type === "window").reduce((s, e) => s + (e.area_m2 ?? 0), 0), [remappedElements]);
+
   /* ── Derived metrics ── */
-  const totalElements = result.elements.length;
-  const ratioPct = (result.ratio_openings ?? 0) * 100;
+  const totalElements = remappedElements.length;
   const facadeArea = result.facade_area_m2 ?? 0;
-  const openingsArea = result.openings_area_m2 ?? 0;
+  const openingsArea = windowsArea > 0 ? windowsArea : (result.openings_area_m2 ?? 0);
   const wallArea = Math.max(0, facadeArea - openingsArea);
+  const ratioPct = facadeArea > 0 ? (openingsArea / facadeArea) * 100 : 0;
 
   /* ── Element distribution by type ── */
   const typeDistribution = useMemo(() => {
     const map = new Map<FacadeElementType, number>();
-    for (const el of result.elements) {
+    for (const el of remappedElements) {
       map.set(el.type, (map.get(el.type) ?? 0) + 1);
     }
     return [...map.entries()]
@@ -224,7 +231,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiCard
                   label={isFr ? "Fenêtres" : "Windows"}
-                  value={result.windows_count.toString()}
+                  value={windowsCount.toString()}
                   color="#fbbf24"
                   icon="🪟"
                 />

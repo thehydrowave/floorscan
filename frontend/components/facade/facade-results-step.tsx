@@ -195,9 +195,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   }, [totalFacadeZonesM2, fenetresAreaM2]);
 
   /* ── Sidebar stats (simplified) ── */
+  // Count "other" as "window" since the model often misclassifies windows as "other"
   const windowCount = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").length, [result]);
   const windowsAreaM2 = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").reduce((s, e) => s + (e.area_m2 ?? 0), 0), [result]);
-  const facadeAreaM2 = result.facade_area_m2 ?? 0;
+  // Use delimited zones area if available, otherwise fall back to backend facade_area
+  const facadeAreaM2 = totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : (result.facade_area_m2 ?? 0);
   const wallNetArea = Math.max(0, facadeAreaM2 - windowsAreaM2);
 
   /* ── Per-zone stats (one entry per facade zone) ── */
@@ -451,7 +453,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
                     <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                      <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.3} />
+                      <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.3} />
                     </svg>
                   )}
 

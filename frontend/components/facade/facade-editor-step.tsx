@@ -166,20 +166,18 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
     const roi = result.building_roi ?? { x: 0, y: 0, w: 1, h: 1 };
     const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
     p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
-    // Holes: visible "other" elements (Fenêtres)
-    if (showOther) {
-      elements.filter(e => e.type === "other").forEach(e => {
-        if (e.polygon_norm && e.polygon_norm.length >= 3) {
-          p += ' ' + e.polygon_norm.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z';
-        } else {
-          const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
-          const w = e.bbox_norm.w * W, h = e.bbox_norm.h * H;
-          p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
-        }
-      });
-    }
+    // Holes: all window elements (net surface = ROI minus windows)
+    elements.filter(e => e.type === "window" || e.type === "other").forEach(e => {
+      if (e.polygon_norm && e.polygon_norm.length >= 3) {
+        p += ' ' + e.polygon_norm.map((pt: {x:number;y:number}, i: number) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z';
+      } else {
+        const x = e.bbox_norm.x * W, y = e.bbox_norm.y * H;
+        const w = e.bbox_norm.w * W, h = e.bbox_norm.h * H;
+        p += ` M${x} ${y} h${w} v${h} h${-w} Z`;
+      }
+    });
     return p;
-  }, [imgNat, result.building_roi, elements, showOther]);
+  }, [imgNat, result.building_roi, elements]);
 
   useEffect(() => {
     const img = new Image();
@@ -739,22 +737,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart }: Fac
                     maskMode: "luminance", zIndex: 1,
                   }} />
                 )}
-                {visibility.wall_opaque && masks.mask_wall_opaque && (
-                  <div className="absolute inset-0 pointer-events-none" style={{
-                    backgroundColor: "#94a3b8",
-                    opacity: 0.25,
-                    WebkitMaskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
-                    maskImage: `url(data:image/png;base64,${masks.mask_wall_opaque})`,
-                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                    maskMode: "luminance", zIndex: 0,
-                  }} />
-                )}
-
-                {/* ── Wall blue mask layer (evenodd: outer boundary minus window holes) ── */}
-                {wallSvgPath && imgNat.w > 0 && (
+                {/* ── Wall net surface: SVG (building ROI minus all window holes) ── */}
+                {visibility.wall_opaque && wallSvgPath && imgNat.w > 0 && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"
-                    viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet">
-                    <path d={wallSvgPath} fillRule="evenodd" fill="#3b82f6" fillOpacity={0.25} />
+                    viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet" style={{ zIndex: 0 }}>
+                    <path d={wallSvgPath} fillRule="evenodd" fill="#64748b" fillOpacity={0.3} />
                   </svg>
                 )}
 
