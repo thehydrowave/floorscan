@@ -25,6 +25,7 @@ import FacadeScenarioPanel from "./facade-scenario-panel";
 import FacadeCctpPanel from "./facade-cctp-panel";
 import FacadeGanttPanel from "./facade-gantt-panel";
 import FacadeCompliancePanel from "./facade-compliance-panel";
+import FacadeIsolationPanel from "./facade-isolation-panel";
 import FacadeChatPanel from "./facade-chat-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
@@ -617,6 +618,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
             </div>{/* /right panel */}
           </div>{/* /grid */}
+      </div>
+
+      {/* ── ITE & Retours de tableau ── */}
+      <div className="mb-4">
+        <FacadeIsolationPanel
+          result={result}
+          localElements={localElements}
+          facadeAreaOverride={totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : null}
+          imgSize={imgNat}
+        />
       </div>
 
       {/* ── Dashboard Overview ── */}
