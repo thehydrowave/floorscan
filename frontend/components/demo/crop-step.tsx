@@ -184,8 +184,8 @@ export default function CropStep({
 
   /* ── Mouse handling ── */
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Middle-click or Alt+left-click → start panning
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // Right-click → start panning
+    if (e.button === 2) {
       e.preventDefault();
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
@@ -490,6 +490,7 @@ export default function CropStep({
         className="relative mx-auto max-w-3xl rounded-2xl border border-white/10 overflow-hidden bg-white select-none"
         style={{ cursor: isPanningRef.current ? "grabbing" : cursor }}
         onMouseDown={handleMouseDown}
+        onContextMenu={e => e.preventDefault()}
       >
         <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
         <img
