@@ -310,9 +310,6 @@ export default function FacadeAnalyzeStep({
           pixels_per_meter: ppm ?? null,
           confidence: 0.15,
           building_roi: (roiEnabled && roi) ? roi : null,
-          facade_zones: facadeZones && facadeZones.length > 0
-            ? facadeZones.map(z => ({ id: z.id, pts: z.pts }))
-            : null,
         }),
       });
 

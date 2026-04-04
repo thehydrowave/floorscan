@@ -52,13 +52,13 @@ const TYPE_I18N: Record<string, DTKey> = {
 interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
 const MASK_LAYERS: MaskLayerDef[] = [
   { id: "surface_murale", label: "Surface nette",            icon: Building2,      color: "#22c55e", isSurface: true },
-  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#ec4899" },
+  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#ff00ff" },
   { id: "door",           label: "Portes",                  icon: DoorOpen,       color: "#f472b6" },
   { id: "balcony",        label: "Balcons",                 icon: LayoutPanelTop, color: "#34d399" },
   { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
   { id: "roof",           label: "Toiture",                 icon: Frame,          color: "#a78bfa" },
   { id: "floor_line",     label: "Séparations d'étage",     icon: Layers,         color: "#fb923c" },
-  { id: "other",          label: "Fenêtres",                icon: AppWindow,      color: "#ec4899" },
+  { id: "other",          label: "Fenêtres",                icon: AppWindow,      color: "#ff00ff" },
 ];
 
 interface FacadeResultsStepProps {
@@ -470,7 +470,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
                     <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                      <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
+                      {facadeZones.length > 0 && (
+                        <defs><clipPath id="fz-clip-wall">
+                          {facadeZones.map(z => (
+                            <polygon key={z.id} points={z.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ")} />
+                          ))}
+                        </clipPath></defs>
+                      )}
+                      <g clipPath={facadeZones.length > 0 ? "url(#fz-clip-wall)" : undefined}>
+                        <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
+                      </g>
                     </svg>
                   )}
 
@@ -482,6 +491,14 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                       preserveAspectRatio="xMinYMin meet"
                     >
+                      {facadeZones.length > 0 && (
+                        <defs><clipPath id="fz-clip-masks">
+                          {facadeZones.map(z => (
+                            <polygon key={z.id} points={z.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ")} />
+                          ))}
+                        </clipPath></defs>
+                      )}
+                      <g clipPath={facadeZones.length > 0 ? "url(#fz-clip-masks)" : undefined}>
                       {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
                         const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
                         const isWindowLayer = layer.id === "window" || layer.id === "other";
@@ -521,6 +538,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                           </g>
                         );
                       })}
+                      </g>{/* end facade zone clip */}
 
                       {/* Facade polygon zones (read-only) */}
                       {facadeZones.map(zone => {
@@ -587,7 +605,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {/* Windows */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-sm" style={{ background: "#ec4899" }} />
+                      <span className="w-3 h-3 rounded-sm" style={{ background: "#ff00ff" }} />
                       <span className="text-xs text-slate-300">Fenêtres</span>
                     </div>
                     <div className="text-right">

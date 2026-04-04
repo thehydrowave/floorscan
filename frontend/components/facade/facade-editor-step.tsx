@@ -17,13 +17,13 @@ import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:      "#ec4899",
+  window:      "#ff00ff",
   door:        "#f472b6",
   balcony:     "#34d399",
   floor_line:  "#fb923c",
   roof:        "#a78bfa",
   column:      "#94a3b8",
-  other:       "#ec4899",
+  other:       "#ff00ff",
   wall_opaque: "#22c55e",
 };
 
@@ -182,6 +182,17 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // ── Blue wall overlay path (facade boundary minus window holes) ──
   // Facade delimitation zones (user-drawn polygons BEFORE crop)
   const facadeZones = useMemo(() => (initialFacadeZones ?? []), [initialFacadeZones]);
+
+  // CSS clip-path to restrict masks to facade zones only
+  const facadeClipStyle = useMemo(() => {
+    if (facadeZones.length === 0) return undefined;
+    // For single zone, use CSS polygon(). For multiple zones, we use SVG clipPath ref.
+    if (facadeZones.length === 1) {
+      const pts = facadeZones[0].pts.map(p => `${(p.x * 100).toFixed(2)}% ${(p.y * 100).toFixed(2)}%`).join(", ");
+      return { clipPath: `polygon(${pts})` };
+    }
+    return { clipPath: "url(#fz-clip-editor)" };
+  }, [facadeZones]);
 
   const wallSvgPath = useMemo(() => {
     const W = imgNat.w, H = imgNat.h;
@@ -883,15 +894,29 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   }}
                 />
 
+                {/* ── Facade zone clip (SVG def for clipping masks to delimited zones) ── */}
+                {facadeZones.length > 0 && (
+                  <svg className="absolute" width="0" height="0" style={{ position: "absolute" }}>
+                    <defs>
+                      <clipPath id="fz-clip-editor" clipPathUnits="objectBoundingBox">
+                        {facadeZones.map(z => (
+                          <polygon key={z.id} points={z.pts.map(p => `${p.x},${p.y}`).join(" ")} />
+                        ))}
+                      </clipPath>
+                    </defs>
+                  </svg>
+                )}
+
                 {/* ── Mask layers (from backend, editable) ── */}
                 {visibility.window && masks.mask_window && (
                   <div className="absolute inset-0 pointer-events-none" style={{
                     backgroundColor: TYPE_COLORS.window,
-                    opacity: 0.9,
+                    opacity: 1.0,
                     WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     maskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
                     maskMode: "luminance", zIndex: 1,
+                    ...facadeClipStyle,
                   }} />
                 )}
                 {visibility.door && masks.mask_door && (
@@ -902,6 +927,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     maskImage: `url(data:image/png;base64,${masks.mask_door})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
                     maskMode: "luminance", zIndex: 1,
+                    ...facadeClipStyle,
                   }} />
                 )}
                 {visibility.balcony && masks.mask_balcony && (
@@ -912,6 +938,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     maskImage: `url(data:image/png;base64,${masks.mask_balcony})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
                     maskMode: "luminance", zIndex: 1,
+                    ...facadeClipStyle,
                   }} />
                 )}
                 {visibility.roof && masks.mask_roof && (
@@ -922,6 +949,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     maskImage: `url(data:image/png;base64,${masks.mask_roof})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
                     maskMode: "luminance", zIndex: 1,
+                    ...facadeClipStyle,
                   }} />
                 )}
                 {visibility.column && masks.mask_column && (
@@ -932,13 +960,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     maskImage: `url(data:image/png;base64,${masks.mask_column})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
                     maskMode: "luminance", zIndex: 1,
+                    ...facadeClipStyle,
                   }} />
                 )}
 
                 {/* ── Wall net surface: SVG (building ROI minus all window holes) ── */}
                 {visibility.wall_opaque && wallSvgPath && imgNat.w > 0 && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"
-                    viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet" style={{ zIndex: 0 }}>
+                    viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet" style={{ zIndex: 0, ...facadeClipStyle }}>
                     <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
                   </svg>
                 )}
@@ -948,7 +977,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   className="absolute inset-0 w-full h-full"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                   preserveAspectRatio="xMidYMid meet"
-                  style={{ pointerEvents: "none" }}
+                  style={{ pointerEvents: "none", ...facadeClipStyle }}
                 >
                   {/* ── Existing elements ── */}
                   {visibleElements.map(el => {
