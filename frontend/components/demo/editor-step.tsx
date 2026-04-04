@@ -1421,23 +1421,51 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   // ── Export CSV (mode mesure, editor) ──────────────────────────────────────
-  const exportMeasureCsv = () => {
+  const exportMeasureXlsx = () => {
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
     const ppmVal = result.pixels_per_meter ?? null;
     const totals = imageNatural.w > 0 ? aggregateByType(zones, imageNatural.w, imageNatural.h, ppmVal) : {};
-    const rows: string[][] = [[d("me_step_survey"), ppmVal ? "Surface (m\u00B2)" : "Surface (px\u00B2)"]];
-    surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0).forEach(t => {
-      rows.push([t.name, ppmVal ? (totals[t.id]).toFixed(4) : String(Math.round(totals[t.id]))]);
-    });
-    const totalAll = Object.values(totals).reduce((a, b) => a + b, 0);
-    rows.push(["TOTAL", ppmVal ? totalAll.toFixed(4) : String(Math.round(totalAll))]);
-    const csv = "\uFEFF" + rows.map(r => r.join(";")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `floorscan_metre_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast({ title: "CSV export\u00E9 \u2713", variant: "success" });
+    const unit = ppmVal ? "m²" : "px²";
+
+    // Sheet 1: Métré surfaces
+    const data1: (string | number)[][] = [
+      ["FloorScan — Métré"],
+      ["Date", new Date().toLocaleDateString("fr-FR")],
+      [],
+      ["Type de surface", `Surface (${unit})`],
+      ...surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0).map(t => [t.name, ppmVal ? +totals[t.id].toFixed(4) : Math.round(totals[t.id])]),
+      [],
+      ["TOTAL", ppmVal ? +Object.values(totals).reduce((a, b) => a + b, 0).toFixed(4) : Math.round(Object.values(totals).reduce((a, b) => a + b, 0))],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet(data1);
+    ws1["!cols"] = [{ wch: 25 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Métré");
+
+    // Sheet 2: Mesures linéaires
+    if (linearMeasures.length > 0) {
+      const data2: (string | number)[][] = [["#", "Distance (m)", "Distance (px)"]];
+      linearMeasures.forEach((lm, i) => {
+        const distM = ppmVal ? +(lm.distPx / ppmVal).toFixed(3) : 0;
+        data2.push([i + 1, distM, Math.round(lm.distPx)]);
+      });
+      data2.push(["TOTAL", ppmVal ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppmVal!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
+      const ws2 = XLSX.utils.aoa_to_sheet(data2);
+      ws2["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Linéaires");
+    }
+
+    // Sheet 3: Pièces
+    if (result.rooms && result.rooms.length > 0) {
+      const data3: (string | number)[][] = [["Type", "Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
+      result.rooms.forEach(r => data3.push([r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]));
+      const ws3 = XLSX.utils.aoa_to_sheet(data3);
+      ws3["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
+    }
+
+    XLSX.writeFile(wb, `floorscan_metre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast({ title: "Export XLSX ✓", variant: "success" });
   };
 
   // ── Export PDF Devis (mode mesure, client-side jsPDF) ──────────────────────
@@ -1629,10 +1657,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     title={!ppm ? d("ed_dxf_need") : d("ed_dxf_tt")}>
                     <FileDown className="w-3.5 h-3.5" /> DXF
                   </button>
-                  {/* Measure CSV export */}
-                  <button onClick={() => { exportMeasureCsv(); setExportOpen(false); }} disabled={zones.length === 0}
+                  {/* Measure XLSX export */}
+                  <button onClick={() => { exportMeasureXlsx(); setExportOpen(false); }} disabled={zones.length === 0}
                     className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left">
-                    <FileDown className="w-3.5 h-3.5" /> CSV Métré
+                    <FileDown className="w-3.5 h-3.5" /> XLSX Métré
                   </button>
                   {/* Measure PDF export */}
                   <button onClick={() => { exportMeasurePdf(); setExportOpen(false); }} disabled={exportingMeasurePdf || zones.length === 0}

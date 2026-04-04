@@ -128,62 +128,73 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const hasRooms = (result.rooms ?? []).length > 0;
   const hasDetections = customDetections.length > 0;
 
-  const handleExportCSV = () => {
+  const handleExportXLSX = () => {
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
     const sf = result.surfaces ?? {};
-    const lines = [
-      "FloorScan — Résultats d'analyse IA",
-      `Date;${new Date().toLocaleDateString("fr-FR")}`,
-      `Session;${result.session_id ?? "—"}`,
-      "",
-      "=== ÉLÉMENTS DÉTECTÉS ===",
-      `Portes;${result.doors_count}`,
-      `Fenêtres;${result.windows_count}`,
-      ...(result.french_doors_count ? [`Portes-fenêtres;${result.french_doors_count}`] : []),
-      "",
-      "=== SURFACES ===",
-      `Emprise bâtiment (m²);${sf.area_building_m2?.toFixed(2) ?? "—"}`,
-      `Périmètre bâtiment (m);${sf.perim_building_m?.toFixed(2) ?? "—"}`,
-      `Surface habitable (m²);${sf.area_hab_m2?.toFixed(2) ?? "—"}`,
-      `Périmètre intérieur (m);${sf.perim_interior_m?.toFixed(2) ?? "—"}`,
-      `Surface murs (m²);${sf.area_walls_m2?.toFixed(2) ?? "—"}`,
-      `Pixels/mètre;${result.pixels_per_meter?.toFixed(2) ?? "—"}`,
-      "",
-      "=== OUVERTURES DÉTAILLÉES ===",
-      "Type;Longueur (m)",
-      ...(result.openings?.map(o => `${o.class === "door" ? "Porte" : "Fenêtre"};${o.length_m?.toFixed(2) ?? "—"}`) ?? []),
+
+    // Sheet 1: Résultats
+    const data1: (string | number)[][] = [
+      ["FloorScan — Résultats d'analyse IA"],
+      ["Date", new Date().toLocaleDateString("fr-FR")],
+      [],
+      ["ÉLÉMENTS DÉTECTÉS"],
+      ["Portes", result.doors_count],
+      ["Fenêtres", result.windows_count],
+      ...(result.french_doors_count ? [["Portes-fenêtres", result.french_doors_count]] : []),
+      [],
+      ["SURFACES"],
+      ["Emprise bâtiment (m²)", sf.area_building_m2 != null ? +sf.area_building_m2.toFixed(2) : "—"],
+      ["Périmètre bâtiment (m)", sf.perim_building_m != null ? +sf.perim_building_m.toFixed(2) : "—"],
+      ["Surface habitable (m²)", sf.area_hab_m2 != null ? +sf.area_hab_m2.toFixed(2) : "—"],
+      ["Périmètre intérieur (m)", sf.perim_interior_m != null ? +sf.perim_interior_m.toFixed(2) : "—"],
+      ["Surface murs (m²)", sf.area_walls_m2 != null ? +sf.area_walls_m2.toFixed(2) : "—"],
     ];
-    if (result.rooms && result.rooms.length > 0) {
-      lines.push(""); lines.push("=== PIÈCES DÉTECTÉES ===");
-      lines.push("Type;Pièce;Surface (m²);Périmètre (m)");
-      result.rooms.forEach(r => lines.push(`${r.type};${r.label_fr};${r.area_m2?.toFixed(2) ?? "—"};${r.perimeter_m?.toFixed(2) ?? "—"}`));
+    const ws1 = XLSX.utils.aoa_to_sheet(data1);
+    ws1["!cols"] = [{ wch: 25 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Résultats");
+
+    // Sheet 2: Ouvertures
+    if (result.openings && result.openings.length > 0) {
+      const data2: (string | number)[][] = [["Type", "Longueur (m)"]];
+      result.openings.forEach(o => data2.push([o.class === "door" ? "Porte" : "Fenêtre", o.length_m != null ? +o.length_m.toFixed(2) : 0]));
+      const ws2 = XLSX.utils.aoa_to_sheet(data2);
+      ws2["!cols"] = [{ wch: 15 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, ws2, "Ouvertures");
     }
-    const csv = "\uFEFF" + lines.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url;
-    a.download = `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    toast({ title: d("re_csv_ok"), variant: "success" });
+
+    // Sheet 3: Pièces
+    if (result.rooms && result.rooms.length > 0) {
+      const data3: (string | number)[][] = [["Type", "Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
+      result.rooms.forEach(r => data3.push([r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]));
+      data3.push(["TOTAL", "", result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0), result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0), ""]);
+      const ws3 = XLSX.utils.aoa_to_sheet(data3);
+      ws3["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
+    }
+
+    XLSX.writeFile(wb, `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast({ title: "Export XLSX ✓", variant: "success" });
   };
 
-  const handleExportRoomsCSV = () => {
+  const handleExportRoomsXLSX = () => {
     if (!result.rooms || result.rooms.length === 0) return;
-    const lines = [
-      "FloorScan — Récapitulatif des pièces",
-      `Date;${new Date().toLocaleDateString("fr-FR")}`,
-      "",
-      "Type;Pièce;Surface (m²);Périmètre (m)",
-      ...result.rooms.map(r => `${r.type};${r.label_fr};${r.area_m2?.toFixed(2) ?? "—"};${r.perimeter_m?.toFixed(2) ?? "—"}`),
-      "",
-      `Total;;${result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2)};${result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0).toFixed(2)}`,
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
+    const data: (string | number)[][] = [
+      ["FloorScan — Récapitulatif des pièces"],
+      ["Date", new Date().toLocaleDateString("fr-FR")],
+      [],
+      ["Type", "Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"],
+      ...result.rooms.map(r => [r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]),
+      [],
+      ["TOTAL", "", result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0), result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0), ""],
     ];
-    const csv = "\uFEFF" + lines.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url;
-    a.download = `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    toast({ title: d("re_csv_ok"), variant: "success" });
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Pièces");
+    XLSX.writeFile(wb, `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast({ title: "Export XLSX ✓", variant: "success" });
   };
 
   const roomsByType = (result.rooms ?? []).reduce<Record<string, typeof result.rooms>>((acc, room) => {
@@ -214,8 +225,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
                 <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900 border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px]">
-                  <button onClick={() => { handleExportCSV(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
-                    <Table2 className="w-4 h-4" /> CSV
+                  <button onClick={() => { handleExportXLSX(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
+                    <Table2 className="w-4 h-4" /> XLSX
                   </button>
                   <button onClick={() => { window.print(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
                     <Printer className="w-4 h-4" /> {d("btn_print")}
@@ -612,8 +623,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             <div className="px-5 pb-5">
               {hasRooms && (
                 <div className="flex justify-end mb-3">
-                  <button onClick={handleExportRoomsCSV} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
-                    <Table2 className="w-3.5 h-3.5" /> {d("recap_csv")}
+                  <button onClick={handleExportRoomsXLSX} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
+                    <Table2 className="w-3.5 h-3.5" /> XLSX Pièces
                   </button>
                 </div>
               )}
