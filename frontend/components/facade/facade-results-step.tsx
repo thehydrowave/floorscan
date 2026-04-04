@@ -17,6 +17,14 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import Facade3dPanel from "./facade-3d-panel";
 import FacadeDashboardPanel from "./facade-dashboard-panel";
+import FacadeMaterialsPanel from "./facade-materials-panel";
+import FacadeToolkitPanel from "./facade-toolkit-panel";
+import FacadeDpgfPanel from "./facade-dpgf-panel";
+import FacadeLotsPanel from "./facade-lots-panel";
+import FacadeScenarioPanel from "./facade-scenario-panel";
+import FacadeCctpPanel from "./facade-cctp-panel";
+import FacadeGanttPanel from "./facade-gantt-panel";
+import FacadeCompliancePanel from "./facade-compliance-panel";
 import FacadeChatPanel from "./facade-chat-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
@@ -614,6 +622,93 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
       {/* ── Dashboard Overview ── */}
       <div className="mb-4">
         <FacadeDashboardPanel result={result} />
+      </div>
+
+      {/* ── Per-floor table ── */}
+      {(() => {
+        const floorMap = new Map<number, { windows: number; doors: number; balconies: number }>();
+        for (const el of localElements) {
+          const lvl = el.floor_level ?? 0;
+          const f = floorMap.get(lvl) ?? { windows: 0, doors: 0, balconies: 0 };
+          if (el.type === "window" || el.type === "other") f.windows++;
+          else if (el.type === "door") f.doors++;
+          else if (el.type === "balcony") f.balconies++;
+          floorMap.set(lvl, f);
+        }
+        const floors = [...floorMap.entries()].sort((a, b) => a[0] - b[0]).map(([level, data]) => ({
+          level, label: level === 0 ? "RDC" : `Étage ${level}`, ...data,
+        }));
+        if (floors.length <= 1) return null;
+        return (
+          <div className="glass rounded-2xl border border-white/10 p-6 mb-4">
+            <h3 className="font-display text-lg font-700 text-white mb-4 flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-amber-400" />
+              {d("fa_per_floor" as DTKey)}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-slate-500 text-xs border-b border-white/5">
+                    <th className="text-left py-2 px-3 font-medium">{d("fa_floor_level" as DTKey)}</th>
+                    <th className="text-center py-2 px-3 font-medium"><AppWindow className="w-3.5 h-3.5 text-amber-400 inline" /></th>
+                    <th className="text-center py-2 px-3 font-medium"><DoorOpen className="w-3.5 h-3.5 text-pink-400 inline" /></th>
+                    <th className="text-center py-2 px-3 font-medium"><LayoutPanelTop className="w-3.5 h-3.5 text-emerald-400 inline" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {floors.map(f => (
+                    <tr key={f.level} className="border-b border-white/5 hover:bg-white/[0.02]">
+                      <td className="py-2.5 px-3 text-white font-medium">{f.label}</td>
+                      <td className="py-2.5 px-3 text-center text-amber-400 font-mono">{f.windows}</td>
+                      <td className="py-2.5 px-3 text-center text-pink-400 font-mono">{f.doors}</td>
+                      <td className="py-2.5 px-3 text-center text-emerald-400 font-mono">{f.balconies}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Materials Estimation ── */}
+      <div className="mb-4">
+        <FacadeMaterialsPanel result={result} />
+      </div>
+
+      {/* ── Toolkit (estimations) ── */}
+      <div className="mb-4">
+        <FacadeToolkitPanel result={result} />
+      </div>
+
+      {/* ── DPGF Ravalement ── */}
+      <div className="mb-4">
+        <FacadeDpgfPanel result={result} />
+      </div>
+
+      {/* ── Lots ── */}
+      <div className="mb-4">
+        <FacadeLotsPanel result={result} />
+      </div>
+
+      {/* ── Scenarios ── */}
+      <div className="mb-4">
+        <FacadeScenarioPanel result={result} />
+      </div>
+
+      {/* ── CCTP ── */}
+      <div className="mb-4">
+        <FacadeCctpPanel result={result} />
+      </div>
+
+      {/* ── Gantt ── */}
+      <div className="mb-4">
+        <FacadeGanttPanel result={result} />
+      </div>
+
+      {/* ── Compliance ── */}
+      <div className="mb-4">
+        <FacadeCompliancePanel result={result} />
       </div>
 
       {/* ── 3D Facade View ── */}
