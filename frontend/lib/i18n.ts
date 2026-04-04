@@ -1505,11 +1505,14 @@ export const DEMO_T = {
   // ── Crop step strings ──
   cr_crop_mode:        { fr:"Recadrage", en:"Crop", es:"Recorte", de:"Zuschnitt", it:"Ritaglio" },
   cr_facade_mode:      { fr:"Délimitation façade", en:"Facade delimitation", es:"Delimitación fachada", de:"Fassadenabgrenzung", it:"Delimitazione facciata" },
-  cr_facade_hint:      { fr:"Cliquez « Nouvelle façade » puis placez 4 points sur l'image", en:"Click 'New facade' then place 4 points on the image", es:"Haga clic en 'Nueva fachada' y coloque 4 puntos", de:"Klicken Sie auf 'Neue Fassade' und setzen Sie 4 Punkte", it:"Clicca 'Nuova facciata' e posiziona 4 punti" },
+  cr_facade_hint:      { fr:"Choisissez « 4 points » ou « Polygone » pour délimiter une façade", en:"Choose '4 points' or 'Polygon' to delimit a facade", es:"Elija '4 puntos' o 'Polígono' para delimitar una fachada", de:"Wählen Sie '4 Punkte' oder 'Polygon' zur Fassadenabgrenzung", it:"Scegli '4 punti' o 'Poligono' per delimitare una facciata" },
   cr_facade_pts:       { fr:"point(s) pour délimiter la façade", en:"point(s) to delimit the facade", es:"punto(s) para delimitar la fachada", de:"Punkt(e) zur Fassadenabgrenzung", it:"punto/i per delimitare la facciata" },
   cr_facade_zones:     { fr:"Zones façade", en:"Facade zones", es:"Zonas fachada", de:"Fassadenzonen", it:"Zone facciata" },
   cr_new_facade:       { fr:"Nouvelle façade", en:"New facade", es:"Nueva fachada", de:"Neue Fassade", it:"Nuova facciata" },
   cr_cancel:           { fr:"Annuler", en:"Cancel", es:"Cancelar", de:"Abbrechen", it:"Annulla" },
+  cr_4pts_mode:        { fr:"4 points", en:"4 points", es:"4 puntos", de:"4 Punkte", it:"4 punti" },
+  cr_polygon_mode:     { fr:"Polygone", en:"Polygon", es:"Polígono", de:"Polygon", it:"Poligono" },
+  cr_polygon_close_hint: { fr:"Cliquez sur le 1er point pour fermer la forme", en:"Click on the 1st point to close the shape", es:"Haga clic en el 1er punto para cerrar la forma", de:"Klicken Sie auf den 1. Punkt, um die Form zu schließen", it:"Clicca sul 1° punto per chiudere la forma" },
   // ── Tutorial / onboarding ──
   tuto_welcome:        { fr:"Bienvenue dans l'éditeur de masques", en:"Welcome to the mask editor", es:"Bienvenido al editor de máscaras", de:"Willkommen im Masken-Editor", it:"Benvenuto nell'editor di maschere" },
   tuto_step1:          { fr:"Calques : cliquez l'icône œil pour masquer/afficher chaque type de zone (fenêtres, portes, murs...)", en:"Layers: click the eye icon to show/hide each zone type (windows, doors, walls...)", es:"Capas: haga clic en el icono del ojo para mostrar/ocultar cada tipo de zona", de:"Ebenen: Klicken Sie auf das Augensymbol, um Zonentypen ein-/auszublenden", it:"Livelli: clicca l'icona occhio per mostrare/nascondere ogni tipo di zona" },
