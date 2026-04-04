@@ -52,13 +52,13 @@ const TYPE_I18N: Record<string, DTKey> = {
 interface MaskLayerDef { id: string; label: string; icon: IconComp; color: string; isSurface?: true; }
 const MASK_LAYERS: MaskLayerDef[] = [
   { id: "surface_murale", label: "Surface nette",            icon: Building2,      color: "#22c55e", isSurface: true },
-  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#ec4899" },
+  { id: "window",         label: "Fenêtres",                icon: AppWindow,      color: "#ff00ff" },
   { id: "door",           label: "Portes",                  icon: DoorOpen,       color: "#f472b6" },
   { id: "balcony",        label: "Balcons",                 icon: LayoutPanelTop, color: "#34d399" },
   { id: "column",         label: "Colonnes / Poteaux",      icon: Columns2,       color: "#94a3b8" },
   { id: "roof",           label: "Toiture",                 icon: Frame,          color: "#a78bfa" },
   { id: "floor_line",     label: "Séparations d'étage",     icon: Layers,         color: "#fb923c" },
-  { id: "other",          label: "Fenêtres",                icon: AppWindow,      color: "#ec4899" },
+  { id: "other",          label: "Fenêtres",                icon: AppWindow,      color: "#ff00ff" },
 ];
 
 interface FacadeResultsStepProps {
@@ -605,7 +605,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {/* Windows */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-sm" style={{ background: "#ec4899" }} />
+                      <span className="w-3 h-3 rounded-sm" style={{ background: "#ff00ff" }} />
                       <span className="text-xs text-slate-300">Fenêtres</span>
                     </div>
                     <div className="text-right">

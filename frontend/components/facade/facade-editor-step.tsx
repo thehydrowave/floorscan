@@ -17,13 +17,13 @@ import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
-  window:      "#ec4899",
+  window:      "#ff00ff",
   door:        "#f472b6",
   balcony:     "#34d399",
   floor_line:  "#fb923c",
   roof:        "#a78bfa",
   column:      "#94a3b8",
-  other:       "#ec4899",
+  other:       "#ff00ff",
   wall_opaque: "#22c55e",
 };
 
@@ -911,7 +911,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 {visibility.window && masks.mask_window && (
                   <div className="absolute inset-0 pointer-events-none" style={{
                     backgroundColor: TYPE_COLORS.window,
-                    opacity: 0.9,
+                    opacity: 1.0,
                     WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     maskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
@@ -977,7 +977,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   className="absolute inset-0 w-full h-full"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                   preserveAspectRatio="xMidYMid meet"
-                  style={{ pointerEvents: "none" }}
+                  style={{ pointerEvents: "none", ...facadeClipStyle }}
                 >
                   {/* ── Existing elements ── */}
                   {visibleElements.map(el => {
