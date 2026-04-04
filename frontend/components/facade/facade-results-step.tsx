@@ -470,7 +470,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
                     <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                      <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.35} />
+                      <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
                     </svg>
                   )}
 

@@ -699,16 +699,16 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             {/* Window toggle */}
             <button onClick={() => setVisibility(v => ({...v, window: !v.window}))}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                visibility.window ? "border-amber-500/30 bg-amber-500/10 text-amber-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-              <AppWindow size={10} className="text-amber-400" />
-              {visibility.window ? <Eye className="w-2.5 h-2.5 text-amber-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+                visibility.window ? "border-pink-500/30 bg-pink-500/10 text-pink-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <AppWindow size={10} className="text-pink-400" />
+              {visibility.window ? <Eye className="w-2.5 h-2.5 text-pink-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
             </button>
             {/* Wall toggle */}
             <button onClick={() => setVisibility(v => ({...v, wall_opaque: !v.wall_opaque}))}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                visibility.wall_opaque ? "border-blue-500/30 bg-blue-500/10 text-blue-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-              <Building2 size={10} className="text-blue-400" />
-              {visibility.wall_opaque ? <Eye className="w-2.5 h-2.5 text-blue-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+                visibility.wall_opaque ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Building2 size={10} className="text-green-400" />
+              {visibility.wall_opaque ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
             </button>
           </div>
 
@@ -717,16 +717,16 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">EDIT</span>
 
             {/* Layer buttons: Window + Surface nette */}
-            <button onClick={() => { setAddType("window"); setActiveLayer("window"); if (tool === "select") setTool("add_rect"); }}
+            <button onClick={() => { setAddType("window"); setActiveLayer("window"); setVisibility(v => ({ ...v, window: true })); if (tool === "select") setTool("add_rect"); }}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                addType === "window" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-              <AppWindow className={cn("w-4 h-4 shrink-0", "text-amber-400")} />
+                addType === "window" ? "border-pink-500/40 bg-pink-500/10 text-pink-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <AppWindow className={cn("w-4 h-4 shrink-0", "text-pink-400")} />
               <span className={addType === "window" ? "" : "text-slate-400"}>Fenêtres</span>
             </button>
-            <button onClick={() => { setAddType("wall_opaque"); setActiveLayer("wall_opaque"); if (tool === "select") setTool("add_rect"); }}
+            <button onClick={() => { setAddType("wall_opaque"); setActiveLayer("wall_opaque"); setVisibility(v => ({ ...v, wall_opaque: true })); if (tool === "select") setTool("add_rect"); }}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                addType === "wall_opaque" ? "border-blue-500/40 bg-blue-500/10 text-blue-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-              <Building2 className={cn("w-4 h-4 shrink-0", "text-blue-400")} />
+                addType === "wall_opaque" ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Building2 className={cn("w-4 h-4 shrink-0", "text-green-400")} />
               <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
             </button>
 
@@ -887,7 +887,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 {visibility.window && masks.mask_window && (
                   <div className="absolute inset-0 pointer-events-none" style={{
                     backgroundColor: TYPE_COLORS.window,
-                    opacity: 0.45,
+                    opacity: 0.7,
                     WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     maskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
@@ -939,7 +939,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 {visibility.wall_opaque && wallSvgPath && imgNat.w > 0 && (
                   <svg className="absolute inset-0 w-full h-full pointer-events-none"
                     viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMidYMid meet" style={{ zIndex: 0 }}>
-                    <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.35} />
+                    <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
                   </svg>
                 )}
 
