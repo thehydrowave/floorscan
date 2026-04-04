@@ -1778,10 +1778,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <Hash className="w-3 h-3" /> Comptage
             </button>
 
-            {/* ppm display when measuring */}
-            {(tool === "linear" || tool === "rescale") && ppm && (
-              <span className="text-[10px] text-slate-500 font-mono ml-1">
-                {ppm.toFixed(1)} px/m
+            {/* Measurement info */}
+            {tool === "linear" && !ppm && (
+              <span className="text-[10px] text-amber-400 ml-1">⚠ Calibrez l'échelle pour afficher en mètres</span>
+            )}
+            {tool === "linear" && ppm && linearMeasures.length > 0 && (
+              <span className="text-[10px] text-sky-400 font-mono ml-1">
+                Total : {linearMeasures.reduce((s, lm) => s + (lm.distPx / ppm), 0).toFixed(2)} m
               </span>
             )}
           </div>
