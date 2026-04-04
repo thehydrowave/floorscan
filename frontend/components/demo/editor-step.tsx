@@ -134,6 +134,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [showDoors, setShowDoors] = useState(true);
   const [showWindows, setShowWindows] = useState(true);
   const [showFrenchDoors, setShowFrenchDoors] = useState(false);
+  const [showCloisons, setShowCloisons] = useState(false);
   const [showSurfaces, setShowSurfaces] = useState(true);
 
   // Mask edit undo/redo lengths
@@ -172,7 +173,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     setShowDoors(layer === "door");
     setShowWindows(layer === "window");
     setShowFrenchDoors(layer === "french_door");
-    setShowWalls(layer === "wall" || layer === "cloison");
+    setShowWalls(layer === "wall");
+    setShowCloisons(layer === "cloison");
     setShowRooms(layer === "rooms");
     // Réinitialisation outil
     if (layer === "rooms") {
@@ -1588,6 +1590,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               { key: "windows",      Icon: AppWindow,        active: "border-cyan-500/30 bg-cyan-500/10",       iconColor: "text-cyan-400",    show: showWindows,      set: setShowWindows,      title: d("ed_windows") },
               { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10",  iconColor: "text-orange-400",  show: showFrenchDoors,  set: setShowFrenchDoors,  title: "Portes-fenêtres" },
               { key: "walls",        Icon: BrickWall,        active: "border-amber-500/30 bg-amber-500/10",    iconColor: "text-amber-400",   show: showWalls,        set: setShowWalls,        title: d("ed_concrete") },
+              { key: "cloisons",    Icon: SeparatorVertical, active: "border-blue-500/30 bg-blue-500/10",      iconColor: "text-blue-400",    show: showCloisons,    set: setShowCloisons,    title: d("ed_partitions") },
               { key: "rooms",        Icon: LayoutGrid,       active: "border-emerald-500/30 bg-emerald-500/10",iconColor: "text-emerald-400", show: showRooms,        set: setShowRooms,        title: d("ed_rooms") },
             ] as const).map(({ key, Icon, active, iconColor, show, set, title }) => (
               <button key={key} onClick={() => set((v: boolean) => !v)} title={title}
@@ -2061,7 +2064,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
 
               {/* Overlay Murs béton (RGBA PNG) — affiché quand couche béton active */}
-              {layer === "wall" && result.mask_walls_pixel_b64 && (
+              {(showWalls || layer === "wall") && result.mask_walls_pixel_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_walls_pixel_b64}`}
                   alt=""
@@ -2071,7 +2074,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
 
               {/* Overlay Cloisons (RGBA PNG) — affiché quand couche cloison active */}
-              {layer === "cloison" && result.mask_cloisons_b64 && (
+              {(showCloisons || layer === "cloison") && result.mask_cloisons_b64 && (
                 <img
                   src={`data:image/png;base64,${result.mask_cloisons_b64}`}
                   alt=""
