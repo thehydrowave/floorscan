@@ -20,7 +20,7 @@ function RatioArc({ pct, size = 72 }: { pct: number; size?: number }) {
   const c = size / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - Math.min(pct, 100) / 100);
-  const color = pct >= 15 && pct <= 25 ? "#34d399" : pct > 40 ? "#f87171" : "#fbbf24";
+  const color = pct >= 15 && pct <= 25 ? "#34d399" : pct > 40 ? "#f87171" : "#ec4899";
 
   return (
     <svg width={size} height={size} className="flex-shrink-0">
@@ -69,14 +69,14 @@ function HBar({ label, value, maxValue, color }: { label: string; value: number;
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<FacadeElementType, string> = {
-  window: "#fbbf24",
+  window: "#ec4899",
   door: "#f472b6",
   balcony: "#34d399",
-  floor_line: "#fbbf24",
+  floor_line: "#fb923c",
   roof: "#a78bfa",
-  column: "#fb923c",
-  other: "#94a3b8",
-  wall_opaque: "#64748b",
+  column: "#94a3b8",
+  other: "#ec4899",
+  wall_opaque: "#22c55e",
 };
 
 const TYPE_LABELS_FR: Record<FacadeElementType, string> = {
@@ -232,7 +232,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                 <KpiCard
                   label={isFr ? "Fenêtres" : "Windows"}
                   value={windowsCount.toString()}
-                  color="#fbbf24"
+                  color="#ec4899"
                   icon="🪟"
                 />
                 <KpiCard
@@ -290,7 +290,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           className="h-full transition-all"
                           style={{
                             width: `${facadeArea > 0 ? (wallArea / facadeArea) * 100 : 50}%`,
-                            backgroundColor: "#64748b",
+                            backgroundColor: "#22c55e",
                             minWidth: "2px",
                           }}
                           title={`${isFr ? "Surface murale" : "Wall area"}: ${wallArea.toFixed(1)} m²`}
@@ -299,7 +299,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           className="h-full transition-all"
                           style={{
                             width: `${facadeArea > 0 ? (openingsArea / facadeArea) * 100 : 50}%`,
-                            backgroundColor: "#fbbf24",
+                            backgroundColor: "#ec4899",
                             minWidth: "2px",
                           }}
                           title={`${isFr ? "Ouvertures" : "Openings"}: ${openingsArea.toFixed(1)} m²`}
@@ -313,7 +313,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           <span className="text-slate-600 font-mono">{wallArea.toFixed(1)} m²</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "#fbbf24" }} />
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "#ec4899" }} />
                           <span className="text-slate-400">{isFr ? "Ouvertures" : "Openings"}</span>
                           <span className="text-slate-600 font-mono">{openingsArea.toFixed(1)} m²</span>
                         </div>
