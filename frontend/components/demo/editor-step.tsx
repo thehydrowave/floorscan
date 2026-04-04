@@ -339,6 +339,58 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     });
   }, []);
 
+  /** Zoom + pan to focus on a specific layer's detected elements */
+  const zoomToLayerElements = useCallback((layerType: string) => {
+    requestAnimationFrame(() => {
+      const container = zoomContainerRef.current;
+      const img = imgRef.current;
+      if (!container || !img || img.offsetWidth === 0 || imageNatural.w === 0) return;
+
+      // Map layer type to mask/data: find bounding box of all elements of that type
+      let bbox: { x: number; y: number; w: number; h: number } | null = null;
+
+      // Check rooms
+      if (layerType === "rooms" && result.rooms && result.rooms.length > 0) {
+        const allPts = result.rooms.flatMap(r => r.polygon_norm ?? [{ x: r.centroid_norm.x, y: r.centroid_norm.y }]);
+        if (allPts.length > 0) {
+          const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y);
+          bbox = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+        }
+      }
+
+      // For mask-based layers (door, window, etc), we can't get a precise bbox from the mask image
+      // So just reset to fit view — the mask overlay will be visible
+      if (!bbox) { fitToView(); return; }
+
+      // Compute zoom to fit the bbox with padding
+      const pad = 60;
+      const imgW = img.offsetWidth;
+      const imgH = img.offsetHeight;
+      const containerW = container.clientWidth;
+      const containerH = container.clientHeight;
+
+      // Bbox in image pixel space
+      const bxPx = bbox.x * imgW, byPx = bbox.y * imgH;
+      const bwPx = bbox.w * imgW, bhPx = bbox.h * imgH;
+
+      if (bwPx < 5 || bhPx < 5) { fitToView(); return; }
+
+      const newZoom = Math.min(
+        (containerW - pad * 2) / bwPx,
+        (containerH - pad * 2) / bhPx,
+        5, // max zoom
+      );
+      const newZoomClamped = Math.max(0.5, newZoom);
+
+      // Center of bbox in image space (relative to image center)
+      const bCx = (bxPx + bwPx / 2) - imgW / 2;
+      const bCy = (byPx + bhPx / 2) - imgH / 2;
+
+      setZoom(newZoomClamped);
+      setTranslate({ x: -bCx * newZoomClamped, y: -bCy * newZoomClamped });
+    });
+  }, [imageNatural.w, result.rooms, fitToView]);
+
   // ── Wheel zoom centered on cursor (same behavior as Survey canvas) ──
   const handleWheelZoom = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -1685,7 +1737,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {sep && <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />}
                   <button
                     data-tuto={l === "rooms" ? "rooms-btn" : l === "surface" ? "surface-btn" : l === "utilities" ? "tools-btn" : undefined}
-                    onClick={() => { setLayer(layer === l ? null : l); if (l === "surface" && layer !== "surface") setTool("add_poly"); if (l === "utilities" && layer !== "utilities") setTool("linear"); if (l === "rooms" && layer !== "rooms") setSidebarTab("rooms"); if (l === "door" || l === "window") setSidebarTab("visibility"); }}
+                    onClick={() => { const selecting = layer !== l; setLayer(layer === l ? null : l); if (l === "surface" && selecting) setTool("add_poly"); if (l === "utilities" && selecting) setTool("linear"); if (l === "rooms" && selecting) { setSidebarTab("rooms"); zoomToLayerElements("rooms"); } if ((l === "door" || l === "window" || l === "french_door") && selecting) { setSidebarTab("visibility"); zoomToLayerElements(l); } }}
                     title={m.tooltip}
                     className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                       layer === l ? cn(m.active, m.iconColor) : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
