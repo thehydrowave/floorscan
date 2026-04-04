@@ -40,9 +40,10 @@ interface AnalyzeStepProps {
   onAnalyzed: (result: AnalysisResult) => void;
   onSessionExpired?: () => void;
   onBack?: () => void;
+  detectionRoi?: { x: number; y: number; w: number; h: number } | null;
 }
 
-export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSessionExpired, onBack }: AnalyzeStepProps) {
+export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSessionExpired, onBack, detectionRoi }: AnalyzeStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
@@ -98,6 +99,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
           conf_min_door: 0.05,
           conf_min_win: 0.15,
           wall_thickness_m: 0.20,
+          detection_roi: detectionRoi ?? null,
         }),
       });
 

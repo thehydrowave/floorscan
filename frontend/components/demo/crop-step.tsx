@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { RotateCcw, ArrowRight, Loader2, ChevronLeft, PlusCircle, Trash2, Building2, Crop, ZoomIn, ZoomOut } from "lucide-react";
+import { RotateCcw, ArrowRight, Loader2, ChevronLeft, PlusCircle, Trash2, Building2, Crop, ZoomIn, ZoomOut, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { useLang } from "@/lib/lang-context";
@@ -29,6 +29,9 @@ interface CropStepProps {
   showFacadeDelimitation?: boolean;
   initialFacadeZones?: FacadeZoneCrop[];
   onFacadeZonesChange?: (zones: FacadeZoneCrop[]) => void;
+  /* Detection zone for AI Analysis (optional rectangle) */
+  showDetectionZone?: boolean;
+  onDetectionZoneChange?: (zone: { x: number; y: number; w: number; h: number } | null) => void;
 }
 
 // x, y, w, h in % of the rendered image
@@ -48,6 +51,7 @@ function polygonAreaNorm(pts: Array<{ x: number; y: number }>): number {
 export default function CropStep({
   sessionId, imageB64, onCropped, onSkip, onSessionExpired, onBack,
   showFacadeDelimitation, initialFacadeZones, onFacadeZonesChange,
+  showDetectionZone, onDetectionZoneChange,
 }: CropStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -66,10 +70,14 @@ export default function CropStep({
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const draggingPtRef = useRef<{ zoneId: number; ptIdx: number } | null>(null);
   const [isDraggingPt, setIsDraggingPt] = useState(false);
-  // "crop" mode = draw crop rectangle, "facade" mode = click points for facade zones
-  const [activeMode, setActiveMode] = useState<"crop" | "facade">(showFacadeDelimitation ? "facade" : "crop");
+  // "crop" mode = draw crop rectangle, "facade" mode = click points for facade zones, "detection" mode = detection zone rectangle
+  const [activeMode, setActiveMode] = useState<"crop" | "facade" | "detection">(showFacadeDelimitation ? "facade" : "crop");
   // Facade draw sub-mode: "4pts" = auto-close after 4, "polygon" = free clicks, close on 1st point
   const [facadeDrawMode, setFacadeDrawMode] = useState<"4pts" | "polygon">("4pts");
+  // Detection zone (rectangle, normalized 0-1)
+  const [detectionZone, setDetectionZone] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [drawingDetZone, setDrawingDetZone] = useState(false);
+  const detZoneStartRef = useRef({ px: 0, py: 0 });
 
   /* ── Zoom & pan state ── */
   const [zoom, setZoom] = useState(1);
@@ -251,6 +259,16 @@ export default function CropStep({
       return;
     }
 
+    // Detection zone mode: draw rectangle for AI detection area
+    if (activeMode === "detection") {
+      e.preventDefault();
+      const pt = toNorm(e.clientX, e.clientY);
+      detZoneStartRef.current = { px: pt.x, py: pt.y };
+      setDetectionZone({ x: pt.x, y: pt.y, w: 0, h: 0 });
+      setDrawingDetZone(true);
+      return;
+    }
+
     // Default: crop rectangle mode
     e.preventDefault();
     const { px, py } = toPct(e.clientX, e.clientY);
@@ -278,6 +296,32 @@ export default function CropStep({
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [isDrawing, toPct]);
+
+  // Detection zone rectangle drawing
+  useEffect(() => {
+    if (!drawingDetZone) return;
+    const onMove = (e: MouseEvent) => {
+      const pt = toNorm(e.clientX, e.clientY);
+      const sx = detZoneStartRef.current.px;
+      const sy = detZoneStartRef.current.py;
+      const zone = {
+        x: Math.min(sx, pt.x),
+        y: Math.min(sy, pt.y),
+        w: Math.abs(pt.x - sx),
+        h: Math.abs(pt.y - sy),
+      };
+      setDetectionZone(zone);
+    };
+    const onUp = () => {
+      setDrawingDetZone(false);
+      if (detectionZone && detectionZone.w > 0.01 && detectionZone.h > 0.01) {
+        onDetectionZoneChange?.(detectionZone);
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [drawingDetZone, toNorm, detectionZone, onDetectionZoneChange]);
 
   // Facade polygon corner dragging
   useEffect(() => {
@@ -373,21 +417,48 @@ export default function CropStep({
         </p>
       </div>
 
-      {/* Mode toggle (only for facade) */}
-      {showFacadeDelimitation && (
+      {/* Mode toggle */}
+      {(showFacadeDelimitation || showDetectionZone) && (
         <div className="flex items-center justify-center gap-2 mb-4">
           <button
-            onClick={() => { setActiveMode("crop"); setDrawingFacade(false); setPendingPts([]); }}
+            onClick={() => { setActiveMode("crop"); setDrawingFacade(false); setPendingPts([]); setDrawingDetZone(false); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "crop" ? "bg-cyan-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
           >
-            <Crop className="w-3.5 h-3.5" /> {d("cr_crop_mode" as DTKey)} <span className="opacity-60">(optionnel)</span>
+            <Crop className="w-3.5 h-3.5" /> {d("cr_crop_mode" as DTKey)} {showFacadeDelimitation && <span className="opacity-60">(optionnel)</span>}
           </button>
-          <button
-            onClick={() => setActiveMode("facade")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "facade" ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
-          >
-            <Building2 className="w-3.5 h-3.5" /> {d("cr_facade_mode" as DTKey)} <span className="text-red-400">*</span>
-          </button>
+          {showFacadeDelimitation && (
+            <button
+              onClick={() => setActiveMode("facade")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "facade" ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
+            >
+              <Building2 className="w-3.5 h-3.5" /> {d("cr_facade_mode" as DTKey)} <span className="text-red-400">*</span>
+            </button>
+          )}
+          {showDetectionZone && (
+            <button
+              onClick={() => { setActiveMode("detection"); setDrawingDetZone(false); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "detection" ? "bg-violet-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
+            >
+              <ScanLine className="w-3.5 h-3.5" /> Zone de détection <span className="opacity-60">(optionnel)</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Detection zone info */}
+      {showDetectionZone && activeMode === "detection" && (
+        <div className="flex items-center gap-3 mb-4 glass border border-violet-500/20 rounded-xl px-4 py-3">
+          <ScanLine className="w-4 h-4 text-violet-400 shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs text-violet-300 font-medium">Dessinez un rectangle pour limiter la zone de détection IA</p>
+            <p className="text-[10px] text-slate-500">L'image complète est conservée. Seule cette zone sera analysée.</p>
+          </div>
+          {detectionZone && (
+            <button onClick={() => { setDetectionZone(null); onDetectionZoneChange?.(null); }}
+              className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1 border border-white/10 rounded-lg">
+              Effacer
+            </button>
+          )}
         </div>
       )}
 
@@ -652,6 +723,32 @@ export default function CropStep({
                   {facadeDrawMode === "4pts" ? `${pendingPts.length}/4` : `${pendingPts.length} pts`}
                 </text>
               </g>
+            );
+          })()}
+          {/* ── Detection zone rectangle ── */}
+          {detectionZone && detectionZone.w > 0.005 && detectionZone.h > 0.005 && (() => {
+            const bounds = getRenderedImageBounds();
+            if (!bounds) return null;
+            const bw = bounds.width, bh = bounds.height;
+            const rx = detectionZone.x * bw;
+            const ry = detectionZone.y * bh;
+            const rw = detectionZone.w * bw;
+            const rh = detectionZone.h * bh;
+            return (
+              <>
+                <defs>
+                  <mask id="det-zone-mask">
+                    <rect width="100%" height="100%" fill="white" />
+                    <rect x={rx} y={ry} width={rw} height={rh} fill="black" />
+                  </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(139,92,246,0.15)" mask="url(#det-zone-mask)" />
+                <rect x={rx} y={ry} width={rw} height={rh}
+                  fill="none" stroke="#8B5CF6" strokeWidth={2} strokeDasharray="6 3" />
+                <text x={rx + 6} y={ry + 14} fill="#8B5CF6" fontSize={11} fontWeight={600} fontFamily="system-ui">
+                  Zone de détection
+                </text>
+              </>
             );
           })()}
         </svg>

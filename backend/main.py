@@ -277,6 +277,9 @@ class AnalyzeRequest(BaseModel):
     conf_min_win: float = 0.15
     wall_thickness_m: float = 0.20
     pipeline_mode: str = "bestof"  # "default" = single model A, "bestof" = A+D combined
+    # Optional detection zone: only this area is sent to AI, results remapped to full image
+    # {x, y, w, h} normalized [0-1] in the original image
+    detection_roi: Optional[dict] = None
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest):
@@ -285,7 +288,30 @@ def analyze(req: AnalyzeRequest):
         raise HTTPException(404, "Session introuvable")
 
     img_rgb = s["img_rgb"]
+    full_H, full_W = img_rgb.shape[:2]
     ppm = req.pixels_per_meter or s.get("pixels_per_meter")
+
+    # ── Optional detection ROI: crop before analysis, remap after ──
+    roi = req.detection_roi
+    roi_applied = False
+    roi_x0 = roi_y0 = 0
+    roi_w = full_W
+    roi_h = full_H
+    if roi and all(k in roi for k in ("x", "y", "w", "h")):
+        rx, ry, rw, rh = float(roi["x"]), float(roi["y"]), float(roi["w"]), float(roi["h"])
+        if rw > 0.01 and rh > 0.01:
+            roi_x0 = max(0, int(rx * full_W))
+            roi_y0 = max(0, int(ry * full_H))
+            roi_x1 = min(full_W, int((rx + rw) * full_W))
+            roi_y1 = min(full_H, int((ry + rh) * full_H))
+            roi_w = roi_x1 - roi_x0
+            roi_h = roi_y1 - roi_y0
+            if roi_w > 10 and roi_h > 10:
+                img_rgb = img_rgb[roi_y0:roi_y1, roi_x0:roi_x1].copy()
+                if ppm:
+                    # ppm stays the same (same image, just cropped)
+                    pass
+                roi_applied = True
 
     cfg = dict(pipeline.DEFAULT_CONFIG)
     cfg["api_key"]          = req.roboflow_api_key
@@ -299,6 +325,108 @@ def analyze(req: AnalyzeRequest):
         result = pipeline.run_analysis(img_rgb, pixels_per_meter=ppm, cfg=cfg)
     except Exception as e:
         raise HTTPException(500, f"Erreur analyse : {e}")
+
+    # ── If detection ROI was applied, remap everything to full image coords ──
+    if roi_applied:
+        import cv2
+        full_img = s["img_rgb"]  # original full image
+        # Helper: embed a small mask into a full-size black canvas
+        def _embed_mask(small_mask):
+            if small_mask is None or small_mask.size == 0:
+                return np.zeros((full_H, full_W), dtype=np.uint8)
+            if small_mask.ndim == 3:  # RGBA
+                canvas = np.zeros((full_H, full_W, small_mask.shape[2]), dtype=np.uint8)
+                canvas[roi_y0:roi_y0+small_mask.shape[0], roi_x0:roi_x0+small_mask.shape[1]] = small_mask
+            else:
+                canvas = np.zeros((full_H, full_W), dtype=np.uint8)
+                canvas[roi_y0:roi_y0+small_mask.shape[0], roi_x0:roi_x0+small_mask.shape[1]] = small_mask
+            return canvas
+
+        # Remap internal masks
+        for mkey in ["_m_doors", "_m_windows", "_m_walls_ai", "_m_walls_pixel", "_m_cloisons", "_m_french_doors"]:
+            if mkey in result:
+                result[mkey] = _embed_mask(np.array(result[mkey], dtype=np.uint8))
+        if "_walls" in result:
+            result["_walls"] = _embed_mask(np.array(result["_walls"], dtype=np.uint8))
+        if "_mask_rooms_rgba" in result:
+            result["_mask_rooms_rgba"] = _embed_mask(np.array(result["_mask_rooms_rgba"]))
+
+        # Remap base64 mask images (re-encode from embedded)
+        def _encode_mask_b64(arr):
+            if arr is None or arr.size == 0:
+                return None
+            from io import BytesIO
+            from PIL import Image as PILImage
+            im = PILImage.fromarray(arr)
+            buf = BytesIO()
+            im.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode()
+
+        for bkey in ["mask_doors_b64", "mask_windows_b64", "mask_walls_ai_b64", "mask_walls_pixel_b64",
+                      "mask_cloisons_b64", "mask_french_doors_b64", "mask_rooms_b64"]:
+            if bkey in result and result[bkey]:
+                # Decode, embed, re-encode
+                raw = base64.b64decode(result[bkey])
+                small = np.array(PILImage.open(BytesIO(raw)))
+                full = _embed_mask(small)
+                result[bkey] = _encode_mask_b64(full)
+
+        # Remap overlay images (RGBA)
+        for okey in ["overlay_openings_b64", "plan_b64"]:
+            if okey in result and result[okey]:
+                raw = base64.b64decode(result[okey])
+                small = np.array(PILImage.open(BytesIO(raw)))
+                if okey == "plan_b64":
+                    # plan_b64 should be the FULL original image
+                    buf = BytesIO()
+                    PILImage.fromarray(full_img).save(buf, format="PNG")
+                    result[okey] = base64.b64encode(buf.getvalue()).decode()
+                else:
+                    full_overlay = _embed_mask(small)
+                    result[okey] = _encode_mask_b64(full_overlay)
+
+        # Remap opening bounding boxes (normalized to crop → normalized to full image)
+        if "openings" in result:
+            for op in result["openings"]:
+                if "x_px" in op:
+                    op["x_px"] = op["x_px"] + roi_x0
+                    op["y_px"] = op["y_px"] + roi_y0
+                if "bbox_norm" in op:
+                    bn = op["bbox_norm"]
+                    bn["x"] = (bn["x"] * roi_w + roi_x0) / full_W
+                    bn["y"] = (bn["y"] * roi_h + roi_y0) / full_H
+                    bn["w"] = bn["w"] * roi_w / full_W
+                    bn["h"] = bn["h"] * roi_h / full_H
+
+        # Remap rooms
+        if "rooms" in result:
+            for room in result["rooms"]:
+                if "centroid_norm" in room:
+                    c = room["centroid_norm"]
+                    c["x"] = (c["x"] * roi_w + roi_x0) / full_W
+                    c["y"] = (c["y"] * roi_h + roi_y0) / full_H
+                if "bbox_norm" in room:
+                    bn = room["bbox_norm"]
+                    bn["x"] = (bn["x"] * roi_w + roi_x0) / full_W
+                    bn["y"] = (bn["y"] * roi_h + roi_y0) / full_H
+                    bn["w"] = bn["w"] * roi_w / full_W
+                    bn["h"] = bn["h"] * roi_h / full_H
+                if "polygon_norm" in room and room["polygon_norm"]:
+                    room["polygon_norm"] = [
+                        {"x": (p["x"] * roi_w + roi_x0) / full_W, "y": (p["y"] * roi_h + roi_y0) / full_H}
+                        for p in room["polygon_norm"]
+                    ]
+
+        # Remap walls
+        if "walls" in result and isinstance(result.get("walls"), list):
+            for w in result["walls"]:
+                for k in ["x1_norm", "x2_norm"]:
+                    if k in w: w[k] = (w[k] * roi_w + roi_x0) / full_W
+                for k in ["y1_norm", "y2_norm"]:
+                    if k in w: w[k] = (w[k] * roi_h + roi_y0) / full_H
+
+        # Store detection_roi in result for frontend reference
+        result["detection_roi"] = {"x": roi_x0/full_W, "y": roi_y0/full_H, "w": roi_w/full_W, "h": roi_h/full_H}
 
     # Stocker les masques bruts + masque intérieur pour édition
     interior_mask = result.get("surfaces", {}).get("interior_mask")
