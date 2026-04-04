@@ -629,6 +629,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           facadeAreaOverride={totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : null}
           imgSize={imgNat}
         />
+        <div className="mt-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="font-medium">Rappel : Attention à la gestion des ponts thermiques</span>
+        </div>
       </div>
 
       {/* ── Dashboard Overview ── */}

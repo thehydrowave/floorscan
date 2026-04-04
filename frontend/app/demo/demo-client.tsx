@@ -281,7 +281,7 @@ export default function DemoClient() {
                   {step===2&&<UploadStep onUploaded={handleUploaded}/>}
                   {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={(cropBox)=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped(cropBox);}} onSkip={()=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped();}} onSessionExpired={handleRestart} onBack={handleBack} showFacadeDelimitation initialFacadeZones={facadeZones} onFacadeZonesChange={setFacadeZones}/>}
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
-                  {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} onAnalyzed={handleFacadeAnalyzed} onBack={handleBack}/>}
+                  {step===5&&sessionId&&uploadedImageB64&&config&&<FacadeAnalyzeStep sessionId={sessionId} imageB64={uploadedImageB64} apiKey={config.apiKey} ppm={ppm} facadeZones={facadeZones} onAnalyzed={handleFacadeAnalyzed} onBack={handleBack}/>}
                   {step===6&&facadeResult&&<FacadeResultsStep result={facadeResult} onGoEditor={handleFacadeGoEditor} onRestart={handleRestart} onBack={()=>setStep(5)} initialFacadeZones={facadeZones}/>}
                   {step===7&&facadeResult&&<FacadeEditorStep result={facadeResult} onGoResults={handleFacadeGoResults} onRestart={handleRestart} initialFacadeZones={facadeZones}/>}
                 </motion.div>

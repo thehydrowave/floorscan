@@ -35,11 +35,17 @@ const STAGES: Stage[] = [
 // Timing schedule: when each stage starts (seconds)
 const STAGE_TIMINGS = [0, 3, 8, 16, 24];
 
+interface FacadeZoneCrop {
+  id: number;
+  pts: Array<{ x: number; y: number }>;
+}
+
 interface FacadeAnalyzeStepProps {
   sessionId: string;
   imageB64: string;
   apiKey: string;
   ppm?: number | null;
+  facadeZones?: FacadeZoneCrop[];
   onAnalyzed: (result: FacadeAnalysisResult) => void;
   onBack?: () => void;
 }
@@ -180,7 +186,7 @@ interface RoiRect { x: number; y: number; w: number; h: number }
 interface DragState { startX: number; startY: number }
 
 export default function FacadeAnalyzeStep({
-  sessionId, imageB64, apiKey, ppm, onAnalyzed, onBack,
+  sessionId, imageB64, apiKey, ppm, facadeZones, onAnalyzed, onBack,
 }: FacadeAnalyzeStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -304,6 +310,9 @@ export default function FacadeAnalyzeStep({
           pixels_per_meter: ppm ?? null,
           confidence: 0.15,
           building_roi: (roiEnabled && roi) ? roi : null,
+          facade_zones: facadeZones && facadeZones.length > 0
+            ? facadeZones.map(z => ({ id: z.id, pts: z.pts }))
+            : null,
         }),
       });
 
