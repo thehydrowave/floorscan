@@ -179,24 +179,14 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
 
               {/* Summary pills */}
               <div className="flex flex-wrap gap-2 justify-center">
-                <span className="text-xs px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 flex items-center gap-1.5">
-                  <Layers className="w-3 h-3 text-accent" />
-                  Multi-scale (2048 + 1024 px)
-                </span>
-                <span className="text-xs px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 flex items-center gap-1.5">
-                  <Brain className="w-3 h-3 text-cyan-400" />
-                  {d("an_step_detect")}
+                <span className="text-xs px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
+                  <Brain className="w-3 h-3 text-accent" />
+                  {d("an_step_detect")} + {d("an_step_walls")} + {d("an_step_rooms")}
                 </span>
                 {ppm && (
                   <span className="text-xs px-3 py-1.5 rounded-full bg-accent-green/10 border border-accent-green/20 text-accent-green flex items-center gap-1.5">
                     <CheckCircle2 className="w-3 h-3" />
-                    {d("st_scale")} : {ppm.toFixed(1)} px/m
-                  </span>
-                )}
-                {!ppm && (
-                  <span className="text-xs px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-400 flex items-center gap-1.5">
-                    <ScanLine className="w-3 h-3 text-amber-400" />
-                    {d("an_auto")}
+                    {d("st_scale")}  ✓
                   </span>
                 )}
               </div>
@@ -226,7 +216,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
                 </Button>
               </div>
 
-              <p className="text-slate-600 text-xs text-center">{d("an_tip")}</p>
+              <p className="text-slate-400 text-sm text-center">{d("an_tip")}</p>
             </motion.div>
           )}
 
