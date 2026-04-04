@@ -48,11 +48,14 @@ function clearSession() { try{localStorage.removeItem(SESSION_STORAGE_KEY);}catc
 const FACADE_STEP_ICONS=[KeyRound,Upload,Crop,Ruler,Brain,BarChart3,PenSquare];
 const FACADE_STEP_KEYS:DTKey[]=["fa_st_connect","fa_st_upload","fa_st_crop","fa_st_scale","fa_st_analyze","fa_st_results","fa_st_editor"];
 
-function FacadeStepper({currentStep,lang,onStepClick}:{currentStep:number;lang:string;onStepClick?:(step:number)=>void}) {
+function FacadeStepper({currentStep,lang,onStepClick,skipConnect}:{currentStep:number;lang:string;onStepClick?:(step:number)=>void;skipConnect?:boolean}) {
   const d=(key:DTKey)=>dt(key,lang as any);
+  const icons=skipConnect?FACADE_STEP_ICONS.slice(1):FACADE_STEP_ICONS;
+  const keys=skipConnect?FACADE_STEP_KEYS.slice(1):FACADE_STEP_KEYS;
+  const stepOffset=skipConnect?1:0;
   return (
     <div className="flex items-center w-full max-w-3xl mx-auto">
-      {FACADE_STEP_ICONS.map((Icon,index)=>{const sn=index+1;const isActive=sn===currentStep;const isDone=sn<currentStep;const isLast=index===FACADE_STEP_ICONS.length-1;const isClickable=isDone&&!!onStepClick;return(<div key={index} className="flex items-center flex-1"><div className={cn("flex flex-col items-center gap-1.5 flex-shrink-0",isClickable&&"cursor-pointer")} onClick={isClickable?()=>onStepClick(sn):undefined}><div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",isActive&&"step-active text-white",isDone&&"step-done text-accent-green",!isActive&&!isDone&&"step-inactive text-slate-500")}>{isDone?<Check className="w-3.5 h-3.5"/>:<Icon className="w-3.5 h-3.5"/>}</div><span className={cn("text-xs font-medium transition-colors hidden sm:block",isActive&&"text-white",isDone&&"text-accent-green",!isActive&&!isDone&&"text-slate-600")}>{d(FACADE_STEP_KEYS[index])}</span></div>{!isLast&&<div className={cn("flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",isDone?"bg-accent-green/40":"bg-white/5")}/>}</div>);})}
+      {icons.map((Icon,index)=>{const sn=index+1+stepOffset;const isActive=sn===currentStep;const isDone=sn<currentStep;const isLast=index===icons.length-1;const isClickable=isDone&&!!onStepClick;return(<div key={index} className="flex items-center flex-1"><div className={cn("flex flex-col items-center gap-1.5 flex-shrink-0",isClickable&&"cursor-pointer")} onClick={isClickable?()=>onStepClick(sn):undefined}><div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",isActive&&"step-active text-white",isDone&&"step-done text-accent-green",!isActive&&!isDone&&"step-inactive text-slate-500")}>{isDone?<Check className="w-3.5 h-3.5"/>:<Icon className="w-3.5 h-3.5"/>}</div><span className={cn("text-xs font-medium transition-colors hidden sm:block",isActive&&"text-white",isDone&&"text-accent-green",!isActive&&!isDone&&"text-slate-600")}>{d(keys[index])}</span></div>{!isLast&&<div className={cn("flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",isDone?"bg-accent-green/40":"bg-white/5")}/>}</div>);})}
     </div>
   );
 }
@@ -145,7 +148,7 @@ export default function DemoClient() {
           {demoMode!==null&&(
             <div className="flex items-center gap-1 glass border border-white/10 rounded-xl p-1">
               {([{key:"ia",icon:BrainCircuit,label:d("sel_ia_title"),active:"bg-accent",adminOnly:false},{key:"measure",icon:PenLine,label:d("sel_met_title"),active:"bg-accent",adminOnly:false},{key:"chantier",icon:ClipboardList,label:"Chantier",active:"bg-orange-600",adminOnly:false},{key:"facade",icon:Building2,label:d("sel_fa_title"),active:"bg-amber-600",adminOnly:false},{key:"diff",icon:GitCompare,label:d("sel_di_title"),active:"bg-teal-600",adminOnly:true},{key:"cartouche",icon:FileSearch,label:d("sel_ca_title"),active:"bg-violet-600",adminOnly:true}] as const).filter(({adminOnly})=>!adminOnly||isAdmin).map(({key,icon:Icon,label,active})=>(
-                <button key={key} onClick={()=>key==="ia"?selectIaMode():setDemoMode(key as any)} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",demoMode===key?`${active} text-white shadow-sm`:"text-slate-400 hover:text-white")}>
+                <button key={key} onClick={()=>{if(key==="ia"){selectIaMode();}else if(key==="facade"&&!isAdmin){setDemoMode("facade");setConfig(DEFAULT_CONFIG);setStep(2);}else{setDemoMode(key as any);}}} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",demoMode===key?`${active} text-white shadow-sm`:"text-slate-400 hover:text-white")}>
                   <Icon className="w-3.5 h-3.5"/><span className="hidden sm:inline">{label}</span>
                 </button>
               ))}
@@ -185,7 +188,7 @@ export default function DemoClient() {
                   <div className="relative"><div className="flex items-center gap-3 mb-6"><div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow"><ClipboardList className="w-7 h-7 text-white"/></div><span className="text-[10px] bg-orange-500/20 border border-orange-500/30 rounded px-1.5 py-0.5 font-semibold text-orange-400 leading-none uppercase tracking-wider">WIP</span></div><h2 className="font-display text-2xl font-700 text-white mb-3">Suivi de chantier</h2><p className="text-slate-400 text-sm leading-relaxed mb-6">Avancement · Inventaire · Réserves · Planning · Budget · Documents</p><div className="flex flex-wrap gap-2 mb-6">{["Par pièce","Portes & fenêtres IA","Gantt","Budget","Documents"].map(tag=><span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>)}</div><div className="flex items-center gap-2 text-orange-400 text-sm font-medium group-hover:gap-3 transition-all">{d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180"/></div></div>
                 </button>
 
-                <button onClick={()=>setDemoMode("facade")} className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all duration-300 overflow-hidden">
+                <button onClick={()=>{setDemoMode("facade");if(!isAdmin){setConfig(DEFAULT_CONFIG);setStep(2);}}} className="group relative text-left glass border border-white/10 rounded-3xl p-8 hover:border-amber-500/40 hover:bg-amber-500/5 transition-all duration-300 overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl"/>
                   <div className="relative"><div className="flex items-center gap-3 mb-6"><div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow"><Building2 className="w-7 h-7 text-white"/></div><span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1.5 py-0.5 font-semibold text-amber-400 leading-none uppercase tracking-wider">{d("fa_wip")}</span></div><h2 className="font-display text-2xl font-700 text-white mb-3">{d("sel_fa_title")}</h2><p className="text-slate-400 text-sm leading-relaxed mb-6">{d("sel_fa_desc")}</p><div className="flex flex-wrap gap-2 mb-6">{[d("fa_windows"),d("fa_doors"),d("fa_balconies"),d("fa_floors"),"Export CSV"].map(tag=><span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400">{tag}</span>)}</div><div className="flex items-center gap-2 text-amber-400 text-sm font-medium group-hover:gap-3 transition-all">{d("sel_start")} <ArrowLeft className="w-4 h-4 rotate-180"/></div></div>
                 </button>
@@ -271,10 +274,10 @@ export default function DemoClient() {
 
           {demoMode==="facade"&&(
             <motion.div key="facade" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-8}} transition={{duration:0.2}}>
-              <div className="mb-10"><FacadeStepper currentStep={step} lang={lang} onStepClick={handleStepClick}/></div>
+              <div className="mb-10"><FacadeStepper currentStep={step} lang={lang} onStepClick={handleStepClick} skipConnect={!isAdmin}/></div>
               <AnimatePresence mode="wait">
                 <motion.div key={step} initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:0.25}}>
-                  {step===1&&<ConnectStep onConnected={handleConnected}/>}
+                  {step===1&&isAdmin&&<ConnectStep onConnected={handleConnected}/>}
                   {step===2&&<UploadStep onUploaded={handleUploaded}/>}
                   {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={(cropBox)=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped(cropBox);}} onSkip={()=>{if(facadeZones.length===0){toast({title:d("fa_zone_required"),variant:"error"});return;}handleCropped();}} onSessionExpired={handleRestart} onBack={handleBack} showFacadeDelimitation initialFacadeZones={facadeZones} onFacadeZonesChange={setFacadeZones}/>}
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
