@@ -887,7 +887,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 {visibility.window && masks.mask_window && (
                   <div className="absolute inset-0 pointer-events-none" style={{
                     backgroundColor: TYPE_COLORS.window,
-                    opacity: 0.7,
+                    opacity: 0.9,
                     WebkitMaskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     maskImage: `url(data:image/png;base64,${masks.mask_window})`,
                     WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
