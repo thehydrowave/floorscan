@@ -157,10 +157,12 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
             {/* Toolbar */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                {onBack && <button onClick={() => { reset(); onBack(); }}
-                  className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white">
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+                {onBack && (
+                  <button onClick={() => { reset(); onBack(); }}
+                    className="glass border border-white/10 rounded-lg p-1.5 text-slate-400 hover:text-white">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                )}
                 <span className="text-sm font-medium text-accent">{hint}</span>
               </div>
               <div className="flex gap-1.5">
