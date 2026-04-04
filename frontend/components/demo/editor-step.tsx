@@ -1701,29 +1701,36 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 <X className="w-3 h-3" />
               </button>
             )}
-            {/* ── Détection visuelle (standalone, fonctionne sans sélection d'élément) ── */}
-            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+          </div>
+
+{/* ══ BAR 3 : TOOLS ══ */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">TOOLS</span>
+
+            {/* AI Detection (was "Detect similar") */}
             <button data-tuto="vs-btn"
               onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
-              title={d("ed_tt_vs")}
-              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
-                tool === "visual_search" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Search className="w-3 h-3" /> {d("ed_vs_search")}
+              title="AI Detection — Détection automatique d'éléments similaires"
+              className={cn("flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all",
+                tool === "visual_search" ? "border-red-500/40 bg-red-500/15 text-red-400" : "border-red-500/20 text-red-400 hover:bg-red-500/10")}>
+              <Search className="w-3.5 h-3.5" /> AI Detection
             </button>
+
+            {/* VS sub-toolbar (show when visual_search active) */}
             {tool === "visual_search" && (
               <div className="flex items-center gap-1.5">
-                {vsSearching && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
+                {vsSearching && <span className="text-[10px] text-red-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> {d("vs_searching")}</span>}
                 {!vsSearching && vsMatches.length === 0 && <span className="text-[10px] text-slate-500 italic">{d("vs_select")}</span>}
                 {vsMatches.length > 0 && (
                   <>
                     {(["search", "add", "remove"] as const).map((m) => (
                       <button key={m} onClick={() => setVsEditMode(m)}
                         className={cn("px-1.5 py-0.5 rounded text-[10px] border transition-all",
-                          vsEditMode === m ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                          vsEditMode === m ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                         {m === "search" ? d("vs_search") : m === "add" ? d("vs_add") : d("vs_remove")}
                       </button>
                     ))}
-                    <span className="text-[10px] font-600 text-amber-400">{vsMatches.length} {d("vs_found")}</span>
+                    <span className="text-[10px] font-600 text-red-400">{vsMatches.length} {d("vs_found")}</span>
                     {!vsSaveOpen ? (
                       <button onClick={() => setVsSaveOpen(true)}
                         className="px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-0.5">
@@ -1744,9 +1751,42 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 )}
               </div>
             )}
+
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
+            {/* Text annotation */}
+            <button onClick={() => setTool("text" as EditorTool)}
+              title="Annotation texte"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Type className="w-3 h-3" /> Texte
+            </button>
+
+            {/* Linear measurement */}
+            <button onClick={() => setTool("linear" as EditorTool)}
+              title="Mesure de distance linéaire"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Ruler className="w-3 h-3" /> Linéaire
+            </button>
+
+            {/* Count tool */}
+            <button onClick={() => setTool("count" as EditorTool)}
+              title="Comptage — placez des points numérotés"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Hash className="w-3 h-3" /> Comptage
+            </button>
+
+            {/* ppm display when measuring */}
+            {(tool === "linear" || tool === "rescale") && ppm && (
+              <span className="text-[10px] text-slate-500 font-mono ml-1">
+                {ppm.toFixed(1)} px/m
+              </span>
+            )}
           </div>
 
-{/* ══ BAR 3 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
+{/* ══ BAR 4 : OUTILS CONTEXTUELS (visible seulement si élément sélectionné) ══ */}
           {layer !== null && (
             <div className="flex items-center gap-1 px-2 py-1 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
               {/* Outils couches masque (standard: door/window/french_door/wall/cloison/interior) */}
