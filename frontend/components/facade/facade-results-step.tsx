@@ -470,7 +470,16 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                   {!hiddenLayers.has("surface_murale") && imgNat.w > 0 && (maskFilter === "all" || maskFilter === "walls") && (
                     <svg className="absolute top-0 left-0 w-full h-full pointer-events-none"
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`} preserveAspectRatio="xMinYMin meet">
-                      <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
+                      {facadeZones.length > 0 && (
+                        <defs><clipPath id="fz-clip-wall">
+                          {facadeZones.map(z => (
+                            <polygon key={z.id} points={z.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ")} />
+                          ))}
+                        </clipPath></defs>
+                      )}
+                      <g clipPath={facadeZones.length > 0 ? "url(#fz-clip-wall)" : undefined}>
+                        <path d={wallSvgPath} fillRule="evenodd" fill="#22c55e" fillOpacity={0.55} />
+                      </g>
                     </svg>
                   )}
 
@@ -482,6 +491,14 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                       viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                       preserveAspectRatio="xMinYMin meet"
                     >
+                      {facadeZones.length > 0 && (
+                        <defs><clipPath id="fz-clip-masks">
+                          {facadeZones.map(z => (
+                            <polygon key={z.id} points={z.pts.map(p => `${p.x * imgNat.w},${p.y * imgNat.h}`).join(" ")} />
+                          ))}
+                        </clipPath></defs>
+                      )}
+                      <g clipPath={facadeZones.length > 0 ? "url(#fz-clip-masks)" : undefined}>
                       {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
                         const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
                         const isWindowLayer = layer.id === "window" || layer.id === "other";
@@ -521,6 +538,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                           </g>
                         );
                       })}
+                      </g>{/* end facade zone clip */}
 
                       {/* Facade polygon zones (read-only) */}
                       {facadeZones.map(zone => {

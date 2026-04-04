@@ -1420,9 +1420,6 @@ class AnalyzeFacadeRequest(BaseModel):
     # ROI optionnel : délimite le bâtiment avant inférence
     # {x, y, w, h} normalisés [0-1] dans l'image originale
     building_roi: Optional[dict] = None
-    # Zones façade délimitées par l'utilisateur (polygones normalisés 0-1)
-    # Chaque zone = { "id": int, "pts": [{"x": float, "y": float}, ...] }
-    facade_zones: Optional[list] = None
 
 @app.post("/analyze-facade")
 def analyze_facade(req: AnalyzeFacadeRequest):
@@ -1434,94 +1431,48 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     H, W = img_rgb.shape[:2]
     ppm = req.pixels_per_meter or s.get("pixels_per_meter")
 
-    # ── Inference SDK ──────────────────────────────────────────────────────────
+    # ── Crop ROI si spécifié ──────────────────────────────────────────────────
+    roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
+    if req.building_roi:
+        r = req.building_roi
+        rx = float(r.get("x", 0.0))
+        ry = float(r.get("y", 0.0))
+        rw = float(r.get("w", 1.0))
+        rh = float(r.get("h", 1.0))
+        roi_x1 = max(0, int(rx * W))
+        roi_y1 = max(0, int(ry * H))
+        roi_x2 = min(W, int((rx + rw) * W))
+        roi_y2 = min(H, int((ry + rh) * H))
+        if roi_x2 <= roi_x1 or roi_y2 <= roi_y1:
+            roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
+
+    img_for_infer = img_rgb[roi_y1:roi_y2, roi_x1:roi_x2]
+    H_inf, W_inf = img_for_infer.shape[:2]
+    roi_scale_x = (roi_x2 - roi_x1) / W
+    roi_scale_y = (roi_y2 - roi_y1) / H
+
+    # ── Appel Roboflow inference ──────────────────────────────────────────────
     from inference_sdk import InferenceHTTPClient
     client = InferenceHTTPClient(
         api_url="https://serverless.roboflow.com",
         api_key=req.roboflow_api_key,
     )
 
-    # ── Helper: run inference on a sub-image and return raw predictions ───────
-    def _infer_region(img_region):
-        pil_img = Image.fromarray(img_region).convert("RGB")
-        buf = io.BytesIO()
-        pil_img.save(buf, format="JPEG", quality=95)
-        buf.seek(0)
-        b64 = base64.b64encode(buf.read()).decode()
-        resp = client.infer(b64, model_id=FACADE_MODEL_ID)
-        if isinstance(resp, list):
-            return resp
-        return resp.get("predictions", [])
+    img_pil_inf = Image.fromarray(img_for_infer).convert("RGB")
+    buf = io.BytesIO()
+    img_pil_inf.save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+    img_b64_for_infer = base64.b64encode(buf.read()).decode()
 
-    # ── Determine inference regions ──────────────────────────────────────────
-    # If facade_zones are provided, infer on each zone's bounding box only.
-    # Otherwise, fall back to building_roi or full image.
-    zone_regions = []  # list of (roi_x1, roi_y1, roi_x2, roi_y2, zone_polygon_pts_px)
+    try:
+        resp = client.infer(img_b64_for_infer, model_id=FACADE_MODEL_ID)
+    except Exception as e:
+        raise HTTPException(500, f"Erreur inférence façade : {e}")
 
-    if req.facade_zones and len(req.facade_zones) > 0:
-        for zone in req.facade_zones:
-            pts = zone.get("pts", [])
-            if len(pts) < 3:
-                continue
-            xs = [p["x"] for p in pts]
-            ys = [p["y"] for p in pts]
-            zx1 = max(0, int(min(xs) * W))
-            zy1 = max(0, int(min(ys) * H))
-            zx2 = min(W, int(max(xs) * W))
-            zy2 = min(H, int(max(ys) * H))
-            if zx2 <= zx1 or zy2 <= zy1:
-                continue
-            # Polygon points in pixel coords (for masking)
-            poly_px = [(int(p["x"] * W), int(p["y"] * H)) for p in pts]
-            zone_regions.append((zx1, zy1, zx2, zy2, poly_px))
-        logger.info("[FACADE] %d facade zones provided, will infer per-zone", len(zone_regions))
-
-    # Fallback: use building_roi or full image as a single region
-    if not zone_regions:
-        roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
-        if req.building_roi:
-            r = req.building_roi
-            rx, ry = float(r.get("x", 0.0)), float(r.get("y", 0.0))
-            rw, rh = float(r.get("w", 1.0)), float(r.get("h", 1.0))
-            roi_x1 = max(0, int(rx * W))
-            roi_y1 = max(0, int(ry * H))
-            roi_x2 = min(W, int((rx + rw) * W))
-            roi_y2 = min(H, int((ry + rh) * H))
-            if roi_x2 <= roi_x1 or roi_y2 <= roi_y1:
-                roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, W, H
-        zone_regions.append((roi_x1, roi_y1, roi_x2, roi_y2, None))
-
-    # ── Run inference on each region and collect predictions ──────────────────
-    all_predictions = []
-    for (zx1, zy1, zx2, zy2, _poly) in zone_regions:
-        img_for_infer = img_rgb[zy1:zy2, zx1:zx2]
-        H_inf, W_inf = img_for_infer.shape[:2]
-        if H_inf == 0 or W_inf == 0:
-            continue
-        try:
-            preds = _infer_region(img_for_infer)
-        except Exception as e:
-            logger.warning("[FACADE] inference error on zone: %s", e)
-            continue
-        # Remap predictions from zone-local coords to original image coords
-        for pred in preds:
-            pred["_zone_x1"] = zx1
-            pred["_zone_y1"] = zy1
-            pred["_zone_W_inf"] = W_inf
-            pred["_zone_H_inf"] = H_inf
-            pred["_zone_scale_x"] = (zx2 - zx1) / W
-            pred["_zone_scale_y"] = (zy2 - zy1) / H
-        all_predictions.extend(preds)
-
-    predictions = all_predictions
-
-    # For wall mask / area calculations, use the union of all zone polygons
-    # roi_x1..roi_y2 = bounding box of all zones combined
-    all_zx1 = min(z[0] for z in zone_regions)
-    all_zy1 = min(z[1] for z in zone_regions)
-    all_zx2 = max(z[2] for z in zone_regions)
-    all_zy2 = max(z[3] for z in zone_regions)
-    roi_x1, roi_y1, roi_x2, roi_y2 = all_zx1, all_zy1, all_zx2, all_zy2
+    if isinstance(resp, list):
+        predictions = resp
+    else:
+        predictions = resp.get("predictions", [])
 
     # Log des classes brutes reçues (aide au diagnostic)
     raw_classes_seen = list({p.get("class") or p.get("class_name") or "" for p in predictions})
@@ -1562,25 +1513,17 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         pw_inf = pred["width"]
         ph_inf = pred["height"]
 
-        # Zone-specific remapping info
-        z_x1 = pred.get("_zone_x1", roi_x1)
-        z_y1 = pred.get("_zone_y1", roi_y1)
-        z_W_inf = pred.get("_zone_W_inf", W)
-        z_H_inf = pred.get("_zone_H_inf", H)
-        z_scale_x = pred.get("_zone_scale_x", 1.0)
-        z_scale_y = pred.get("_zone_scale_y", 1.0)
-
-        # Convertir d'abord en normalisé dans le crop de la zone
-        x_in_roi = (cx_inf - pw_inf / 2) / z_W_inf
-        y_in_roi = (cy_inf - ph_inf / 2) / z_H_inf
-        w_in_roi = pw_inf / z_W_inf
-        h_in_roi = ph_inf / z_H_inf
+        # Convertir d'abord en normalisé dans le crop
+        x_in_roi = (cx_inf - pw_inf / 2) / W_inf
+        y_in_roi = (cy_inf - ph_inf / 2) / H_inf
+        w_in_roi = pw_inf / W_inf
+        h_in_roi = ph_inf / H_inf
 
         # Remapper vers l'image originale
-        x_norm = z_x1 / W + x_in_roi * z_scale_x
-        y_norm = z_y1 / H + y_in_roi * z_scale_y
-        w_norm = w_in_roi * z_scale_x
-        h_norm = h_in_roi * z_scale_y
+        x_norm = roi_x1 / W + x_in_roi * roi_scale_x
+        y_norm = roi_y1 / H + y_in_roi * roi_scale_y
+        w_norm = w_in_roi * roi_scale_x
+        h_norm = h_in_roi * roi_scale_y
 
         # Clamp
         x_norm = max(0.0, min(1.0, x_norm))
@@ -1593,8 +1536,8 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         w_m = None
         h_m = None
         if ppm and ppm > 0:
-            pw_orig = pw_inf * z_scale_x  # largeur en px dans l'image originale
-            ph_orig = ph_inf * z_scale_y
+            pw_orig = pw_inf * roi_scale_x  # largeur en px dans l'image originale
+            ph_orig = ph_inf * roi_scale_y
             area_m2 = (pw_orig * ph_orig) / (ppm * ppm)
             w_m = pw_orig / ppm
             h_m = ph_orig / ppm
@@ -1637,21 +1580,9 @@ def analyze_facade(req: AnalyzeFacadeRequest):
     # ── Surfaces ──
     openings = [e for e in elements if e["type"] in ("window", "door", "balcony")]
     openings_area_m2 = sum(e["area_m2"] for e in openings if e["area_m2"]) if ppm else None
-    # Facade area: sum of polygon areas if zones, else ROI rectangle
-    facade_area_px = 0
-    if has_polygon_zones:
-        # Shoelace formula for each polygon zone (in pixels)
-        for (_zx1, _zy1, _zx2, _zy2, poly_px) in zone_regions:
-            if poly_px and len(poly_px) >= 3:
-                n = len(poly_px)
-                a = 0
-                for ii in range(n):
-                    jj = (ii + 1) % n
-                    a += poly_px[ii][0] * poly_px[jj][1] - poly_px[jj][0] * poly_px[ii][1]
-                facade_area_px += abs(a) / 2
-    else:
-        facade_area_px = (roi_x2 - roi_x1) * (roi_y2 - roi_y1)
-    facade_area_m2 = (facade_area_px / (ppm * ppm)) if ppm else None
+    roi_w_px = roi_x2 - roi_x1
+    roi_h_px = roi_y2 - roi_y1
+    facade_area_m2 = (roi_w_px * roi_h_px) / (ppm * ppm) if ppm else None
     ratio_openings = (openings_area_m2 / facade_area_m2) if (facade_area_m2 and openings_area_m2) else None
 
     # ── Image brute en b64 ──
@@ -1720,15 +1651,8 @@ def analyze_facade(req: AnalyzeFacadeRequest):
 
     # ── Masque mur opaque (tout sauf ouvertures) ────────────────────────────
     wall_mask = np.zeros((H, W), dtype=np.uint8)
-    # Remplir les zones façade (polygones) ou le ROI rectangle en blanc
-    has_polygon_zones = any(z[4] is not None for z in zone_regions)
-    if has_polygon_zones:
-        for (_zx1, _zy1, _zx2, _zy2, poly_px) in zone_regions:
-            if poly_px:
-                pts_arr = np.array(poly_px, dtype=np.int32).reshape((-1, 1, 2))
-                cv2.fillPoly(wall_mask, [pts_arr], 255)
-    else:
-        cv2.rectangle(wall_mask, (roi_x1, roi_y1), (roi_x2, roi_y2), 255, cv2.FILLED)
+    # Remplir la zone ROI en blanc
+    cv2.rectangle(wall_mask, (roi_x1, roi_y1), (roi_x2, roi_y2), 255, cv2.FILLED)
     # Soustraire toutes les ouvertures
     for el in elements:
         if el["type"] in ("window", "door", "balcony"):
