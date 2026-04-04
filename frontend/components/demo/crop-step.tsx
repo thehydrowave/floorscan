@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { RotateCcw, ArrowRight, Loader2, ChevronLeft, PlusCircle, Trash2, Building2, Crop } from "lucide-react";
+import { RotateCcw, ArrowRight, Loader2, ChevronLeft, PlusCircle, Trash2, Building2, Crop, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { useLang } from "@/lib/lang-context";
@@ -66,8 +66,16 @@ export default function CropStep({
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
   const draggingPtRef = useRef<{ zoneId: number; ptIdx: number } | null>(null);
   const [isDraggingPt, setIsDraggingPt] = useState(false);
-  // "crop" mode = draw crop rectangle, "facade" mode = click 4 points for facade zones
+  // "crop" mode = draw crop rectangle, "facade" mode = click points for facade zones
   const [activeMode, setActiveMode] = useState<"crop" | "facade">(showFacadeDelimitation ? "facade" : "crop");
+  // Facade draw sub-mode: "4pts" = auto-close after 4, "polygon" = free clicks, close on 1st point
+  const [facadeDrawMode, setFacadeDrawMode] = useState<"4pts" | "polygon">("4pts");
+
+  /* ── Zoom & pan state ── */
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   // Sync facade zones upstream
   useEffect(() => {
@@ -127,8 +135,64 @@ export default function CropStep({
     };
   }, [getRenderedImageBounds]);
 
+  /* ── Ctrl+wheel zoom ── */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const factor = 1.15;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      setZoom(prev => {
+        const next = e.deltaY < 0 ? prev * factor : prev / factor;
+        const clamped = Math.max(0.5, Math.min(5, next));
+        // Adjust pan to zoom toward cursor
+        const scale = clamped / prev;
+        setPan(p => ({
+          x: mx - scale * (mx - p.x),
+          y: my - scale * (my - p.y),
+        }));
+        return clamped;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  /* ── Middle-click / Alt+click pan ── */
+  useEffect(() => {
+    if (!isPanningRef.current) return;
+    // handled by global listeners set in handleMouseDown
+  }, []);
+
+  const handlePanMove = useCallback((e: MouseEvent) => {
+    if (!isPanningRef.current) return;
+    setPan({
+      x: panStartRef.current.panX + (e.clientX - panStartRef.current.x),
+      y: panStartRef.current.panY + (e.clientY - panStartRef.current.y),
+    });
+  }, []);
+
+  const handlePanUp = useCallback(() => {
+    isPanningRef.current = false;
+    window.removeEventListener("mousemove", handlePanMove);
+    window.removeEventListener("mouseup", handlePanUp);
+  }, [handlePanMove]);
+
   /* ── Mouse handling ── */
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Right-click → start panning
+    if (e.button === 2) {
+      e.preventDefault();
+      isPanningRef.current = true;
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      window.addEventListener("mousemove", handlePanMove);
+      window.addEventListener("mouseup", handlePanUp);
+      return;
+    }
     if (e.button !== 0) return;
 
     // If in facade mode → handle polygon point clicks
@@ -156,13 +220,32 @@ export default function CropStep({
 
       // Otherwise, add point to pending polygon
       if (drawingFacade) {
-        const next = [...pendingPts, pt];
-        if (next.length >= 4) {
-          setFacadeZones(z => [...z, { id: Date.now(), pts: next.slice(0, 4) }]);
-          setPendingPts([]);
-          setDrawingFacade(false);
+        if (facadeDrawMode === "4pts") {
+          // Classic 4-point mode: auto-close after 4 clicks
+          const next = [...pendingPts, pt];
+          if (next.length >= 4) {
+            setFacadeZones(z => [...z, { id: Date.now(), pts: next.slice(0, 4) }]);
+            setPendingPts([]);
+            setDrawingFacade(false);
+          } else {
+            setPendingPts(next);
+          }
         } else {
-          setPendingPts(next);
+          // Polygon mode: close when clicking near 1st point (min 3 pts)
+          if (pendingPts.length >= 3 && bounds) {
+            const first = pendingPts[0];
+            const fx = bounds.left + first.x * bounds.width;
+            const fy = bounds.top + first.y * bounds.height;
+            const distToFirst = Math.hypot(e.clientX - fx, e.clientY - fy);
+            if (distToFirst < 15) {
+              // Close the polygon
+              setFacadeZones(z => [...z, { id: Date.now(), pts: [...pendingPts] }]);
+              setPendingPts([]);
+              setDrawingFacade(false);
+              return;
+            }
+          }
+          setPendingPts(prev => [...prev, pt]);
         }
       }
       return;
@@ -174,7 +257,7 @@ export default function CropStep({
     drawStartRef.current = { px, py };
     setCrop({ x: px, y: py, w: 0, h: 0 });
     setIsDrawing(true);
-  }, [activeMode, showFacadeDelimitation, toPct, toNorm, getRenderedImageBounds, facadeZones, drawingFacade, pendingPts]);
+  }, [activeMode, showFacadeDelimitation, toPct, toNorm, getRenderedImageBounds, facadeZones, drawingFacade, pendingPts, facadeDrawMode, pan, handlePanMove, handlePanUp]);
 
   // Crop rectangle drawing
   useEffect(() => {
@@ -281,7 +364,9 @@ export default function CropStep({
         <p className="text-slate-400 text-sm">
           {activeMode === "facade"
             ? (drawingFacade
-              ? `${4 - pendingPts.length} ${d("cr_facade_pts" as DTKey)}`
+              ? (facadeDrawMode === "4pts"
+                ? `${4 - pendingPts.length} ${d("cr_facade_pts" as DTKey)}`
+                : d("cr_polygon_close_hint" as DTKey))
               : d("cr_facade_hint" as DTKey))
             : (hasCrop ? d("cr_adjust_hint") : d("cr_drag_hint"))
           }
@@ -306,13 +391,108 @@ export default function CropStep({
         </div>
       )}
 
+      {/* Facade zones panel — ABOVE image for easy access */}
+      {showFacadeDelimitation && activeMode === "facade" && (
+        <div className="mb-4 mx-auto max-w-3xl">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-sm font-semibold text-amber-400 flex items-center gap-1.5">
+              <Building2 className="w-4 h-4" /> {d("cr_facade_zones" as DTKey)} ({facadeZones.length})
+            </span>
+            {!drawingFacade ? (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setFacadeDrawMode("4pts"); setDrawingFacade(true); setPendingPts([]); }}
+                  className="text-xs"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" /> {d("cr_4pts_mode" as DTKey)}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setFacadeDrawMode("polygon"); setDrawingFacade(true); setPendingPts([]); }}
+                  className="text-xs"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" /> {d("cr_polygon_mode" as DTKey)}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-amber-300/70">
+                  {facadeDrawMode === "4pts"
+                    ? `${4 - pendingPts.length} ${d("cr_facade_pts" as DTKey)}`
+                    : d("cr_polygon_close_hint" as DTKey)}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setDrawingFacade(false); setPendingPts([]); }}
+                  className="text-xs text-slate-500"
+                >
+                  {d("cr_cancel" as DTKey)}
+                </Button>
+              </div>
+            )}
+          </div>
+          {facadeZones.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {facadeZones.map((zone, zi) => (
+                <div
+                  key={zone.id}
+                  onClick={() => setSelectedZoneId(selectedZoneId === zone.id ? null : zone.id)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-all ${
+                    selectedZoneId === zone.id
+                      ? "bg-amber-500/20 border border-amber-500/40 text-amber-300"
+                      : "bg-white/5 border border-white/10 text-slate-400 hover:text-slate-300"
+                  }`}
+                >
+                  <span>Façade {zi + 1}</span>
+                  <span className="font-mono text-[10px] opacity-70">
+                    {(polygonAreaNorm(zone.pts) * 100).toFixed(1)}%
+                  </span>
+                  <button
+                    onClick={e2 => {
+                      e2.stopPropagation();
+                      setFacadeZones(prev => prev.filter(z => z.id !== zone.id));
+                      if (selectedZoneId === zone.id) setSelectedZoneId(null);
+                    }}
+                    className="text-red-400/60 hover:text-red-400"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Zoom controls */}
+      {zoom !== 1 && (
+        <div className="flex items-center justify-center gap-2 mb-2">
+          <Button variant="ghost" size="sm" onClick={() => setZoom(z => Math.max(0.5, z / 1.15))} className="text-xs px-2">
+            <ZoomOut className="w-3.5 h-3.5" />
+          </Button>
+          <span className="text-xs text-slate-400 font-mono w-12 text-center">{Math.round(zoom * 100)}%</span>
+          <Button variant="ghost" size="sm" onClick={() => setZoom(z => Math.min(5, z * 1.15))} className="text-xs px-2">
+            <ZoomIn className="w-3.5 h-3.5" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="text-xs text-slate-500">
+            Reset
+          </Button>
+        </div>
+      )}
+
       {/* Image container */}
       <div
         ref={containerRef}
         className="relative mx-auto max-w-3xl rounded-2xl border border-white/10 overflow-hidden bg-white select-none"
-        style={{ cursor }}
+        style={{ cursor: isPanningRef.current ? "grabbing" : cursor }}
         onMouseDown={handleMouseDown}
+        onContextMenu={e => e.preventDefault()}
       >
+        <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
         <img
           ref={imgRef}
           src={`data:image/png;base64,${imageB64}`}
@@ -322,7 +502,7 @@ export default function CropStep({
           onLoad={updateImgOffset}
         />
 
-        {/* SVG overlay */}
+        {/* SVG overlay (inside zoom transform) */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           {/* ── Crop rectangle overlay ── */}
           {svgCrop && svgCrop.w > 2 && svgCrop.h > 2 ? (
@@ -420,10 +600,10 @@ export default function CropStep({
                   />
                 ))}
                 {/* Zone label */}
-                {svgPts.length >= 2 && (
+                {svgPts.length >= 3 && (
                   <text
-                    x={(svgPts[0].sx + svgPts[2].sx) / 2}
-                    y={(svgPts[0].sy + svgPts[2].sy) / 2}
+                    x={svgPts.reduce((s, p) => s + p.sx, 0) / svgPts.length}
+                    y={svgPts.reduce((s, p) => s + p.sy, 0) / svgPts.length}
                     textAnchor="middle" dominantBaseline="middle"
                     fill="#fbbf24" fontSize={11} fontFamily="system-ui" fontWeight={600}
                   >
@@ -446,10 +626,21 @@ export default function CropStep({
                     fill="none" stroke="#fbbf24" strokeWidth={2} strokeDasharray="4 2"
                   />
                 )}
+                {/* Closing line back to 1st point (polygon mode, 3+ pts) */}
+                {facadeDrawMode === "polygon" && svgPts.length >= 3 && (
+                  <line
+                    x1={svgPts[svgPts.length - 1].sx} y1={svgPts[svgPts.length - 1].sy}
+                    x2={svgPts[0].sx} y2={svgPts[0].sy}
+                    stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="3 4" opacity={0.5}
+                  />
+                )}
                 {/* Point dots */}
                 {svgPts.map((p, pi) => (
-                  <circle key={pi} cx={p.sx} cy={p.sy} r={5}
-                    fill="#fbbf24" stroke="#fff" strokeWidth={2}
+                  <circle key={pi} cx={p.sx} cy={p.sy}
+                    r={pi === 0 && facadeDrawMode === "polygon" && pendingPts.length >= 3 ? 8 : 5}
+                    fill={pi === 0 && facadeDrawMode === "polygon" && pendingPts.length >= 3 ? "#f59e0b" : "#fbbf24"}
+                    stroke="#fff" strokeWidth={2}
+                    style={pi === 0 && facadeDrawMode === "polygon" && pendingPts.length >= 3 ? { cursor: "pointer", pointerEvents: "all" } : undefined}
                   />
                 ))}
                 {/* Counter badge */}
@@ -458,78 +649,19 @@ export default function CropStep({
                   y={svgPts[svgPts.length - 1].sy - 10}
                   fill="#fbbf24" fontSize={11} fontFamily="system-ui" fontWeight={700}
                 >
-                  {pendingPts.length}/4
+                  {facadeDrawMode === "4pts" ? `${pendingPts.length}/4` : `${pendingPts.length} pts`}
                 </text>
               </g>
             );
           })()}
         </svg>
+        </div>{/* end zoom transform wrapper */}
       </div>
 
       {hasCrop && crop && activeMode === "crop" && (
         <p className="text-center text-xs text-slate-500 mt-3">
           {Math.round(crop.x)}%, {Math.round(crop.y)}% — {Math.round(crop.w)}% × {Math.round(crop.h)}%
         </p>
-      )}
-
-      {/* Facade zones panel */}
-      {showFacadeDelimitation && activeMode === "facade" && (
-        <div className="mt-4 mx-auto max-w-3xl">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-sm font-semibold text-amber-400 flex items-center gap-1.5">
-              <Building2 className="w-4 h-4" /> {d("cr_facade_zones" as DTKey)} ({facadeZones.length})
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { setDrawingFacade(true); setPendingPts([]); }}
-              disabled={drawingFacade}
-              className="text-xs"
-            >
-              <PlusCircle className="w-3.5 h-3.5" /> {d("cr_new_facade" as DTKey)}
-            </Button>
-            {drawingFacade && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { setDrawingFacade(false); setPendingPts([]); }}
-                className="text-xs text-slate-500"
-              >
-                {d("cr_cancel" as DTKey)}
-              </Button>
-            )}
-          </div>
-          {facadeZones.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {facadeZones.map((zone, zi) => (
-                <div
-                  key={zone.id}
-                  onClick={() => setSelectedZoneId(selectedZoneId === zone.id ? null : zone.id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-all ${
-                    selectedZoneId === zone.id
-                      ? "bg-amber-500/20 border border-amber-500/40 text-amber-300"
-                      : "bg-white/5 border border-white/10 text-slate-400 hover:text-slate-300"
-                  }`}
-                >
-                  <span>Façade {zi + 1}</span>
-                  <span className="font-mono text-[10px] opacity-70">
-                    {(polygonAreaNorm(zone.pts) * 100).toFixed(1)}%
-                  </span>
-                  <button
-                    onClick={e2 => {
-                      e2.stopPropagation();
-                      setFacadeZones(prev => prev.filter(z => z.id !== zone.id));
-                      if (selectedZoneId === zone.id) setSelectedZoneId(null);
-                    }}
-                    className="text-red-400/60 hover:text-red-400"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       )}
 
       <div className="flex gap-3 justify-center mt-6">
