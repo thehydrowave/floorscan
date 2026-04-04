@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList } from "lucide-react";
+import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -78,6 +78,35 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportOpen, setExportOpen] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // ── Zoom / pan for image ──
+  const [imgZoom, setImgZoom] = useState(1);
+  const [imgPan, setImgPan] = useState({ x: 0, y: 0 });
+  const imgPanRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+  const imgContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleImgWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const container = imgContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cx = e.clientX - rect.left - rect.width / 2;
+    const cy = e.clientY - rect.top - rect.height / 2;
+    const factor = e.deltaY < 0 ? 1.15 : 0.87;
+    setImgZoom(prevZ => {
+      const newZ = Math.max(0.5, Math.min(12, prevZ * factor));
+      const ratio = newZ / prevZ;
+      setImgPan(t => ({ x: cx * (1 - ratio) + t.x * ratio, y: cy * (1 - ratio) + t.y * ratio }));
+      return newZ;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = imgContainerRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleImgWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleImgWheel);
+  }, [handleImgWheel]);
 
   // ── Extract surfaces from editor _measurements ──
   const measurements = (result as any)._measurements as {
@@ -198,9 +227,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               </>
             )}
           </div>
-          <Button onClick={() => setMeasureActive(v => !v)} variant={measureActive ? "default" : "outline"} title={d("meas_btn" as DTKey)}>
-            <Ruler className="w-4 h-4" /> {d("meas_btn" as DTKey)}
-          </Button>
           <Button onClick={onGoEditor}>
             <Edit3 className="w-4 h-4" /> {d("re_editor")}
           </Button>
@@ -293,8 +319,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             { label: d("re_walls_area"), value: fmt(sf.area_walls_m2, 2, " m²"),    color: "#D946EF" },
             { label: d("re_living"),     value: fmt(sf.area_hab_m2, 2, " m²"),      color: "#34D399" },
             { label: d("re_perim_int"),  value: fmt(sf.perim_interior_m, 2, " m"),  color: "#34D399" },
-            { label: d("re_scale"),      value: result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "—", color: "#94a3b8",
-              badge: result.scale_info ? { conf: result.scale_info.confidence, method: result.scale_info.method, agreement: result.scale_info.agreement } : undefined },
           ].map(({ label, value, color, badge }: any) => (
             <div key={label} className="flex justify-between items-center py-2 border-b border-white/5">
               <span className="text-slate-400">{label}</span>
@@ -390,130 +414,186 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <span className="text-[10px] opacity-60 font-mono">{editorZones.length}</span>
             </button>
           )}
+
+          <button onClick={() => setMeasureActive(v => !v)}
+            className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+              measureActive ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+            <Ruler className="w-3.5 h-3.5" /> {d("meas_btn" as DTKey)}
+          </button>
         </div>
 
+        {measureActive && (
+          <div className="mb-3 flex items-center gap-2 text-xs text-sky-400/80 bg-sky-500/5 border border-sky-500/20 rounded-lg px-3 py-2">
+            <Ruler className="w-3.5 h-3.5 shrink-0" />
+            <span>Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer la vue.</span>
+          </div>
+        )}
+
         {/* Image + overlays */}
-        <div className="relative rounded-xl overflow-hidden border border-white/10">
+        <div
+          ref={imgContainerRef}
+          className="relative rounded-xl overflow-hidden border border-white/10"
+          style={{
+            background: "#0d1117",
+            backgroundImage: "radial-gradient(circle, rgba(148,163,184,0.13) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            minHeight: "calc(100vh - 400px)",
+          }}
+          onContextMenu={e => e.preventDefault()}
+          onMouseDown={e => {
+            if (e.button === 1 || e.button === 2 || e.altKey) {
+              e.preventDefault();
+              imgPanRef.current = { startX: e.clientX, startY: e.clientY, startPanX: imgPan.x, startPanY: imgPan.y };
+            }
+          }}
+          onMouseMove={e => {
+            if (!imgPanRef.current) return;
+            setImgPan({ x: imgPanRef.current.startPanX + (e.clientX - imgPanRef.current.startX), y: imgPanRef.current.startPanY + (e.clientY - imgPanRef.current.startY) });
+          }}
+          onMouseUp={() => { imgPanRef.current = null; }}
+          onMouseLeave={() => { imgPanRef.current = null; }}
+        >
           {hasBaseImage ? (
-            <>
-              <img
-                src={`data:image/png;base64,${baseImageB64}`}
-                alt="Plan"
-                className="w-full h-auto block"
-                style={{ filter: "brightness(0.72) contrast(1.15) saturate(0.85)" }}
-                onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-              />
-              {showDoors && result.mask_doors_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#FF00CC", opacity: 0.55,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any), zIndex: 1,
-                }} />
-              )}
-              {showWindows && result.mask_windows_b64 && (
-                <div className="absolute inset-0 pointer-events-none" style={{
-                  backgroundColor: "#00CCFF", opacity: 0.55,
-                  WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
-                  WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
-                  ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any), zIndex: 1,
-                }} />
-              )}
-              {showFrenchDoors && result.mask_french_doors_b64 && (
-                <img src={`data:image/png;base64,${result.mask_french_doors_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
-              )}
-              {showWalls && result.mask_walls_ai_b64 && (
-                <img src={`data:image/png;base64,${result.mask_walls_ai_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
-              )}
-              {showCloisons && result.mask_cloisons_b64 && (
-                <img src={`data:image/png;base64,${result.mask_cloisons_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 3 }} />
-              )}
-            </>
+            <div style={{
+              position: "absolute",
+              top: "50%", left: "50%",
+              transform: `translate(calc(-50% + ${imgPan.x}px), calc(-50% + ${imgPan.y}px)) scale(${imgZoom})`,
+              transformOrigin: "center center",
+            }}>
+              <div className="relative">
+                <img
+                  src={`data:image/png;base64,${baseImageB64}`}
+                  alt="Plan"
+                  className="select-none"
+                  draggable={false}
+                  style={{ display: "block", maxWidth: "calc(100vw - 80px)", maxHeight: "calc(100vh - 420px)", filter: "brightness(0.72) contrast(1.15) saturate(0.85)" }}
+                  onLoad={(e) => setImgNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+                />
+                {showDoors && result.mask_doors_b64 && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: "#FF00CC", opacity: 0.55,
+                    WebkitMaskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                    maskImage: `url(data:image/png;base64,${result.mask_doors_b64})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any), zIndex: 1,
+                  }} />
+                )}
+                {showWindows && result.mask_windows_b64 && (
+                  <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundColor: "#00CCFF", opacity: 0.55,
+                    WebkitMaskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                    maskImage: `url(data:image/png;base64,${result.mask_windows_b64})`,
+                    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+                    ...({ WebkitMaskMode: "luminance", maskMode: "luminance" } as any), zIndex: 1,
+                  }} />
+                )}
+                {showFrenchDoors && result.mask_french_doors_b64 && (
+                  <img src={`data:image/png;base64,${result.mask_french_doors_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
+                )}
+                {showWalls && result.mask_walls_ai_b64 && (
+                  <img src={`data:image/png;base64,${result.mask_walls_ai_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} />
+                )}
+                {showCloisons && result.mask_cloisons_b64 && (
+                  <img src={`data:image/png;base64,${result.mask_cloisons_b64}`} alt="" className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 3 }} />
+                )}
+
+                {(showRoomsOverlay || showDetectionsOverlay || (showSurfacesOverlay && hasSurfaces)) && (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    style={{ zIndex: 2 }}
+                  >
+                    {showRoomsOverlay && result.rooms?.map(room => {
+                      const poly = room.polygon_norm;
+                      if (!poly || poly.length < 3) return null;
+                      const color = getRoomColor(room.type);
+                      const fs = Math.max(10, Math.min(16, imgNatural.w * 0.008));
+                      const rcx = room.centroid_norm.x * imgNatural.w;
+                      const rcy = room.centroid_norm.y * imgNatural.h;
+                      const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m\u00B2` : "";
+                      const measFontSize = Math.max(7, fs * 0.75);
+                      const nameW = Math.max(50, room.label_fr.length * (fs * 0.62));
+                      const measW = areaStr ? Math.max(40, areaStr.length * (measFontSize * 0.6)) : 0;
+                      const pw = Math.max(nameW, measW) + 12;
+                      const ph = areaStr ? fs + measFontSize + 8 : fs + 6;
+                      return (
+                        <g key={room.id}>
+                          <polygon points={poly.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ")}
+                            fill={color + "28"} stroke={color} strokeWidth={Math.max(1.5, imgNatural.w * 0.001)} strokeLinejoin="round" opacity={0.85} />
+                          <rect x={rcx - pw / 2} y={rcy - ph / 2} width={pw} height={ph} rx={4} fill="rgba(10,16,32,0.92)" stroke={color} strokeWidth={1.5} />
+                          <text x={rcx} y={areaStr ? rcy - ph / 2 + fs + 2 : rcy + fs * 0.35} fontSize={fs} fill={color} textAnchor="middle" fontWeight="700" fontFamily="system-ui,sans-serif">
+                            {room.label_fr}
+                          </text>
+                          {areaStr && (
+                            <text x={rcx} y={rcy - ph / 2 + fs + measFontSize + 5} fontSize={measFontSize} fill="#94a3b8" textAnchor="middle" fontWeight="500" fontFamily="monospace">
+                              {areaStr}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {showDetectionsOverlay && customDetections.map(det =>
+                      det.matches.map((m, i) => (
+                        <rect key={`${det.id}-${i}`}
+                          x={m.x_norm * imgNatural.w} y={m.y_norm * imgNatural.h}
+                          width={m.w_norm * imgNatural.w} height={m.h_norm * imgNatural.h}
+                          fill={det.color + "25"} stroke={det.color}
+                          strokeWidth={Math.max(1.5, imgNatural.w * 0.001)} rx={2} />
+                      ))
+                    )}
+
+                    {showSurfacesOverlay && editorZones.map(zone => {
+                      const st = editorSurfaceTypes.find((t: SurfaceType) => t.id === zone.typeId);
+                      if (!st) return null;
+                      const ptsSvg = zone.points.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ");
+                      const cx = zone.points.reduce((s, p) => s + p.x, 0) / zone.points.length * imgNatural.w;
+                      const cy = zone.points.reduce((s, p) => s + p.y, 0) / zone.points.length * imgNatural.h;
+                      const areaPx = polygonAreaNorm(zone.points, imgNatural.w, imgNatural.h);
+                      const ppm = result.pixels_per_meter;
+                      const areaM2 = ppm ? areaPx / (ppm * ppm) : null;
+                      const areaStr = areaM2 != null ? `${areaM2.toFixed(2)} m²` : "";
+                      const fs = 9;
+                      return (
+                        <g key={zone.id}>
+                          <polygon points={ptsSvg} fill={st.color + "35"} stroke={st.color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.9} />
+                          <rect x={cx - 35} y={cy - 10} width={70} height={areaStr ? 22 : 14} rx={3} fill="rgba(10,16,32,0.92)" stroke={st.color} strokeWidth={1} />
+                          <text x={cx} y={areaStr ? cy - 1 : cy + 3} textAnchor="middle" fill={st.color} fontSize={fs} fontWeight="700" fontFamily="system-ui,sans-serif">
+                            {st.name}
+                          </text>
+                          {areaStr && (
+                            <text x={cx} y={cy + 9} textAnchor="middle" fill="#94a3b8" fontSize={7} fontWeight="500" fontFamily="monospace">
+                              {areaStr}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
+
+                <MeasureTool ppm={result.pixels_per_meter ?? null} active={measureActive} imgW={imgNatural.w} imgH={imgNatural.h} />
+              </div>
+            </div>
           ) : (
             <div className="text-center py-16 text-slate-600 text-sm">{d("re_no_overlay")}</div>
           )}
 
-          {hasBaseImage && (
-            <MeasureTool ppm={result.pixels_per_meter ?? null} active={measureActive} imgW={imgNatural.w} imgH={imgNatural.h} />
-          )}
-
-          {(showRoomsOverlay || showDetectionsOverlay || (showSurfacesOverlay && hasSurfaces)) && hasBaseImage && (
-            <svg
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
-              preserveAspectRatio="xMidYMid meet"
-              style={{ zIndex: 2 }}
-            >
-              {showRoomsOverlay && result.rooms?.map(room => {
-                const poly = room.polygon_norm;
-                if (!poly || poly.length < 3) return null;
-                const color = getRoomColor(room.type);
-                const fs = Math.max(10, Math.min(16, imgNatural.w * 0.008));
-                const rcx = room.centroid_norm.x * imgNatural.w;
-                const rcy = room.centroid_norm.y * imgNatural.h;
-                const areaStr = room.area_m2 != null ? `${room.area_m2.toFixed(1)} m\u00B2` : "";
-                const measFontSize = Math.max(7, fs * 0.75);
-                const nameW = Math.max(50, room.label_fr.length * (fs * 0.62));
-                const measW = areaStr ? Math.max(40, areaStr.length * (measFontSize * 0.6)) : 0;
-                const pw = Math.max(nameW, measW) + 12;
-                const ph = areaStr ? fs + measFontSize + 8 : fs + 6;
-                return (
-                  <g key={room.id}>
-                    <polygon points={poly.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ")}
-                      fill={color + "28"} stroke={color} strokeWidth={Math.max(1.5, imgNatural.w * 0.001)} strokeLinejoin="round" opacity={0.85} />
-                    <rect x={rcx - pw / 2} y={rcy - ph / 2} width={pw} height={ph} rx={4} fill="rgba(10,16,32,0.92)" stroke={color} strokeWidth={1.5} />
-                    <text x={rcx} y={areaStr ? rcy - ph / 2 + fs + 2 : rcy + fs * 0.35} fontSize={fs} fill={color} textAnchor="middle" fontWeight="700" fontFamily="system-ui,sans-serif">
-                      {room.label_fr}
-                    </text>
-                    {areaStr && (
-                      <text x={rcx} y={rcy - ph / 2 + fs + measFontSize + 5} fontSize={measFontSize} fill="#94a3b8" textAnchor="middle" fontWeight="500" fontFamily="monospace">
-                        {areaStr}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-
-              {showDetectionsOverlay && customDetections.map(det =>
-                det.matches.map((m, i) => (
-                  <rect key={`${det.id}-${i}`}
-                    x={m.x_norm * imgNatural.w} y={m.y_norm * imgNatural.h}
-                    width={m.w_norm * imgNatural.w} height={m.h_norm * imgNatural.h}
-                    fill={det.color + "25"} stroke={det.color}
-                    strokeWidth={Math.max(1.5, imgNatural.w * 0.001)} rx={2} />
-                ))
-              )}
-
-              {showSurfacesOverlay && editorZones.map(zone => {
-                const st = editorSurfaceTypes.find((t: SurfaceType) => t.id === zone.typeId);
-                if (!st) return null;
-                const ptsSvg = zone.points.map(p => `${p.x * imgNatural.w},${p.y * imgNatural.h}`).join(" ");
-                const cx = zone.points.reduce((s, p) => s + p.x, 0) / zone.points.length * imgNatural.w;
-                const cy = zone.points.reduce((s, p) => s + p.y, 0) / zone.points.length * imgNatural.h;
-                const areaPx = polygonAreaNorm(zone.points, imgNatural.w, imgNatural.h);
-                const ppm = result.pixels_per_meter;
-                const areaM2 = ppm ? areaPx / (ppm * ppm) : null;
-                const areaStr = areaM2 != null ? `${areaM2.toFixed(2)} m²` : "";
-                const fs = 9;
-                return (
-                  <g key={zone.id}>
-                    <polygon points={ptsSvg} fill={st.color + "35"} stroke={st.color} strokeWidth={1.5} strokeLinejoin="round" opacity={0.9} />
-                    <rect x={cx - 35} y={cy - 10} width={70} height={areaStr ? 22 : 14} rx={3} fill="rgba(10,16,32,0.92)" stroke={st.color} strokeWidth={1} />
-                    <text x={cx} y={areaStr ? cy - 1 : cy + 3} textAnchor="middle" fill={st.color} fontSize={fs} fontWeight="700" fontFamily="system-ui,sans-serif">
-                      {st.name}
-                    </text>
-                    {areaStr && (
-                      <text x={cx} y={cy + 9} textAnchor="middle" fill="#94a3b8" fontSize={7} fontWeight="500" fontFamily="monospace">
-                        {areaStr}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-            </svg>
-          )}
+          {/* Floating zoom controls */}
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+            <button onClick={() => setImgZoom(z => Math.min(12, z * 1.3))} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom +">
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => setImgZoom(z => Math.max(0.5, z / 1.3))} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom -">
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-5 bg-white/10" />
+            <button onClick={() => { setImgZoom(1); setImgPan({x:0,y:0}); }} className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Reset">
+              <RotateCcw className="w-3 h-3" />
+            </button>
+            {Math.abs(imgZoom - 1) > 0.05 && <span className="text-[9px] text-slate-500 font-mono pl-0.5">{imgZoom.toFixed(1)}x</span>}
+          </div>
         </div>
       </div>
 
