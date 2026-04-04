@@ -523,6 +523,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       if (e.key === "Escape" && tool === "split") {
         pts.current = []; drawCanvas(); setTool("select");
       }
+      if (e.key === "Escape" && tool === "add_poly" && layer === "rooms") {
+        pts.current = []; drawCanvas(); setTool("select");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1054,23 +1057,16 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         const img = imgRef.current!;
         const cutPoints = pts.current.map(([px, py]) => ({ x: px / img.naturalWidth, y: py / img.naturalHeight }));
         pts.current = [];
-        // Validate: check if the selected room exists and the line crosses its polygon
+        // Only need a selected room — the cut line can extend beyond the room boundary
+        // The backend will handle clipping the line to the room polygon
         const room = (result.rooms ?? []).find(r => r.id === selectedRoomId);
         if (!room || !room.polygon_norm) {
           toast({ title: d("ed_select_room_first" as DTKey), variant: "error" });
           setTool("select");
           return;
         }
-        // Check both cut points are near/inside the room polygon
-        const p1In = pointInPolygon(cutPoints[0].x, cutPoints[0].y, room.polygon_norm);
-        const p2In = pointInPolygon(cutPoints[1].x, cutPoints[1].y, room.polygon_norm);
-        if (!p1In && !p2In) {
-          toast({ title: d("ed_cut_no_cross" as DTKey), description: d("ed_cut_no_cross_d" as DTKey), variant: "error" });
-          setTool("select");
-          return;
-        }
         sendEditRoom({ action: "split_room", room_id: selectedRoomId, cut_points: cutPoints });
-        setTool("select");
+        setTool("select"); // Return to select after cut
       }
       return;
     }
@@ -1286,6 +1282,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   const finishPoly = async () => {
+    // ── Rooms layer: create a new Room locally from the polygon ──
+    if (layer === "rooms" && tool === "add_poly") {
+      if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
+      const img = imgRef.current!;
+      const polyNorm = pts.current.map(([px, py]) => ({ x: px / img.naturalWidth, y: py / img.naturalHeight }));
+      const cx = polyNorm.reduce((s, p) => s + p.x, 0) / polyNorm.length;
+      const cy = polyNorm.reduce((s, p) => s + p.y, 0) / polyNorm.length;
+      const xs = polyNorm.map(p => p.x), ys = polyNorm.map(p => p.y);
+      const bbox = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      const areaPx = polygonAreaNorm(polyNorm, img.naturalWidth, img.naturalHeight);
+      const area_m2 = ppm ? areaPx / (ppm * ppm) : null;
+      const newId = Math.max(0, ...(result.rooms ?? []).map(r => r.id)) + 1;
+      const newRoom: Room = {
+        id: newId,
+        type: activeRoomType,
+        label_fr: d(ROOM_TYPES.find(rt => rt.type === activeRoomType)?.i18nKey ?? "rt_bedroom"),
+        centroid_norm: { x: cx, y: cy },
+        bbox_norm: bbox,
+        area_m2,
+        area_px2: areaPx,
+        polygon_norm: polyNorm,
+      };
+      setResult(prev => ({ ...prev, rooms: [...(prev.rooms ?? []), newRoom] }));
+      toast({ title: `Pièce créée : ${newRoom.label_fr}`, variant: "success" });
+      pts.current = [];
+      const ctx = canvasRef.current?.getContext("2d");
+      if (ctx) ctx.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      return;
+    }
     // ── Surface layer: create a MeasureZone instead of calling backend ──
     if (layer === "surface") {
       if (pts.current.length < 3) { toast({ title: d("ed_min3pts"), variant: "error" }); return; }
@@ -1794,6 +1819,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <X className="w-3 h-3" /> {d("ed_cancel")}
                     </button>
                   )}
+                  <button onClick={() => { setTool("add_poly"); pts.current = []; }}
+                    title="Créer une pièce : dessinez un polygone"
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      tool === "add_poly" && layer === "rooms" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                    <PenLine className="w-3 h-3" /> Créer
+                  </button>
+                  {tool === "add_poly" && layer === "rooms" && (
+                    <button onClick={finishPoly}
+                      title="Valider le polygone de la pièce"
+                      className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
+                      <Check className="w-3 h-3" /> {d("ed_validate")}
+                    </button>
+                  )}
                   <div className="flex gap-0.5 items-center ml-1">
                     {ROOM_TYPES.slice(0, 8).map(rt => (
                       <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
@@ -1802,6 +1840,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
                         style={{ background: getRoomColor(rt.type) }} />
                     ))}
+                    {/* Add custom room type */}
+                    <label className="relative w-4 h-4 cursor-pointer" title="Couleur personnalisée">
+                      <span className="flex items-center justify-center w-4 h-4 rounded-full border-2 border-dashed border-slate-500 text-slate-500 text-[8px] font-bold hover:border-white hover:text-white transition-colors">+</span>
+                      <input type="color" value="#94a3b8"
+                        onChange={e => {
+                          const color = e.target.value;
+                          const type = `custom_${Date.now()}`;
+                          setActiveRoomType(type);
+                        }}
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+                    </label>
                   </div>
                   <button onClick={() => { const allOn = snapConfig.enableVertex && snapConfig.enableWall && snapConfig.enableGrid && snapConfig.enableAlignment; const next = !allOn; setSnapConfig(c => ({ ...c, enableVertex: next, enableWall: next, enableMidpoint: next, enableGrid: next, enableAlignment: next })); }}
                     title={d("snap_label")}
@@ -2193,7 +2242,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                                 x={tx} y={ty + 3}
                                 textAnchor="middle"
                                 fill="#e2e8f0"
-                                fontSize={8}
+                                fontSize={6}
                                 fontFamily="monospace"
                                 fontWeight="600"
                                 transform={`rotate(${rot},${tx},${ty})`}
@@ -2530,7 +2579,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       const bboxW = selRoom.bbox_norm.w * imgDisplaySize.w;
                       const bboxH = selRoom.bbox_norm.h * imgDisplaySize.h;
                       const minDim = Math.min(bboxW, bboxH);
-                      const fs = Math.max(2, Math.min(4, minDim * 0.047));
+                      const fs = Math.max(1, Math.min(2, minDim * 0.024));
                       const rcx = selRoom.centroid_norm.x * imgDisplaySize.w;
                       const rcy = selRoom.centroid_norm.y * imgDisplaySize.h;
 
@@ -2541,8 +2590,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       const areaStr = selRoom.area_m2 != null ? `${selRoom.area_m2.toFixed(1)} m²` : "";
                       const perimStr = perimM != null ? `P ${perimM.toFixed(1)} m` : "";
                       const measLine = areaStr && perimStr ? `${areaStr} · ${perimStr}` : areaStr;
-                      const nameFontSize = fs + 2;
-                      const measFontSize = Math.max(6, fs - 2);
+                      const nameFontSize = fs + 1;
+                      const measFontSize = Math.max(3, fs);
                       const hasMeas = measLine.length > 0;
                       const nameWidth = Math.max(50, selRoom.label_fr.length * (nameFontSize * 0.62));
                       const measWidth = hasMeas ? Math.max(40, measLine.length * (measFontSize * 0.6)) : 0;
@@ -2590,7 +2639,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                                   fill="rgba(10,16,32,0.85)"
                                   transform={`rotate(${rot},${tx},${ty})`} />
                                 <text x={tx} y={ty + 3} textAnchor="middle" fill="#e2e8f0"
-                                  fontSize={8} fontFamily="monospace" fontWeight="600"
+                                  fontSize={6} fontFamily="monospace" fontWeight="600"
                                   transform={`rotate(${rot},${tx},${ty})`}
                                 >{dimText}</text>
                               </g>
@@ -3019,7 +3068,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           <div onClick={() => { setSelectedRoomId(id => id === room.id ? null : room.id); setEditingRoomId(room.id); setActiveRoomType(room.type); }}
                             className="flex items-center gap-2.5 px-3 pt-2.5 pb-1 cursor-pointer group">
                             <span className="w-3.5 h-3.5 rounded-full ring-1 ring-white/20 shrink-0" style={{ background: rcolor }} />
-                            <span className={cn("text-sm font-medium flex-1 truncate", isSelected ? "text-white" : "text-slate-300")}>{room.label_fr}</span>
+                            <input
+                              value={room.label_fr}
+                              onChange={e => {
+                                const newLabel = e.target.value;
+                                setResult(prev => ({
+                                  ...prev,
+                                  rooms: (prev.rooms ?? []).map(r => r.id === room.id ? { ...r, label_fr: newLabel } : r),
+                                }));
+                              }}
+                              onClick={e => e.stopPropagation()}
+                              className={cn("text-sm font-medium flex-1 truncate bg-transparent border-none outline-none focus:ring-1 focus:ring-emerald-500/40 rounded px-1 -ml-1",
+                                isSelected ? "text-white" : "text-slate-300")}
+                            />
                             <div className="flex flex-col items-end gap-0">
                               <span className="text-xs text-slate-400 font-mono">{room.area_m2 != null ? `${room.area_m2.toFixed(2)} m\u00b2` : "\u2014"}</span>
                               {rPerim != null && (<span className="text-[10px] text-slate-600 font-mono">P {rPerim.toFixed(1)} m</span>)}
