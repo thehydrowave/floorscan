@@ -689,17 +689,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         </div>
       )}
 
-      {/* Dashboard KPIs */}
-      <DashboardPanel result={result} customDetections={customDetections} />
-
       {/* 3D Floor Plan View */}
       <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
-
-      {/* Pattern detection */}
-      {onDetectionsChange && result.overlay_openings_b64 && (
-        <PatternPanel result={result} overlayB64={result.plan_b64 || result.overlay_openings_b64}
-          customDetections={customDetections} onDetectionsChange={onDetectionsChange} />
-      )}
 
       {/* Advanced Tools accordion */}
       <div className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
