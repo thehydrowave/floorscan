@@ -21,7 +21,7 @@ export interface CropBox { x0: number; y0: number; x1: number; y1: number; imgW:
 interface CropStepProps {
   sessionId: string;
   imageB64: string;
-  onCropped: (cropBox: CropBox) => void;
+  onCropped: (cropBox?: CropBox) => void;
   onSkip: () => void;
   onSessionExpired?: () => void;
   onBack?: () => void;
@@ -67,7 +67,7 @@ export default function CropStep({
   const draggingPtRef = useRef<{ zoneId: number; ptIdx: number } | null>(null);
   const [isDraggingPt, setIsDraggingPt] = useState(false);
   // "crop" mode = draw crop rectangle, "facade" mode = click points for facade zones
-  const [activeMode, setActiveMode] = useState<"crop" | "facade">("crop");
+  const [activeMode, setActiveMode] = useState<"crop" | "facade">(showFacadeDelimitation ? "facade" : "crop");
   // Facade draw sub-mode: "4pts" = auto-close after 4, "polygon" = free clicks, close on 1st point
   const [facadeDrawMode, setFacadeDrawMode] = useState<"4pts" | "polygon">("4pts");
 
@@ -304,7 +304,14 @@ export default function CropStep({
   const hasCrop = !!crop && crop.w > 2 && crop.h > 2;
 
   const handleConfirm = async () => {
-    if (!hasCrop || !crop) return;
+    if (showFacadeDelimitation && facadeZones.length === 0) {
+      toast({ title: "Zone requise", description: d("fa_zone_required" as DTKey), variant: "error" });
+      return;
+    }
+    if (!hasCrop || !crop) {
+      if (showFacadeDelimitation) { onSkip?.(); return; }
+      return;
+    }
     setConfirming(true);
     try {
       const img = imgRef.current!;
@@ -373,13 +380,13 @@ export default function CropStep({
             onClick={() => { setActiveMode("crop"); setDrawingFacade(false); setPendingPts([]); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "crop" ? "bg-cyan-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
           >
-            <Crop className="w-3.5 h-3.5" /> {d("cr_crop_mode" as DTKey)}
+            <Crop className="w-3.5 h-3.5" /> {d("cr_crop_mode" as DTKey)} <span className="opacity-60">(optionnel)</span>
           </button>
           <button
             onClick={() => setActiveMode("facade")}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${activeMode === "facade" ? "bg-amber-500 text-white shadow-sm" : "text-slate-400 hover:text-white bg-white/5"}`}
           >
-            <Building2 className="w-3.5 h-3.5" /> {d("cr_facade_mode" as DTKey)}
+            <Building2 className="w-3.5 h-3.5" /> {d("cr_facade_mode" as DTKey)} <span className="text-red-400">*</span>
           </button>
         </div>
       )}
@@ -668,7 +675,7 @@ export default function CropStep({
         <Button variant="outline" onClick={onSkip} disabled={confirming}>
           {d("cr_skip")}
         </Button>
-        <Button onClick={handleConfirm} disabled={confirming || !hasCrop}>
+        <Button onClick={handleConfirm} disabled={confirming || (showFacadeDelimitation && facadeZones.length === 0)}>
           {confirming
             ? <><Loader2 className="w-4 h-4 animate-spin" /> {d("cr_applying")}</>
             : <>{d("cr_confirm")} <ArrowRight className="w-4 h-4" /></>}

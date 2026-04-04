@@ -69,13 +69,14 @@ function HBar({ label, value, maxValue, color }: { label: string; value: number;
 
 /* ── Colors per element type ── */
 const TYPE_COLORS: Record<FacadeElementType, string> = {
-  window: "#60a5fa",
+  window: "#fbbf24",
   door: "#f472b6",
   balcony: "#34d399",
   floor_line: "#fbbf24",
   roof: "#a78bfa",
   column: "#fb923c",
   other: "#94a3b8",
+  wall_opaque: "#64748b",
 };
 
 const TYPE_LABELS_FR: Record<FacadeElementType, string> = {
@@ -86,6 +87,7 @@ const TYPE_LABELS_FR: Record<FacadeElementType, string> = {
   roof: "Toiture",
   column: "Colonne",
   other: "Autre",
+  wall_opaque: "Mur opaque",
 };
 
 const TYPE_LABELS_EN: Record<FacadeElementType, string> = {
@@ -96,6 +98,7 @@ const TYPE_LABELS_EN: Record<FacadeElementType, string> = {
   roof: "Roof",
   column: "Column",
   other: "Other",
+  wall_opaque: "Opaque wall",
 };
 
 /* ── Props ── */
@@ -112,17 +115,24 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
 
   const hasArea = result.facade_area_m2 != null && result.facade_area_m2 > 0;
 
+  /* ── Remap "other" → "window" for metrics (model often misclassifies) ── */
+  const remappedElements = useMemo(() =>
+    result.elements.map(el => el.type === "other" ? { ...el, type: "window" as FacadeElementType } : el),
+    [result.elements]);
+  const windowsCount = useMemo(() => remappedElements.filter(e => e.type === "window").length, [remappedElements]);
+  const windowsArea = useMemo(() => remappedElements.filter(e => e.type === "window").reduce((s, e) => s + (e.area_m2 ?? 0), 0), [remappedElements]);
+
   /* ── Derived metrics ── */
-  const totalElements = result.elements.length;
-  const ratioPct = (result.ratio_openings ?? 0) * 100;
+  const totalElements = remappedElements.length;
   const facadeArea = result.facade_area_m2 ?? 0;
-  const openingsArea = result.openings_area_m2 ?? 0;
+  const openingsArea = windowsArea > 0 ? windowsArea : (result.openings_area_m2 ?? 0);
   const wallArea = Math.max(0, facadeArea - openingsArea);
+  const ratioPct = facadeArea > 0 ? (openingsArea / facadeArea) * 100 : 0;
 
   /* ── Element distribution by type ── */
   const typeDistribution = useMemo(() => {
     const map = new Map<FacadeElementType, number>();
-    for (const el of result.elements) {
+    for (const el of remappedElements) {
       map.set(el.type, (map.get(el.type) ?? 0) + 1);
     }
     return [...map.entries()]
@@ -220,26 +230,26 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
               {/* Row 1 : Core KPI cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KpiCard
-                  label={isFr ? "Elements detectes" : "Elements detected"}
-                  value={totalElements.toString()}
-                  color="#22d3ee"
-                  icon="🔍"
-                />
-                <KpiCard
-                  label={isFr ? "Fenetres" : "Windows"}
-                  value={result.windows_count.toString()}
-                  color="#60a5fa"
+                  label={isFr ? "Fenêtres" : "Windows"}
+                  value={windowsCount.toString()}
+                  color="#fbbf24"
                   icon="🪟"
                 />
                 <KpiCard
-                  label={isFr ? "Portes" : "Doors"}
-                  value={result.doors_count.toString()}
-                  color="#f472b6"
-                  icon="🚪"
+                  label={isFr ? "Surface fenêtres" : "Windows area"}
+                  value={openingsArea > 0 ? `${openingsArea.toFixed(1)} m²` : "—"}
+                  color="#22d3ee"
+                  icon="📐"
                 />
                 <KpiCard
-                  label={isFr ? "Niveaux" : "Floors"}
-                  value={result.floors_count.toString()}
+                  label={isFr ? "Mur net" : "Net wall"}
+                  value={wallArea > 0 ? `${wallArea.toFixed(1)} m²` : "—"}
+                  color="#94a3b8"
+                  icon="🧱"
+                />
+                <KpiCard
+                  label={isFr ? "Surface totale" : "Total area"}
+                  value={facadeArea > 0 ? `${facadeArea.toFixed(1)} m²` : "—"}
                   color="#a78bfa"
                   icon="🏢"
                 />
@@ -289,7 +299,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           className="h-full transition-all"
                           style={{
                             width: `${facadeArea > 0 ? (openingsArea / facadeArea) * 100 : 50}%`,
-                            backgroundColor: "#60a5fa",
+                            backgroundColor: "#fbbf24",
                             minWidth: "2px",
                           }}
                           title={`${isFr ? "Ouvertures" : "Openings"}: ${openingsArea.toFixed(1)} m²`}
@@ -303,7 +313,7 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                           <span className="text-slate-600 font-mono">{wallArea.toFixed(1)} m²</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs">
-                          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: "#fbbf24" }} />
                           <span className="text-slate-400">{isFr ? "Ouvertures" : "Openings"}</span>
                           <span className="text-slate-600 font-mono">{openingsArea.toFixed(1)} m²</span>
                         </div>
@@ -342,74 +352,6 @@ export default function FacadeDashboardPanel({ result }: FacadeDashboardPanelPro
                 </div>
               )}
 
-              {/* Row 4 : Distribution by floor level */}
-              {floorDistribution.length > 1 && (
-                <div className="glass rounded-xl border border-white/10 p-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    {isFr ? "Distribution par etage" : "Distribution by floor"}
-                  </p>
-                  <div className="space-y-2">
-                    {floorDistribution.map(({ floor, count, label }) => (
-                      <HBar
-                        key={floor}
-                        label={label}
-                        value={count}
-                        maxValue={maxFloorCount}
-                        color="#818cf8"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Row 5 : Confidence stats */}
-              {confidenceStats && (
-                <div className="glass rounded-xl border border-white/10 p-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    {isFr ? "Statistiques de confiance" : "Confidence statistics"}
-                  </p>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-emerald-400">
-                        {(confidenceStats.avg * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Moyenne" : "Average"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-amber-400">
-                        {(confidenceStats.min * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Minimum" : "Minimum"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-lg font-display font-700 text-sky-400">
-                        {(confidenceStats.max * 100).toFixed(1)}%
-                      </p>
-                      <p className="text-[10px] text-slate-500">{isFr ? "Maximum" : "Maximum"}</p>
-                    </div>
-                  </div>
-                  {/* Confidence bar visualization */}
-                  <div className="mt-3 relative h-2 bg-white/5 rounded-full overflow-hidden">
-                    {/* Range indicator */}
-                    <div
-                      className="absolute h-full bg-emerald-500/30 rounded-full"
-                      style={{
-                        left: `${confidenceStats.min * 100}%`,
-                        width: `${(confidenceStats.max - confidenceStats.min) * 100}%`,
-                      }}
-                    />
-                    {/* Average marker */}
-                    <div
-                      className="absolute top-0 w-1 h-full bg-emerald-400 rounded-full"
-                      style={{ left: `${confidenceStats.avg * 100}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-[9px] text-slate-600">0%</span>
-                    <span className="text-[9px] text-slate-600">100%</span>
-                  </div>
-                </div>
-              )}
             </div>
           </motion.div>
         )}

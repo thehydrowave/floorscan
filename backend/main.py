@@ -1634,6 +1634,61 @@ def analyze_facade(req: AnalyzeFacadeRequest):
 
     overlay_b64 = pipeline._np_to_b64(overlay)
 
+    # ── Générer masques PNG par type (comme le pipeline plan intérieur) ──────
+    # Chaque masque = image grayscale (blanc = élément, noir = fond)
+    # Utilisable côté frontend pour l'éditeur de masques façade
+    MASK_TYPES = ["window", "door", "balcony", "roof", "column"]
+    facade_masks = {}
+    for mtype in MASK_TYPES:
+        mask = np.zeros((H, W), dtype=np.uint8)
+        for el in elements:
+            if el["type"] != mtype:
+                continue
+            bx = el["bbox_norm"]
+            x1m = int(bx["x"] * W)
+            y1m = int(bx["y"] * H)
+            x2m = int((bx["x"] + bx["w"]) * W)
+            y2m = int((bx["y"] + bx["h"]) * H)
+            cv2.rectangle(mask, (x1m, y1m), (x2m, y2m), 255, cv2.FILLED)
+        if mask.any():
+            _, buf_mask = cv2.imencode(".png", mask)
+            facade_masks[f"mask_{mtype}_b64"] = base64.b64encode(buf_mask).decode()
+
+    # ── Masque mur opaque (tout sauf ouvertures) ────────────────────────────
+    wall_mask = np.zeros((H, W), dtype=np.uint8)
+    # Remplir la zone ROI en blanc
+    cv2.rectangle(wall_mask, (roi_x1, roi_y1), (roi_x2, roi_y2), 255, cv2.FILLED)
+    # Soustraire toutes les ouvertures
+    for el in elements:
+        if el["type"] in ("window", "door", "balcony"):
+            bx = el["bbox_norm"]
+            x1m = int(bx["x"] * W)
+            y1m = int(bx["y"] * H)
+            x2m = int((bx["x"] + bx["w"]) * W)
+            y2m = int((bx["y"] + bx["h"]) * H)
+            cv2.rectangle(wall_mask, (x1m, y1m), (x2m, y2m), 0, cv2.FILLED)
+    if wall_mask.any():
+        _, buf_wall = cv2.imencode(".png", wall_mask)
+        facade_masks["mask_wall_opaque_b64"] = base64.b64encode(buf_wall).decode()
+
+    # ── Masque RGBA coloré (overlay_openings style) ─────────────────────────
+    overlay_rgba = np.zeros((H, W, 4), dtype=np.uint8)
+    for el in elements:
+        color_rgb = TYPE_COLORS_RGB.get(el["type"], (180, 180, 180))
+        bx = el["bbox_norm"]
+        x1m = int(bx["x"] * W)
+        y1m = int(bx["y"] * H)
+        x2m = int((bx["x"] + bx["w"]) * W)
+        y2m = int((bx["y"] + bx["h"]) * H)
+        if el["type"] == "floor_line":
+            cy_m = (y1m + y2m) // 2
+            cv2.line(overlay_rgba, (x1m, cy_m), (x2m, cy_m), (*color_rgb, 200), 3, cv2.LINE_AA)
+        else:
+            cv2.rectangle(overlay_rgba, (x1m, y1m), (x2m, y2m), (*color_rgb, 140), cv2.FILLED)
+            cv2.rectangle(overlay_rgba, (x1m, y1m), (x2m, y2m), (*color_rgb, 220), 2, cv2.LINE_AA)
+    _, buf_rgba = cv2.imencode(".png", overlay_rgba)
+    facade_masks["overlay_openings_b64"] = base64.b64encode(buf_rgba).decode()
+
     # ── Surface murale nette (opaque) ──
     surface_mur_net = None
     if facade_area_m2 is not None:
@@ -1659,6 +1714,8 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         },
         "overlay_b64": overlay_b64,
         "plan_b64": plan_b64,
+        # Masques éditables par type (comme le pipeline plan intérieur)
+        **facade_masks,
         "is_mock": False,
     }
 
