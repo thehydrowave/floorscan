@@ -6,6 +6,7 @@ import { Ruler, ArrowRight, ZoomIn, ZoomOut, RotateCcw, Crosshair, Wand2, Chevro
 import { Button } from "@/components/ui/button";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import { useAuth } from "@/lib/use-auth";
 
 interface Point { x: number; y: number; }
 
@@ -18,7 +19,9 @@ interface ScaleStepProps {
 export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
-  const [mode, setMode] = useState<"manual" | null>(null);
+  const { isAdmin } = useAuth();
+  // Non-admin: skip mode choice, go directly to manual
+  const [mode, setMode] = useState<"manual" | null>(isAdmin ? null : "manual");
   const [points, setPoints] = useState<(Point | null)[]>([null, null]);
   const [realDist, setRealDist] = useState("1");
   const [zoom, setZoom] = useState(1);
@@ -155,23 +158,25 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
           <motion.div key="choice" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="flex flex-col items-center gap-4">
             <div className="flex flex-col sm:flex-row gap-4 justify-center w-full">
-              <button
-                onClick={() => onScaled(null)}
-                className="flex-1 max-w-xs glass border border-white/10 rounded-2xl p-6 text-left hover:border-accent/40 transition-all relative overflow-hidden"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <Wand2 className="w-8 h-8 text-accent" />
-                  <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1.5 py-0.5 font-semibold text-amber-400 leading-none uppercase tracking-wider flex items-center gap-1">
-                    <Construction className="w-2.5 h-2.5" /> WIP
-                  </span>
-                </div>
-                <div className="font-display font-700 text-white mb-1">{d("sc_auto")}</div>
-                <div className="text-slate-400 text-sm">{d("sc_auto_desc")}</div>
-                <div className="text-amber-400/70 text-xs mt-2 flex items-center gap-1">
-                  <Construction className="w-3 h-3" />
-                  {d("sc_wip")}
-                </div>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => onScaled(null)}
+                  className="flex-1 max-w-xs glass border border-white/10 rounded-2xl p-6 text-left hover:border-accent/40 transition-all relative overflow-hidden"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <Wand2 className="w-8 h-8 text-accent" />
+                    <span className="text-[10px] bg-amber-500/20 border border-amber-500/30 rounded px-1.5 py-0.5 font-semibold text-amber-400 leading-none uppercase tracking-wider flex items-center gap-1">
+                      <Construction className="w-2.5 h-2.5" /> WIP
+                    </span>
+                  </div>
+                  <div className="font-display font-700 text-white mb-1">{d("sc_auto")}</div>
+                  <div className="text-slate-400 text-sm">{d("sc_auto_desc")}</div>
+                  <div className="text-amber-400/70 text-xs mt-2 flex items-center gap-1">
+                    <Construction className="w-3 h-3" />
+                    {d("sc_wip")}
+                  </div>
+                </button>
+              )}
               <button
                 onClick={() => setMode("manual")}
                 className="flex-1 max-w-xs glass border border-white/10 rounded-2xl p-6 text-left hover:border-brand-400/40 transition-all"
