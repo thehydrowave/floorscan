@@ -645,25 +645,53 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
 
-        // If editing "Surface nette" → erased zone becomes a window
+        // If editing "Surface nette" → erased zone becomes a window (or extends existing one)
         if (addType === "wall_opaque") {
-          const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
-          const newPts: Pt[] = [
-            { x: ex1, y: ey1 }, { x: ex2, y: ey1 },
-            { x: ex2, y: ey2 }, { x: ex1, y: ey2 },
-          ];
-          const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
-          setElements(prev => [...prev, {
-            id: newId,
-            type: "window" as FacadeElementType,
-            label_fr: "Fenêtre",
-            bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
-            polygon_norm: newPts,
-            area_m2: ppm ? areaPx / (ppm * ppm) : null,
-            floor_level: 0,
-            confidence: 1.0,
-          }]);
-          toast({ title: "Fenêtre créée", description: "Zone gommée du mur → fenêtre", variant: "success" });
+          // Check if start point is inside an existing window → extend it
+          const startPt = eraserStart;
+          const hitWindow = elements.find(el =>
+            (el.type === "window" || el.type === "other") &&
+            startPt.x >= el.bbox_norm.x && startPt.x <= el.bbox_norm.x + el.bbox_norm.w &&
+            startPt.y >= el.bbox_norm.y && startPt.y <= el.bbox_norm.y + el.bbox_norm.h
+          );
+
+          if (hitWindow) {
+            // Extend existing window bbox to include eraser rect
+            const bx = hitWindow.bbox_norm;
+            const nx1 = Math.min(bx.x, ex1), ny1 = Math.min(bx.y, ey1);
+            const nx2 = Math.max(bx.x + bx.w, ex2), ny2 = Math.max(bx.y + bx.h, ey2);
+            const newPts: Pt[] = [
+              { x: nx1, y: ny1 }, { x: nx2, y: ny1 },
+              { x: nx2, y: ny2 }, { x: nx1, y: ny2 },
+            ];
+            const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
+            setElements(prev => prev.map(el => el.id === hitWindow.id ? {
+              ...el,
+              bbox_norm: { x: nx1, y: ny1, w: nx2 - nx1, h: ny2 - ny1 },
+              polygon_norm: newPts,
+              area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
+            } : el));
+            toast({ title: "Fenêtre étendue", description: "Zone ajoutée à la fenêtre existante", variant: "success" });
+          } else {
+            // Create new window
+            const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
+            const newPts: Pt[] = [
+              { x: ex1, y: ey1 }, { x: ex2, y: ey1 },
+              { x: ex2, y: ey2 }, { x: ex1, y: ey2 },
+            ];
+            const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
+            setElements(prev => [...prev, {
+              id: newId,
+              type: "window" as FacadeElementType,
+              label_fr: "Fenêtre",
+              bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
+              polygon_norm: newPts,
+              area_m2: ppm ? areaPx / (ppm * ppm) : null,
+              floor_level: 0,
+              confidence: 1.0,
+            }]);
+            toast({ title: "Fenêtre créée", description: "Zone gommée du mur → fenêtre", variant: "success" });
+          }
         } else {
           // Editing "Fenêtres" → erase from windows, possibly splitting them
           const targetTypes = ["window", "other"];
