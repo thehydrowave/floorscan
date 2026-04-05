@@ -1433,7 +1433,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   className="absolute inset-0 w-full h-full"
                   viewBox={`0 0 ${imgNat.w} ${imgNat.h}`}
                   preserveAspectRatio="xMidYMid meet"
-                  style={{ pointerEvents: "none", ...facadeClipStyle }}
+                  style={{ pointerEvents: "none" }}
                 >
                   {/* ── Existing elements ── */}
                   {visibleElements.map(el => {

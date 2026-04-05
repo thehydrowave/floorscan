@@ -525,7 +525,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                           ))}
                         </clipPath></defs>
                       )}
-                      <g clipPath={facadeZones.length > 0 ? "url(#fz-clip-masks)" : undefined}>
+                      <g>
                       {filteredMaskLayers.filter(l => !l.isSurface && !hiddenLayers.has(l.id)).map(layer => {
                         const layerEls = localElements.filter(e => e.type === layer.id && !hiddenElements.has(e.id));
                         const isWindowLayer = layer.id === "window" || layer.id === "other";
