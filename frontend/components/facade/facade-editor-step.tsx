@@ -199,6 +199,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // Eraser tool state — draw a rect to subtract from an element's polygon
   const [eraserStart, setEraserStart] = useState<Pt | null>(null);
   const [eraserPreview, setEraserPreview] = useState<{ start: Pt; end: Pt } | null>(null);
+  const [eraserSource, setEraserSource] = useState<string>("window"); // type to erase FROM
+  const [eraserTarget, setEraserTarget] = useState<string>("__none__"); // type to convert TO ("__none__" = just remove)
 
   // Translation tool state
   const [transPhase, setTransPhase] = useState<TranslationPhase>("choose_shape");
@@ -691,158 +693,83 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
     // Eraser: subtract eraser rect from overlapping elements + split if needed
     // Behavior depends on active edit layer:
-    //   addType === "window" → erase from windows (gommée zone becomes wall)
-    //   addType === "wall_opaque" → erase from wall, create window in erased zone
+    // Eraser: generic source → target logic
+    // eraserSource = type to erase FROM (split/shrink)
+    // eraserTarget = type to convert erased zone TO ("__none__" = just remove)
     if (tool === "eraser" && eraserStart && eraserPreview) {
       const { start, end } = eraserPreview;
       const ex1 = Math.min(start.x, end.x), ey1 = Math.min(start.y, end.y);
       const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
+        const sourceTypes = eraserSource === "window" ? ["window", "other"] : [eraserSource];
 
-        // Determine which types to erase based on active edit layer
-        const isCustomType = customTypes.some(ct => ct.id === addType);
-
-        // If editing "Surface nette" → erased zone becomes a window (or extends existing one)
-        if (addType === "wall_opaque") {
-          // Check if start point is inside an existing window → extend it
-          const startPt = eraserStart;
-          const hitWindow = elements.find(el =>
-            (el.type === "window" || el.type === "other") &&
-            startPt.x >= el.bbox_norm.x && startPt.x <= el.bbox_norm.x + el.bbox_norm.w &&
-            startPt.y >= el.bbox_norm.y && startPt.y <= el.bbox_norm.y + el.bbox_norm.h
-          );
-
-          if (hitWindow) {
-            // Extend existing window bbox to include eraser rect
-            const bx = hitWindow.bbox_norm;
-            const nx1 = Math.min(bx.x, ex1), ny1 = Math.min(bx.y, ey1);
-            const nx2 = Math.max(bx.x + bx.w, ex2), ny2 = Math.max(bx.y + bx.h, ey2);
-            const newPts: Pt[] = [
-              { x: nx1, y: ny1 }, { x: nx2, y: ny1 },
-              { x: nx2, y: ny2 }, { x: nx1, y: ny2 },
-            ];
-            const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
-            setElements(prev => prev.map(el => el.id === hitWindow.id ? {
-              ...el,
-              bbox_norm: { x: nx1, y: ny1, w: nx2 - nx1, h: ny2 - ny1 },
-              polygon_norm: newPts,
-              area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
-            } : el));
-            toast({ title: "Fenêtre étendue", description: "Zone ajoutée à la fenêtre existante", variant: "success" });
-          } else {
-            // Create new window
-            const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
-            const newPts: Pt[] = [
-              { x: ex1, y: ey1 }, { x: ex2, y: ey1 },
-              { x: ex2, y: ey2 }, { x: ex1, y: ey2 },
-            ];
-            const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
-            setElements(prev => [...prev, {
-              id: newId,
-              type: "window" as FacadeElementType,
-              label_fr: "Fenêtre",
-              bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
-              polygon_norm: newPts,
-              area_m2: ppm ? areaPx / (ppm * ppm) : null,
-              floor_level: 0,
-              confidence: 1.0,
-            }]);
-            toast({ title: "Fenêtre créée", description: "Zone gommée du mur → fenêtre", variant: "success" });
+        // Step 1: Split/remove source elements in erased zone
+        let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
+        setElements(prev => {
+          const kept: FacadeElement[] = [];
+          for (const el of prev) {
+            if (!sourceTypes.includes(el.type)) { kept.push(el); continue; }
+            const bx = el.bbox_norm;
+            const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
+            const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
+            const overlapY = Math.max(0, Math.min(by2, ey2) - Math.max(bx.y, ey1));
+            if (overlapX <= 0 || overlapY <= 0) { kept.push(el); continue; }
+            // Fully contained → delete
+            if (ex1 <= bx.x && ex2 >= bx2 && ey1 <= bx.y && ey2 >= by2) continue;
+            // Split into up to 4 sub-rects
+            const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
+            if (ex1 > bx.x) rects.push({ x: bx.x, y: bx.y, w: ex1 - bx.x, h: bx.h });
+            if (ex2 < bx2) rects.push({ x: ex2, y: bx.y, w: bx2 - ex2, h: bx.h });
+            const midX1 = Math.max(bx.x, ex1), midX2 = Math.min(bx2, ex2);
+            if (ey1 > bx.y && midX2 > midX1) rects.push({ x: midX1, y: bx.y, w: midX2 - midX1, h: ey1 - bx.y });
+            if (ey2 < by2 && midX2 > midX1) rects.push({ x: midX1, y: ey2, w: midX2 - midX1, h: by2 - ey2 });
+            for (const r of rects) {
+              if (r.w < 0.003 || r.h < 0.003) continue;
+              const pts: Pt[] = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+              const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
+              kept.push({ ...el, id: nextId++, bbox_norm: r, polygon_norm: pts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2 });
+            }
           }
-        } else if (isCustomType) {
-          // Editing a custom type → erase (split) elements of that type, no conversion
-          const targetTypes = [addType];
-          let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
-          setElements(prev => {
-            const kept: FacadeElement[] = [];
-            for (const el of prev) {
-              if (!targetTypes.includes(el.type)) { kept.push(el); continue; }
-              const bx = el.bbox_norm;
-              const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
-              const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
-              const overlapY = Math.max(0, Math.min(by2, ey2) - Math.max(bx.y, ey1));
-              if (overlapX <= 0 || overlapY <= 0) { kept.push(el); continue; }
-              if (ex1 <= bx.x && ex2 >= bx2 && ey1 <= bx.y && ey2 >= by2) continue;
-              const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
-              if (ex1 > bx.x) rects.push({ x: bx.x, y: bx.y, w: ex1 - bx.x, h: bx.h });
-              if (ex2 < bx2) rects.push({ x: ex2, y: bx.y, w: bx2 - ex2, h: bx.h });
-              const midX1 = Math.max(bx.x, ex1), midX2 = Math.min(bx2, ex2);
-              if (ey1 > bx.y && midX2 > midX1) rects.push({ x: midX1, y: bx.y, w: midX2 - midX1, h: ey1 - bx.y });
-              if (ey2 < by2 && midX2 > midX1) rects.push({ x: midX1, y: ey2, w: midX2 - midX1, h: by2 - ey2 });
-              for (const r of rects) {
-                if (r.w < 0.003 || r.h < 0.003) continue;
-                const pts: Pt[] = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
-                const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
-                kept.push({ ...el, id: nextId++, bbox_norm: r, polygon_norm: pts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2 });
-              }
+
+          // Step 2: If target is not "none", create a new element in the erased zone
+          if (eraserTarget !== "__none__") {
+            // Check if start point is inside an existing target element → extend it
+            const startPt = eraserStart!;
+            const hitTarget = kept.find(el =>
+              el.type === eraserTarget &&
+              startPt.x >= el.bbox_norm.x && startPt.x <= el.bbox_norm.x + el.bbox_norm.w &&
+              startPt.y >= el.bbox_norm.y && startPt.y <= el.bbox_norm.y + el.bbox_norm.h
+            );
+            if (hitTarget) {
+              // Extend existing element
+              const hb = hitTarget.bbox_norm;
+              const nx1 = Math.min(hb.x, ex1), ny1 = Math.min(hb.y, ey1);
+              const nx2 = Math.max(hb.x + hb.w, ex2), ny2 = Math.max(hb.y + hb.h, ey2);
+              const newPts: Pt[] = [{ x: nx1, y: ny1 }, { x: nx2, y: ny1 }, { x: nx2, y: ny2 }, { x: nx1, y: ny2 }];
+              const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
+              return kept.map(el => el.id === hitTarget.id ? {
+                ...el, bbox_norm: { x: nx1, y: ny1, w: nx2 - nx1, h: ny2 - ny1 },
+                polygon_norm: newPts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
+              } : el);
+            } else {
+              // Create new element of target type
+              const newPts: Pt[] = [{ x: ex1, y: ey1 }, { x: ex2, y: ey1 }, { x: ex2, y: ey2 }, { x: ex1, y: ey2 }];
+              const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
+              kept.push({
+                id: nextId++, type: eraserTarget as any,
+                label_fr: getTypeLabel(eraserTarget),
+                bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
+                polygon_norm: newPts, area_m2: ppm ? areaPx / (ppm * ppm) : null,
+                floor_level: 0, confidence: 1.0,
+              });
             }
-            return kept;
-          });
-          const ctName = customTypes.find(c => c.id === addType)?.name ?? addType;
-          toast({ title: "Zone gommée", description: `${ctName} ajusté(e)`, variant: "default" });
-        } else {
-          // Editing "Fenêtres" → erase from windows, possibly splitting them
-          const targetTypes = ["window", "other"];
-          let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
-          const newElements: FacadeElement[] = [];
-
-          setElements(prev => {
-            const kept: FacadeElement[] = [];
-            for (const el of prev) {
-              if (!targetTypes.includes(el.type)) { kept.push(el); continue; }
-              const bx = el.bbox_norm;
-              const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
-              // Check overlap
-              const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
-              const overlapY = Math.max(0, Math.min(by2, ey2) - Math.max(bx.y, ey1));
-              if (overlapX <= 0 || overlapY <= 0) { kept.push(el); continue; }
-
-              // Eraser fully contains element → delete
-              if (ex1 <= bx.x && ex2 >= bx2 && ey1 <= bx.y && ey2 >= by2) continue;
-
-              // Generate up to 4 sub-rectangles (left, right, top, bottom of eraser hole)
-              const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
-
-              // Left piece
-              if (ex1 > bx.x) {
-                rects.push({ x: bx.x, y: bx.y, w: ex1 - bx.x, h: bx.h });
-              }
-              // Right piece
-              if (ex2 < bx2) {
-                rects.push({ x: ex2, y: bx.y, w: bx2 - ex2, h: bx.h });
-              }
-              // Top piece (between left and right)
-              const midX1 = Math.max(bx.x, ex1), midX2 = Math.min(bx2, ex2);
-              if (ey1 > bx.y && midX2 > midX1) {
-                rects.push({ x: midX1, y: bx.y, w: midX2 - midX1, h: ey1 - bx.y });
-              }
-              // Bottom piece (between left and right)
-              if (ey2 < by2 && midX2 > midX1) {
-                rects.push({ x: midX1, y: ey2, w: midX2 - midX1, h: by2 - ey2 });
-              }
-
-              // Filter valid rects and create elements
-              for (const r of rects) {
-                if (r.w < 0.003 || r.h < 0.003) continue;
-                const pts: Pt[] = [
-                  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
-                  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
-                ];
-                const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
-                kept.push({
-                  ...el,
-                  id: nextId++,
-                  bbox_norm: r,
-                  polygon_norm: pts,
-                  area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
-                });
-              }
-            }
-            return kept;
-          });
-          toast({ title: "Zone gommée", description: "Fenêtre(s) ajustée(s) / séparée(s)", variant: "default" });
-        }
+          }
+          return kept;
+        });
+        const srcName = getTypeLabel(eraserSource);
+        const tgtName = eraserTarget === "__none__" ? "rien" : getTypeLabel(eraserTarget);
+        toast({ title: "Zone gommée", description: `${srcName} → ${tgtName}`, variant: "default" });
       }
       setEraserStart(null);
       setEraserPreview(null);
@@ -1251,6 +1178,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "eraser" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Eraser className="w-3 h-3" /> Gomme
             </button>
+            {tool === "eraser" && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px]">
+                <select value={eraserSource} onChange={e => setEraserSource(e.target.value)}
+                  className="bg-slate-800 border border-white/10 rounded px-1 py-0.5 text-[9px] text-white">
+                  {allEditorTypes.map(t => <option key={t} value={t}>{getTypeLabel(t)}</option>)}
+                </select>
+                <span className="text-slate-500">→</span>
+                <select value={eraserTarget} onChange={e => setEraserTarget(e.target.value)}
+                  className="bg-slate-800 border border-white/10 rounded px-1 py-0.5 text-[9px] text-white">
+                  <option value="__none__">Rien</option>
+                  {allEditorTypes.map(t => <option key={t} value={t}>{getTypeLabel(t)}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
 
@@ -1920,12 +1861,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     const ry = Math.min(start.y, end.y) * imgNat.h;
                     const rw = Math.abs(end.x - start.x) * imgNat.w;
                     const rh = Math.abs(end.y - start.y) * imgNat.h;
-                    // Color depends on edit mode
-                    const isWallMode = addType === "wall_opaque";
-                    const isCustom = customTypes.some(ct => ct.id === addType);
-                    const eraserColor = isWallMode ? "#ff00ff" : isCustom ? (allTypeColors[addType] ?? "#ef4444") : "#ef4444";
-                    const eraserFill = isWallMode ? "rgba(255,0,255,0.2)" : "rgba(239,68,68,0.2)";
-                    const eraserLabel = isWallMode ? "→ Fenêtre" : isCustom ? `Gomme ${getTypeLabel(addType)}` : "→ Mur";
+                    // Color based on eraser source/target
+                    const srcColor = allTypeColors[eraserSource] ?? "#ef4444";
+                    const tgtColor = eraserTarget !== "__none__" ? (allTypeColors[eraserTarget] ?? "#94a3b8") : "#ef4444";
+                    const eraserColor = tgtColor;
+                    const eraserFill = `${srcColor}30`;
+                    const eraserLabel = eraserTarget === "__none__"
+                      ? `${getTypeLabel(eraserSource)} → ✕`
+                      : `${getTypeLabel(eraserSource)} → ${getTypeLabel(eraserTarget)}`;
                     return (
                       <g>
                         <rect x={rx} y={ry} width={rw} height={rh}
