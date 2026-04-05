@@ -460,12 +460,30 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               measureActive ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
             <Ruler className="w-3.5 h-3.5" /> {d("meas_btn" as DTKey)}
           </button>
+
+          <button onClick={() => {
+            const img = document.querySelector('[data-results-image]') as HTMLImageElement;
+            if (!img) return;
+            const a = document.createElement('a');
+            a.href = img.src;
+            a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`;
+            a.click();
+          }} title="Télécharger l'image"
+            className="px-3 py-1.5 rounded-lg text-xs font-600 border border-white/10 text-slate-500 hover:text-white transition-all flex items-center gap-1.5 ml-auto">
+            <Download className="w-3.5 h-3.5" /> Image
+          </button>
         </div>
 
         {measureActive && (
-          <div className="mb-3 flex items-center gap-2 text-xs text-sky-400/80 bg-sky-500/5 border border-sky-500/20 rounded-lg px-3 py-2">
-            <Ruler className="w-3.5 h-3.5 shrink-0" />
-            <span>Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer la vue.</span>
+          <div className="flex items-center justify-between gap-2 mb-3 bg-sky-500/5 border border-sky-500/20 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2">
+              <Ruler className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span className="text-xs text-sky-400/80">Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer.</span>
+            </div>
+            <button onClick={() => setMeasureActive(false)}
+              className="text-xs text-slate-500 hover:text-red-400 px-2 py-0.5 border border-white/10 rounded transition-colors shrink-0">
+              Fermer
+            </button>
           </div>
         )}
 
@@ -502,6 +520,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             }}>
               <div className="relative">
                 <img
+                  data-results-image
                   src={`data:image/png;base64,${baseImageB64}`}
                   alt="Plan"
                   className="select-none"

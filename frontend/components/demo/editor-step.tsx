@@ -163,7 +163,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [selectedRoomIds, setSelectedRoomIds] = useState<Set<number>>(new Set());
   const [selectedOpeningIdxs, setSelectedOpeningIdxs] = useState<Set<number>>(new Set());
   // Clipboard
-  const clipboardRef = useRef<{ rooms: any[]; openings: any[] } | null>(null);
+  const clipboardRef = useRef<{ rooms: any[]; openings: any[]; texts?: any[]; measures?: any[]; countPoints?: any[] } | null>(null);
 
   // Auto-enable overlays + reset tool on layer change
   useEffect(() => {
@@ -231,6 +231,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // Text annotations & Circle measurements (Wave 4)
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
   const [circleMeasures, setCircleMeasures] = useState<CircleMeasure[]>([]);
+  // Text selection & editing
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  // Measure selection (linear/circle/angle)
+  const [selectedMeasureId, setSelectedMeasureId] = useState<string | null>(null);
+  const [selectedMeasureType, setSelectedMeasureType] = useState<"linear" | "circle" | "angle" | null>(null);
   // Admin: full plan overlay
   const [showFullPlan, setShowFullPlan] = useState(false);
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
@@ -602,6 +608,20 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         e.preventDefault();
         const rooms: any[] = [];
         const openings: any[] = [];
+        const copiedTexts: any[] = selectedTextId ? textAnnotations.filter(t => t.id === selectedTextId) : [];
+        const copiedMeasures: any[] = [];
+        if (selectedMeasureId && selectedMeasureType === "linear") {
+          const m = linearMeasures.find(lm => lm.id === selectedMeasureId);
+          if (m) copiedMeasures.push({ type: "linear", data: m });
+        }
+        if (selectedMeasureId && selectedMeasureType === "circle") {
+          const m = circleMeasures.find(cm => cm.id === selectedMeasureId);
+          if (m) copiedMeasures.push({ type: "circle", data: m });
+        }
+        if (selectedMeasureId && selectedMeasureType === "angle") {
+          const m = angleMeasures.find(am => am.id === selectedMeasureId);
+          if (m) copiedMeasures.push({ type: "angle", data: m });
+        }
         // Collect from multi-select
         if (selectedRoomIds.size > 0) {
           (result.rooms ?? []).forEach(r => { if (selectedRoomIds.has(r.id)) rooms.push(r); });
@@ -615,9 +635,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           const o = result.openings?.[selectedOpeningIdx];
           if (o) openings.push(o);
         }
-        if (rooms.length > 0 || openings.length > 0) {
-          clipboardRef.current = { rooms, openings };
-          toast({ title: `${rooms.length + openings.length} element(s) copied`, variant: "success" });
+        if (rooms.length > 0 || openings.length > 0 || copiedTexts.length > 0 || copiedMeasures.length > 0) {
+          clipboardRef.current = { rooms, openings, texts: copiedTexts, measures: copiedMeasures };
+          toast({ title: `${rooms.length + openings.length + copiedTexts.length + copiedMeasures.length} element(s) copied`, variant: "success" });
         }
       }
 
@@ -645,6 +665,23 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           }));
           setResult(prev => ({ ...prev, openings: [...(prev.openings ?? []), ...newOpenings] }));
         }
+        if (clipboardRef.current.texts && clipboardRef.current.texts.length > 0) {
+          const newTexts = clipboardRef.current.texts.map((t: any) => ({ ...t, id: crypto.randomUUID(), x: t.x + 0.02, y: t.y + 0.02 }));
+          setTextAnnotations(prev => [...prev, ...newTexts]);
+        }
+        if (clipboardRef.current.measures && clipboardRef.current.measures.length > 0) {
+          for (const m of clipboardRef.current.measures) {
+            if (m.type === "linear") {
+              setLinearMeasures(prev => [...prev, { ...m.data, id: crypto.randomUUID(), p1: { x: m.data.p1.x + 0.02, y: m.data.p1.y + 0.02 }, p2: { x: m.data.p2.x + 0.02, y: m.data.p2.y + 0.02 } }]);
+            }
+            if (m.type === "circle") {
+              setCircleMeasures(prev => [...prev, { ...m.data, id: crypto.randomUUID(), center: { x: m.data.center.x + 0.02, y: m.data.center.y + 0.02 }, edgePoint: { x: m.data.edgePoint.x + 0.02, y: m.data.edgePoint.y + 0.02 } }]);
+            }
+            if (m.type === "angle") {
+              setAngleMeasures(prev => [...prev, { ...m.data, id: crypto.randomUUID(), p1: { x: m.data.p1.x + 0.02, y: m.data.p1.y + 0.02 }, vertex: { x: m.data.vertex.x + 0.02, y: m.data.vertex.y + 0.02 }, p3: { x: m.data.p3.x + 0.02, y: m.data.p3.y + 0.02 } }]);
+            }
+          }
+        }
         toast({ title: "Elements pasted", variant: "success" });
       }
 
@@ -653,7 +690,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         // Don't prevent default if focused on an input
         if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "SELECT") return;
         e.preventDefault();
-        if (selectedRoomIds.size > 0) {
+        if (selectedTextId) {
+          setTextAnnotations(prev => prev.filter(t => t.id !== selectedTextId));
+          setSelectedTextId(null);
+        } else if (selectedMeasureId) {
+          if (selectedMeasureType === "linear") setLinearMeasures(prev => prev.filter(m => m.id !== selectedMeasureId));
+          if (selectedMeasureType === "circle") setCircleMeasures(prev => prev.filter(c => c.id !== selectedMeasureId));
+          if (selectedMeasureType === "angle") setAngleMeasures(prev => prev.filter(a => a.id !== selectedMeasureId));
+          setSelectedMeasureId(null); setSelectedMeasureType(null);
+        } else if (selectedRoomIds.size > 0) {
           selectedRoomIds.forEach(id => sendEditRoom({ action: "delete_room", room_id: id }));
           setSelectedRoomIds(new Set());
         } else if (selectedRoomId) {
@@ -692,6 +737,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         setSelectedOpeningIdxs(new Set());
         setSelectedRoomId(null);
         setSelectedOpeningIdx(null);
+        setSelectedTextId(null);
+        setEditingTextId(null);
+        setSelectedMeasureId(null);
+        setSelectedMeasureType(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1271,6 +1320,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           }
           setEditingRoomId(hitRoom.id);
           setActiveRoomType(hitRoom.type);
+          setActiveFloorTypeId(hitRoom.surfaceTypeId ?? "");
           setSidebarTab("rooms");
         } else {
           setSelectedRoomId(null);
@@ -1279,6 +1329,49 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         }
         return;
       }
+      // Hit-test text annotations
+      const imgElSel = imgRef.current;
+      if (imgElSel) {
+        const normX = rx / imgElSel.naturalWidth;
+        const normY = ry / imgElSel.naturalHeight;
+        const hitText = textAnnotations.find(ta => {
+          const fs = ta.fontSize ?? 12;
+          const w = ta.text.length * fs * 0.6 / imgElSel.naturalWidth + 0.02;
+          const h = (fs + 10) / imgElSel.naturalHeight + 0.01;
+          return normX >= ta.x - 0.005 && normX <= ta.x + w && normY >= ta.y - h && normY <= ta.y + 0.005;
+        });
+        if (hitText) {
+          setSelectedTextId(hitText.id);
+          setSelectedMeasureId(null); setSelectedMeasureType(null);
+          return;
+        }
+        // Linear hit-test
+        const hitLinear = linearMeasures.find(lm => {
+          const p1x = lm.p1.x * imgElSel.naturalWidth, p1y = lm.p1.y * imgElSel.naturalHeight;
+          const p2x = lm.p2.x * imgElSel.naturalWidth, p2y = lm.p2.y * imgElSel.naturalHeight;
+          const dx = p2x-p1x, dy = p2y-p1y;
+          const len2 = dx*dx + dy*dy;
+          const t = len2 > 0 ? Math.max(0, Math.min(1, ((rx-p1x)*dx + (ry-p1y)*dy) / len2)) : 0;
+          const projX = p1x + t*dx, projY = p1y + t*dy;
+          return Math.hypot(rx-projX, ry-projY) < 15;
+        });
+        if (hitLinear) { setSelectedMeasureId(hitLinear.id); setSelectedMeasureType("linear"); setSelectedTextId(null); return; }
+
+        // Circle hit-test
+        const hitCircle = circleMeasures.find(cm => {
+          const ccx = cm.center.x * imgElSel.naturalWidth, ccy = cm.center.y * imgElSel.naturalHeight;
+          const er = Math.hypot((cm.edgePoint.x - cm.center.x) * imgElSel.naturalWidth, (cm.edgePoint.y - cm.center.y) * imgElSel.naturalHeight);
+          return Math.abs(Math.hypot(rx-ccx, ry-ccy) - er) < 15 || Math.hypot(rx-ccx, ry-ccy) < 10;
+        });
+        if (hitCircle) { setSelectedMeasureId(hitCircle.id); setSelectedMeasureType("circle"); setSelectedTextId(null); return; }
+
+        // Angle hit-test
+        const hitAngle = angleMeasures.find(am => Math.hypot(rx - am.vertex.x * imgElSel.naturalWidth, ry - am.vertex.y * imgElSel.naturalHeight) < 15);
+        if (hitAngle) { setSelectedMeasureId(hitAngle.id); setSelectedMeasureType("angle"); setSelectedTextId(null); return; }
+      }
+      // Clear text/measure selection if nothing hit
+      setSelectedTextId(null);
+      setSelectedMeasureId(null); setSelectedMeasureType(null);
       // Find the opening that the user clicked inside, or the closest one
       let bestIdx = -1;
       let bestDist = Infinity;
@@ -1294,7 +1387,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           if (dist < bestDist) { bestDist = dist; bestIdx = i; }
         }
       });
-      if (bestIdx >= 0 && (bestDist === 0 || bestDist < 150)) {
+      if (bestIdx >= 0 && (bestDist === 0 || bestDist < 50)) {
         if (e.ctrlKey || e.metaKey) {
           // Multi-select
           setSelectedOpeningIdxs(prev => {
@@ -2062,7 +2155,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {showCountDropdown && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowCountDropdown(false)} />
-                  <div className="absolute top-full left-0 mt-1 z-50 glass border border-sky-500/20 rounded-xl p-2 shadow-2xl min-w-48"
+                  <div className="absolute bottom-full left-0 mb-1 z-50 glass border border-sky-500/20 rounded-xl p-2 shadow-2xl min-w-48"
                     onClick={e => e.stopPropagation()}>
                     <p className="text-[9px] text-sky-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Categories</p>
                     {countGroups.map(grp => (
@@ -2168,24 +2261,30 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <MousePointer2 className="w-3 h-3" /> {d("ed_select")}
                   </button>
-                  {/* Floor type selector */}
-                  <select
-                    value={activeRoomType}
-                    onChange={e => setActiveRoomType(e.target.value)}
-                    className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white"
-                    title="Type de pièce pour la création"
-                  >
-                    {ROOM_TYPES.map(rt => (
-                      <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
-                    ))}
-                  </select>
-                  {/* Floor type (surface) selector */}
+                  {/* Floor type (surface) selector — before room type */}
                   <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
                   <div className="flex items-center gap-1 relative">
                     <span className="text-[9px] text-slate-500 shrink-0">Sol :</span>
                     <select
                       value={activeFloorTypeId}
-                      onChange={e => setActiveFloorTypeId(e.target.value)}
+                      onChange={e => {
+                        setActiveFloorTypeId(e.target.value);
+                        // Sync: apply to selected room
+                        if (selectedRoomId && e.target.value) {
+                          const stId = e.target.value;
+                          setResult(prev => ({
+                            ...prev,
+                            rooms: (prev.rooms ?? []).map(r => {
+                              if (r.id !== selectedRoomId) return r;
+                              if (r.linkedZoneId) setZones(zp => zp.filter(z => z.id !== r.linkedZoneId));
+                              if (!r.polygon_norm) return { ...r, surfaceTypeId: stId, linkedZoneId: undefined };
+                              const zoneId = crypto.randomUUID();
+                              setZones(zp => [...zp.filter(z => z.id !== r.linkedZoneId), { id: zoneId, typeId: stId, points: r.polygon_norm!.map(p => ({x:p.x, y:p.y})), name: `auto:room:${r.id}` }]);
+                              return { ...r, surfaceTypeId: stId, linkedZoneId: zoneId };
+                            }),
+                          }));
+                        }
+                      }}
                       className="bg-slate-800 border border-white/10 rounded-lg px-1.5 py-0.5 text-[10px] text-white max-w-28"
                     >
                       <option value="">— Aucun —</option>
@@ -2226,7 +2325,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                               }
                               if (e.key === "Escape") setShowNewFloorType(false);
                             }}
-                            placeholder="Nom du type de sol…"
+                            placeholder="Nom du type de sol..."
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40"
                           />
                           <div className="flex items-center gap-2">
@@ -2263,6 +2362,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </div>
                     )}
                   </div>
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  {/* Room type selector */}
+                  <select
+                    value={activeRoomType}
+                    onChange={e => setActiveRoomType(e.target.value)}
+                    className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white"
+                    title="Type de pièce pour la création"
+                  >
+                    {ROOM_TYPES.map(rt => (
+                      <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     disabled={selectedRoomId === null}
@@ -2805,11 +2916,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {/* ── Linear & Angle measurements (always visible when toggled) ── */}
               {showLinearMeasures && (linearMeasures.length > 0 || angleMeasures.length > 0) && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
                 <svg
-                  className="absolute top-0 left-0 pointer-events-none"
+                  className="absolute top-0 left-0"
                   width={imgDisplaySize.w}
                   height={imgDisplaySize.h}
                   viewBox={`0 0 ${imageNatural.w} ${imageNatural.h}`}
-                  style={{ zIndex: 2 }}
+                  style={{ zIndex: 2, pointerEvents: "none" }}
                 >
                   {/* Linear measurements */}
                   {linearMeasures.map(lm => {
@@ -2821,7 +2932,28 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
                     const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
                     return (
-                      <g key={lm.id}>
+                      <g key={lm.id} style={{ pointerEvents: "all", cursor: "move" }}
+                        onMouseDown={e => {
+                          e.stopPropagation();
+                          setSelectedMeasureId(lm.id); setSelectedMeasureType("linear");
+                          const startX = e.clientX, startY = e.clientY;
+                          const orig = { p1: {...lm.p1}, p2: {...lm.p2} };
+                          const onMove = (ev: MouseEvent) => {
+                            const img = imgRef.current;
+                            if (!img) return;
+                            const rect = img.getBoundingClientRect();
+                            const dx = (ev.clientX - startX) / rect.width / zoom;
+                            const dy = (ev.clientY - startY) / rect.height / zoom;
+                            setLinearMeasures(prev => prev.map(m => m.id === lm.id ? { ...m, p1: {x:orig.p1.x+dx, y:orig.p1.y+dy}, p2: {x:orig.p2.x+dx, y:orig.p2.y+dy} } : m));
+                          };
+                          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                      >
+                        {selectedMeasureId === lm.id && selectedMeasureType === "linear" && (
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth={5} opacity={0.3} />
+                        )}
                         <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth={2} strokeDasharray="4 2" />
                         <circle cx={x1} cy={y1} r={4} fill="#38bdf8" />
                         <circle cx={x2} cy={y2} r={4} fill="#38bdf8" />
@@ -2836,13 +2968,34 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const ax = am.p1.x * imageNatural.w, ay = am.p1.y * imageNatural.h;
                     const cx = am.p3.x * imageNatural.w, cy = am.p3.y * imageNatural.h;
                     return (
-                      <g key={am.id}>
+                      <g key={am.id} style={{ pointerEvents: "all", cursor: "move" }}
+                        onMouseDown={e => {
+                          e.stopPropagation();
+                          setSelectedMeasureId(am.id); setSelectedMeasureType("angle");
+                          const startX = e.clientX, startY = e.clientY;
+                          const origP1 = {...am.p1}, origV = {...am.vertex}, origP3 = {...am.p3};
+                          const onMove = (ev: MouseEvent) => {
+                            const img = imgRef.current;
+                            if (!img) return;
+                            const rect = img.getBoundingClientRect();
+                            const dx = (ev.clientX - startX) / rect.width / zoom;
+                            const dy = (ev.clientY - startY) / rect.height / zoom;
+                            setAngleMeasures(prev => prev.map(a => a.id === am.id ? { ...a, p1: {x:origP1.x+dx, y:origP1.y+dy}, vertex: {x:origV.x+dx, y:origV.y+dy}, p3: {x:origP3.x+dx, y:origP3.y+dy} } : a));
+                          };
+                          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                      >
+                        {selectedMeasureId === am.id && selectedMeasureType === "angle" && (
+                          <circle cx={vx} cy={vy} r={20} fill="none" stroke="#f59e0b" strokeWidth={3} opacity={0.3} strokeDasharray="4 2" />
+                        )}
                         <line x1={ax} y1={ay} x2={vx} y2={vy} stroke="#f59e0b" strokeWidth={1.5} />
                         <line x1={vx} y1={vy} x2={cx} y2={cy} stroke="#f59e0b" strokeWidth={1.5} />
                         <circle cx={vx} cy={vy} r={5} fill="#f59e0b" />
                         <circle cx={ax} cy={ay} r={3} fill="#f59e0b80" />
                         <circle cx={cx} cy={cy} r={3} fill="#f59e0b80" />
-                        <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}°</text>
+                        <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}{"\u00B0"}</text>
                       </g>
                     );
                   })}
@@ -2866,8 +3019,24 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
                     const label = grp?.name ?? "";
                     return (
-                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "pointer" }}
-                        onClick={() => setCountPoints(prev => prev.filter(p => p.id !== cp.id))}>
+                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "move" }}
+                        onMouseDown={e => {
+                          e.stopPropagation();
+                          const startX = e.clientX, startY = e.clientY;
+                          const origX = cp.x, origY = cp.y;
+                          const onMove = (ev: MouseEvent) => {
+                            const img = imgRef.current;
+                            if (!img) return;
+                            const rect = img.getBoundingClientRect();
+                            const dx = (ev.clientX - startX) / rect.width / zoom;
+                            const dy = (ev.clientY - startY) / rect.height / zoom;
+                            setCountPoints(prev => prev.map(p => p.id === cp.id ? { ...p, x: origX+dx, y: origY+dy } : p));
+                          };
+                          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                        onClick={e => e.stopPropagation()}>
                         <circle cx={px} cy={py} r={14} fill={color} fillOpacity={0.4} stroke={color} strokeWidth={2.5} />
                         <text x={px} y={py + 4.5} textAnchor="middle" fill="white" fontSize={10} fontWeight="800" fontFamily="monospace">{num}</text>
                         <rect x={px + 16} y={py - 8} width={label.length * 6 + 8} height={16} rx={4} fill="black" fillOpacity={0.7} style={{ pointerEvents: "none" }} />
@@ -2898,6 +3067,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         style={{ pointerEvents: "all", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
+                          setSelectedTextId(ta.id);
                           const startX = e.clientX, startY = e.clientY;
                           const origX = ta.x, origY = ta.y;
                           const onMove = (ev: MouseEvent) => {
@@ -2912,11 +3082,42 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           window.addEventListener("mousemove", onMove);
                           window.addEventListener("mouseup", onUp);
                         }}
+                        onDoubleClick={e => { e.stopPropagation(); setSelectedTextId(ta.id); setEditingTextId(ta.id); }}
                       >
+                        {selectedTextId === ta.id && (
+                          <rect x={px - 6} y={py - fs - 4} width={w + 4} height={fs + 14} rx={5}
+                            fill="none" stroke="#38bdf8" strokeWidth={2} strokeDasharray="4 2" />
+                        )}
                         <rect x={px - 4} y={py - fs - 2} width={w} height={fs + 10} rx={4}
                           fill="rgba(0,0,0,0.8)" stroke={color} strokeWidth={1} />
                         <text x={px + 4} y={py} fill={color} fontSize={fs}
-                          fontFamily="system-ui" style={{ pointerEvents: "none" }}>{ta.text}</text>
+                          fontFamily="system-ui" style={{ pointerEvents: "none" }}>{editingTextId === ta.id ? "" : ta.text}</text>
+                        {editingTextId === ta.id && (
+                          <foreignObject x={px - 2} y={py - fs - 1} width={Math.max(w, 120)} height={fs + 8}>
+                            <input
+                              autoFocus
+                              defaultValue={ta.text}
+                              style={{ background: "rgba(0,0,0,0.9)", color: color, border: `1px solid ${color}`, borderRadius: 4, padding: "1px 4px", fontSize: fs, fontFamily: "system-ui", width: "100%", outline: "none" }}
+                              onKeyDown={(ev: React.KeyboardEvent<HTMLInputElement>) => {
+                                ev.stopPropagation();
+                                if (ev.key === "Enter") {
+                                  const val = (ev.target as HTMLInputElement).value.trim();
+                                  if (val) setTextAnnotations(prev => prev.map(t => t.id === ta.id ? { ...t, text: val } : t));
+                                  else setTextAnnotations(prev => prev.filter(t => t.id !== ta.id));
+                                  setEditingTextId(null);
+                                }
+                                if (ev.key === "Escape") setEditingTextId(null);
+                              }}
+                              onBlur={(ev) => {
+                                const val = (ev.target as HTMLInputElement).value.trim();
+                                if (val) setTextAnnotations(prev => prev.map(t => t.id === ta.id ? { ...t, text: val } : t));
+                                setEditingTextId(null);
+                              }}
+                              onClick={(ev: React.MouseEvent) => ev.stopPropagation()}
+                              onMouseDown={(ev: React.MouseEvent) => ev.stopPropagation()}
+                            />
+                          </foreignObject>
+                        )}
                       </g>
                     );
                   })}
@@ -2933,8 +3134,28 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM)}` : "";
                     const clw = cLabel.length * 5.5 + 12;
                     return (
-                      <g key={cm.id} style={{ pointerEvents: "all", cursor: "pointer" }}
-                        onClick={() => setCircleMeasures(prev => prev.filter(c => c.id !== cm.id))}>
+                      <g key={cm.id} style={{ pointerEvents: "all", cursor: "move" }}
+                        onMouseDown={e => {
+                          e.stopPropagation();
+                          setSelectedMeasureId(cm.id); setSelectedMeasureType("circle");
+                          const startX = e.clientX, startY = e.clientY;
+                          const origCenter = {...cm.center}, origEdge = {...cm.edgePoint};
+                          const onMove = (ev: MouseEvent) => {
+                            const img = imgRef.current;
+                            if (!img) return;
+                            const rect = img.getBoundingClientRect();
+                            const dx = (ev.clientX - startX) / rect.width / zoom;
+                            const dy = (ev.clientY - startY) / rect.height / zoom;
+                            setCircleMeasures(prev => prev.map(c => c.id === cm.id ? { ...c, center: {x:origCenter.x+dx, y:origCenter.y+dy}, edgePoint: {x:origEdge.x+dx, y:origEdge.y+dy} } : c));
+                          };
+                          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                      >
+                        {selectedMeasureId === cm.id && selectedMeasureType === "circle" && (
+                          <circle cx={cx} cy={cy} r={rSvg + 3} fill="none" stroke="#14B8A6" strokeWidth={3} opacity={0.3} strokeDasharray="4 2" />
+                        )}
                         <circle cx={cx} cy={cy} r={rSvg}
                           fill="rgba(20,184,166,0.08)" stroke="#14B8A6" strokeWidth={2} />
                         <line x1={cx} y1={cy} x2={ex} y2={ey}
@@ -3457,7 +3678,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
                 style={{ cursor: tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
-                onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} />
+                onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
+                onDoubleClick={() => {
+                  if (selectedTextId) {
+                    setEditingTextId(selectedTextId);
+                  }
+                }} />
               </div>{/* /inner relative wrapper */}
               </div>{/* /transform wrapper */}
             </div>
