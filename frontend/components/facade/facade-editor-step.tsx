@@ -708,14 +708,17 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
-        const sourceTypes = eraserSource === "window" ? ["window", "other"] : [eraserSource];
+        // When target is "Rien", erase ALL types in the zone (everything goes)
+        const sourceTypes = eraserTarget === "__none__"
+          ? null // null = match all types
+          : eraserSource === "window" ? ["window", "other"] : [eraserSource];
 
         // Step 1: Split/remove source elements in erased zone
         let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
         setElements(prev => {
           const kept: FacadeElement[] = [];
           for (const el of prev) {
-            if (!sourceTypes.includes(el.type)) { kept.push(el); continue; }
+            if (sourceTypes !== null && !sourceTypes.includes(el.type)) { kept.push(el); continue; }
             const bx = el.bbox_norm;
             const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
             const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
@@ -1142,15 +1145,22 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       className="text-slate-500"><X className="w-3 h-3" /></button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
-                    onContextMenu={e => { e.preventDefault(); setEditingTypeId(ct.id); setNewTypeName(ct.name); setNewTypeColor(ct.color); setNewTypeReplacesWall(ct.replacesWall); }}
-                    className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                      addType === ct.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-                    <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
-                    <span className={addType === ct.id ? "" : "text-slate-400"}>{ct.name}</span>
-                    {ct.replacesWall && <span className="text-[8px] text-amber-400/70">▼mur</span>}
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
+                      className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-l-lg text-xs font-medium border transition-all",
+                        addType === ct.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                      <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
+                      <span className={addType === ct.id ? "" : "text-slate-400"}>{ct.name}</span>
+                      {ct.replacesWall && <span className="text-[8px] text-amber-400/70">▼mur</span>}
+                    </button>
+                    <button
+                      onClick={() => { setEditingTypeId(ct.id); setNewTypeName(ct.name); setNewTypeColor(ct.color); setNewTypeReplacesWall(ct.replacesWall); }}
+                      className={cn("px-1 py-1.5 rounded-r-lg text-[9px] border transition-all",
+                        addType === ct.id ? "border-white/30 bg-white/10 text-slate-400 hover:text-white" : "border-white/5 text-slate-600 hover:text-slate-300")}>
+                      ✏️
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -1981,7 +1991,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       {transAnchors.map((a, i) => (
                         <g key={`ta-${i}`}>
                           <circle cx={a.x * imgNat.w} cy={a.y * imgNat.h} r={8}
-                            fill="#8b5cf6" stroke="#fff" strokeWidth={2} opacity={0.9} />
+                            fill="#ef4444" stroke="#fff" strokeWidth={2} opacity={0.9} />
                           <text x={a.x * imgNat.w} y={a.y * imgNat.h + 1}
                             textAnchor="middle" dominantBaseline="middle"
                             fill="#fff" fontSize={9} fontWeight={700} fontFamily="system-ui">{i + 1}</text>
