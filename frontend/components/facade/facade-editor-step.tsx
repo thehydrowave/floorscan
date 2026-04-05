@@ -634,59 +634,98 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       } else { setVsCrop(null); }
     }
 
-    // Eraser: subtract eraser rect from overlapping elements
+    // Eraser: subtract eraser rect from overlapping elements + split if needed
+    // Behavior depends on active edit layer:
+    //   addType === "window" → erase from windows (gommée zone becomes wall)
+    //   addType === "wall_opaque" → erase from wall, create window in erased zone
     if (tool === "eraser" && eraserStart && eraserPreview) {
       const { start, end } = eraserPreview;
       const ex1 = Math.min(start.x, end.x), ey1 = Math.min(start.y, end.y);
       const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
-        setElements(prev => prev.map(el => {
-          const poly = getPolyPoints(el);
-          // Check if eraser rect overlaps this element's bbox
-          const bx = el.bbox_norm;
-          const overlapX = Math.max(0, Math.min(bx.x + bx.w, ex2) - Math.max(bx.x, ex1));
-          const overlapY = Math.max(0, Math.min(bx.y + bx.h, ey2) - Math.max(bx.y, ey1));
-          if (overlapX <= 0 || overlapY <= 0) return el; // no overlap
 
-          // Clip the bbox: remove the erased portion
-          // Strategy: shrink bbox from the side that overlaps the eraser
-          let newX = bx.x, newY = bx.y, newW = bx.w, newH = bx.h;
-
-          // If eraser covers left side
-          if (ex1 <= bx.x && ex2 > bx.x && ex2 < bx.x + bx.w) {
-            newX = ex2; newW = (bx.x + bx.w) - ex2;
-          }
-          // If eraser covers right side
-          else if (ex1 > bx.x && ex1 < bx.x + bx.w && ex2 >= bx.x + bx.w) {
-            newW = ex1 - bx.x;
-          }
-          // If eraser covers top
-          if (ey1 <= bx.y && ey2 > bx.y && ey2 < bx.y + bx.h) {
-            newY = ey2; newH = (bx.y + bx.h) - ey2;
-          }
-          // If eraser covers bottom
-          else if (ey1 > bx.y && ey1 < bx.y + bx.h && ey2 >= bx.y + bx.h) {
-            newH = ey1 - bx.y;
-          }
-          // If eraser fully contains element, delete it
-          if (newW <= 0.003 || newH <= 0.003) return null as any;
-
+        // If editing "Surface nette" → erased zone becomes a window
+        if (addType === "wall_opaque") {
+          const newId = Math.max(0, ...elements.map(e => e.id)) + 1;
           const newPts: Pt[] = [
-            { x: newX, y: newY },
-            { x: newX + newW, y: newY },
-            { x: newX + newW, y: newY + newH },
-            { x: newX, y: newY + newH },
+            { x: ex1, y: ey1 }, { x: ex2, y: ey1 },
+            { x: ex2, y: ey2 }, { x: ex1, y: ey2 },
           ];
           const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
-          return {
-            ...el,
-            bbox_norm: { x: newX, y: newY, w: newW, h: newH },
+          setElements(prev => [...prev, {
+            id: newId,
+            type: "window" as FacadeElementType,
+            label_fr: "Fenêtre",
+            bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
             polygon_norm: newPts,
-            area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
-          };
-        }).filter(Boolean));
-        toast({ title: "Zone gommée", description: "Éléments ajustés", variant: "default" });
+            area_m2: ppm ? areaPx / (ppm * ppm) : null,
+            floor_level: 0,
+            confidence: 1.0,
+          }]);
+          toast({ title: "Fenêtre créée", description: "Zone gommée du mur → fenêtre", variant: "success" });
+        } else {
+          // Editing "Fenêtres" → erase from windows, possibly splitting them
+          const targetTypes = ["window", "other"];
+          let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
+          const newElements: FacadeElement[] = [];
+
+          setElements(prev => {
+            const kept: FacadeElement[] = [];
+            for (const el of prev) {
+              if (!targetTypes.includes(el.type)) { kept.push(el); continue; }
+              const bx = el.bbox_norm;
+              const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
+              // Check overlap
+              const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
+              const overlapY = Math.max(0, Math.min(by2, ey2) - Math.max(bx.y, ey1));
+              if (overlapX <= 0 || overlapY <= 0) { kept.push(el); continue; }
+
+              // Eraser fully contains element → delete
+              if (ex1 <= bx.x && ex2 >= bx2 && ey1 <= bx.y && ey2 >= by2) continue;
+
+              // Generate up to 4 sub-rectangles (left, right, top, bottom of eraser hole)
+              const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+              // Left piece
+              if (ex1 > bx.x) {
+                rects.push({ x: bx.x, y: bx.y, w: ex1 - bx.x, h: bx.h });
+              }
+              // Right piece
+              if (ex2 < bx2) {
+                rects.push({ x: ex2, y: bx.y, w: bx2 - ex2, h: bx.h });
+              }
+              // Top piece (between left and right)
+              const midX1 = Math.max(bx.x, ex1), midX2 = Math.min(bx2, ex2);
+              if (ey1 > bx.y && midX2 > midX1) {
+                rects.push({ x: midX1, y: bx.y, w: midX2 - midX1, h: ey1 - bx.y });
+              }
+              // Bottom piece (between left and right)
+              if (ey2 < by2 && midX2 > midX1) {
+                rects.push({ x: midX1, y: ey2, w: midX2 - midX1, h: by2 - ey2 });
+              }
+
+              // Filter valid rects and create elements
+              for (const r of rects) {
+                if (r.w < 0.003 || r.h < 0.003) continue;
+                const pts: Pt[] = [
+                  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+                  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+                ];
+                const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
+                kept.push({
+                  ...el,
+                  id: nextId++,
+                  bbox_norm: r,
+                  polygon_norm: pts,
+                  area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
+                });
+              }
+            }
+            return kept;
+          });
+          toast({ title: "Zone gommée", description: "Fenêtre(s) ajustée(s) / séparée(s)", variant: "default" });
+        }
       }
       setEraserStart(null);
       setEraserPreview(null);
@@ -1614,9 +1653,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     const ry = Math.min(start.y, end.y) * imgNat.h;
                     const rw = Math.abs(end.x - start.x) * imgNat.w;
                     const rh = Math.abs(end.y - start.y) * imgNat.h;
+                    // Color depends on edit mode: pink if erasing wall→window, red if erasing window→wall
+                    const isWallMode = addType === "wall_opaque";
+                    const color = isWallMode ? "#ff00ff" : "#ef4444";
+                    const fillColor = isWallMode ? "rgba(255,0,255,0.2)" : "rgba(239,68,68,0.2)";
                     return (
-                      <rect x={rx} y={ry} width={rw} height={rh}
-                        fill="rgba(239,68,68,0.2)" stroke="#ef4444" strokeWidth={2} strokeDasharray="6 3" />
+                      <g>
+                        <rect x={rx} y={ry} width={rw} height={rh}
+                          fill={fillColor} stroke={color} strokeWidth={2} strokeDasharray="6 3" />
+                        <text x={rx + rw / 2} y={ry + rh / 2}
+                          textAnchor="middle" dominantBaseline="middle"
+                          fill={color} fontSize={10} fontFamily="system-ui" fontWeight={700}>
+                          {isWallMode ? "→ Fenêtre" : "→ Mur"}
+                        </text>
+                      </g>
                     );
                   })()}
 
