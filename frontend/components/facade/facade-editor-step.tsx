@@ -294,17 +294,112 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     return () => window.removeEventListener("wheel", handler);
   }, []);
 
-  // Escape key to cancel drawing
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<FacadeElement[]>([]);
+  const [isCut, setIsCut] = useState(false);
+
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Escape to cancel drawing
       if (e.key === "Escape" && drawingPoly.length > 0) {
         setDrawingPoly([]);
         setHoverPoint(null);
+        return;
+      }
+
+      // Don't handle shortcuts when typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const hasSelection = selectedIds.size > 0;
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Delete / Backspace → delete selected
+      if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
+        e.preventDefault();
+        deleteSelected();
+        return;
+      }
+
+      // Ctrl+C → copy
+      if (ctrl && e.key === "c" && hasSelection) {
+        e.preventDefault();
+        clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
+        setIsCut(false);
+        toast({ title: `${clipboardRef.current.length} élément(s) copié(s)`, variant: "default" });
+        return;
+      }
+
+      // Ctrl+X → cut
+      if (ctrl && e.key === "x" && hasSelection) {
+        e.preventDefault();
+        clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
+        setIsCut(true);
+        setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
+        setSelectedIds(new Set());
+        toast({ title: `${clipboardRef.current.length} élément(s) coupé(s)`, variant: "default" });
+        return;
+      }
+
+      // Ctrl+V → paste (offset by small amount)
+      if (ctrl && e.key === "v" && clipboardRef.current.length > 0) {
+        e.preventDefault();
+        const offset = isCut ? 0 : 0.02; // no offset if cut, small offset if copy
+        let nextId = Math.max(0, ...elements.map(el => el.id)) + 1;
+        const pasted: FacadeElement[] = clipboardRef.current.map(el => {
+          const newPts = (el.polygon_norm ?? []).map(p => ({
+            x: Math.max(0, Math.min(1, p.x + offset)),
+            y: Math.max(0, Math.min(1, p.y + offset)),
+          }));
+          const newBbox = {
+            x: Math.max(0, Math.min(1, el.bbox_norm.x + offset)),
+            y: Math.max(0, Math.min(1, el.bbox_norm.y + offset)),
+            w: el.bbox_norm.w, h: el.bbox_norm.h,
+          };
+          return { ...el, id: nextId++, bbox_norm: newBbox, polygon_norm: newPts };
+        });
+        setElements(prev => [...prev, ...pasted]);
+        setSelectedIds(new Set(pasted.map(p => p.id)));
+        if (isCut) { clipboardRef.current = []; setIsCut(false); }
+        toast({ title: `${pasted.length} élément(s) collé(s)`, variant: "success" });
+        return;
+      }
+
+      // Ctrl+D → duplicate in place (with offset)
+      if (ctrl && e.key === "d" && hasSelection) {
+        e.preventDefault();
+        const toDup = elements.filter(el => selectedIds.has(el.id));
+        let nextId = Math.max(0, ...elements.map(el => el.id)) + 1;
+        const duped: FacadeElement[] = toDup.map(el => {
+          const offset = 0.02;
+          const newPts = (el.polygon_norm ?? []).map(p => ({
+            x: Math.max(0, Math.min(1, p.x + offset)),
+            y: Math.max(0, Math.min(1, p.y + offset)),
+          }));
+          const newBbox = {
+            x: Math.max(0, Math.min(1, el.bbox_norm.x + offset)),
+            y: Math.max(0, Math.min(1, el.bbox_norm.y + offset)),
+            w: el.bbox_norm.w, h: el.bbox_norm.h,
+          };
+          return { ...el, id: nextId++, bbox_norm: newBbox, polygon_norm: newPts };
+        });
+        setElements(prev => [...prev, ...duped]);
+        setSelectedIds(new Set(duped.map(d => d.id)));
+        toast({ title: `${duped.length} élément(s) dupliqué(s)`, variant: "success" });
+        return;
+      }
+
+      // Ctrl+A → select all visible
+      if (ctrl && e.key === "a" && tool === "select") {
+        e.preventDefault();
+        setSelectedIds(new Set(visibleElements.map(el => el.id)));
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [drawingPoly.length]);
+  }, [drawingPoly.length, selectedIds, elements, tool, visibleElements, deleteSelected, isCut]);
 
   // Convert mouse event to normalized coords
   const toNorm = useCallback((e: React.MouseEvent): Pt => {
@@ -948,6 +1043,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     if (e.type === "window" && !visibility.window) return false;
     if (e.type === "other" && !visibility.window) return false; // "other" = remapped window
     if (e.type === "column" && !showColumns) return false;
+    // Custom types: check visibility
+    if (e.type.startsWith("custom_") && visibility[e.type] === false) return false;
     return true;
   });
 
@@ -1084,6 +1181,15 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <Building2 size={10} className="text-green-400" />
               {visibility.wall_opaque ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
             </button>
+            {/* Custom type visibility toggles */}
+            {customTypes.map(ct => (
+              <button key={ct.id} onClick={() => setVisibility(v => ({...v, [ct.id]: !v[ct.id]}))}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  visibility[ct.id] ? "border-white/20 bg-white/5 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: visibility[ct.id] ? ct.color : "#475569" }} />
+                {visibility[ct.id] ? <Eye className="w-2.5 h-2.5" style={{ color: ct.color }} /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+              </button>
+            ))}
           </div>
 
           {/* ══ BAR 2 : EDIT LAYER ══ */}
@@ -1147,7 +1253,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 ) : (
                   <div className="flex items-center gap-0.5">
                     <button
-                      onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
+                      onClick={() => { setAddType(ct.id); setVisibility(v => ({ ...v, [ct.id]: true })); if (tool === "select") setTool("add_rect"); }}
                       className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-l-lg text-xs font-medium border transition-all",
                         addType === ct.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
                       <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
@@ -1179,6 +1285,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     if (e.key === "Enter" && newTypeName.trim()) {
                       const id = `custom_${Date.now()}`;
                       setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                      setVisibility(v => ({ ...v, [id]: true }));
                       setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                       if (tool === "select") setTool("add_rect");
                     }
@@ -1201,6 +1308,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   if (newTypeName.trim()) {
                     const id = `custom_${Date.now()}`;
                     setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                    setVisibility(v => ({ ...v, [id]: true }));
                     setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                     if (tool === "select") setTool("add_rect");
                   }
