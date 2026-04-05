@@ -159,6 +159,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
 
+  // Multi-selection
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<number>>(new Set());
+  const [selectedOpeningIdxs, setSelectedOpeningIdxs] = useState<Set<number>>(new Set());
+  // Clipboard
+  const clipboardRef = useRef<{ rooms: any[]; openings: any[] } | null>(null);
+
   // Auto-enable overlays + reset tool on layer change
   useEffect(() => {
     if (layer === null) {
@@ -167,6 +173,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setTool("add_rect");
       setSelectedRoomId(null);
       setEditingRoomId(null);
+      setSelectedRoomIds(new Set());
+      setSelectedOpeningIdxs(new Set());
       return;
     }
     // Visibilité exclusive : n'afficher que l'overlay de l'élément sélectionné
@@ -187,6 +195,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     if (layer !== "rooms") {
       setSelectedRoomId(null);
       setEditingRoomId(null);
+      setSelectedRoomIds(new Set());
+      setSelectedOpeningIdxs(new Set());
     }
   }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -585,6 +595,103 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       }
       if (e.key === "Escape" && tool === "add_poly" && layer === "rooms") {
         pts.current = []; drawCanvas(); setTool("select");
+      }
+
+      // Ctrl+C: Copy selected elements
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        const rooms: any[] = [];
+        const openings: any[] = [];
+        // Collect from multi-select
+        if (selectedRoomIds.size > 0) {
+          (result.rooms ?? []).forEach(r => { if (selectedRoomIds.has(r.id)) rooms.push(r); });
+        } else if (selectedRoomId) {
+          const r = (result.rooms ?? []).find(r => r.id === selectedRoomId);
+          if (r) rooms.push(r);
+        }
+        if (selectedOpeningIdxs.size > 0) {
+          (result.openings ?? []).forEach((o, i) => { if (selectedOpeningIdxs.has(i)) openings.push(o); });
+        } else if (selectedOpeningIdx !== null) {
+          const o = result.openings?.[selectedOpeningIdx];
+          if (o) openings.push(o);
+        }
+        if (rooms.length > 0 || openings.length > 0) {
+          clipboardRef.current = { rooms, openings };
+          toast({ title: `${rooms.length + openings.length} element(s) copied`, variant: "success" });
+        }
+      }
+
+      // Ctrl+V: Paste
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault();
+        if (!clipboardRef.current) return;
+        const offset = 0.02;
+        if (clipboardRef.current.rooms.length > 0) {
+          const maxId = Math.max(0, ...(result.rooms ?? []).map(r => r.id));
+          const newRooms = clipboardRef.current.rooms.map((r: any, i: number) => ({
+            ...r,
+            id: maxId + i + 1,
+            label_fr: `${r.label_fr} (copie)`,
+            centroid_norm: { x: r.centroid_norm.x + offset, y: r.centroid_norm.y + offset },
+            bbox_norm: { ...r.bbox_norm, x: r.bbox_norm.x + offset, y: r.bbox_norm.y + offset },
+            polygon_norm: r.polygon_norm?.map((p: any) => ({ x: p.x + offset, y: p.y + offset })),
+          }));
+          setResult(prev => ({ ...prev, rooms: [...(prev.rooms ?? []), ...newRooms] }));
+        }
+        if (clipboardRef.current.openings.length > 0) {
+          const pxOff = 30;
+          const newOpenings = clipboardRef.current.openings.map((o: any) => ({
+            ...o, x_px: o.x_px + pxOff, y_px: o.y_px + pxOff,
+          }));
+          setResult(prev => ({ ...prev, openings: [...(prev.openings ?? []), ...newOpenings] }));
+        }
+        toast({ title: "Elements pasted", variant: "success" });
+      }
+
+      // Delete/Backspace: Delete selected
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // Don't prevent default if focused on an input
+        if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "SELECT") return;
+        e.preventDefault();
+        if (selectedRoomIds.size > 0) {
+          selectedRoomIds.forEach(id => sendEditRoom({ action: "delete_room", room_id: id }));
+          setSelectedRoomIds(new Set());
+        } else if (selectedRoomId) {
+          sendEditRoom({ action: "delete_room", room_id: selectedRoomId });
+          setSelectedRoomId(null);
+        }
+      }
+
+      // Arrow keys: Move selected rooms
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key) && (selectedRoomIds.size > 0 || selectedRoomId)) {
+        if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+        e.preventDefault();
+        const delta = 0.005;
+        const dx = e.key === "ArrowLeft" ? -delta : e.key === "ArrowRight" ? delta : 0;
+        const dy = e.key === "ArrowUp" ? -delta : e.key === "ArrowDown" ? delta : 0;
+        const idsToMove = selectedRoomIds.size > 0 ? selectedRoomIds : new Set(selectedRoomId ? [selectedRoomId] : []);
+        if (idsToMove.size > 0) {
+          setResult(prev => ({
+            ...prev,
+            rooms: (prev.rooms ?? []).map(r => {
+              if (!idsToMove.has(r.id)) return r;
+              return {
+                ...r,
+                centroid_norm: { x: r.centroid_norm.x + dx, y: r.centroid_norm.y + dy },
+                bbox_norm: { ...r.bbox_norm, x: r.bbox_norm.x + dx, y: r.bbox_norm.y + dy },
+                polygon_norm: r.polygon_norm?.map(p => ({ x: p.x + dx, y: p.y + dy })),
+              };
+            }),
+          }));
+        }
+      }
+
+      // Escape: Clear all selection
+      if (e.key === "Escape") {
+        setSelectedRoomIds(new Set());
+        setSelectedOpeningIdxs(new Set());
+        setSelectedRoomId(null);
+        setSelectedOpeningIdx(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1149,13 +1256,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           return;
         }
         if (hitRoom) {
-          setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
+          if (e.ctrlKey || e.metaKey) {
+            // Multi-select: toggle room in set
+            setSelectedRoomIds(prev => {
+              const s = new Set(prev);
+              if (s.has(hitRoom!.id)) s.delete(hitRoom!.id); else s.add(hitRoom!.id);
+              return s;
+            });
+          } else {
+            // Single select
+            setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
+            setSelectedRoomIds(new Set());
+            setSelectedOpeningIdxs(new Set());
+          }
           setEditingRoomId(hitRoom.id);
           setActiveRoomType(hitRoom.type);
           setSidebarTab("rooms");
         } else {
           setSelectedRoomId(null);
           setEditingRoomId(null);
+          setSelectedRoomIds(new Set());
         }
         return;
       }
@@ -1175,31 +1295,42 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         }
       });
       if (bestIdx >= 0 && (bestDist === 0 || bestDist < 150)) {
-        const newIdx = selectedOpeningIdx === bestIdx ? null : bestIdx;
-        setSelectedOpeningIdx(newIdx);
-        if (newIdx !== null) {
-          setSidebarTab("visibility");
-          // Zoom to opening
-          const opening = result.openings![newIdx];
-          if (opening && imgRef.current && zoomContainerRef.current) {
-            const img = imgRef.current;
-            const container = zoomContainerRef.current;
-            const scx = img.offsetWidth / (imageNatural.w || 1);
-            const scy = img.offsetHeight / (imageNatural.h || 1);
-            const bx = opening.x_px * scx;
-            const by = opening.y_px * scy;
-            const bw = opening.width_px * scx;
-            const bh = opening.height_px * scy;
-            const pad = 120;
-            const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
-            const zoomVal = Math.max(0.8, newZoom);
-            const cx = (bx + bw/2) - img.offsetWidth/2;
-            const cy = (by + bh/2) - img.offsetHeight/2;
-            setZoom(zoomVal);
-            setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
-            setShowDoors(opening.class === "door");
-            setShowWindows(opening.class === "window");
-            setShowFrenchDoors(opening.class === "french_door");
+        if (e.ctrlKey || e.metaKey) {
+          // Multi-select
+          setSelectedOpeningIdxs(prev => {
+            const s = new Set(prev);
+            if (s.has(bestIdx)) s.delete(bestIdx); else s.add(bestIdx);
+            return s;
+          });
+        } else {
+          const newIdx = selectedOpeningIdx === bestIdx ? null : bestIdx;
+          setSelectedOpeningIdx(newIdx);
+          setSelectedRoomIds(new Set());
+          setSelectedOpeningIdxs(new Set());
+          if (newIdx !== null) {
+            setSidebarTab("visibility");
+            // Zoom to opening
+            const opening = result.openings![newIdx];
+            if (opening && imgRef.current && zoomContainerRef.current) {
+              const img = imgRef.current;
+              const container = zoomContainerRef.current;
+              const scx = img.offsetWidth / (imageNatural.w || 1);
+              const scy = img.offsetHeight / (imageNatural.h || 1);
+              const bx = opening.x_px * scx;
+              const by = opening.y_px * scy;
+              const bw = opening.width_px * scx;
+              const bh = opening.height_px * scy;
+              const pad = 120;
+              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
+              const zoomVal = Math.max(0.8, newZoom);
+              const cx = (bx + bw/2) - img.offsetWidth/2;
+              const cy = (by + bh/2) - img.offsetHeight/2;
+              setZoom(zoomVal);
+              setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
+              setShowDoors(opening.class === "door");
+              setShowWindows(opening.class === "window");
+              setShowFrenchDoors(opening.class === "french_door");
+            }
           }
         }
       } else {
@@ -2491,10 +2622,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {showRooms && displayRooms.filter(room =>
                     // When vertex editing, the selected room is rendered in the vertex SVG instead
                     (vertexEditActive ? room.id !== selectedRoomId : true)
-                    && (selectedRoomId === null || room.id === selectedRoomId)
+                    && (selectedRoomId === null || room.id === selectedRoomId || selectedRoomIds.has(room.id))
                   ).map(room => {
                     const rcolor = getRoomColor(room.type);
                     const isSelected = selectedRoomId === room.id;
+                    const isMultiSelected = selectedRoomIds.has(room.id);
 
                     // Polygon SVG points
                     const polyPoints = room.polygon_norm
@@ -2517,6 +2649,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             style={{ pointerEvents: "none" }}
                           />
                         )}
+                        {/* Multi-selection highlight (dashed border) */}
+                        {isMultiSelected && !isSelected && polyPoints && (
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "15"}
+                            stroke={rcolor}
+                            strokeWidth={2.5}
+                            strokeDasharray="8 4"
+                            strokeLinejoin="round"
+                            style={{ pointerEvents: "none" }}
+                          />
+                        )}
                         {/* Invisible polygon for click detection */}
                         {polyPoints && (
                           <polygon
@@ -2526,7 +2670,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             style={{ pointerEvents: "all", cursor: "pointer" }}
                             onClick={e => {
                               e.stopPropagation();
-                              setSelectedRoomId(id => id === room.id ? null : room.id);
+                              if (e.ctrlKey || e.metaKey) {
+                                setSelectedRoomIds(prev => {
+                                  const s = new Set(prev);
+                                  if (s.has(room.id)) s.delete(room.id); else s.add(room.id);
+                                  return s;
+                                });
+                              } else {
+                                setSelectedRoomId(id => id === room.id ? null : room.id);
+                                setSelectedRoomIds(new Set());
+                                setSelectedOpeningIdxs(new Set());
+                              }
                               setEditingRoomId(room.id);
                               setActiveRoomType(room.type);
                             }}
