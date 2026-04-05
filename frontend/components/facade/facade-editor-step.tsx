@@ -315,10 +315,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       const hasSelection = selectedIds.size > 0;
       const ctrl = e.ctrlKey || e.metaKey;
 
-      // Delete / Backspace → delete selected
+      // Delete / Backspace → delete selected (inlined to avoid forward reference)
       if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
         e.preventDefault();
-        deleteSelected();
+        setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
+        setSelectedIds(new Set());
+        setSelectedId(null);
+        toast({ title: "Éléments supprimés", variant: "success" });
         return;
       }
 
@@ -390,16 +393,17 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         return;
       }
 
-      // Ctrl+A → select all visible
+      // Ctrl+A → select all
       if (ctrl && e.key === "a" && tool === "select") {
         e.preventDefault();
-        setSelectedIds(new Set(visibleElements.map(el => el.id)));
+        setSelectedIds(new Set(elements.map(el => el.id)));
         return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [drawingPoly.length, selectedIds, elements, tool, visibleElements, deleteSelected, isCut]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawingPoly.length, selectedIds, elements, tool, isCut]);
 
   // Convert mouse event to normalized coords
   const toNorm = useCallback((e: React.MouseEvent): Pt => {
