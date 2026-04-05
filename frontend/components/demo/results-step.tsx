@@ -185,12 +185,15 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     // Sheet 3: Pièces
     if (result.rooms && result.rooms.length > 0) {
       const ppmR = result.pixels_per_meter;
+      // Use actual image dimensions — imgNatural may not be loaded yet, so fallback to a large value
+      const iw = imgNatural.w > 10 ? imgNatural.w : (result as any).image_width ?? 2000;
+      const ih = imgNatural.h > 10 ? imgNatural.h : (result as any).image_height ?? 2000;
       const data3: (string | number)[][] = [["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
       result.rooms.forEach(r => {
-        // Calculate perimeter from polygon if not available
+        // Calculate perimeter from polygon — always try if polygon exists
         let perim = r.perimeter_m ?? 0;
-        if ((!perim || perim === 0) && r.polygon_norm && ppmR && imgNatural.w > 0) {
-          perim = polygonPerimeterM(r.polygon_norm, imgNatural.w, imgNatural.h, ppmR);
+        if ((!perim || perim <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) {
+          perim = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
         }
         // Get surface type NAME instead of ID
         const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
@@ -199,7 +202,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
       const totalPerim = result.rooms.reduce((s, r) => {
         let p = r.perimeter_m ?? 0;
-        if ((!p || p === 0) && r.polygon_norm && ppmR && imgNatural.w > 0) p = polygonPerimeterM(r.polygon_norm, imgNatural.w, imgNatural.h, ppmR);
+        if ((!p || p <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) p = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
         return s + p;
       }, 0);
       data3.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
@@ -294,17 +297,33 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     if (!result.rooms || result.rooms.length === 0) return;
     const XLSX = require("xlsx");
     const wb = XLSX.utils.book_new();
+    const ppmRx = result.pixels_per_meter;
+    const iwx = imgNatural.w > 10 ? imgNatural.w : (result as any).image_width ?? 2000;
+    const ihx = imgNatural.h > 10 ? imgNatural.h : (result as any).image_height ?? 2000;
     const data: (string | number)[][] = [
       ["FloorScan — Récapitulatif des pièces"],
       ["Date", new Date().toLocaleDateString("fr-FR")],
       [],
-      ["Type", "Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"],
-      ...result.rooms.map(r => [r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]),
-      [],
-      ["TOTAL", "", result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0), result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0), ""],
+      ["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"],
     ];
+    result.rooms.forEach(r => {
+      let perim = r.perimeter_m ?? 0;
+      if ((!perim || perim <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) {
+        perim = polygonPerimeterM(r.polygon_norm, iwx, ihx, ppmRx);
+      }
+      const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
+      data.push([r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, +perim.toFixed(2), stName]);
+    });
+    const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
+    const totalPerim = result.rooms.reduce((s, r) => {
+      let p = r.perimeter_m ?? 0;
+      if ((!p || p <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) p = polygonPerimeterM(r.polygon_norm, iwx, ihx, ppmRx);
+      return s + p;
+    }, 0);
+    data.push([]);
+    data.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
     const ws = XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
+    ws["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, "Pièces");
     XLSX.writeFile(wb, `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast({ title: "Export XLSX ✓", variant: "success" });
