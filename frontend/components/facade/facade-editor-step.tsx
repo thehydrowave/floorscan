@@ -245,8 +245,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       const rx = roi.x * W, ry = roi.y * H, rw = roi.w * W, rh = roi.h * H;
       p = `M${rx} ${ry} h${rw} v${rh} h${-rw} Z`;
     }
-    // Holes: all window elements (net surface = facade contour minus windows)
-    elements.filter(e => e.type === "window" || e.type === "other").forEach(e => {
+    // Holes: windows + custom types that replace wall (net surface = facade contour minus these)
+    const wallReplacingIds = customTypes.filter(ct => ct.replacesWall).map(ct => ct.id);
+    elements.filter(e => e.type === "window" || e.type === "other" || wallReplacingIds.includes(e.type)).forEach(e => {
       if (e.polygon_norm && e.polygon_norm.length >= 3) {
         p += ' ' + e.polygon_norm.map((pt: {x:number;y:number}, i: number) => `${i === 0 ? 'M' : 'L'}${pt.x * W} ${pt.y * H}`).join(' ') + ' Z';
       } else {
@@ -256,7 +257,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       }
     });
     return p;
-  }, [imgNat, result.building_roi, elements, facadeZones]);
+  }, [imgNat, result.building_roi, elements, facadeZones, customTypes]);
 
   useEffect(() => {
     const img = new Image();
