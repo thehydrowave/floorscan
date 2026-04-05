@@ -319,6 +319,159 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
     toast({ title: d("fa_export_csv"), variant: "success" });
   };
 
+  /* ── XLSX export ── */
+  const exportXLSX = async () => {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Résumé
+    const summary = [
+      ["Rapport Façade"],
+      [],
+      ["Fenêtres (nombre)", windowCount],
+      ["Fenêtres (m²)", windowsAreaM2.toFixed(2)],
+      ["Périmètre fenêtres (m)", windowsPerimeterM.toFixed(2)],
+      ["Surface nette (m²)", wallNetArea.toFixed(2)],
+      ["Surface totale délimitée (m²)", facadeAreaM2.toFixed(2)],
+      ["Ratio ouvertures (%)", result.ratio_openings != null ? (result.ratio_openings * 100).toFixed(1) : "-"],
+      ["Étages détectés", result.floors_count ?? "-"],
+      ["Pixels par mètre", result.pixels_per_meter ?? "-"],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summary);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Résumé");
+
+    // Sheet 2: Éléments détaillés
+    const elHeaders = ["ID", "Type", "Étage", "X", "Y", "W", "H", "Surface (m²)", "Périmètre (m)", "Largeur (m)", "Hauteur (m)", "Confiance"];
+    const elRows = localElements.map(e => [
+      e.id,
+      e.type === "window" || e.type === "other" ? "Fenêtre" : e.type === "door" ? "Porte" : e.type === "balcony" ? "Balcon" : e.type,
+      e.floor_level ?? 0,
+      e.bbox_norm.x.toFixed(4), e.bbox_norm.y.toFixed(4), e.bbox_norm.w.toFixed(4), e.bbox_norm.h.toFixed(4),
+      e.area_m2?.toFixed(3) ?? "", e.perimeter_m?.toFixed(3) ?? "", e.w_m?.toFixed(3) ?? "", e.h_m?.toFixed(3) ?? "",
+      e.confidence?.toFixed(3) ?? "",
+    ]);
+    const wsElements = XLSX.utils.aoa_to_sheet([elHeaders, ...elRows]);
+    XLSX.utils.book_append_sheet(wb, wsElements, "Éléments");
+
+    // Sheet 3: Par façade (if zones)
+    if (perZoneStats && perZoneStats.length > 0) {
+      const zHeaders = ["Façade", "Fenêtres (nb)", "Fenêtres (m²)", "Surface nette (m²)", "Zone délimitée (m²)"];
+      const zRows = perZoneStats.map(zs => [
+        `Façade ${zs.idx + 1}`, zs.fenetresCount, zs.fenetresArea.toFixed(2),
+        zs.nette?.toFixed(2) ?? "-", zs.zoneArea.toFixed(2),
+      ]);
+      const wsZones = XLSX.utils.aoa_to_sheet([zHeaders, ...zRows]);
+      XLSX.utils.book_append_sheet(wb, wsZones, "Par façade");
+    }
+
+    XLSX.writeFile(wb, "rapport_facade.xlsx");
+    toast({ title: "Rapport XLSX exporté", variant: "success" });
+  };
+
+  /* ── PDF export ── */
+  const exportPDF = async () => {
+    const { default: jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pw = 210, margin = 15;
+    let y = margin;
+
+    // Title
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("Rapport Analyse Façade", margin, y);
+    y += 10;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, margin, y);
+    y += 8;
+
+    // Summary table
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Résumé", margin, y); y += 7;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+
+    const summaryRows = [
+      ["Fenêtres (nombre)", `${windowCount}`],
+      ["Fenêtres (m²)", `${windowsAreaM2.toFixed(2)}`],
+      ["Périmètre fenêtres (m)", `${windowsPerimeterM.toFixed(2)}`],
+      ["Surface nette (m²)", `${wallNetArea.toFixed(2)}`],
+      ["Surface totale délimitée (m²)", `${facadeAreaM2.toFixed(2)}`],
+    ];
+    if (result.ratio_openings != null) summaryRows.push(["Ratio ouvertures", `${(result.ratio_openings * 100).toFixed(1)}%`]);
+    if (result.floors_count != null) summaryRows.push(["Étages détectés", `${result.floors_count}`]);
+
+    for (const [label, val] of summaryRows) {
+      doc.text(label, margin, y);
+      doc.text(val, margin + 80, y);
+      y += 5;
+    }
+    y += 5;
+
+    // Per-facade stats
+    if (perZoneStats && perZoneStats.length > 0) {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Détail par façade", margin, y); y += 7;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      for (const zs of perZoneStats) {
+        doc.text(`Façade ${zs.idx + 1} : ${zs.fenetresCount} fenêtres (${zs.fenetresArea.toFixed(1)} m²) | Nette ${zs.nette?.toFixed(1) ?? "-"} m² | Zone ${zs.zoneArea.toFixed(1)} m²`, margin, y);
+        y += 5;
+        if (y > 270) { doc.addPage(); y = margin; }
+      }
+      y += 5;
+    }
+
+    // Elements table
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Éléments détectés", margin, y); y += 7;
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text("ID", margin, y);
+    doc.text("Type", margin + 12, y);
+    doc.text("Étage", margin + 40, y);
+    doc.text("Surface (m²)", margin + 58, y);
+    doc.text("Périmètre (m)", margin + 85, y);
+    doc.text("L (m)", margin + 115, y);
+    doc.text("H (m)", margin + 132, y);
+    y += 4;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+
+    for (const e of localElements) {
+      if (y > 280) { doc.addPage(); y = margin; }
+      const typeName = (e.type === "window" || e.type === "other") ? "Fenêtre" : e.type === "door" ? "Porte" : e.type;
+      doc.text(`${e.id}`, margin, y);
+      doc.text(typeName, margin + 12, y);
+      doc.text(`${e.floor_level ?? 0}`, margin + 40, y);
+      doc.text(e.area_m2?.toFixed(2) ?? "-", margin + 58, y);
+      doc.text(e.perimeter_m?.toFixed(2) ?? "-", margin + 85, y);
+      doc.text(e.w_m?.toFixed(2) ?? "-", margin + 115, y);
+      doc.text(e.h_m?.toFixed(2) ?? "-", margin + 132, y);
+      y += 3.5;
+    }
+
+    // Add plan image if available
+    if (result.plan_b64) {
+      doc.addPage();
+      y = margin;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Plan de façade", margin, y); y += 5;
+      try {
+        const imgW = pw - 2 * margin;
+        const imgH = imgW * (imgNat.h / imgNat.w);
+        doc.addImage(`data:image/png;base64,${result.plan_b64}`, "PNG", margin, y, imgW, Math.min(imgH, 240));
+      } catch { /* image add failed silently */ }
+    }
+
+    doc.save("rapport_facade.pdf");
+    toast({ title: "Rapport PDF exporté", variant: "success" });
+  };
+
   /* ═══════════════════════════════════════════════ render ══ */
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-5xl mx-auto">
@@ -776,7 +929,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
         <Button variant="outline" onClick={exportCSV}>
-          <Download className="w-4 h-4" /> {d("fa_export_csv")}
+          <Download className="w-4 h-4" /> CSV
+        </Button>
+        <Button variant="outline" onClick={exportXLSX}>
+          <Download className="w-4 h-4" /> XLSX
+        </Button>
+        <Button variant="outline" onClick={exportPDF}>
+          <Download className="w-4 h-4" /> PDF
         </Button>
         <Button onClick={onGoEditor} className="bg-amber-600 hover:bg-amber-700">
           {d("fa_go_editor")} <ArrowRight className="w-4 h-4" />
