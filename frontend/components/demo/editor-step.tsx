@@ -2894,19 +2894,31 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <>
                     <div className="w-px h-5 bg-white/10" />
                     <button
-                      onClick={() => { setShowOriginal(v => !v); requestAnimationFrame(fitToView); }}
+                      onClick={() => {
+                        const goingOriginal = !showOriginal;
+                        setShowOriginal(goingOriginal);
+                        // When switching to Original: hide all masks
+                        if (goingOriginal) {
+                          setShowDoors(false); setShowWindows(false); setShowFrenchDoors(false);
+                          setShowWalls(false); setShowCloisons(false); setShowRooms(false);
+                        } else {
+                          // When going back: restore default visibility
+                          setShowDoors(true); setShowWindows(true);
+                        }
+                        requestAnimationFrame(fitToView);
+                      }}
                       className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                         showOriginal
                           ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                           : "text-slate-400 hover:text-white hover:bg-white/10"
                       }`}
-                      title={showOriginal ? "Revenir à la vue analysée (croppée)" : "Voir l'image originale complète"}
+                      title={showOriginal ? "Revenir à la vue analysée" : "Image originale (masques masqués)"}
                     >
                       {showOriginal ? "Vue analysée" : "Original"}
                     </button>
                     {isAdmin && cropRect && (
                       <button
-                        onClick={() => setShowFullPlan(true)}
+                        onClick={() => { setShowFullPlan(true); /* masks stay as-is, only active ones show in full plan */ }}
                         className="px-2 py-1 rounded text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/40 border border-transparent transition-colors"
                         title="Vue complète : image originale avec détections recalées (admin)"
                       >

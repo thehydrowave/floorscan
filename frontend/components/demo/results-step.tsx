@@ -648,20 +648,41 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           )}
 
           <button onClick={async () => {
-            const container = imgContainerRef.current;
-            if (!container) return;
+            // Canvas-based compositing (html2canvas doesn't support WebkitMaskImage)
+            const imgEl = document.querySelector("[data-results-image]") as HTMLImageElement;
+            if (!imgEl || !imgEl.naturalWidth) { toast({ title: "Image non chargée", variant: "error" }); return; }
             try {
-              const html2canvas = (await import("html2canvas")).default;
-              const canvas = await html2canvas(container, { backgroundColor: "#0d1117", scale: 2, useCORS: true });
+              const cv = document.createElement("canvas");
+              cv.width = imgEl.naturalWidth; cv.height = imgEl.naturalHeight;
+              const ctx = cv.getContext("2d")!;
+              ctx.drawImage(imgEl, 0, 0);
+              // Overlay each visible mask
+              const maskLayers: Array<{ b64?: string; color: string; show: boolean }> = [
+                { b64: result.mask_doors_b64, color: "#FF00CC", show: showDoors },
+                { b64: result.mask_windows_b64, color: "#00CCFF", show: showWindows },
+              ];
+              for (const ml of maskLayers) {
+                if (!ml.show || !ml.b64) continue;
+                const mImg = new Image();
+                mImg.src = `data:image/png;base64,${ml.b64}`;
+                await new Promise<void>(res => { mImg.onload = () => res(); mImg.onerror = () => res(); });
+                const tc = document.createElement("canvas"); tc.width = cv.width; tc.height = cv.height;
+                const tctx = tc.getContext("2d")!;
+                tctx.drawImage(mImg, 0, 0, cv.width, cv.height);
+                const md = tctx.getImageData(0, 0, cv.width, cv.height);
+                const r = parseInt(ml.color.slice(1, 3), 16), g = parseInt(ml.color.slice(3, 5), 16), b = parseInt(ml.color.slice(5, 7), 16);
+                const id = ctx.getImageData(0, 0, cv.width, cv.height);
+                for (let i = 0; i < md.data.length; i += 4) {
+                  if (md.data[i] > 128) { const a = 0.5; id.data[i] = id.data[i]*(1-a)+r*a; id.data[i+1] = id.data[i+1]*(1-a)+g*a; id.data[i+2] = id.data[i+2]*(1-a)+b*a; }
+                }
+                ctx.putImageData(id, 0, 0);
+              }
               const a = document.createElement("a");
-              a.href = canvas.toDataURL("image/png");
-              a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`;
-              a.click();
-              toast({ title: "Image téléchargée avec les masques visibles", variant: "success" });
+              a.href = cv.toDataURL("image/png"); a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click();
+              toast({ title: "Image téléchargée avec masques", variant: "success" });
             } catch {
-              // Fallback: download raw image
-              const img = document.querySelector("[data-results-image]") as HTMLImageElement;
-              if (img) { const a = document.createElement("a"); a.href = img.src; a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click(); }
+              const a = document.createElement("a"); a.href = imgEl.src;
+              a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click();
             }
           }} title="Télécharger l'image avec les masques affichés"
             className="px-3 py-1.5 rounded-lg text-xs font-600 border border-white/10 text-slate-500 hover:text-white transition-all flex items-center gap-1.5 ml-auto">
