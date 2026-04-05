@@ -19,8 +19,47 @@ import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/
 
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
+// @ts-ignore — no types for polygon-clipping
+import polygonClipping from "polygon-clipping";
 type Layer = "door" | "window" | "french_door" | "interior" | "rooms" | "wall" | "cloison" | "surface" | "utilities" | null;
 type EditorTool = "add_rect" | "erase_rect" | "add_poly" | "erase_poly" | "sam" | "select" | "split" | "visual_search" | "deduct_rect" | "linear" | "angle" | "count" | "rescale" | "text" | "circle";
+/** Close a ring for polygon-clipping */
+function closeRingEditor(ring: [number, number][]): [number, number][] {
+  if (ring.length < 2) return ring;
+  const f = ring[0], l = ring[ring.length - 1];
+  if (f[0] !== l[0] || f[1] !== l[1]) return [...ring, [f[0], f[1]]];
+  return ring;
+}
+
+/** Open a ring (remove closing duplicate) */
+function openRingEditor(ring: [number, number][]): { x: number; y: number }[] {
+  const pts = ring.map(c => ({ x: c[0], y: c[1] }));
+  if (pts.length > 1 && Math.abs(pts[0].x - pts[pts.length - 1].x) < 1e-9 && Math.abs(pts[0].y - pts[pts.length - 1].y) < 1e-9) pts.pop();
+  return pts;
+}
+
+/** Bridge holes into outer ring (for polygon systems that don't support holes) */
+function bridgeHolesEditor(outer: [number, number][], holes: [number, number][][]): [number, number][] {
+  if (holes.length === 0) return outer;
+  let ring = [...outer];
+  if (ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) ring.pop();
+  for (const hole of holes) {
+    let hRing = [...hole];
+    if (hRing.length > 1 && hRing[0][0] === hRing[hRing.length - 1][0] && hRing[0][1] === hRing[hRing.length - 1][1]) hRing.pop();
+    if (hRing.length < 3) continue;
+    let bestDist = Infinity, bestO = 0, bestH = 0;
+    for (let i = 0; i < ring.length; i++) {
+      for (let j = 0; j < hRing.length; j++) {
+        const d = (ring[i][0] - hRing[j][0]) ** 2 + (ring[i][1] - hRing[j][1]) ** 2;
+        if (d < bestDist) { bestDist = d; bestO = i; bestH = j; }
+      }
+    }
+    const reordered = [...hRing.slice(bestH), ...hRing.slice(0, bestH)];
+    ring = [...ring.slice(0, bestO + 1), ...reordered, reordered[0], ring[bestO], ...ring.slice(bestO + 1)];
+  }
+  return ring;
+}
+
 // ── Constantes pièces ──────────────────────────────────────────────────────────
 const ROOM_TYPES: { type: string; i18nKey: DTKey }[] = [
   { type: "bedroom",      i18nKey: "rt_bedroom" },
@@ -165,6 +204,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // Clipboard
   const clipboardRef = useRef<{ rooms: any[]; openings: any[]; texts?: any[]; measures?: any[]; countPoints?: any[] } | null>(null);
 
+  // Room eraser state
+  const [roomEraserMode, setRoomEraserMode] = useState<"rect" | "poly" | null>(null);
+  const [roomEraserPoly, setRoomEraserPoly] = useState<{ x: number; y: number }[]>([]);
+  const roomEraserStartRef = useRef<{ x: number; y: number } | null>(null);
+
   // Auto-enable overlays + reset tool on layer change
   useEffect(() => {
     if (layer === null) {
@@ -175,6 +219,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setEditingRoomId(null);
       setSelectedRoomIds(new Set());
       setSelectedOpeningIdxs(new Set());
+      setRoomEraserMode(null); setRoomEraserPoly([]); roomEraserStartRef.current = null;
       return;
     }
     // Visibilité exclusive : n'afficher que l'overlay de l'élément sélectionné
@@ -197,6 +242,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setEditingRoomId(null);
       setSelectedRoomIds(new Set());
       setSelectedOpeningIdxs(new Set());
+      setRoomEraserMode(null); setRoomEraserPoly([]); roomEraserStartRef.current = null;
     }
   }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -602,6 +648,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       if (e.key === "Escape" && tool === "add_poly" && layer === "rooms") {
         pts.current = []; drawCanvas(); setTool("select");
       }
+      if (e.key === "Escape" && roomEraserMode) {
+        setRoomEraserMode(null);
+        setRoomEraserPoly([]);
+        roomEraserStartRef.current = null;
+      }
 
       // Ctrl+C: Copy selected elements
       if ((e.ctrlKey || e.metaKey) && e.key === "c") {
@@ -857,6 +908,110 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     } finally { setLoading(false); }
   };
   sendEditRoomRef.current = sendEditRoom;
+
+  /** Erase a polygon from the selected room using boolean subtraction */
+  const eraseRoomPoly = useCallback((eraserPts: { x: number; y: number }[]) => {
+    if (!selectedRoomId || eraserPts.length < 3) return;
+    const room = (result.rooms ?? []).find(r => r.id === selectedRoomId);
+    if (!room || !room.polygon_norm || room.polygon_norm.length < 3) return;
+
+    const subject: [number, number][][] = [closeRingEditor(room.polygon_norm.map(p => [p.x, p.y] as [number, number]))];
+    const clip: [number, number][][] = [closeRingEditor(eraserPts.map(p => [p.x, p.y] as [number, number]))];
+
+    try {
+      const diff = polygonClipping.difference([subject], [clip]);
+      if (!diff || diff.length === 0) {
+        // Room fully erased — delete it
+        sendEditRoom({ action: "delete_room", room_id: selectedRoomId });
+        toast({ title: "Pièce entièrement gommée", variant: "default" });
+        return;
+      }
+
+      // Take the largest resulting polygon as the new room shape
+      let bestPoly: { x: number; y: number }[] | null = null;
+      let bestArea = 0;
+      const ppmVal = result.pixels_per_meter;
+
+      for (let i = 0; i < diff.length; i++) {
+        const outerRing = diff[i][0];
+        const holeRings = diff[i].slice(1);
+        if (!outerRing || outerRing.length < 3) continue;
+
+        let finalRing: [number, number][];
+        if (holeRings.length > 0) {
+          finalRing = bridgeHolesEditor(outerRing, holeRings);
+        } else {
+          finalRing = outerRing;
+        }
+
+        const pts = openRingEditor(finalRing);
+        if (pts.length < 3) continue;
+
+        // Calculate area
+        let areaNorm = 0;
+        for (let j = 0; j < pts.length; j++) {
+          const k = (j + 1) % pts.length;
+          areaNorm += pts[j].x * pts[k].y - pts[k].x * pts[j].y;
+        }
+        areaNorm = Math.abs(areaNorm) / 2;
+
+        if (areaNorm > bestArea || !bestPoly) {
+          bestArea = areaNorm;
+          bestPoly = pts;
+        }
+      }
+
+      if (!bestPoly) {
+        sendEditRoom({ action: "delete_room", room_id: selectedRoomId });
+        return;
+      }
+
+      // Calculate centroid and bbox
+      const cx = bestPoly.reduce((s, p) => s + p.x, 0) / bestPoly.length;
+      const cy = bestPoly.reduce((s, p) => s + p.y, 0) / bestPoly.length;
+      const xs = bestPoly.map(p => p.x), ys = bestPoly.map(p => p.y);
+      const bbox = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+
+      // Calculate area in m²
+      const imgW = imageNatural.w || 1;
+      const imgH = imageNatural.h || 1;
+      let areaPx = 0;
+      for (let j = 0; j < bestPoly.length; j++) {
+        const k = (j + 1) % bestPoly.length;
+        areaPx += bestPoly[j].x * imgW * bestPoly[k].y * imgH - bestPoly[k].x * imgW * bestPoly[j].y * imgH;
+      }
+      areaPx = Math.abs(areaPx) / 2;
+      const areaM2 = ppmVal ? areaPx / (ppmVal * ppmVal) : null;
+
+      const finalPoly = bestPoly;
+
+      // Update room with new polygon
+      setResult(prev => ({
+        ...prev,
+        rooms: (prev.rooms ?? []).map(r => {
+          if (r.id !== selectedRoomId) return r;
+          return {
+            ...r,
+            polygon_norm: finalPoly,
+            centroid_norm: { x: cx, y: cy },
+            bbox_norm: bbox,
+            area_m2: areaM2,
+            area_px2: areaPx,
+          };
+        }),
+      }));
+
+      // Also update linked zone if exists
+      if (room.linkedZoneId) {
+        setZones(prev => prev.map(z => z.id === room.linkedZoneId ? { ...z, points: finalPoly.map(p => ({ x: p.x, y: p.y })) } : z));
+      }
+
+      toast({ title: "Zone gommée de la pièce", variant: "success" });
+    } catch (err) {
+      console.error("Room erase error:", err);
+      toast({ title: "Erreur de gommage", variant: "error" });
+    }
+  }, [selectedRoomId, result, imageNatural, sendEditRoom]);
 
   // ── Undo / Redo room edits ──
   const sendUndoRoom = async () => {
@@ -1122,6 +1277,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     const mc = mouseToCanvas(e.clientX, e.clientY);
     const rx = scaleX(mc.x);
     const ry = scaleY(mc.y);
+
+    // Room eraser: rectangle mode — start drawing
+    if (roomEraserMode === "rect" && layer === "rooms" && selectedRoomId) {
+      const p = (() => { const img = imgRef.current; if (!img) return null; const rect = img.getBoundingClientRect(); return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }; })();
+      if (p) { roomEraserStartRef.current = p; }
+      return;
+    }
+
+    // Room eraser: polygon mode — add point
+    if (roomEraserMode === "poly" && layer === "rooms" && selectedRoomId) {
+      const p = (() => { const img = imgRef.current; if (!img) return null; const rect = img.getBoundingClientRect(); return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }; })();
+      if (p) {
+        // Check if clicking near first point to close
+        if (roomEraserPoly.length >= 3) {
+          const first = roomEraserPoly[0];
+          const dist = Math.hypot(p.x - first.x, p.y - first.y);
+          if (dist < 0.02) {
+            // Close polygon and erase
+            eraseRoomPoly(roomEraserPoly);
+            setRoomEraserPoly([]);
+            setRoomEraserMode(null);
+            return;
+          }
+        }
+        setRoomEraserPoly(prev => [...prev, p]);
+      }
+      return;
+    }
+
     // Visual search & SAM work even without a layer selected
     if (tool === "sam") { sendSam(Math.round(rx), Math.round(ry)); return; }
     // ── Visual search: search / add / remove ──
@@ -1540,6 +1724,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   const handleMouseUp = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return; // ignore right-click (used for pan)
+
+    // Room eraser: rectangle mode — finish and erase
+    if (roomEraserMode === "rect" && roomEraserStartRef.current && layer === "rooms" && selectedRoomId) {
+      const img = imgRef.current;
+      if (img) {
+        const rect = img.getBoundingClientRect();
+        const endP = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+        const s = roomEraserStartRef.current;
+        const x0 = Math.min(s.x, endP.x), y0 = Math.min(s.y, endP.y);
+        const x1 = Math.max(s.x, endP.x), y1 = Math.max(s.y, endP.y);
+        if (x1 - x0 > 0.005 && y1 - y0 > 0.005) {
+          const rectPoly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+          eraseRoomPoly(rectPoly);
+        }
+      }
+      roomEraserStartRef.current = null;
+      setRoomEraserMode(null);
+      return;
+    }
+
     // Visual search: finish selection
     if (vsDrawing.current && tool === "visual_search") {
       vsDrawing.current = false;
@@ -2411,6 +2615,31 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <X className="w-3 h-3" /> {d("ed_cancel")}
                     </button>
                   )}
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  <button onClick={() => { setRoomEraserMode("rect"); setTool("select"); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
+                    title="Gomme rectangle — dessinez un rectangle pour retirer une zone de la pièce sélectionnée"
+                    disabled={selectedRoomId === null}
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      roomEraserMode === "rect" ? "border-red-500/40 bg-red-500/10 text-red-400"
+                      : selectedRoomId !== null ? "border-white/5 text-slate-500 hover:text-slate-300"
+                      : "border-white/5 text-slate-700 opacity-40 cursor-not-allowed")}>
+                    <Eraser className="w-3 h-3" /> Gomme rect
+                  </button>
+                  <button onClick={() => { setRoomEraserMode("poly"); setTool("select"); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
+                    title="Gomme polygone — dessinez un polygone pour retirer une zone de la pièce sélectionnée"
+                    disabled={selectedRoomId === null}
+                    className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                      roomEraserMode === "poly" ? "border-red-500/40 bg-red-500/10 text-red-400"
+                      : selectedRoomId !== null ? "border-white/5 text-slate-500 hover:text-slate-300"
+                      : "border-white/5 text-slate-700 opacity-40 cursor-not-allowed")}>
+                    <Eraser className="w-3 h-3" /> Gomme poly
+                  </button>
+                  {roomEraserMode && (
+                    <button onClick={() => { setRoomEraserMode(null); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
+                      className="p-0.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                   <button onClick={() => { setTool("add_poly"); pts.current = []; }}
                     title="Créer une pièce : dessinez un polygone"
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
@@ -2871,6 +3100,19 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </g>
                     );
                   })}
+                  {/* Room eraser polygon preview */}
+                  {roomEraserPoly.length > 0 && (() => {
+                    const svgPts = roomEraserPoly.map(p => `${p.x * imgDisplaySize.w},${p.y * imgDisplaySize.h}`).join(" ");
+                    return (
+                      <g>
+                        <polyline points={svgPts} fill="rgba(239,68,68,0.1)" stroke="#EF4444" strokeWidth={2} strokeDasharray="6 3" />
+                        {roomEraserPoly.map((p, i) => (
+                          <circle key={i} cx={p.x * imgDisplaySize.w} cy={p.y * imgDisplaySize.h} r={i === 0 && roomEraserPoly.length >= 3 ? 8 : 4}
+                            fill={i === 0 && roomEraserPoly.length >= 3 ? "#EF4444" : "white"} stroke="#EF4444" strokeWidth={2} />
+                        ))}
+                      </g>
+                    );
+                  })()}
                 </svg>
               )}
 
@@ -3703,6 +3945,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 style={{ cursor: tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
                 onDoubleClick={() => {
+                  // Room eraser poly: double-click to close and erase
+                  if (roomEraserMode === "poly" && roomEraserPoly.length >= 3) {
+                    eraseRoomPoly(roomEraserPoly);
+                    setRoomEraserPoly([]);
+                    setRoomEraserMode(null);
+                    return;
+                  }
                   if (selectedTextId) {
                     setEditingTextId(selectedTextId);
                   }
