@@ -31,6 +31,7 @@ import { polygonAreaNorm, polygonPerimeterM } from "@/lib/measure-types";
 import type { MeasureZone, SurfaceType } from "@/lib/measure-types";
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
+import ResultsTutorialOverlay from "@/components/demo/results-tutorial-overlay";
 
 interface ResultsStepProps {
   result: AnalysisResult;
@@ -418,7 +419,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <h2 className="font-display text-2xl font-700 text-white">{d("re_title")}</h2>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <div className="relative">
+          <div className="relative" data-tuto-results="export-btn">
             <Button onClick={() => setExportOpen(v => !v)} variant="outline">
               <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3 ml-1" />
             </Button>
@@ -444,7 +445,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               </>
             )}
           </div>
-          <Button onClick={onGoEditor}>
+          <Button onClick={onGoEditor} data-tuto-results="editor-btn">
             <Edit3 className="w-4 h-4" /> {d("re_editor")}
           </Button>
           {onGoChantier && (
@@ -490,7 +491,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           { Icon: Ruler,         label: d("re_walls_area" as DTKey), value: fmt(sf.area_walls_m2, 1, " m²"),  color: "#60a5fa" },
         ];
         return (
-          <div className={`grid grid-cols-2 ${result.french_doors_count ? "sm:grid-cols-3 md:grid-cols-5" : "sm:grid-cols-2 md:grid-cols-4"} gap-3 mb-6`}>
+          <div data-tuto-results="kpis" className={`grid grid-cols-2 ${result.french_doors_count ? "sm:grid-cols-3 md:grid-cols-5" : "sm:grid-cols-2 md:grid-cols-4"} gap-3 mb-6`}>
             {kpis.map(({ Icon, label, value, color }) => (
               <div key={label} className="relative glass rounded-2xl border border-white/[0.07] p-4 overflow-hidden">
                 <div className="absolute -top-6 -right-6 w-20 h-20 rounded-full blur-2xl pointer-events-none opacity-20" style={{ background: color }} />
@@ -576,7 +577,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       {/* ══════════════════════ Overlays section ══════════════════════ */}
       <div className="glass rounded-xl border border-white/10 p-5">
         {/* Toggle buttons */}
-        <div className="flex gap-2 flex-wrap mb-4 items-center">
+        <div data-tuto-results="overlays" className="flex gap-2 flex-wrap mb-4 items-center">
           {result.mask_doors_b64 && (
             <button onClick={() => setShowDoors(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
@@ -1100,7 +1101,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
 
       {/* Advanced Tools accordion */}
-      <div className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
+      <div data-tuto-results="advanced" className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
         <button onClick={() => setAdvancedOpen(v => !v)}
           className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors">
           <div className="flex items-center gap-2.5">
@@ -1168,6 +1169,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       {rapportOpen && (
         <RapportDialog result={result} customDetections={customDetections} onClose={() => setRapportOpen(false)} />
       )}
+
+      <ResultsTutorialOverlay />
     </motion.div>
   );
 }
