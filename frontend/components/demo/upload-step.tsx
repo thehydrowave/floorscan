@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Upload, FileText, AlertCircle, ChevronLeft, ChevronRight, BookOpen, HardDrive } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
+import * as pdfjsLib from "pdfjs-dist";
 
 import { BACKEND } from "@/lib/backend";
+
+// Configure pdf.js worker
+if (typeof window !== "undefined") {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
 const MAX_SIZE_MB = 50;
 
 interface UploadStepProps {
@@ -44,9 +50,10 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
   const [awaitingPage, setAwaitingPage] = useState(false);
 
-  // Thumbnails
+  // Thumbnails (client-side rendered via pdf.js)
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loadingThumbs, setLoadingThumbs] = useState(false);
+  const thumbsGenerating = useRef(false);
 
   // Auto-enter page selector when returning from editor with saved PDF data
   useEffect(() => {
@@ -172,29 +179,45 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
     }
   }, [uploadPage, onUploaded, lang, d]);
 
-  // Fetch thumbnails when PDF is loaded
-  const fetchThumbnails = useCallback(async (b64: string) => {
+  // Generate thumbnails client-side with pdf.js
+  const generateThumbnails = useCallback(async (b64: string, count: number) => {
+    if (thumbsGenerating.current) return;
+    thumbsGenerating.current = true;
     setLoadingThumbs(true);
     try {
-      const r = await fetch(`${BACKEND}/pdf-thumbnails`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pdf_base64: b64, max_pages: 20 }),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        setThumbnails(data.thumbnails ?? []);
+      const raw = atob(b64);
+      const uint8 = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) uint8[i] = raw.charCodeAt(i);
+      const pdf = await pdfjsLib.getDocument({ data: uint8 }).promise;
+      const maxPages = Math.min(count, 20);
+      const thumbs: string[] = [];
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      for (let i = 0; i < maxPages; i++) {
+        const page = await pdf.getPage(i + 1);
+        const vp = page.getViewport({ scale: 0.3 }); // tiny scale for fast thumbs
+        canvas.width = vp.width;
+        canvas.height = vp.height;
+        ctx.clearRect(0, 0, vp.width, vp.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        thumbs.push(canvas.toDataURL("image/jpeg", 0.6));
+        // Update progressively — show thumbs as they render
+        setThumbnails([...thumbs]);
       }
-    } catch { /* silent */ }
-    finally { setLoadingThumbs(false); }
+    } catch (e) {
+      console.warn("PDF thumbnail error:", e);
+    } finally {
+      setLoadingThumbs(false);
+      thumbsGenerating.current = false;
+    }
   }, []);
 
-  // Auto-fetch thumbs when entering page selector
+  // Auto-generate thumbs when entering page selector
   useEffect(() => {
     if (awaitingPage && pdfBase64 && thumbnails.length === 0 && !loadingThumbs) {
-      fetchThumbnails(pdfBase64);
+      generateThumbnails(pdfBase64, pageCount);
     }
-  }, [awaitingPage, pdfBase64, thumbnails.length, loadingThumbs, fetchThumbnails]);
+  }, [awaitingPage, pdfBase64, thumbnails.length, loadingThumbs, pageCount, generateThumbnails]);
 
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
@@ -229,10 +252,10 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
             </div>
 
             {/* Thumbnail grid */}
-            {loadingThumbs ? (
+            {loadingThumbs && thumbnails.length === 0 ? (
               <div className="flex items-center justify-center gap-2 py-12 text-slate-400">
                 <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Chargement des aperçus...</span>
+                <span className="text-sm">Génération des aperçus...</span>
               </div>
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-6">
@@ -250,7 +273,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
                     {/* Thumbnail image */}
                     {thumbnails[i] ? (
                       <img
-                        src={`data:image/jpeg;base64,${thumbnails[i]}`}
+                        src={thumbnails[i]}
                         alt={`Page ${i + 1}`}
                         className="w-full h-auto block bg-white"
                         draggable={false}
