@@ -224,7 +224,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         const cy = e.bbox_norm.y + e.bbox_norm.h / 2;
         return pointInPolygon({ x: cx, y: cy }, zone.pts);
       });
-      const fenetres = zoneEls.filter(e => e.type === "other" && !hiddenElements.has(e.id));
+      const fenetres = zoneEls.filter(e => (e.type === "window" || e.type === "other") && !hiddenElements.has(e.id));
       const fenetresArea = fenetres.reduce((s, e) => {
         if (e.area_m2 != null) return s + e.area_m2;
         if (!ppm || ppm <= 0 || imgNat.w === 0) return s;
@@ -341,24 +341,24 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
-                  <AppWindow className="w-5 h-5 mx-auto text-amber-400 mb-1" />
-                  <div className="text-xl font-mono font-bold text-amber-400">{zs.fenetresCount}</div>
-                  <div className="text-xs text-slate-500">{d("fa_windows" as DTKey)}</div>
+                  <AppWindow className="w-5 h-5 mx-auto text-pink-400 mb-1" />
+                  <div className="text-xl font-mono font-bold text-pink-400">{zs.fenetresCount}</div>
+                  <div className="text-xs text-slate-500">Fenêtres</div>
                   {zs.fenetresArea > 0 && (
-                    <div className="text-xs text-amber-400/70 font-mono mt-0.5">{zs.fenetresArea.toFixed(1)} m²</div>
+                    <div className="text-xs text-pink-400/70 font-mono mt-0.5">{zs.fenetresArea.toFixed(1)} m²</div>
                   )}
+                </div>
+                <div className="text-center">
+                  <Building2 className="w-5 h-5 mx-auto text-emerald-400 mb-1" />
+                  <div className="text-xl font-mono font-bold text-emerald-400">
+                    {zs.nette != null ? `${zs.nette.toFixed(0)} m²` : "—"}
+                  </div>
+                  <div className="text-xs text-slate-500">Surface nette</div>
                 </div>
                 <div className="text-center">
                   <Crop className="w-5 h-5 mx-auto text-slate-400 mb-1" />
                   <div className="text-xl font-mono font-bold text-slate-200">{zs.zoneArea.toFixed(0)} m²</div>
-                  <div className="text-xs text-slate-500">{d("fr_delimited" as DTKey)}</div>
-                </div>
-                <div className="text-center">
-                  <Building2 className="w-5 h-5 mx-auto text-blue-400 mb-1" />
-                  <div className="text-xl font-mono font-bold text-blue-400">
-                    {zs.nette != null ? `${zs.nette.toFixed(0)} m²` : "—"}
-                  </div>
-                  <div className="text-xs text-slate-500">{d("fr_net_surface" as DTKey)}</div>
+                  <div className="text-xs text-slate-500">Zone délimitée</div>
                 </div>
               </div>
             </div>
@@ -368,9 +368,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {/* Fenêtres count */}
           <div className="glass rounded-xl border border-white/10 p-4 text-center">
-            <AppWindow className="w-6 h-6 mx-auto text-amber-400" />
-            <div className="text-2xl font-mono font-bold mt-1 text-amber-400">
-              {localElements.filter(e => e.type === "other").length}
+            <AppWindow className="w-6 h-6 mx-auto text-pink-400" />
+            <div className="text-2xl font-mono font-bold mt-1 text-pink-400">
+              {localElements.filter(e => e.type === "window" || e.type === "other").length}
             </div>
             <div className="text-xs text-slate-500 mt-0.5">{d("fa_windows" as DTKey)}</div>
             {fenetresAreaM2 > 0 && (
@@ -448,7 +448,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               </div>
               <div className="w-px h-5 bg-white/10" />
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Surface totale</span>
+                <span className="text-xs text-slate-400">Surface totale (zone délimitée)</span>
                 <span className="text-sm text-accent font-mono font-semibold">{facadeAreaM2.toFixed(1)} m²</span>
               </div>
               <div className="flex-1" />
