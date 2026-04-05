@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList, ZoomIn, ZoomOut, Hash, Type, Circle } from "lucide-react";
+import { Download, Edit3, RotateCcw, Table2, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList, ZoomIn, ZoomOut, Hash, Type, Circle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -31,7 +31,7 @@ import { polygonAreaNorm, polygonPerimeterM } from "@/lib/measure-types";
 import type { MeasureZone, SurfaceType } from "@/lib/measure-types";
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
-import ResultsTutorialOverlay from "@/components/demo/results-tutorial-overlay";
+import ResultsTutorialOverlay, { resetResultsTutorial } from "@/components/demo/results-tutorial-overlay";
 
 interface ResultsStepProps {
   result: AnalysisResult;
@@ -98,6 +98,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [exportOpen, setExportOpen] = useState(false);
   const [recapOpen, setRecapOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [forceShowTuto, setForceShowTuto] = useState(false);
 
   // ── Zoom / pan for image ──
   const [imgZoom, setImgZoom] = useState(1);
@@ -419,6 +420,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <h2 className="font-display text-2xl font-700 text-white">{d("re_title")}</h2>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => { resetResultsTutorial(); setForceShowTuto(f => !f); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
+            title="Tutoriel">
+            <Sparkles className="w-3.5 h-3.5" /> Tutoriel
+          </button>
           <div className="relative" data-tuto-results="export-btn">
             <Button onClick={() => setExportOpen(v => !v)} variant="outline">
               <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3 ml-1" />
@@ -434,9 +440,6 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                     handleExportXLSX(); setExportOpen(false);
                   }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
                     <Table2 className="w-4 h-4" /> XLSX
-                  </button>
-                  <button onClick={() => { window.print(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
-                    <Printer className="w-4 h-4" /> {d("btn_print")}
                   </button>
                   <button onClick={() => { setRapportOpen(true); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
                     <FileDown className="w-4 h-4" /> {d("rap_btn" as DTKey)}
@@ -1170,7 +1173,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         <RapportDialog result={result} customDetections={customDetections} onClose={() => setRapportOpen(false)} />
       )}
 
-      <ResultsTutorialOverlay />
+      <ResultsTutorialOverlay forceShow={forceShowTuto} />
     </motion.div>
   );
 }
