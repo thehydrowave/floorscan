@@ -1042,19 +1042,230 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   };
 
   // CSV export
+  // ── Shared export data computation ──
+  const getExportData = () => {
+    const ppm = result.pixels_per_meter;
+    const epT = 0.14, epL = 0.14, epA = 0.14;
+    const openings = elements.filter(e => !["floor_line", "roof", "column", "wall_opaque"].includes(e.type));
+    const retourLines = openings.map(e => {
+      const w = e.w_m ?? (ppm && imgNat.w > 0 ? (e.bbox_norm.w * imgNat.w / ppm) : null);
+      const h = e.h_m ?? (ppm && imgNat.h > 0 ? (e.bbox_norm.h * imgNat.h / ppm) : null);
+      const lonLinteau = w, lonAppui = w, lonTableau = h != null ? h * 2 : null;
+      const surfLinteau = lonLinteau != null ? lonLinteau * epL : null;
+      const surfAppui = lonAppui != null ? lonAppui * epA : null;
+      const surfTableau = lonTableau != null ? lonTableau * epT : null;
+      const totalRetour = surfLinteau != null && surfAppui != null && surfTableau != null ? surfLinteau + surfAppui + surfTableau : null;
+      return { e, w, h, lonLinteau, lonAppui, lonTableau, surfLinteau, surfAppui, surfTableau, totalRetour };
+    });
+    const totLonT = retourLines.reduce((s, l) => s + (l.lonTableau ?? 0), 0);
+    const totLonL = retourLines.reduce((s, l) => s + (l.lonLinteau ?? 0), 0);
+    const totLonA = retourLines.reduce((s, l) => s + (l.lonAppui ?? 0), 0);
+    const totSurfT = retourLines.reduce((s, l) => s + (l.surfTableau ?? 0), 0);
+    const totSurfL = retourLines.reduce((s, l) => s + (l.surfLinteau ?? 0), 0);
+    const totSurfA = retourLines.reduce((s, l) => s + (l.surfAppui ?? 0), 0);
+    const totSurfRetours = totSurfT + totSurfL + totSurfA;
+    const pxITE = 120, pxRetour = 45, pxEchaf = 25;
+    const cITE = (netFacadeArea ?? 0) * pxITE;
+    const cRet = (totLonT + totLonL + totLonA) * pxRetour;
+    const cEch = (facadeArea ?? 0) * pxEchaf;
+    return { retourLines, totLonT, totLonL, totLonA, totSurfT, totSurfL, totSurfA, totSurfRetours, pxITE, pxRetour, pxEchaf, cITE, cRet, cEch, cTotal: cITE + cRet + cEch, epT, epL, epA };
+  };
+
+  // ── CSV export ──
   const exportCSV = () => {
+    const { retourLines } = getExportData();
     const BOM = "\uFEFF";
-    const header = `ID;${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;Area (m\u00B2);Périmètre (m)`;
-    const rows = elements.map(e =>
-      `${e.id};${getTypeLabel(e.type)};${e.floor_level ?? 0};${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"};${e.perimeter_m?.toFixed(2) ?? "-"}`
+    const header = "ID;Type;Étage;Surface (m²);Périmètre (m);Largeur (m);Hauteur (m);Linteau (ml);Appui (ml);Tableau (ml);Surf. linteau (m²);Surf. appui (m²);Surf. tableau (m²);Total retours (m²)";
+    const rows = retourLines.map(l =>
+      `${l.e.id};${getTypeLabel(l.e.type)};${l.e.floor_level ?? 0};${l.e.area_m2?.toFixed(3) ?? "-"};${l.e.perimeter_m?.toFixed(3) ?? "-"};${l.w?.toFixed(3) ?? "-"};${l.h?.toFixed(3) ?? "-"};${l.lonLinteau?.toFixed(3) ?? "-"};${l.lonAppui?.toFixed(3) ?? "-"};${l.lonTableau?.toFixed(3) ?? "-"};${l.surfLinteau?.toFixed(4) ?? "-"};${l.surfAppui?.toFixed(4) ?? "-"};${l.surfTableau?.toFixed(4) ?? "-"};${l.totalRetour?.toFixed(4) ?? "-"}`
     );
     const csv = BOM + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "facade_elements.csv"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "facade_elements.csv"; a.click();
     URL.revokeObjectURL(url);
-    toast({ title: d("fa_export_csv"), variant: "success" });
+    toast({ title: "CSV exporté", variant: "success" });
+  };
+
+  // ── XLSX export ──
+  const exportXLSX = async () => {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const d = getExportData();
+
+    // Sheet 1: Résumé
+    const summary = [
+      ["RAPPORT ANALYSE FAÇADE"], ["Date", new Date().toLocaleDateString("fr-FR")], [],
+      ["═══ SURFACES ═══"],
+      ["Fenêtres (nombre)", windowsCount],
+      ["Fenêtres surface (m²)", Number(windowsArea.toFixed(2))],
+      ["Périmètre fenêtres (m)", Number(windowsPerimeter.toFixed(2))],
+      ["Surface nette mur (m²)", Number((netFacadeArea ?? 0).toFixed(2))],
+      ["Surface façade (m²)", Number((facadeArea ?? 0).toFixed(2))],
+      ["Étages détectés", result.floors_count ?? "-"],
+      [],
+      ["═══ RETOURS DE TABLEAU ═══"],
+      ["Épaisseur (cm)", d.epT * 100],
+      ["", "Tableau (ml)", "Linteau (ml)", "Appui (ml)", "Total (ml)"],
+      ["Linéaires", Number(d.totLonT.toFixed(2)), Number(d.totLonL.toFixed(2)), Number(d.totLonA.toFixed(2)), Number((d.totLonT + d.totLonL + d.totLonA).toFixed(2))],
+      ["", "Tableau (m²)", "Linteau (m²)", "Appui (m²)", "Total (m²)"],
+      ["Surfaces retours", Number(d.totSurfT.toFixed(2)), Number(d.totSurfL.toFixed(2)), Number(d.totSurfA.toFixed(2)), Number(d.totSurfRetours.toFixed(2))],
+      [],
+      ["═══ ESTIMATIONS FINANCIÈRES ═══"],
+      ["Poste", "Quantité", "Prix unit.", "Montant HT"],
+      ["ITE mur opaque", `${(netFacadeArea ?? 0).toFixed(1)} m²`, `${d.pxITE} €/m²`, `${d.cITE.toFixed(0)} €`],
+      ["Retours linteau", `${d.totLonL.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonL * d.pxRetour).toFixed(0)} €`],
+      ["Retours appui", `${d.totLonA.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonA * d.pxRetour).toFixed(0)} €`],
+      ["Retours tableau", `${d.totLonT.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonT * d.pxRetour).toFixed(0)} €`],
+      ["Échafaudage", `${(facadeArea ?? 0).toFixed(1)} m²`, `${d.pxEchaf} €/m²`, `${d.cEch.toFixed(0)} €`],
+      [], ["TOTAL ESTIMÉ HT", "", "", `${d.cTotal.toFixed(0)} €`],
+    ];
+    // Custom types stats
+    for (const ct of customTypes) {
+      const ctEls = elements.filter(e => e.type === ct.id);
+      if (ctEls.length > 0) {
+        const ctArea = ctEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+        summary.push([], [`Type "${ct.name}"`, ctEls.length, `${ctArea.toFixed(2)} m²`, ct.replacesWall ? "(remplace mur)" : ""]);
+      }
+    }
+    const ws1 = XLSX.utils.aoa_to_sheet(summary);
+    ws1["!cols"] = [{ wch: 28 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Résumé");
+
+    // Sheet 2: Éléments
+    const hdr = ["ID", "Type", "Étage", "Surface (m²)", "Périmètre (m)", "L (m)", "H (m)", "Linteau (ml)", "Appui (ml)", "Tableau (ml)", "Surf linteau", "Surf appui", "Surf tableau", "Total retours"];
+    const rows = d.retourLines.map(l => [
+      l.e.id, getTypeLabel(l.e.type), l.e.floor_level ?? 0,
+      l.e.area_m2 != null ? Number(l.e.area_m2.toFixed(3)) : "",
+      l.e.perimeter_m != null ? Number(l.e.perimeter_m.toFixed(3)) : "",
+      l.w != null ? Number(l.w.toFixed(3)) : "", l.h != null ? Number(l.h.toFixed(3)) : "",
+      l.lonLinteau != null ? Number(l.lonLinteau.toFixed(3)) : "", l.lonAppui != null ? Number(l.lonAppui.toFixed(3)) : "",
+      l.lonTableau != null ? Number(l.lonTableau.toFixed(3)) : "",
+      l.surfLinteau != null ? Number(l.surfLinteau.toFixed(4)) : "", l.surfAppui != null ? Number(l.surfAppui.toFixed(4)) : "",
+      l.surfTableau != null ? Number(l.surfTableau.toFixed(4)) : "", l.totalRetour != null ? Number(l.totalRetour.toFixed(4)) : "",
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet([hdr, ...rows]);
+    ws2["!cols"] = hdr.map(() => ({ wch: 14 }));
+    XLSX.utils.book_append_sheet(wb, ws2, "Éléments");
+
+    // Sheet 3: Financier détaillé
+    const fHdr = ["Poste", "Quantité", "Unité", "Prix unit. (€)", "Montant HT (€)"];
+    const fRows = [
+      ["ITE mur opaque", Number((netFacadeArea ?? 0).toFixed(2)), "m²", d.pxITE, Number(d.cITE.toFixed(0))],
+      ["Retours linteau", Number(d.totLonL.toFixed(2)), "ml", d.pxRetour, Number((d.totLonL * d.pxRetour).toFixed(0))],
+      ["Retours appui", Number(d.totLonA.toFixed(2)), "ml", d.pxRetour, Number((d.totLonA * d.pxRetour).toFixed(0))],
+      ["Retours tableau", Number(d.totLonT.toFixed(2)), "ml", d.pxRetour, Number((d.totLonT * d.pxRetour).toFixed(0))],
+      ["Échafaudage", Number((facadeArea ?? 0).toFixed(2)), "m²", d.pxEchaf, Number(d.cEch.toFixed(0))],
+      [], ["TOTAL HT", "", "", "", Number(d.cTotal.toFixed(0))],
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet([fHdr, ...fRows]);
+    ws3["!cols"] = [{ wch: 22 }, { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "Estimations");
+
+    XLSX.writeFile(wb, "rapport_facade.xlsx");
+    toast({ title: "XLSX exporté", variant: "success" });
+  };
+
+  // ── PDF export ──
+  const exportPDF = async () => {
+    try {
+      const jspdfModule = await import("jspdf");
+      const jsPDF = jspdfModule.jsPDF ?? jspdfModule.default;
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const margin = 15;
+      let y = margin;
+      const ed = getExportData();
+
+      doc.setFontSize(18); doc.setFont("helvetica", "bold");
+      doc.text("Rapport Analyse Façade", margin, y); y += 10;
+      doc.setFontSize(10); doc.setFont("helvetica", "normal");
+      doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, margin, y); y += 8;
+
+      // Summary
+      doc.setFontSize(12); doc.setFont("helvetica", "bold");
+      doc.text("Résumé", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      const sRows = [
+        ["Fenêtres", `${windowsCount} — ${windowsArea.toFixed(2)} m² — P: ${windowsPerimeter.toFixed(2)} m`],
+        ["Surface nette mur", `${(netFacadeArea ?? 0).toFixed(2)} m²`],
+        ["Surface façade", `${(facadeArea ?? 0).toFixed(2)} m²`],
+        ["Étages", `${result.floors_count ?? "-"}`],
+      ];
+      for (const [l, v] of sRows) { doc.text(l, margin, y); doc.text(v, margin + 55, y); y += 5; }
+      y += 3;
+
+      // Retours
+      doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text("Retours de tableau", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      doc.text(`Linéaires — Tableau: ${ed.totLonT.toFixed(2)} ml | Linteau: ${ed.totLonL.toFixed(2)} ml | Appui: ${ed.totLonA.toFixed(2)} ml`, margin, y); y += 5;
+      doc.text(`Surfaces  — Tableau: ${ed.totSurfT.toFixed(2)} m² | Linteau: ${ed.totSurfL.toFixed(2)} m² | Appui: ${ed.totSurfA.toFixed(2)} m² | Total: ${ed.totSurfRetours.toFixed(2)} m²`, margin, y); y += 8;
+
+      // Financial
+      doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text("Estimations financières", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      const fLines = [
+        [`ITE mur: ${(netFacadeArea ?? 0).toFixed(1)} m² × ${ed.pxITE} €`, `${ed.cITE.toFixed(0)} €`],
+        [`Retours: ${(ed.totLonT + ed.totLonL + ed.totLonA).toFixed(1)} ml × ${ed.pxRetour} €`, `${ed.cRet.toFixed(0)} €`],
+        [`Échafaudage: ${(facadeArea ?? 0).toFixed(1)} m² × ${ed.pxEchaf} €`, `${ed.cEch.toFixed(0)} €`],
+      ];
+      for (const [l, v] of fLines) { doc.text(l, margin, y); doc.text(v, margin + 120, y); y += 5; }
+      doc.setFont("helvetica", "bold");
+      doc.text("TOTAL HT", margin, y); doc.text(`${ed.cTotal.toFixed(0)} €`, margin + 120, y); y += 8;
+      doc.setFont("helvetica", "normal");
+
+      // Custom types
+      for (const ct of customTypes) {
+        const ctEls = elements.filter(e => e.type === ct.id);
+        if (ctEls.length > 0) {
+          const ctArea = ctEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+          doc.text(`${ct.name}: ${ctEls.length} éléments — ${ctArea.toFixed(2)} m²${ct.replacesWall ? " (remplace mur)" : ""}`, margin, y); y += 5;
+        }
+      }
+      y += 3;
+
+      // Elements table
+      doc.setFontSize(10); doc.setFont("helvetica", "bold");
+      doc.text("Éléments détectés", margin, y); y += 6;
+      doc.setFontSize(7); doc.setFont("helvetica", "bold");
+      doc.text("ID", margin, y); doc.text("Type", margin + 10, y); doc.text("m²", margin + 35, y);
+      doc.text("Périm.", margin + 50, y); doc.text("L(m)", margin + 68, y); doc.text("H(m)", margin + 82, y);
+      doc.text("Lint.", margin + 96, y); doc.text("Appui", margin + 110, y); doc.text("Tab.", margin + 125, y);
+      doc.text("Tot.ret.", margin + 140, y); y += 3.5;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+      for (const l of ed.retourLines) {
+        if (y > 280) { doc.addPage(); y = margin; }
+        doc.text(`${l.e.id}`, margin, y);
+        doc.text(getTypeLabel(l.e.type), margin + 10, y);
+        doc.text(l.e.area_m2?.toFixed(2) ?? "-", margin + 35, y);
+        doc.text(l.e.perimeter_m?.toFixed(2) ?? "-", margin + 50, y);
+        doc.text(l.w?.toFixed(2) ?? "-", margin + 68, y);
+        doc.text(l.h?.toFixed(2) ?? "-", margin + 82, y);
+        doc.text(l.lonLinteau?.toFixed(2) ?? "-", margin + 96, y);
+        doc.text(l.lonAppui?.toFixed(2) ?? "-", margin + 110, y);
+        doc.text(l.lonTableau?.toFixed(2) ?? "-", margin + 125, y);
+        doc.text(l.totalRetour?.toFixed(3) ?? "-", margin + 140, y);
+        y += 3;
+      }
+
+      // Plan image
+      if (result.plan_b64) {
+        doc.addPage(); y = margin;
+        doc.setFontSize(12); doc.setFont("helvetica", "bold");
+        doc.text("Plan de façade", margin, y); y += 5;
+        try {
+          const imgW = 180, imgH = imgW * (imgNat.h / imgNat.w);
+          doc.addImage(`data:image/png;base64,${result.plan_b64}`, "PNG", margin, y, imgW, Math.min(imgH, 240));
+        } catch { /* silent */ }
+      }
+
+      doc.save("rapport_facade.pdf");
+      toast({ title: "PDF exporté", variant: "success" });
+    } catch (err: any) {
+      console.error("PDF export error:", err);
+      toast({ title: "Erreur PDF", description: err?.message ?? "Erreur", variant: "error" });
+    }
   };
 
   // Visible elements filter — respects visibility toggles
@@ -1177,6 +1388,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <Download className="w-3.5 h-3.5" /> CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportXLSX}>
+                <Download className="w-3.5 h-3.5" /> XLSX
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportPDF}>
+                <Download className="w-3.5 h-3.5" /> PDF
               </Button>
               <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
                 <ArrowLeft className="w-3.5 h-3.5" /> Résultats

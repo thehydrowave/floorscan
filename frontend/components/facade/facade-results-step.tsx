@@ -301,22 +301,35 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
     setIsMaskPanning(false);
   }, []);
 
+  /* ── Shared retour computation for exports ── */
+  const getRetourData = () => {
+    const ppm = result.pixels_per_meter;
+    const epT = 0.14, epL = 0.14, epA = 0.14;
+    const opens = localElements.filter(e => !["floor_line", "roof", "column", "wall_opaque"].includes(e.type));
+    return opens.map(e => {
+      const w = e.w_m ?? (ppm && imgNat.w > 0 ? (e.bbox_norm.w * imgNat.w / ppm) : null);
+      const h = e.h_m ?? (ppm && imgNat.h > 0 ? (e.bbox_norm.h * imgNat.h / ppm) : null);
+      const lL = w, lA = w, lT = h != null ? h * 2 : null;
+      const sL = lL != null ? lL * epL : null, sA = lA != null ? lA * epA : null, sT = lT != null ? lT * epT : null;
+      const tot = sL != null && sA != null && sT != null ? sL + sA + sT : null;
+      return { e, w, h, lL, lA, lT, sL, sA, sT, tot };
+    });
+  };
+
   /* ── CSV export ── */
   const exportCSV = () => {
+    const rl = getRetourData();
     const BOM = "\uFEFF";
-    const header = `${d("fa_element")};${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;${d("fa_facade_area")} (m²)`;
-    const rows = localElements.map(e =>
-      `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};` +
-      `${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};` +
-      `${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
+    const header = "ID;Type;Étage;Surface (m²);Périmètre (m);L (m);H (m);Linteau (ml);Appui (ml);Tableau (ml);Surf linteau;Surf appui;Surf tableau;Total retours";
+    const rows = rl.map(l =>
+      `${l.e.id};${d(TYPE_I18N[l.e.type] ?? "fa_other")};${l.e.floor_level ?? 0};${l.e.area_m2?.toFixed(3) ?? "-"};${l.e.perimeter_m?.toFixed(3) ?? "-"};${l.w?.toFixed(3) ?? "-"};${l.h?.toFixed(3) ?? "-"};${l.lL?.toFixed(3) ?? "-"};${l.lA?.toFixed(3) ?? "-"};${l.lT?.toFixed(3) ?? "-"};${l.sL?.toFixed(4) ?? "-"};${l.sA?.toFixed(4) ?? "-"};${l.sT?.toFixed(4) ?? "-"};${l.tot?.toFixed(4) ?? "-"}`
     );
     const csv = BOM + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "facade_analysis.csv"; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = "facade_analysis.csv"; a.click();
     URL.revokeObjectURL(url);
-    toast({ title: d("fa_export_csv"), variant: "success" });
+    toast({ title: "CSV exporté", variant: "success" });
   };
 
   /* ── XLSX export ── */
@@ -449,110 +462,109 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   /* ── PDF export ── */
   const exportPDF = async () => {
     try {
-    const jspdfModule = await import("jspdf");
-    const jsPDF = jspdfModule.jsPDF ?? jspdfModule.default;
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-    const pw = 210, margin = 15;
-    let y = margin;
+      const jspdfModule = await import("jspdf");
+      const jsPDF = jspdfModule.jsPDF ?? jspdfModule.default;
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const margin = 15;
+      let y = margin;
+      const rl = getRetourData();
+      const totLT = rl.reduce((s, l) => s + (l.lT ?? 0), 0);
+      const totLL = rl.reduce((s, l) => s + (l.lL ?? 0), 0);
+      const totLA = rl.reduce((s, l) => s + (l.lA ?? 0), 0);
+      const totST = rl.reduce((s, l) => s + (l.sT ?? 0), 0);
+      const totSL = rl.reduce((s, l) => s + (l.sL ?? 0), 0);
+      const totSA = rl.reduce((s, l) => s + (l.sA ?? 0), 0);
+      const pxITE = 120, pxRet = 45, pxEch = 25;
+      const cITE = wallNetArea * pxITE, cRet = (totLT + totLL + totLA) * pxRet, cEch = facadeAreaM2 * pxEch;
 
-    // Title
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("Rapport Analyse Façade", margin, y);
-    y += 10;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, margin, y);
-    y += 8;
+      doc.setFontSize(18); doc.setFont("helvetica", "bold");
+      doc.text("Rapport Analyse Façade", margin, y); y += 10;
+      doc.setFontSize(10); doc.setFont("helvetica", "normal");
+      doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, margin, y); y += 8;
 
-    // Summary table
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Résumé", margin, y); y += 7;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+      // Summary
+      doc.setFontSize(12); doc.setFont("helvetica", "bold");
+      doc.text("Résumé", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      const sRows: string[][] = [
+        ["Fenêtres", `${windowCount} — ${windowsAreaM2.toFixed(2)} m² — P: ${windowsPerimeterM.toFixed(2)} m`],
+        ["Surface nette mur", `${wallNetArea.toFixed(2)} m²`],
+        ["Surface totale (zone délimitée)", `${facadeAreaM2.toFixed(2)} m²`],
+      ];
+      if (result.ratio_openings != null) sRows.push(["Ratio ouvertures", `${(result.ratio_openings * 100).toFixed(1)}%`]);
+      if (result.floors_count != null) sRows.push(["Étages", `${result.floors_count}`]);
+      for (const [l, v] of sRows) { doc.text(l, margin, y); doc.text(v, margin + 65, y); y += 5; }
+      y += 3;
 
-    const summaryRows = [
-      ["Fenêtres (nombre)", `${windowCount}`],
-      ["Fenêtres (m²)", `${windowsAreaM2.toFixed(2)}`],
-      ["Périmètre fenêtres (m)", `${windowsPerimeterM.toFixed(2)}`],
-      ["Surface nette (m²)", `${wallNetArea.toFixed(2)}`],
-      ["Surface totale délimitée (m²)", `${facadeAreaM2.toFixed(2)}`],
-    ];
-    if (result.ratio_openings != null) summaryRows.push(["Ratio ouvertures", `${(result.ratio_openings * 100).toFixed(1)}%`]);
-    if (result.floors_count != null) summaryRows.push(["Étages détectés", `${result.floors_count}`]);
+      // Retours
+      doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text("Retours de tableau / linteau / appui", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      doc.text(`Linéaires — Tableau: ${totLT.toFixed(2)} ml | Linteau: ${totLL.toFixed(2)} ml | Appui: ${totLA.toFixed(2)} ml | Total: ${(totLT+totLL+totLA).toFixed(2)} ml`, margin, y); y += 5;
+      doc.text(`Surfaces  — Tableau: ${totST.toFixed(2)} m² | Linteau: ${totSL.toFixed(2)} m² | Appui: ${totSA.toFixed(2)} m² | Total: ${(totST+totSL+totSA).toFixed(2)} m²`, margin, y); y += 8;
 
-    for (const [label, val] of summaryRows) {
-      doc.text(label, margin, y);
-      doc.text(val, margin + 80, y);
-      y += 5;
-    }
-    y += 5;
-
-    // Per-facade stats
-    if (perZoneStats && perZoneStats.length > 0) {
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("Détail par façade", margin, y); y += 7;
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      for (const zs of perZoneStats) {
-        doc.text(`Façade ${zs.idx + 1} : ${zs.fenetresCount} fenêtres (${zs.fenetresArea.toFixed(1)} m²) | Nette ${zs.nette?.toFixed(1) ?? "-"} m² | Zone ${zs.zoneArea.toFixed(1)} m²`, margin, y);
-        y += 5;
-        if (y > 270) { doc.addPage(); y = margin; }
+      // Per-facade
+      if (perZoneStats && perZoneStats.length > 0) {
+        doc.setFontSize(11); doc.setFont("helvetica", "bold");
+        doc.text("Détail par façade", margin, y); y += 6;
+        doc.setFontSize(9); doc.setFont("helvetica", "normal");
+        for (const zs of perZoneStats) {
+          doc.text(`Façade ${zs.idx + 1} : ${zs.fenetresCount} fen. (${zs.fenetresArea.toFixed(1)} m²) | Nette ${zs.nette?.toFixed(1) ?? "-"} m² | Zone ${zs.zoneArea.toFixed(1)} m²`, margin, y);
+          y += 5; if (y > 270) { doc.addPage(); y = margin; }
+        }
+        y += 3;
       }
-      y += 5;
-    }
 
-    // Elements table
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text("Éléments détectés", margin, y); y += 7;
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text("ID", margin, y);
-    doc.text("Type", margin + 12, y);
-    doc.text("Étage", margin + 40, y);
-    doc.text("Surface (m²)", margin + 58, y);
-    doc.text("Périmètre (m)", margin + 85, y);
-    doc.text("L (m)", margin + 115, y);
-    doc.text("H (m)", margin + 132, y);
-    y += 4;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-
-    for (const e of localElements) {
-      if (y > 280) { doc.addPage(); y = margin; }
-      const typeName = (e.type === "window" || e.type === "other") ? "Fenêtre" : e.type === "door" ? "Porte" : e.type;
-      doc.text(`${e.id}`, margin, y);
-      doc.text(typeName, margin + 12, y);
-      doc.text(`${e.floor_level ?? 0}`, margin + 40, y);
-      doc.text(e.area_m2?.toFixed(2) ?? "-", margin + 58, y);
-      doc.text(e.perimeter_m?.toFixed(2) ?? "-", margin + 85, y);
-      doc.text(e.w_m?.toFixed(2) ?? "-", margin + 115, y);
-      doc.text(e.h_m?.toFixed(2) ?? "-", margin + 132, y);
-      y += 3.5;
-    }
-
-    // Add plan image if available
-    if (result.plan_b64) {
-      doc.addPage();
-      y = margin;
-      doc.setFontSize(12);
+      // Financial
+      doc.setFontSize(11); doc.setFont("helvetica", "bold");
+      doc.text("Estimations financières (indicatives HT)", margin, y); y += 6;
+      doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      const fL: string[][] = [
+        [`ITE mur: ${wallNetArea.toFixed(1)} m² × ${pxITE} €/m²`, `${cITE.toFixed(0)} €`],
+        [`Retours: ${(totLT+totLL+totLA).toFixed(1)} ml × ${pxRet} €/ml`, `${cRet.toFixed(0)} €`],
+        [`Échafaudage: ${facadeAreaM2.toFixed(1)} m² × ${pxEch} €/m²`, `${cEch.toFixed(0)} €`],
+      ];
+      for (const [l, v] of fL) { doc.text(l, margin, y); doc.text(v, margin + 120, y); y += 5; }
       doc.setFont("helvetica", "bold");
-      doc.text("Plan de façade", margin, y); y += 5;
-      try {
-        const imgW = pw - 2 * margin;
-        const imgH = imgW * (imgNat.h / imgNat.w);
-        doc.addImage(`data:image/png;base64,${result.plan_b64}`, "PNG", margin, y, imgW, Math.min(imgH, 240));
-      } catch { /* image add failed silently */ }
-    }
+      doc.text("TOTAL HT", margin, y); doc.text(`${(cITE + cRet + cEch).toFixed(0)} €`, margin + 120, y); y += 8;
 
-    doc.save("rapport_facade.pdf");
-    toast({ title: "Rapport PDF exporté", variant: "success" });
+      // Elements table
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text("Éléments détectés", margin, y); y += 6;
+      doc.setFontSize(7); doc.setFont("helvetica", "bold");
+      doc.text("ID", margin, y); doc.text("Type", margin+8, y); doc.text("m²", margin+30, y);
+      doc.text("Pér.", margin+43, y); doc.text("L", margin+56, y); doc.text("H", margin+66, y);
+      doc.text("Lint.", margin+76, y); doc.text("App.", margin+89, y); doc.text("Tab.", margin+102, y);
+      doc.text("Ret.tot", margin+115, y); y += 3.5;
+      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
+      for (const l of rl) {
+        if (y > 280) { doc.addPage(); y = margin; }
+        const tn = (l.e.type === "window" || l.e.type === "other") ? "Fen." : l.e.type === "door" ? "Porte" : l.e.type;
+        doc.text(`${l.e.id}`, margin, y); doc.text(tn, margin+8, y);
+        doc.text(l.e.area_m2?.toFixed(2) ?? "-", margin+30, y);
+        doc.text(l.e.perimeter_m?.toFixed(2) ?? "-", margin+43, y);
+        doc.text(l.w?.toFixed(2) ?? "-", margin+56, y); doc.text(l.h?.toFixed(2) ?? "-", margin+66, y);
+        doc.text(l.lL?.toFixed(2) ?? "-", margin+76, y); doc.text(l.lA?.toFixed(2) ?? "-", margin+89, y);
+        doc.text(l.lT?.toFixed(2) ?? "-", margin+102, y); doc.text(l.tot?.toFixed(3) ?? "-", margin+115, y);
+        y += 3;
+      }
+
+      // Plan image
+      if (result.plan_b64) {
+        doc.addPage(); y = margin;
+        doc.setFontSize(12); doc.setFont("helvetica", "bold");
+        doc.text("Plan de façade", margin, y); y += 5;
+        try {
+          const imgW = 180, imgH = imgW * (imgNat.h / imgNat.w);
+          doc.addImage(`data:image/png;base64,${result.plan_b64}`, "PNG", margin, y, imgW, Math.min(imgH, 240));
+        } catch { /* silent */ }
+      }
+
+      doc.save("rapport_facade.pdf");
+      toast({ title: "PDF exporté", variant: "success" });
     } catch (err: any) {
       console.error("PDF export error:", err);
-      toast({ title: "Erreur export PDF", description: err?.message ?? "Erreur inconnue", variant: "error" });
+      toast({ title: "Erreur PDF", description: err?.message ?? "Erreur", variant: "error" });
     }
   };
 
