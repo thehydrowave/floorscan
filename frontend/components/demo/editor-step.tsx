@@ -1280,21 +1280,27 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
     // Room eraser: rectangle mode — start drawing
     if (roomEraserMode === "rect" && layer === "rooms" && selectedRoomId) {
-      const p = (() => { const img = imgRef.current; if (!img) return null; const rect = img.getBoundingClientRect(); return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }; })();
-      if (p) { roomEraserStartRef.current = p; }
+      const img = imgRef.current;
+      if (img) {
+        const normX = rx / img.naturalWidth;
+        const normY = ry / img.naturalHeight;
+        roomEraserStartRef.current = { x: normX, y: normY };
+      }
       return;
     }
 
     // Room eraser: polygon mode — add point
     if (roomEraserMode === "poly" && layer === "rooms" && selectedRoomId) {
-      const p = (() => { const img = imgRef.current; if (!img) return null; const rect = img.getBoundingClientRect(); return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height }; })();
-      if (p) {
+      const img = imgRef.current;
+      if (img) {
+        const normX = rx / img.naturalWidth;
+        const normY = ry / img.naturalHeight;
+        const p = { x: normX, y: normY };
         // Check if clicking near first point to close
         if (roomEraserPoly.length >= 3) {
           const first = roomEraserPoly[0];
           const dist = Math.hypot(p.x - first.x, p.y - first.y);
           if (dist < 0.02) {
-            // Close polygon and erase
             eraseRoomPoly(roomEraserPoly);
             setRoomEraserPoly([]);
             setRoomEraserMode(null);
@@ -1629,6 +1635,25 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Room eraser: rectangle preview on canvas
+    if (roomEraserMode === "rect" && roomEraserStartRef.current && layer === "rooms") {
+      const cv = canvasRef.current;
+      const img = imgRef.current;
+      if (cv && img) {
+        const mc2 = mouseToCanvas(e.clientX, e.clientY);
+        const ctx = cv.getContext("2d")!;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        const s = roomEraserStartRef.current;
+        const sx = s.x * img.offsetWidth, sy = s.y * img.offsetHeight;
+        const ex = (scaleX(mc2.x) / img.naturalWidth) * img.offsetWidth;
+        const ey = (scaleY(mc2.y) / img.naturalHeight) * img.offsetHeight;
+        ctx.strokeStyle = "#EF4444"; ctx.lineWidth = 2; ctx.setLineDash([6, 3]);
+        ctx.fillStyle = "rgba(239,68,68,0.1)";
+        ctx.fillRect(sx, sy, ex - sx, ey - sy);
+        ctx.strokeRect(sx, sy, ex - sx, ey - sy);
+      }
+      return;
+    }
     // Visual search drag
     if (vsDrawing.current && tool === "visual_search") {
       const mc = mouseToCanvas(e.clientX, e.clientY);
@@ -1729,11 +1754,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     if (roomEraserMode === "rect" && roomEraserStartRef.current && layer === "rooms" && selectedRoomId) {
       const img = imgRef.current;
       if (img) {
-        const rect = img.getBoundingClientRect();
-        const endP = { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+        const mc2 = mouseToCanvas(e.clientX, e.clientY);
+        const endNormX = scaleX(mc2.x) / img.naturalWidth;
+        const endNormY = scaleY(mc2.y) / img.naturalHeight;
         const s = roomEraserStartRef.current;
-        const x0 = Math.min(s.x, endP.x), y0 = Math.min(s.y, endP.y);
-        const x1 = Math.max(s.x, endP.x), y1 = Math.max(s.y, endP.y);
+        const x0 = Math.min(s.x, endNormX), y0 = Math.min(s.y, endNormY);
+        const x1 = Math.max(s.x, endNormX), y1 = Math.max(s.y, endNormY);
         if (x1 - x0 > 0.005 && y1 - y0 > 0.005) {
           const rectPoly = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
           eraseRoomPoly(rectPoly);
@@ -2072,7 +2098,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const vertexEditActive = tool === "select" && layer === "rooms" && selectedRoomId !== null
     && displayRooms.find(r => r.id === selectedRoomId)?.polygon_norm != null;
   // Split tool needs canvas interaction even when a room is selected
-  const canvasInteractive = tool === "split" || tool === "visual_search" || !vertexEditActive;
+  const canvasInteractive = tool === "split" || tool === "visual_search" || roomEraserMode !== null || !vertexEditActive;
   // Detect panoramic/wide images (ratio > 3:1)
   const isWideImage = imageNatural.w > 0 && imageNatural.h > 0 && (imageNatural.w / imageNatural.h) > 3;
 
@@ -3942,7 +3968,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
 
               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"
-                style={{ cursor: tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
+                style={{ cursor: roomEraserMode ? "crosshair" : tool === "visual_search" ? "crosshair" : tool === "select" ? "default" : "crosshair", zIndex: tool === "split" ? 20 : (tool === "visual_search" ? 20 : roomEraserMode ? 30 : 10), pointerEvents: canvasInteractive ? "auto" : "none" }}
                 onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
                 onDoubleClick={() => {
                   // Room eraser poly: double-click to close and erase
