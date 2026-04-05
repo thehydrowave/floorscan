@@ -211,6 +211,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [transShape, setTransShape] = useState<Pt[]>([]); // the drawn shape (relative to anchor)
   const [transDrawing, setTransDrawing] = useState<Pt[]>([]); // points being drawn
   const [transRectStart, setTransRectStart] = useState<Pt | null>(null); // for rect mode
+  const [transRepeatShow, setTransRepeatShow] = useState(false);
+  const [transRepeatAxis, setTransRepeatAxis] = useState<"x" | "y">("y");
+  const [transRepeatCount, setTransRepeatCount] = useState(2);
 
   // ── Blue wall overlay path (facade boundary minus window holes) ──
   // Facade delimitation zones (user-drawn polygons BEFORE crop)
@@ -1367,6 +1370,48 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       className="px-1.5 py-1 rounded text-[10px] border border-red-500/30 text-red-400 hover:bg-red-500/10">
                       Annuler dernier
                     </button>
+                  )}
+                  {transAnchors.length >= 2 && !transRepeatShow && (
+                    <button onClick={() => setTransRepeatShow(true)}
+                      className="px-2 py-1 rounded text-[10px] border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
+                      ↻ Répéter points
+                    </button>
+                  )}
+                  {transRepeatShow && transAnchors.length >= 2 && (
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-cyan-500/30 bg-cyan-500/5">
+                      <span className="text-[9px] text-slate-400">Axe :</span>
+                      <button onClick={() => setTransRepeatAxis("x")}
+                        className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold",
+                          transRepeatAxis === "x" ? "bg-cyan-500/20 text-cyan-300" : "text-slate-500")}>X</button>
+                      <button onClick={() => setTransRepeatAxis("y")}
+                        className={cn("px-1.5 py-0.5 rounded text-[9px] font-semibold",
+                          transRepeatAxis === "y" ? "bg-cyan-500/20 text-cyan-300" : "text-slate-500")}>Y</button>
+                      <span className="text-[9px] text-slate-400">×</span>
+                      <input type="number" min={1} max={50} value={transRepeatCount}
+                        onChange={e => setTransRepeatCount(Math.max(1, Math.min(50, Number(e.target.value))))}
+                        className="w-10 bg-slate-800 border border-white/10 rounded px-1 py-0.5 text-[10px] text-white text-center" />
+                      <button onClick={() => {
+                        const last2 = transAnchors.slice(-2);
+                        const dx = last2[1].x - last2[0].x;
+                        const dy = last2[1].y - last2[0].y;
+                        const delta = transRepeatAxis === "x" ? { x: dx, y: 0 } : { x: 0, y: dy };
+                        const newPts: Pt[] = [];
+                        const lastPt = transAnchors[transAnchors.length - 1];
+                        for (let i = 1; i <= transRepeatCount; i++) {
+                          newPts.push({
+                            x: Math.max(0, Math.min(1, lastPt.x + delta.x * i)),
+                            y: Math.max(0, Math.min(1, lastPt.y + delta.y * i)),
+                          });
+                        }
+                        setTransAnchors(prev => [...prev, ...newPts]);
+                        setTransRepeatShow(false);
+                      }} className="px-2 py-0.5 rounded text-[9px] border border-green-500/40 bg-green-500/10 text-green-400 font-semibold">
+                        Appliquer
+                      </button>
+                      <button onClick={() => setTransRepeatShow(false)} className="text-slate-500 hover:text-red-400">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   )}
                 </>
               )}
