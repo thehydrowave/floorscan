@@ -948,6 +948,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     if (e.type === "window" && !visibility.window) return false;
     if (e.type === "other" && !visibility.window) return false; // "other" = remapped window
     if (e.type === "column" && !showColumns) return false;
+    // Custom types: check visibility
+    if (e.type.startsWith("custom_") && visibility[e.type] === false) return false;
     return true;
   });
 
@@ -1084,6 +1086,15 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <Building2 size={10} className="text-green-400" />
               {visibility.wall_opaque ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
             </button>
+            {/* Custom type visibility toggles */}
+            {customTypes.map(ct => (
+              <button key={ct.id} onClick={() => setVisibility(v => ({...v, [ct.id]: !v[ct.id]}))}
+                className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                  visibility[ct.id] ? "border-white/20 bg-white/5 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: visibility[ct.id] ? ct.color : "#475569" }} />
+                {visibility[ct.id] ? <Eye className="w-2.5 h-2.5" style={{ color: ct.color }} /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+              </button>
+            ))}
           </div>
 
           {/* ══ BAR 2 : EDIT LAYER ══ */}
@@ -1147,7 +1158,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 ) : (
                   <div className="flex items-center gap-0.5">
                     <button
-                      onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
+                      onClick={() => { setAddType(ct.id); setVisibility(v => ({ ...v, [ct.id]: true })); if (tool === "select") setTool("add_rect"); }}
                       className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-l-lg text-xs font-medium border transition-all",
                         addType === ct.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
                       <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
@@ -1179,6 +1190,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     if (e.key === "Enter" && newTypeName.trim()) {
                       const id = `custom_${Date.now()}`;
                       setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                      setVisibility(v => ({ ...v, [id]: true }));
                       setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                       if (tool === "select") setTool("add_rect");
                     }
@@ -1201,6 +1213,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   if (newTypeName.trim()) {
                     const id = `custom_${Date.now()}`;
                     setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                    setVisibility(v => ({ ...v, [id]: true }));
                     setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                     if (tool === "select") setTool("add_rect");
                   }
