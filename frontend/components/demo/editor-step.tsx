@@ -231,6 +231,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [showTuto, setShowTuto] = useState(false);
   const [showCountDropdown, setShowCountDropdown] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [activeFloorTypeId, setActiveFloorTypeId] = useState<string>("");
+  const [showNewFloorType, setShowNewFloorType] = useState(false);
+  const [newFloorTypeName, setNewFloorTypeName] = useState("");
+  const [newFloorTypeColor, setNewFloorTypeColor] = useState("#3B82F6");
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
@@ -1358,8 +1362,25 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         area_m2,
         area_px2: areaPx,
         polygon_norm: polyNorm,
+        surfaceTypeId: activeFloorTypeId || undefined,
       };
       setResult(prev => ({ ...prev, rooms: [...(prev.rooms ?? []), newRoom] }));
+      // Auto-create linked MeasureZone if floor type selected
+      if (activeFloorTypeId && polyNorm.length >= 3) {
+        const zoneId = crypto.randomUUID();
+        const linkedZone: MeasureZone = {
+          id: zoneId,
+          typeId: activeFloorTypeId,
+          points: polyNorm.map(p => ({ x: p.x, y: p.y })),
+          name: `auto:room:${newId}`,
+        };
+        setZones(prev => [...prev, linkedZone]);
+        // Update room with linkedZoneId
+        setResult(prev => ({
+          ...prev,
+          rooms: (prev.rooms ?? []).map(r => r.id === newId ? { ...r, linkedZoneId: zoneId } : r),
+        }));
+      }
       toast({ title: `Pièce créée : ${newRoom.label_fr}`, variant: "success" });
       pts.current = [];
       const ctx = canvasRef.current?.getContext("2d");
@@ -1986,6 +2007,90 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
                     ))}
                   </select>
+                  {/* Floor type (surface) selector */}
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  <div className="flex items-center gap-1 relative">
+                    <span className="text-[9px] text-slate-500 shrink-0">Sol :</span>
+                    <select
+                      value={activeFloorTypeId}
+                      onChange={e => setActiveFloorTypeId(e.target.value)}
+                      className="bg-slate-800 border border-white/10 rounded-lg px-1.5 py-0.5 text-[10px] text-white max-w-28"
+                    >
+                      <option value="">— Aucun —</option>
+                      {surfaceTypes.map(st => (
+                        <option key={st.id} value={st.id}>{st.name}</option>
+                      ))}
+                    </select>
+                    {activeFloorTypeId && (() => {
+                      const st = surfaceTypes.find(s => s.id === activeFloorTypeId);
+                      return st ? <span className="w-3 h-3 rounded-full shrink-0" style={{ background: st.color }} /> : null;
+                    })()}
+
+                    {/* Create new floor type button */}
+                    <button onClick={() => setShowNewFloorType(v => !v)} title="Créer un type de sol"
+                      className="w-5 h-5 rounded-full border border-dashed border-violet-500/40 text-violet-400 text-[10px] flex items-center justify-center hover:bg-violet-500/10 transition-colors shrink-0">
+                      +
+                    </button>
+
+                    {/* New floor type form (dropdown) */}
+                    {showNewFloorType && (
+                      <div className="absolute top-full left-0 mt-1 z-50 glass border border-violet-500/20 rounded-xl p-3 shadow-2xl min-w-52"
+                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <p className="text-[9px] text-violet-400 uppercase tracking-wider font-semibold mb-2">Nouveau type de sol</p>
+                        <div className="flex flex-col gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={newFloorTypeName}
+                            onChange={e => setNewFloorTypeName(e.target.value)}
+                            onKeyDown={e => {
+                              e.stopPropagation();
+                              if (e.key === "Enter" && newFloorTypeName.trim()) {
+                                const id = newFloorTypeName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+                                setSurfaceTypes(prev => [...prev, { id, name: newFloorTypeName.trim(), color: newFloorTypeColor, wastePercent: 10, pricePerM2: 0 }]);
+                                setActiveFloorTypeId(id);
+                                setNewFloorTypeName("");
+                                setShowNewFloorType(false);
+                              }
+                              if (e.key === "Escape") setShowNewFloorType(false);
+                            }}
+                            placeholder="Nom du type de sol…"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40"
+                          />
+                          <div className="flex items-center gap-2">
+                            <label className="text-[10px] text-slate-500 shrink-0">Couleur</label>
+                            <div className="flex gap-1 flex-wrap">
+                              {["#3B82F6", "#F97316", "#8B5CF6", "#6B7280", "#EC4899", "#10B981", "#F59E0B", "#EF4444"].map(c => (
+                                <button key={c} onClick={() => setNewFloorTypeColor(c)}
+                                  className="w-4 h-4 rounded-full border-2 transition-all"
+                                  style={{ background: c, borderColor: newFloorTypeColor === c ? "white" : "transparent" }} />
+                              ))}
+                              <input type="color" value={newFloorTypeColor} onChange={e => setNewFloorTypeColor(e.target.value)}
+                                className="w-4 h-4 rounded-full border-0 cursor-pointer p-0" />
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              disabled={!newFloorTypeName.trim()}
+                              onClick={() => {
+                                const id = newFloorTypeName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+                                setSurfaceTypes(prev => [...prev, { id, name: newFloorTypeName.trim(), color: newFloorTypeColor, wastePercent: 10, pricePerM2: 0 }]);
+                                setActiveFloorTypeId(id);
+                                setNewFloorTypeName("");
+                                setShowNewFloorType(false);
+                              }}
+                              className="flex-1 py-1 text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 rounded-lg hover:bg-violet-500/30 transition-colors disabled:opacity-30">
+                              Créer
+                            </button>
+                            <button onClick={() => setShowNewFloorType(false)}
+                              className="px-2 py-1 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     disabled={selectedRoomId === null}
