@@ -1187,7 +1187,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     className="px-2 py-1 rounded text-[10px] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
                     Recommencer forme
                   </button>
-                  <button onClick={() => { setTransPhase("place_anchors"); }}
+                  <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("place_anchors"); }}
                     className="px-2 py-1 rounded text-[10px] border border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
                     + Ajouter ancrages
                   </button>
