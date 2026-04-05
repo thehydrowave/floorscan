@@ -78,6 +78,20 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [comparingModels, setComparingModels] = useState(false);
   const [imgNatural, setImgNatural] = useState({ w: 1, h: 1 });
 
+  // Sync imgNatural from DOM in case image is cached (onLoad may not re-fire)
+  useEffect(() => {
+    const trySync = () => {
+      const img = document.querySelector('[data-results-image]') as HTMLImageElement;
+      if (img && img.naturalWidth > 10) {
+        setImgNatural({ w: img.naturalWidth, h: img.naturalHeight });
+      }
+    };
+    trySync();
+    // Also try after a short delay (image may still be loading)
+    const t = setTimeout(trySync, 500);
+    return () => clearTimeout(t);
+  }, [result]);
+
   const [measureActive, setMeasureActive] = useState(false);
   const [rapportOpen, setRapportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -185,15 +199,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     // Sheet 3: Pièces
     if (result.rooms && result.rooms.length > 0) {
       const ppmR = result.pixels_per_meter;
-      // Use actual image dimensions — imgNatural may not be loaded yet, so fallback to a large value
-      const iw = imgNatural.w > 10 ? imgNatural.w : (result as any).image_width ?? 2000;
-      const ih = imgNatural.h > 10 ? imgNatural.h : (result as any).image_height ?? 2000;
+      // Get image dimensions — try imgNatural, then DOM, then fallback
+      const imgEl = document.querySelector('[data-results-image]') as HTMLImageElement;
+      const iw = imgNatural.w > 10 ? imgNatural.w : (imgEl?.naturalWidth || 2000);
+      const ih = imgNatural.h > 10 ? imgNatural.h : (imgEl?.naturalHeight || 2000);
       const data3: (string | number)[][] = [["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
       result.rooms.forEach(r => {
-        // Calculate perimeter from polygon — always try if polygon exists
-        let perim = r.perimeter_m ?? 0;
-        if ((!perim || perim <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) {
+        // Always calculate perimeter from polygon_norm
+        let perim = 0;
+        if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) {
           perim = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
+        } else if (r.perimeter_m && r.perimeter_m > 0) {
+          perim = r.perimeter_m;
         }
         // Get surface type NAME instead of ID
         const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
@@ -201,8 +218,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       });
       const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
       const totalPerim = result.rooms.reduce((s, r) => {
-        let p = r.perimeter_m ?? 0;
-        if ((!p || p <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) p = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
+        let p = 0;
+        if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) p = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
+        else if (r.perimeter_m && r.perimeter_m > 0) p = r.perimeter_m;
         return s + p;
       }, 0);
       data3.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
@@ -298,8 +316,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     const XLSX = require("xlsx");
     const wb = XLSX.utils.book_new();
     const ppmRx = result.pixels_per_meter;
-    const iwx = imgNatural.w > 10 ? imgNatural.w : (result as any).image_width ?? 2000;
-    const ihx = imgNatural.h > 10 ? imgNatural.h : (result as any).image_height ?? 2000;
+    const imgElRx = document.querySelector('[data-results-image]') as HTMLImageElement;
+    const iwx = imgNatural.w > 10 ? imgNatural.w : (imgElRx?.naturalWidth || 2000);
+    const ihx = imgNatural.h > 10 ? imgNatural.h : (imgElRx?.naturalHeight || 2000);
     const data: (string | number)[][] = [
       ["FloorScan — Récapitulatif des pièces"],
       ["Date", new Date().toLocaleDateString("fr-FR")],
@@ -307,8 +326,8 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       ["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"],
     ];
     result.rooms.forEach(r => {
-      let perim = r.perimeter_m ?? 0;
-      if ((!perim || perim <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) {
+      let perim = 0;
+      if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) {
         perim = polygonPerimeterM(r.polygon_norm, iwx, ihx, ppmRx);
       }
       const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
@@ -316,8 +335,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     });
     const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
     const totalPerim = result.rooms.reduce((s, r) => {
-      let p = r.perimeter_m ?? 0;
-      if ((!p || p <= 0) && r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) p = polygonPerimeterM(r.polygon_norm, iwx, ihx, ppmRx);
+      let p = 0;
+      if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmRx && ppmRx > 0) p = polygonPerimeterM(r.polygon_norm, iwx, ihx, ppmRx);
+      else if (r.perimeter_m && r.perimeter_m > 0) p = r.perimeter_m;
       return s + p;
     }, 0);
     data.push([]);
