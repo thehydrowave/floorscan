@@ -236,7 +236,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   // Measure selection (linear/circle/angle)
   const [selectedMeasureId, setSelectedMeasureId] = useState<string | null>(null);
-  const [selectedMeasureType, setSelectedMeasureType] = useState<"linear" | "circle" | "angle" | null>(null);
+  const [selectedMeasureType, setSelectedMeasureType] = useState<"linear" | "circle" | "angle" | "count" | null>(null);
   // Admin: full plan overlay
   const [showFullPlan, setShowFullPlan] = useState(false);
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
@@ -697,6 +697,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           if (selectedMeasureType === "linear") setLinearMeasures(prev => prev.filter(m => m.id !== selectedMeasureId));
           if (selectedMeasureType === "circle") setCircleMeasures(prev => prev.filter(c => c.id !== selectedMeasureId));
           if (selectedMeasureType === "angle") setAngleMeasures(prev => prev.filter(a => a.id !== selectedMeasureId));
+          if (selectedMeasureType === "count") setCountPoints(prev => prev.filter(p => p.id !== selectedMeasureId));
           setSelectedMeasureId(null); setSelectedMeasureType(null);
         } else if (selectedRoomIds.size > 0) {
           selectedRoomIds.forEach(id => sendEditRoom({ action: "delete_room", room_id: id }));
@@ -1368,6 +1369,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         // Angle hit-test
         const hitAngle = angleMeasures.find(am => Math.hypot(rx - am.vertex.x * imgElSel.naturalWidth, ry - am.vertex.y * imgElSel.naturalHeight) < 15);
         if (hitAngle) { setSelectedMeasureId(hitAngle.id); setSelectedMeasureType("angle"); setSelectedTextId(null); return; }
+
+        // Count point hit-test
+        const hitCount = countPoints.find(cp => {
+          const cpx = cp.x * imgElSel.naturalWidth, cpy = cp.y * imgElSel.naturalHeight;
+          return Math.hypot(rx - cpx, ry - cpy) < 20;
+        });
+        if (hitCount) { setSelectedMeasureId(hitCount.id); setSelectedMeasureType("count"); setSelectedTextId(null); return; }
       }
       // Clear text/measure selection if nothing hit
       setSelectedTextId(null);
@@ -1900,6 +1908,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   linearMeasures,
                   angleMeasures,
                   surfaceTypes,
+                  countPoints,
+                  countGroups,
+                  textAnnotations,
+                  circleMeasures,
                 },
               };
               onGoResults(updatedResult, customDetections);
@@ -2920,7 +2932,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   width={imgDisplaySize.w}
                   height={imgDisplaySize.h}
                   viewBox={`0 0 ${imageNatural.w} ${imageNatural.h}`}
-                  style={{ zIndex: 2, pointerEvents: "none" }}
+                  style={{ zIndex: tool === "select" ? 25 : 2, pointerEvents: "none" }}
                 >
                   {/* Linear measurements */}
                   {linearMeasures.map(lm => {
@@ -2932,7 +2944,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const angle = Math.atan2(y2-y1, x2-x1) * 180 / Math.PI;
                     const rot = (angle > 90 || angle < -90) ? angle + 180 : angle;
                     return (
-                      <g key={lm.id} style={{ pointerEvents: "all", cursor: "move" }}
+                      <g key={lm.id} style={{ pointerEvents: tool === "select" ? "all" : "none", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
                           setSelectedMeasureId(lm.id); setSelectedMeasureType("linear");
@@ -2968,7 +2980,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const ax = am.p1.x * imageNatural.w, ay = am.p1.y * imageNatural.h;
                     const cx = am.p3.x * imageNatural.w, cy = am.p3.y * imageNatural.h;
                     return (
-                      <g key={am.id} style={{ pointerEvents: "all", cursor: "move" }}
+                      <g key={am.id} style={{ pointerEvents: tool === "select" ? "all" : "none", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
                           setSelectedMeasureId(am.id); setSelectedMeasureType("angle");
@@ -3009,7 +3021,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   width={imgDisplaySize.w}
                   height={imgDisplaySize.h}
                   viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
-                  style={{ zIndex: 3, pointerEvents: "none" }}
+                  style={{ zIndex: tool === "select" ? 26 : 3, pointerEvents: "none" }}
                 >
                   {countPoints.filter(cp => countGroupVisibility[cp.groupId] !== false).map(cp => {
                     const grp = countGroups.find(g => g.id === cp.groupId);
@@ -3019,7 +3031,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
                     const label = grp?.name ?? "";
                     return (
-                      <g key={cp.id} style={{ pointerEvents: "all", cursor: "move" }}
+                      <g key={cp.id} style={{ pointerEvents: tool === "select" ? "all" : "none", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
                           const startX = e.clientX, startY = e.clientY;
@@ -3051,7 +3063,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {imgDisplaySize.w > 0 && (textAnnotations.length > 0 || circleMeasures.length > 0) && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none"
                   viewBox={`0 0 ${imageNatural.w || imgDisplaySize.w} ${imageNatural.h || imgDisplaySize.h}`}
-                  style={{ zIndex: 4 }}
+                  style={{ zIndex: tool === "select" ? 27 : 4 }}
                 >
                   {/* Text annotations (draggable) */}
                   {textAnnotations.map(ta => {
@@ -3064,7 +3076,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const w = ta.text.length * fs * 0.6 + 16;
                     return (
                       <g key={ta.id}
-                        style={{ pointerEvents: "all", cursor: "move" }}
+                        style={{ pointerEvents: tool === "select" ? "all" : "none", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
                           setSelectedTextId(ta.id);
@@ -3134,7 +3146,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM)}` : "";
                     const clw = cLabel.length * 5.5 + 12;
                     return (
-                      <g key={cm.id} style={{ pointerEvents: "all", cursor: "move" }}
+                      <g key={cm.id} style={{ pointerEvents: tool === "select" ? "all" : "none", cursor: "move" }}
                         onMouseDown={e => {
                           e.stopPropagation();
                           setSelectedMeasureId(cm.id); setSelectedMeasureType("circle");
