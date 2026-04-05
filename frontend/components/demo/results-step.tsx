@@ -1101,7 +1101,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       <View3dPanel result={result} imgW={imgNatural.w} imgH={imgNatural.h} />
 
       {/* Advanced Tools accordion */}
-      <div data-tuto-results="advanced" className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
+      <div className="mt-8 glass rounded-xl border border-white/10 overflow-hidden">
         <button onClick={() => setAdvancedOpen(v => !v)}
           className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors">
           <div className="flex items-center gap-2.5">

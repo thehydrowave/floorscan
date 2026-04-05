@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { BarChart3, Eye, Edit3, Download, Bot, Sparkles, X, ChevronRight, ChevronLeft, Wrench } from "lucide-react";
+import { BarChart3, Eye, Edit3, Download, Bot, Sparkles, X, ChevronRight, ChevronLeft } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { cn } from "@/lib/utils";
 
@@ -103,23 +103,23 @@ const STEPS: TutorialStep[] = [
     position: "bottom",
   },
   {
-    icon: <Wrench className="w-6 h-6" />,
+    icon: <Bot className="w-6 h-6" />,
     title: {
-      fr: "Outils avancés & IA",
-      en: "Advanced tools & AI",
-      es: "Herramientas avanzadas e IA",
-      de: "Erweiterte Tools & KI",
-      it: "Strumenti avanzati e IA",
+      fr: "Assistant IA",
+      en: "AI Assistant",
+      es: "Asistente IA",
+      de: "KI-Assistent",
+      it: "Assistente IA",
     },
     description: {
-      fr: "Accédez aux outils pro : estimation matériaux, DPGF, CCTP, scénarios, planning, conformité et plus encore.",
-      en: "Access pro tools: material estimates, DPGF, CCTP, scenarios, scheduling, compliance and more.",
-      es: "Acceda a herramientas pro: estimación de materiales, DPGF, CCTP, escenarios, planificación y más.",
-      de: "Zugriff auf Pro-Tools: Materialschätzung, DPGF, CCTP, Szenarien, Planung, Compliance und mehr.",
-      it: "Accedete agli strumenti pro: stima materiali, DPGF, CCTP, scenari, pianificazione e altro.",
+      fr: "Posez vos questions à l'IA : analyse des données, coûts des matériaux, conformité, optimisations budgétaires et bien plus.",
+      en: "Ask the AI your questions: data analysis, material costs, compliance, budget optimizations and much more.",
+      es: "Pregunte a la IA: análisis de datos, costes de materiales, conformidad, optimizaciones presupuestarias y más.",
+      de: "Fragen Sie die KI: Datenanalyse, Materialkosten, Konformität, Budgetoptimierungen und vieles mehr.",
+      it: "Chiedete all'IA: analisi dati, costi materiali, conformità, ottimizzazioni di budget e molto altro.",
     },
     color: "text-violet-400",
-    target: '[data-tuto-results="advanced"]',
+    target: '[data-tuto-results="chat"]',
     position: "top",
   },
 ];
