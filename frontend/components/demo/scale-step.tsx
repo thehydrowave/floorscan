@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Ruler, ArrowRight, ZoomIn, ZoomOut, RotateCcw, Crosshair, ChevronLeft } from "lucide-react";
+import { Ruler, ArrowRight, ZoomIn, ZoomOut, RotateCcw, Crosshair, ChevronLeft, BookOpen } from "lucide-react";
+import ScaleTutorialOverlay, { resetScaleTutorial } from "./scale-tutorial-overlay";
 import { Button } from "@/components/ui/button";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
@@ -21,6 +22,7 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
   // Go directly to manual mode (no autodetect)
   const [mode, setMode] = useState<"manual" | null>("manual");
   const [points, setPoints] = useState<(Point | null)[]>([null, null]);
+  const [showScaleTuto, setShowScaleTuto] = useState(false);
   const [realDist, setRealDist] = useState("1");
   const [zoom, setZoom] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
@@ -186,6 +188,7 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
             {/* Zoomable image */}
             <div
               ref={containerRef}
+              data-tuto-scale="image"
               className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/20 select-none"
               style={{ height: "calc(100vh - 220px)", minHeight: 400, cursor }}
               onMouseDown={handleMouseDown}
@@ -265,7 +268,7 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
               </motion.div>
             )}
 
-            <div className="flex gap-3 justify-center mt-5">
+            <div className="flex gap-3 justify-center mt-5" data-tuto-scale="buttons">
               {onBack && (
                 <Button variant="ghost" size="sm" onClick={onBack}>
                   <ChevronLeft className="w-4 h-4" />
@@ -281,6 +284,12 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
           </motion.div>
         )}
       </AnimatePresence>
+
+      <button onClick={() => { resetScaleTutorial(); setShowScaleTuto(v => !v); }}
+        className="fixed bottom-6 left-6 z-50 flex items-center gap-1.5 px-3 py-2 glass border border-white/10 rounded-xl text-xs text-slate-400 hover:text-white transition-colors">
+        <BookOpen className="w-3.5 h-3.5" /> Tutoriel
+      </button>
+      <ScaleTutorialOverlay forceShow={showScaleTuto} />
     </motion.div>
   );
 }
