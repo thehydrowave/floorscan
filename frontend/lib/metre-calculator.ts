@@ -135,7 +135,21 @@ export function computeMetre(
 
   for (const room of rooms) {
     const floor = round2(room.area_m2 ?? 0);
-    const perim = round2(room.perimeter_m ?? 0);
+    let perim = round2(room.perimeter_m ?? 0);
+    if (perim === 0 && room.polygon_norm && room.polygon_norm.length >= 3 && result.pixels_per_meter) {
+      const ppm = result.pixels_per_meter;
+      const imgW = result.img_w ?? 1024;
+      const imgH = result.img_h ?? 1024;
+      let p = 0;
+      for (let i = 0; i < room.polygon_norm.length; i++) {
+        const a = room.polygon_norm[i];
+        const b = room.polygon_norm[(i + 1) % room.polygon_norm.length];
+        const dx = (b.x - a.x) * imgW / ppm;
+        const dy = (b.y - a.y) * imgH / ppm;
+        p += Math.sqrt(dx * dx + dy * dy);
+      }
+      perim = round2(p);
+    }
     const wallGross = round2(perim * ceilingHeight);
 
     // Find openings in this room

@@ -308,17 +308,31 @@ export class PdfBuilder {
       color: C.DARK_BG,
     });
 
-    // Brand name — "Floor" in white, "Scan" in cyan
+    // Logo icon — small cyan square with rounded-corner effect
+    const logoX = PAGE.MARGIN_X;
+    const logoY = PAGE.H - 30 - 1;  // align with brand text baseline
+    const logoS = 14;
+    // Main square body
+    p.drawRectangle({ x: logoX + 2, y: logoY, width: logoS - 4, height: logoS, color: C.CYAN });
+    p.drawRectangle({ x: logoX, y: logoY + 2, width: logoS, height: logoS - 4, color: C.CYAN });
+    // Corner circles to simulate rounded corners
+    p.drawCircle({ x: logoX + 3, y: logoY + 3, size: 3, color: C.CYAN });
+    p.drawCircle({ x: logoX + logoS - 3, y: logoY + 3, size: 3, color: C.CYAN });
+    p.drawCircle({ x: logoX + 3, y: logoY + logoS - 3, size: 3, color: C.CYAN });
+    p.drawCircle({ x: logoX + logoS - 3, y: logoY + logoS - 3, size: 3, color: C.CYAN });
+
+    // Brand name — "Floor" in white, "Scan" in cyan (shifted right for logo)
+    const brandX = PAGE.MARGIN_X + 20;
     const floorW = this.fontBold.widthOfTextAtSize("Floor", HEADER.LOGO_SIZE);
     p.drawText("Floor", {
-      x: PAGE.MARGIN_X,
+      x: brandX,
       y: PAGE.H - 30,
       size: HEADER.LOGO_SIZE,
       font: this.fontBold,
       color: C.WHITE,
     });
     p.drawText("Scan", {
-      x: PAGE.MARGIN_X + floorW,
+      x: brandX + floorW,
       y: PAGE.H - 30,
       size: HEADER.LOGO_SIZE,
       font: this.fontBold,
@@ -327,7 +341,7 @@ export class PdfBuilder {
 
     // Doc subtitle
     p.drawText(this.opts.docSubtitle, {
-      x: PAGE.MARGIN_X,
+      x: brandX,
       y: PAGE.H - 43,
       size: HEADER.SUBTITLE_SIZE,
       font: this.font,
@@ -366,7 +380,7 @@ export class PdfBuilder {
       color: C.CYAN,
     });
 
-    this.y = PAGE.H - HEADER.HEIGHT - 16; // 16pt padding below header
+    this.y = PAGE.H - HEADER.HEIGHT - 24; // 24pt padding below header
     this.rowIndex = 0;
     return p;
   }
@@ -416,17 +430,29 @@ export class PdfBuilder {
       color: C.DARK_CARD,
     });
 
-    // Brand — "Floor" white, "Scan" cyan
+    // Cover logo icon — larger cyan square with rounded-corner effect
+    const coverLogoX = PAGE.MARGIN_X;
+    const coverLogoY = PAGE.H - 70 - 2;
+    const coverLogoS = 26;
+    p.drawRectangle({ x: coverLogoX + 3, y: coverLogoY, width: coverLogoS - 6, height: coverLogoS, color: C.CYAN });
+    p.drawRectangle({ x: coverLogoX, y: coverLogoY + 3, width: coverLogoS, height: coverLogoS - 6, color: C.CYAN });
+    p.drawCircle({ x: coverLogoX + 4, y: coverLogoY + 4, size: 4, color: C.CYAN });
+    p.drawCircle({ x: coverLogoX + coverLogoS - 4, y: coverLogoY + 4, size: 4, color: C.CYAN });
+    p.drawCircle({ x: coverLogoX + 4, y: coverLogoY + coverLogoS - 4, size: 4, color: C.CYAN });
+    p.drawCircle({ x: coverLogoX + coverLogoS - 4, y: coverLogoY + coverLogoS - 4, size: 4, color: C.CYAN });
+
+    // Brand — "Floor" white, "Scan" cyan (shifted right for logo)
+    const coverBrandX = PAGE.MARGIN_X + 34;
     const coverFloorW = this.fontBold.widthOfTextAtSize("Floor", COVER.LOGO_SIZE);
     p.drawText("Floor", {
-      x: PAGE.MARGIN_X,
+      x: coverBrandX,
       y: PAGE.H - 70,
       size: COVER.LOGO_SIZE,
       font: this.fontBold,
       color: C.WHITE,
     });
     p.drawText("Scan", {
-      x: PAGE.MARGIN_X + coverFloorW,
+      x: coverBrandX + coverFloorW,
       y: PAGE.H - 70,
       size: COVER.LOGO_SIZE,
       font: this.fontBold,

@@ -2,20 +2,14 @@
 
 import type { AnalysisResult, CustomDetection } from "@/lib/types";
 import { computeMetre } from "@/lib/metre-calculator";
-import { buildDefaultDpgf } from "@/lib/dpgf-defaults";
-import { runComplianceChecks } from "@/lib/compliance-checker";
 import type { Lang } from "@/lib/i18n";
 import {
   PdfBuilder,
   PAGE,
-  TABLE,
   TYPO,
   C,
-  d,
   fmtDate,
-  fmtPrice,
   safeTxt,
-  truncateText,
   type ColDef,
 } from "@/lib/pdf-theme";
 
@@ -59,13 +53,11 @@ export interface RapportOptions {
 // ── Column definitions ───────────────────────────────────────────────────────
 
 const ROOM_COLS: ColDef[] = [
-  { key: "room",    label: "metre_room",      x: 52,  width: 130, align: "left" },
-  { key: "floor",   label: "metre_floor",     x: 188, width: 58,  align: "right" },
-  { key: "perim",   label: "metre_perim",     x: 250, width: 58,  align: "right" },
-  { key: "walls",   label: "metre_walls_net", x: 312, width: 60,  align: "right" },
-  { key: "ceiling", label: "metre_ceiling",   x: 376, width: 58,  align: "right" },
-  { key: "doors",   label: "metre_doors",     x: 438, width: 44,  align: "right" },
-  { key: "windows", label: "metre_windows",   x: 486, width: 44,  align: "right" },
+  { key: "room",    label: "metre_room",      x: 52,  width: 170, align: "left" },
+  { key: "floor",   label: "metre_floor",     x: 228, width: 78,  align: "right" },
+  { key: "perim",   label: "metre_perim",     x: 312, width: 78,  align: "right" },
+  { key: "doors",   label: "metre_doors",     x: 396, width: 68,  align: "right" },
+  { key: "windows", label: "metre_windows",   x: 470, width: 68,  align: "right" },
 ];
 
 const OPENING_COLS: ColDef[] = [
@@ -83,17 +75,6 @@ const DETECT_COLS: ColDef[] = [
   { key: "area",  label: "Surface (m2)", x: 340, width: 90,  align: "right" },
 ];
 
-const DPGF_SUM_COLS: ColDef[] = [
-  { key: "lot",   label: "dpgf_desc",     x: 52,  width: 360, align: "left" },
-  { key: "total", label: "dpgf_total_ht", x: 420, width: 118, align: "right" },
-];
-
-// Conformité : pas de colonne "status" dans drawTableRow — on la dessine manuellement
-const COMPLIANCE_DATA_COLS: ColDef[] = [
-  { key: "rule",   label: "Regle",   x: 108, width: 250, align: "left" },
-  { key: "target", label: "Cible",   x: 362, width: 88,  align: "right" },
-  { key: "actual", label: "Mesure",  x: 454, width: 84,  align: "right" },
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -156,80 +137,6 @@ function drawInfoRow(b: PdfBuilder, label: string, value: string, alt: boolean):
   b.moveDown(22);
 }
 
-// ── Dessin d'une ligne de conformité (badge statut intégré proprement) ────────
-function drawComplianceRow(b: PdfBuilder, check: {
-  status: string; rule_key: string; target: string | number; actual: string | number;
-}, l: Lang): void {
-  b.ensureSpace(TABLE.ROW_HEIGHT + 10);
-
-  const statusColor =
-    check.status === "pass"    ? C.GREEN  :
-    check.status === "fail"    ? C.RED    :
-    check.status === "warning" ? C.AMBER  : C.GRAY_400;
-  const statusPale =
-    check.status === "pass"    ? C.GREEN_PALE  :
-    check.status === "fail"    ? C.RED_PALE    :
-    check.status === "warning" ? C.AMBER_PALE  : C.GRAY_100;
-  const statusLabel =
-    check.status === "pass"    ? "CONF." :
-    check.status === "fail"    ? "FAIL"  :
-    check.status === "warning" ? "ATTN"  : "N/A";
-
-  const rowY = b.y - 4;
-  const rowH = TABLE.ROW_HEIGHT;
-
-  // Fond global alterné
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: rowH, color: C.BG_SUBTLE });
-
-  // Badge statut — fond coloré pâle dans la cellule statut (x:52, width:52)
-  b.page.drawRectangle({ x: 52, y: rowY, width: 52, height: rowH, color: statusPale });
-  // Liseré gauche coloré
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: 3, height: rowH, color: statusColor });
-
-  // Bordures extérieures
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: 0.75, height: rowH, color: C.GRAY_300 });
-  b.page.drawRectangle({ x: PAGE.W - PAGE.MARGIN_X - 0.75, y: rowY, width: 0.75, height: rowH, color: C.GRAY_300 });
-
-  // Séparateurs de colonnes
-  const allCols = [{ x: 52, width: 52 }, ...COMPLIANCE_DATA_COLS];
-  for (let i = 1; i < allCols.length; i++) {
-    const prev = allCols[i - 1];
-    const curr = allCols[i];
-    b.page.drawRectangle({ x: Math.round((prev.x + prev.width + curr.x) / 2), y: rowY, width: 0.4, height: rowH, color: C.GRAY_200 });
-  }
-
-  // Texte badge statut
-  b.page.drawText(statusLabel, {
-    x: 57, y: b.y,
-    size: TYPO.TABLE_CELL, font: b.fontBold, color: statusColor,
-  });
-
-  // Texte règle
-  const ruleText = truncateText(d(check.rule_key, l), COMPLIANCE_DATA_COLS[0].width - 4, b.font, TYPO.TABLE_CELL);
-  b.page.drawText(ruleText, {
-    x: COMPLIANCE_DATA_COLS[0].x + 2, y: b.y,
-    size: TYPO.TABLE_CELL, font: b.font, color: C.DARK,
-  });
-
-  // Cible
-  const targetStr = safeTxt(String(check.target));
-  b.page.drawText(targetStr, {
-    x: COMPLIANCE_DATA_COLS[1].x + COMPLIANCE_DATA_COLS[1].width - b.font.widthOfTextAtSize(targetStr, TYPO.TABLE_CELL),
-    y: b.y, size: TYPO.TABLE_CELL, font: b.font, color: C.GRAY_700,
-  });
-
-  // Mesuré (coloré par statut)
-  const actualStr = safeTxt(String(check.actual));
-  b.page.drawText(actualStr, {
-    x: COMPLIANCE_DATA_COLS[2].x + COMPLIANCE_DATA_COLS[2].width - b.fontBold.widthOfTextAtSize(actualStr, TYPO.TABLE_CELL),
-    y: b.y, size: TYPO.TABLE_CELL, font: b.fontBold, color: statusColor,
-  });
-
-  // Séparateur de rangée
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: rowY, width: PAGE.TEXT_WIDTH, height: 0.3, color: C.GRAY_200 });
-  b.moveDown(rowH);
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
 // GÉNÉRATION DU RAPPORT
 // ══════════════════════════════════════════════════════════════════════════════
@@ -249,8 +156,6 @@ export async function downloadRapportPdf(
   const ppm      = result.pixels_per_meter ?? 1;
 
   const metre      = computeMetre(result, { ceilingHeight: options.ceilingHeight });
-  const dpgf       = buildDefaultDpgf(result, customDetections, { ceilingHeight: options.ceilingHeight });
-  const compliance = runComplianceChecks(result, { ceilingHeight: options.ceilingHeight });
 
   const b = await PdfBuilder.create({
     docType:     "RAPPORT D'ANALYSE",
@@ -295,8 +200,6 @@ export async function downloadRapportPdf(
     { label: "Surface murs",       value: fmt2(sf.area_walls_m2, " m2"),      sub: "brut" },
     { label: "Emprise batiment",   value: fmt2(sf.area_building_m2, " m2"),   sub: "total" },
     { label: "Perimetre int.",     value: fmt2(sf.perim_interior_m, " m"),    sub: "lineaire" },
-    { label: "Score conformite",   value: `${compliance.score_pct.toFixed(0)}%`, sub: `${compliance.pass_count}P / ${compliance.fail_count}F` },
-    { label: "Estimation TTC",     value: dpgf.total_ttc != null ? `${Math.round(dpgf.total_ttc).toLocaleString("fr-FR")} EUR` : "N/A", sub: "estimation" },
   ]);
 
   b.moveDown(16);
@@ -309,13 +212,6 @@ export async function downloadRapportPdf(
     ["Client",               options.clientName     || "—"],
     ["Entreprise",           options.companyName    || "—"],
     ["Date du rapport",      dateStr],
-    ["Echelle (px/m)",       result.pixels_per_meter ? result.pixels_per_meter.toFixed(2) : "Non calibree"],
-    ["Methode calibration",  result.scale_info?.method || "—"],
-    ["Confiance echelle",    result.scale_info ? `${(result.scale_info.confidence * 100).toFixed(0)}%` : "—"],
-    ["Accord sources",       result.scale_info?.agreement ? "Oui" : "Non"],
-    ["Dimensions image",     result.img_w && result.img_h ? `${result.img_w} x ${result.img_h} px` : "—"],
-    ["Ouvertures analysees", String(openings.length)],
-    ["Segments de murs",     String(walls.length)],
   ];
   infoRows.forEach(([label, value], i) => drawInfoRow(b, label, value, i % 2 === 0));
 
@@ -409,8 +305,6 @@ export async function downloadRapportPdf(
         room:    r.room_label,
         floor:   r.floor_area_m2.toFixed(2),
         perim:   r.perimeter_m.toFixed(2),
-        walls:   r.wall_area_net_m2.toFixed(2),
-        ceiling: r.ceiling_area_m2.toFixed(2),
         doors:   String(r.doors_count),
         windows: String(r.windows_count),
       });
@@ -420,8 +314,6 @@ export async function downloadRapportPdf(
       room:    "TOTAL GENERAL",
       floor:   metre.totals.floor_area_m2.toFixed(2),
       perim:   metre.totals.perimeter_m.toFixed(2),
-      walls:   metre.totals.wall_area_net_m2.toFixed(2),
-      ceiling: metre.totals.ceiling_area_m2.toFixed(2),
       doors:   String(metre.totals.doors_count),
       windows: String(metre.totals.windows_count),
     }, { bg: C.BLUE_PALE, color: C.BLUE });
@@ -510,27 +402,6 @@ export async function downloadRapportPdf(
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // PAGE 9 — CLOISONS & MURS
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (result.mask_cloisons_b64 || result.mask_walls_pixel_b64) {
-    b.newPage();
-    b.drawLotHeader("LOT 4 -- CLOISONS ET MURS");
-    b.moveDown(6);
-    if (result.mask_walls_pixel_b64) {
-      b.drawText("Murs detectes (apres edition)", { size: TYPO.BODY, font: b.fontBold, color: C.GRAY_700 });
-      b.moveDown(10);
-      await embedImg(b, result.mask_walls_pixel_b64, 0.38);
-      b.moveDown(12);
-    }
-    if (result.mask_cloisons_b64) {
-      b.drawText("Cloisons interieures", { size: TYPO.BODY, font: b.fontBold, color: C.GRAY_700 });
-      b.moveDown(10);
-      await embedImg(b, result.mask_cloisons_b64, 0.38);
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
   // PAGE 10 — DÉTECTIONS CUSTOM
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -554,74 +425,6 @@ export async function downloadRapportPdf(
     b.drawTableTotalRow(DETECT_COLS, {
       label: "TOTAL", count: String(grandTotalCount), area: grandTotalArea.toFixed(2),
     }, { bg: C.BLUE_PALE, color: C.BLUE });
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PAGE 11 — ESTIMATION DPGF
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (dpgf.lots.length > 0) {
-    b.newPage();
-    b.drawLotHeader("LOT 6 -- ESTIMATION BUDGETAIRE (DPGF SIMPLIFIE)");
-    b.moveDown(4);
-    b.drawStamp("ESTIMATIF — A titre indicatif uniquement");
-    b.moveDown(4);
-    b.drawTableHeader(DPGF_SUM_COLS, l);
-    for (const lot of dpgf.lots) {
-      b.drawTableRow(DPGF_SUM_COLS, {
-        lot:   `${lot.lot_number}. ${d(lot.title_key, l)}`,
-        total: fmtPrice(lot.subtotal_ht),
-      });
-    }
-    b.drawGrandTotals(dpgf.total_ht, dpgf.tva_rate, dpgf.tva_amount, dpgf.total_ttc, l);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PAGE 12 — VÉRIFICATION DE CONFORMITÉ (bug badge corrigé)
-  // ═══════════════════════════════════════════════════════════════════════
-
-  b.newPage();
-  b.drawLotHeader("LOT 7 -- VERIFICATION DE CONFORMITE REGLEMENTAIRE");
-  b.moveDown(8);
-
-  b.drawScoreBadge(`Score : ${compliance.score_pct.toFixed(0)}%`, compliance.score_pct);
-
-  // Mini-grille 4 résumés
-  b.ensureSpace(46);
-  const cw = (PAGE.TEXT_WIDTH - 18) / 4;
-  [
-    { label: "Conformes",       value: String(compliance.pass_count), col: C.GREEN  },
-    { label: "Non conformes",   value: String(compliance.fail_count), col: C.RED    },
-    { label: "Avertissements",  value: String(compliance.warn_count), col: C.AMBER  },
-    { label: "Non applicables", value: String(compliance.na_count),   col: C.GRAY_500 },
-  ].forEach((item, c) => {
-    const cx = PAGE.MARGIN_X + c * (cw + 6);
-    const cy = b.y - 40;
-    b.page.drawRectangle({ x: cx, y: cy, width: cw, height: 40, color: C.GRAY_100, borderColor: item.col, borderWidth: 1.5 });
-    b.page.drawText(safeTxt(item.value), { x: cx + 8, y: cy + 22, size: 14,          font: b.fontBold, color: item.col });
-    b.page.drawText(safeTxt(item.label), { x: cx + 8, y: cy + 8,  size: TYPO.CAPTION, font: b.font,    color: C.GRAY_500 });
-  });
-  b.moveDown(52);
-
-  // En-tête tableau conformité (dessiné manuellement pour 4 colonnes)
-  const ALL_COLS = [{ x: 52, width: 52, label: "Statut" }, ...COMPLIANCE_DATA_COLS];
-  const hdrY = b.y - 4;
-  const hdrH = TABLE.HEADER_ROW_HEIGHT;
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: hdrY + hdrH, width: PAGE.TEXT_WIDTH, height: 0.75, color: C.BLUE });
-  b.page.drawRectangle({ x: PAGE.MARGIN_X, y: hdrY,        width: PAGE.TEXT_WIDTH, height: hdrH,  color: C.BLUE });
-  for (let i = 1; i < ALL_COLS.length; i++) {
-    const prev = ALL_COLS[i - 1];
-    const curr = ALL_COLS[i];
-    b.page.drawRectangle({ x: Math.round((prev.x + prev.width + curr.x) / 2), y: hdrY, width: 0.5, height: hdrH, color: C.BLUE_MED });
-  }
-  for (const col of ALL_COLS) {
-    b.page.drawText(safeTxt(col.label), { x: col.x + 2, y: b.y, size: TYPO.TABLE_HEADER, font: b.fontBold, color: C.WHITE });
-  }
-  b.moveDown(hdrH + 2);
-
-  // Lignes de conformité avec badge intégré proprement
-  for (const check of compliance.checks) {
-    drawComplianceRow(b, check, l);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
