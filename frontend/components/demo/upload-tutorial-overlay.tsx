@@ -34,11 +34,11 @@ const STEPS: TutorialStep[] = [
       it: "Benvenuto in AI Floor Analysis",
     },
     description: {
-      fr: "Ce module analyse automatiquement vos plans architecturaux grâce à l'IA. Commençons par importer votre plan.",
-      en: "This module automatically analyzes your architectural plans using AI. Let's start by importing your plan.",
-      es: "Este módulo analiza automáticamente sus planos arquitectónicos con IA. Comencemos importando su plano.",
-      de: "Dieses Modul analysiert automatisch Ihre Baupläne mit KI. Beginnen wir mit dem Import.",
-      it: "Questo modulo analizza automaticamente i vostri piani architettonici con l'IA. Iniziamo importando il piano.",
+      fr: "Importez un plan PDF ou image pour démarrer l'analyse IA automatique.",
+      en: "Import a PDF plan or image to start automatic AI analysis.",
+      es: "Importe un plano PDF o imagen para iniciar el análisis IA.",
+      de: "Importieren Sie einen PDF-Plan oder ein Bild für die KI-Analyse.",
+      it: "Importate un piano PDF o un'immagine per l'analisi IA.",
     },
     color: "text-accent",
     position: "center",
@@ -53,11 +53,11 @@ const STEPS: TutorialStep[] = [
       it: "Trascinate il vostro file",
     },
     description: {
-      fr: "Glissez un fichier PDF, JPG ou PNG directement sur la zone en pointillés. Les formats acceptés sont : PDF, JPEG, PNG (max 50 Mo).",
-      en: "Drag a PDF, JPG or PNG file directly onto the dashed area. Accepted formats: PDF, JPEG, PNG (max 50 MB).",
-      es: "Arrastre un archivo PDF, JPG o PNG directamente a la zona punteada. Formatos aceptados: PDF, JPEG, PNG (máx 50 MB).",
-      de: "Ziehen Sie eine PDF-, JPG- oder PNG-Datei direkt auf den gestrichelten Bereich. Akzeptierte Formate: PDF, JPEG, PNG (max 50 MB).",
-      it: "Trascinate un file PDF, JPG o PNG direttamente sull'area tratteggiata. Formati accettati: PDF, JPEG, PNG (max 50 MB).",
+      fr: "Glissez un fichier PDF, JPG ou PNG sur cette zone.",
+      en: "Drag a PDF, JPG or PNG file onto this area.",
+      es: "Arrastre un PDF, JPG o PNG a esta zona.",
+      de: "Ziehen Sie eine PDF/JPG/PNG-Datei hierher.",
+      it: "Trascinate un PDF, JPG o PNG qui.",
     },
     color: "text-cyan-400",
     target: '[data-tuto-upload="dropzone"]',
@@ -73,11 +73,11 @@ const STEPS: TutorialStep[] = [
       it: "Oppure cliccate per sfogliare",
     },
     description: {
-      fr: "Vous pouvez aussi cliquer directement sur la zone pour ouvrir l'explorateur de fichiers et sélectionner votre plan.",
-      en: "You can also click directly on the area to open the file browser and select your plan.",
-      es: "También puede hacer clic directamente en la zona para abrir el explorador de archivos y seleccionar su plano.",
-      de: "Sie können auch direkt auf den Bereich klicken, um den Datei-Explorer zu öffnen und Ihren Plan auszuwählen.",
-      it: "Potete anche cliccare direttamente sull'area per aprire il file browser e selezionare il piano.",
+      fr: "Ou cliquez sur la zone pour parcourir vos fichiers.",
+      en: "Or click the area to browse your files.",
+      es: "O haga clic para explorar sus archivos.",
+      de: "Oder klicken Sie zum Durchsuchen.",
+      it: "O cliccate per sfogliare i file.",
     },
     color: "text-amber-400",
     target: '[data-tuto-upload="dropzone"]',
@@ -138,13 +138,16 @@ export default function UploadTutorialOverlay({ forceShow: externalForce }: { fo
     tooltipStyle.left = "50%";
     tooltipStyle.transform = "translate(-50%, -50%)";
   } else if (spotlight) {
-    const pos = current.position ?? "bottom";
-    if (pos === "bottom") {
-      tooltipStyle.top = spotlight.y + spotlight.h + 20;
-      tooltipStyle.left = Math.max(16, Math.min(window.innerWidth - 440, spotlight.x + spotlight.w / 2 - 200));
-    } else if (pos === "top") {
-      tooltipStyle.bottom = window.innerHeight - spotlight.y + 20;
-      tooltipStyle.left = Math.max(16, Math.min(window.innerWidth - 440, spotlight.x));
+    const tooltipH = 200; // estimated tooltip height
+    const spaceBelow = window.innerHeight - (spotlight.y + spotlight.h + 20);
+    const spaceAbove = spotlight.y - 20;
+    // Auto-pick: above if not enough space below
+    const useTop = spaceBelow < tooltipH && spaceAbove > spaceBelow;
+    tooltipStyle.left = Math.max(16, Math.min(window.innerWidth - 440, spotlight.x + spotlight.w / 2 - 200));
+    if (useTop) {
+      tooltipStyle.bottom = window.innerHeight - spotlight.y + 16;
+    } else {
+      tooltipStyle.top = spotlight.y + spotlight.h + 16;
     }
   }
 
@@ -182,7 +185,7 @@ export default function UploadTutorialOverlay({ forceShow: externalForce }: { fo
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.25 }}
-            className="absolute glass rounded-2xl border border-white/15 p-5 w-[420px] shadow-2xl"
+            className="absolute glass rounded-2xl border border-white/15 p-4 w-[360px] shadow-2xl"
             style={{ ...tooltipStyle, pointerEvents: "all", zIndex: 10000 }}
             onClick={e => e.stopPropagation()}
           >
