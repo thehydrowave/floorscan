@@ -102,7 +102,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [elements, setElements] = useState<FacadeElement[]>(() =>
     (result.elements ?? []).map(el => el.type === "other" ? { ...el, type: "window" as FacadeElementType } : el)
   );
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selectedId = selectedIds.size === 1 ? [...selectedIds][0] : null; // compat
+  const setSelectedId = (id: number | null) => setSelectedIds(id != null ? new Set([id]) : new Set());
   const [tool, setTool] = useState<EditorTool>("select");
   const [addType, setAddType] = useState<FacadeElementType>("window");
 
@@ -154,8 +156,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [showOther, setShowOther] = useState(true);
   const [showColumns, setShowColumns] = useState(true);
 
-  // Whole-element drag
+  // Whole-element drag (multi-select aware)
   const dragElRef = useRef<{ elId: number; startNorm: Pt; origPts: Pt[] } | null>(null);
+  const dragElOriginals = useRef<Map<number, Pt[]> | null>(null);
   const [isDraggingEl, setIsDraggingEl] = useState(false);
 
   // Rectangle drawing state
@@ -369,9 +372,24 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         const poly = getPolyPoints(el);
         return pointInPolygon(p, poly);
       });
-      setSelectedId(clicked?.id ?? null);
-      // Start whole-element drag if element found
-      if (clicked) {
+
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+click: toggle element in multi-selection
+        if (clicked) {
+          setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(clicked.id)) next.delete(clicked.id);
+            else next.add(clicked.id);
+            return next;
+          });
+        }
+      } else {
+        // Normal click: single selection
+        setSelectedIds(clicked ? new Set([clicked.id]) : new Set());
+      }
+
+      // Start whole-element drag if element found and is selected
+      if (clicked && (selectedIds.has(clicked.id) || !(e.ctrlKey || e.metaKey))) {
         dragElRef.current = { elId: clicked.id, startNorm: p, origPts: getPolyPoints(clicked) };
         setIsDraggingEl(true);
       }
@@ -531,23 +549,39 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       setHoverPoint(p);
     }
 
-    // Vertex dragging (takes priority)
+    // Vertex dragging (takes priority) — applies same delta to all selected elements
     if (dragVertexRef.current) {
       const { elId, idx } = dragVertexRef.current;
-      setElements(prev => prev.map(el => {
-        if (el.id !== elId) return el;
-        const poly = getPolyPoints(el);
-        const newPoly = [...poly];
-        newPoly[idx] = p;
-        return {
-          ...el,
-          polygon_norm: newPoly,
-          bbox_norm: bboxFromPoly(newPoly),
-          area_m2: result.pixels_per_meter
-            ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (result.pixels_per_meter ** 2)
-            : el.area_m2,
-        };
-      }));
+      // Compute delta from the dragged vertex's original position
+      const primaryEl = elements.find(e => e.id === elId);
+      if (primaryEl) {
+        const primaryPoly = getPolyPoints(primaryEl);
+        const origPt = primaryPoly[idx];
+        const dx = p.x - origPt.x;
+        const dy = p.y - origPt.y;
+
+        setElements(prev => prev.map(el => {
+          if (el.id === elId) {
+            // Primary: move vertex directly to cursor
+            const poly = getPolyPoints(el);
+            const newPoly = [...poly];
+            newPoly[idx] = p;
+            return { ...el, polygon_norm: newPoly, bbox_norm: bboxFromPoly(newPoly),
+              area_m2: result.pixels_per_meter ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (result.pixels_per_meter ** 2) : el.area_m2 };
+          }
+          if (selectedIds.has(el.id) && el.id !== elId) {
+            // Other selected: apply same delta to same vertex index
+            const poly = getPolyPoints(el);
+            if (idx < poly.length) {
+              const newPoly = [...poly];
+              newPoly[idx] = { x: Math.max(0, Math.min(1, poly[idx].x + dx)), y: Math.max(0, Math.min(1, poly[idx].y + dy)) };
+              return { ...el, polygon_norm: newPoly, bbox_norm: bboxFromPoly(newPoly),
+                area_m2: result.pixels_per_meter ? polygonAreaPx(newPoly, imgNat.w, imgNat.h) / (result.pixels_per_meter ** 2) : el.area_m2 };
+            }
+          }
+          return el;
+        }));
+      }
       return;
     }
 
@@ -571,13 +605,23 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       setRectPreview({ start: rectDragRef.current, end: p });
     }
 
-    // Whole-element drag (move all vertices by delta from start)
+    // Whole-element drag (move all selected elements by same delta)
     if (dragElRef.current) {
-      const { elId, startNorm, origPts } = dragElRef.current;
+      const { startNorm } = dragElRef.current;
       const dx = p.x - startNorm.x;
       const dy = p.y - startNorm.y;
+      // Store original positions on first move
+      if (!dragElOriginals.current) {
+        dragElOriginals.current = new Map();
+        for (const el of elements) {
+          if (selectedIds.has(el.id)) {
+            dragElOriginals.current.set(el.id, getPolyPoints(el));
+          }
+        }
+      }
       setElements(prev => prev.map(el => {
-        if (el.id !== elId) return el;
+        const origPts = dragElOriginals.current?.get(el.id);
+        if (!origPts) return el;
         const newPts = origPts.map(pt => ({
           x: Math.max(0, Math.min(1, pt.x + dx)),
           y: Math.max(0, Math.min(1, pt.y + dy)),
@@ -804,6 +848,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     }
     if (dragElRef.current) {
       dragElRef.current = null;
+      dragElOriginals.current = null;
       setIsDraggingEl(false);
     }
   };
@@ -842,19 +887,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     toast({ title: `${newElements.length} ${type === "window" ? "fenêtre(s)" : "zone(s) mur"} créée(s)`, variant: "success" });
   };
 
-  // Update selected element
+  // Update selected elements (applies to all selected)
   const updateSelected = (patch: Partial<FacadeElement>) => {
-    if (selectedId == null) return;
-    setElements(prev => prev.map(e => e.id === selectedId ? { ...e, ...patch } : e));
+    if (selectedIds.size === 0) return;
+    setElements(prev => prev.map(e => selectedIds.has(e.id) ? { ...e, ...patch } : e));
   };
 
   const deleteSelected = () => {
-    if (selectedId == null) return;
-    setElements(prev => prev.filter(e => e.id !== selectedId));
-    setSelectedId(null);
+    if (selectedIds.size === 0) return;
+    setElements(prev => prev.filter(e => !selectedIds.has(e.id)));
+    setSelectedIds(new Set());
   };
 
-  const selectedEl = elements.find(e => e.id === selectedId);
+  const selectedEl = selectedId != null ? elements.find(e => e.id === selectedId) : undefined;
+  const selectedEls = elements.filter(e => selectedIds.has(e.id));
 
   // Build updated result and go back to results
   const goResults = () => {
@@ -966,15 +1012,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <span className="text-sm text-white font-mono font-semibold">{result.floors_count}</span>
           </div>
         </>)}
-        {selectedEl && (<>
+        {selectedEls.length > 0 && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1">
-            <span className="text-[10px] text-slate-400">Sélection:</span>
-            <select value={selectedEl.type} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
+            <span className="text-[10px] text-slate-400">
+              {selectedEls.length > 1 ? `${selectedEls.length} sélectionnés` : "Sélection"}
+              {selectedEls.length > 1 && " (Ctrl+clic)"}:
+            </span>
+            <select value={selectedEls[0]?.type ?? "window"} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
               className="bg-slate-800 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white">
               {EDITOR_TYPES.map(t => <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>)}
             </select>
-            {selectedEl.area_m2 != null && <span className="text-[10px] text-white font-mono">{selectedEl.area_m2.toFixed(2)} m²</span>}
+            <span className="text-[10px] text-white font-mono">
+              {selectedEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0).toFixed(2)} m²
+            </span>
             <button onClick={deleteSelected} className="text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
           </div>
         </>)}
@@ -1387,7 +1438,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   {/* ── Existing elements ── */}
                   {visibleElements.map(el => {
                     const color = TYPE_COLORS[el.type] ?? "#94a3b8";
-                    const isSelected = el.id === selectedId;
+                    const isSelected = selectedIds.has(el.id);
 
                     // Floor line -> special rendering
                     if (el.type === "floor_line") {
