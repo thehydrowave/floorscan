@@ -907,8 +907,53 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         </div>
       )}
 
+      {/* ── Summary bar ABOVE canvas ── */}
+      <div className="flex items-center gap-4 px-4 py-2 glass rounded-xl border border-white/10 mb-2 flex-wrap">
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">RÉSUMÉ</span>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TYPE_COLORS.window }} />
+          <span className="text-[11px] text-slate-300">Fenêtres</span>
+          <span className="text-sm text-white font-mono font-semibold">{windowsCount}</span>
+          <span className="text-[10px] text-slate-500 font-mono">{windowsArea.toFixed(1)} m²</span>
+        </div>
+        {facadeArea != null && (<>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400">Façade</span>
+            <span className="text-sm text-white font-mono font-semibold">{facadeArea.toFixed(1)} m²</span>
+          </div>
+        </>)}
+        {netFacadeArea != null && (<>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#22c55e" }} />
+            <span className="text-[11px] text-slate-300">Nette</span>
+            <span className="text-sm text-emerald-400 font-mono font-semibold">{netFacadeArea.toFixed(1)} m²</span>
+          </div>
+        </>)}
+        {result.floors_count != null && (<>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400">Étages</span>
+            <span className="text-sm text-white font-mono font-semibold">{result.floors_count}</span>
+          </div>
+        </>)}
+        {selectedEl && (<>
+          <div className="w-px h-4 bg-white/10" />
+          <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1">
+            <span className="text-[10px] text-slate-400">Sélection:</span>
+            <select value={selectedEl.type} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
+              className="bg-slate-800 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white">
+              {EDITOR_TYPES.map(t => <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>)}
+            </select>
+            {selectedEl.area_m2 != null && <span className="text-[10px] text-white font-mono">{selectedEl.area_m2.toFixed(2)} m²</span>}
+            <button onClick={deleteSelected} className="text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+          </div>
+        </>)}
+      </div>
+
       <div className="flex gap-2">
-        {/* ── Left: Canvas + toolbars ── */}
+        {/* ── Canvas + toolbars (FULL WIDTH) ── */}
         <div className="flex-1 min-w-0 flex flex-col gap-1.5">
 
           {/* ══ HEADER ══ */}
@@ -1770,167 +1815,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           })()}
         </div>
 
-        {/* ── Right: 3-tab Sidebar ── */}
-        <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
-          {/* Tab bar */}
-          <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
-            {(["results", "elements", "visibility"] as const).map(tab => (
-              <button key={tab} onClick={() => setSidebarTab(tab)}
-                className={cn("flex-1 px-2 py-1.5 rounded-md text-[10px] font-semibold transition-colors text-center truncate",
-                  sidebarTab === tab ? "bg-white/10 text-white" : "text-slate-500 hover:text-slate-300")}>
-                {tab === "results" ? "Résultats" : tab === "elements" ? "Éléments" : "Visibilité"}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto flex flex-col gap-3 pr-0.5">
-            {/* ── Tab 1: Résultats ── */}
-            {sidebarTab === "results" && (
-              <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Résumé façade</h4>
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: TYPE_COLORS.window }} />
-                      <span className="text-slate-300">{d("fa_window")}</span>
-                    </div>
-                    <span className="font-mono text-white">{windowsCount}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Surface fenêtres</span>
-                    <span className="font-mono text-white">{windowsArea.toFixed(2)} m²</span>
-                  </div>
-                  {facadeArea != null && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Surface façade</span>
-                      <span className="font-mono text-white">{facadeArea.toFixed(2)} m²</span>
-                    </div>
-                  )}
-                  {netFacadeArea != null && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Surface nette</span>
-                      <span className="font-mono text-emerald-400">{netFacadeArea.toFixed(2)} m²</span>
-                    </div>
-                  )}
-                  {result.ratio_openings != null && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Ratio ouvertures</span>
-                      <span className="font-mono text-amber-400">{(result.ratio_openings * 100).toFixed(1)}%</span>
-                    </div>
-                  )}
-                  {result.floors_count != null && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Étages détectés</span>
-                      <span className="font-mono text-white">{result.floors_count}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab 2: Éléments ── */}
-            {sidebarTab === "elements" && (
-              <>
-                {/* Element counts by type */}
-                <div className="glass rounded-xl border border-white/10 p-4">
-                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}s</h4>
-                  <div className="flex flex-col gap-1.5">
-                    {ALL_TYPES.map(type => {
-                      const count = elementCountsByType[type] ?? 0;
-                      if (count === 0) return null;
-                      const color = TYPE_COLORS[type] ?? "#94a3b8";
-                      return (
-                        <div key={type} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                            <span className="text-slate-300">{TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}</span>
-                          </div>
-                          <span className="font-mono text-white">{count}</span>
-                        </div>
-                      );
-                    })}
-                    {elements.length === 0 && (
-                      <p className="text-xs text-slate-600 italic">Aucun élément</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Selected element details */}
-                {selectedEl && (
-                  <div className="glass rounded-xl border border-white/10 p-4">
-                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{d("fa_element")}</h4>
-                    <div className="flex flex-col gap-3">
-                      <div>
-                        <label className="text-xs text-slate-500 mb-1 block">{d("fa_type")}</label>
-                        <select
-                          value={selectedEl.type}
-                          onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
-                          className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
-                        >
-                          {EDITOR_TYPES.map(t => (
-                            <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 mb-1 block">{d("fa_floor_level")}</label>
-                        <select
-                          value={selectedEl.floor_level ?? 0}
-                          onChange={e => updateSelected({ floor_level: Number(e.target.value) })}
-                          className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
-                        >
-                          {[0, 1, 2, 3, 4, 5].map(f => (
-                            <option key={f} value={f}>{f === 0 ? d("fa_rdc") : `${d("fa_floor_level")} ${f}`}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {selectedEl.area_m2 != null && (
-                        <div className="text-xs text-slate-400">
-                          {d("fa_facade_area")}: <span className="text-white font-mono">{selectedEl.area_m2.toFixed(2)} m²</span>
-                        </div>
-                      )}
-                      <div className="text-[10px] text-slate-600">
-                        {getPolyPoints(selectedEl).length} vertices &middot; Clic droit sur un vertex pour le supprimer
-                      </div>
-                      <Button variant="outline" size="sm" onClick={deleteSelected} className="text-red-400 border-red-500/20 hover:bg-red-500/10">
-                        <Trash2 className="w-3.5 h-3.5" /> {d("fa_delete")}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ── Tab 3: Visibilité ── */}
-            {sidebarTab === "visibility" && (
-              <div className="glass rounded-xl border border-white/10 p-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">LAYERS</h4>
-                <div className="flex flex-col gap-1">
-                  {VISIBILITY_TYPES.map(type => {
-                    const count = elementCountsByType[type] ?? 0;
-                    const color = TYPE_COLORS[type] ?? "#94a3b8";
-                    return (
-                      <button
-                        key={type}
-                        onClick={() => setVisibility(v => ({ ...v, [type]: !v[type] }))}
-                        className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs hover:bg-white/5 transition-colors"
-                      >
-                        {visibility[type] ? <Eye className="w-3.5 h-3.5 text-white" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: visibility[type] ? color : "#475569" }} />
-                        <span className={visibility[type] ? "text-white" : "text-slate-600"}>
-                          {TYPE_I18N[type] ? d(TYPE_I18N[type]) : type}
-                        </span>
-                        {count > 0 && (
-                          <span className="ml-auto font-mono text-slate-500 text-[10px]">{count}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Sidebar removed — summary is now above */}
       </div>
     </motion.div>
   );
