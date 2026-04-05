@@ -43,7 +43,7 @@ const EDITOR_LABELS: Record<string, string> = {
 };
 
 /* ── Custom type definition ── */
-interface CustomType { id: string; name: string; color: string; }
+interface CustomType { id: string; name: string; color: string; replacesWall: boolean; }
 
 const CUSTOM_COLORS = ["#06b6d4", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#e879f9", "#84cc16", "#fb7185"];
 
@@ -118,6 +118,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [showNewTypeForm, setShowNewTypeForm] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_COLORS[0]);
+  const [newTypeReplacesWall, setNewTypeReplacesWall] = useState(false);
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
 
   // Masks from backend (editable via add/erase tools)
   const [masks, setMasks] = useState<Record<string, string>>(() => ({
@@ -949,7 +951,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const windowsCount = windowElements.length;
   const windowsArea = windowElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
   const facadeArea = result.facade_area_m2 ?? null;
-  const netFacadeArea = facadeArea != null ? facadeArea - windowsArea : null;
+  // Custom types that replace wall surface
+  const wallReplacingArea = useMemo(() => {
+    const wallReplacingIds = customTypes.filter(ct => ct.replacesWall).map(ct => ct.id);
+    return elements.filter(e => wallReplacingIds.includes(e.type)).reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+  }, [elements, customTypes]);
+  const netFacadeArea = facadeArea != null ? facadeArea - windowsArea - wallReplacingArea : null;
 
   // Element counts by type
   const elementCountsByType = useMemo(() => {
@@ -1090,58 +1097,97 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
             </button>
 
-            {/* Custom type layer buttons */}
+            {/* Custom type layer buttons with edit/delete on right-click */}
             {customTypes.map(ct => (
-              <button key={ct.id}
-                onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
-                className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
-                  addType === ct.id ? `border-white/30 bg-white/10 text-white` : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
-                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
-                <span className={addType === ct.id ? "" : "text-slate-400"}>{ct.name}</span>
-              </button>
+              <div key={ct.id} className="relative group/ct">
+                {editingTypeId === ct.id ? (
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg border border-white/20 bg-white/5">
+                    <input autoFocus value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+                      placeholder="Nom…" className="bg-transparent border-none text-xs text-white w-16 focus:outline-none"
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && newTypeName.trim()) {
+                          setCustomTypes(prev => prev.map(c => c.id === ct.id ? { ...c, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall } : c));
+                          setEditingTypeId(null); setNewTypeName("");
+                        }
+                        if (e.key === "Escape") { setEditingTypeId(null); setNewTypeName(""); }
+                      }} />
+                    <div className="flex gap-0.5">
+                      {CUSTOM_COLORS.map(c => (
+                        <button key={c} onClick={() => setNewTypeColor(c)}
+                          className={cn("w-3.5 h-3.5 rounded-full border-2 transition-all",
+                            newTypeColor === c ? "border-white scale-110" : "border-transparent opacity-50 hover:opacity-100")}
+                          style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
+                    <label className="flex items-center gap-1 text-[9px] text-slate-400 cursor-pointer">
+                      <input type="checkbox" checked={newTypeReplacesWall} onChange={e => setNewTypeReplacesWall(e.target.checked)}
+                        className="w-3 h-3 rounded" />
+                      Remplace mur
+                    </label>
+                    <button onClick={() => {
+                      if (newTypeName.trim()) setCustomTypes(prev => prev.map(c => c.id === ct.id ? { ...c, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall } : c));
+                      setEditingTypeId(null); setNewTypeName("");
+                    }} className="text-green-400 text-[10px] font-semibold">OK</button>
+                    <button onClick={() => {
+                      setCustomTypes(prev => prev.filter(c => c.id !== ct.id));
+                      if (addType === ct.id) setAddType("window");
+                      setElements(prev => prev.filter(e => e.type !== ct.id));
+                      setEditingTypeId(null); setNewTypeName("");
+                    }} className="text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                    <button onClick={() => { setEditingTypeId(null); setNewTypeName(""); }}
+                      className="text-slate-500"><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
+                    onContextMenu={e => { e.preventDefault(); setEditingTypeId(ct.id); setNewTypeName(ct.name); setNewTypeColor(ct.color); setNewTypeReplacesWall(ct.replacesWall); }}
+                    className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                      addType === ct.id ? "border-white/30 bg-white/10 text-white" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                    <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
+                    <span className={addType === ct.id ? "" : "text-slate-400"}>{ct.name}</span>
+                    {ct.replacesWall && <span className="text-[8px] text-amber-400/70">▼mur</span>}
+                  </button>
+                )}
+              </div>
             ))}
 
             {/* Add custom type button */}
             {!showNewTypeForm ? (
-              <button onClick={() => setShowNewTypeForm(true)}
+              <button onClick={() => { setShowNewTypeForm(true); setNewTypeName(""); setNewTypeColor(CUSTOM_COLORS[0]); setNewTypeReplacesWall(false); }}
                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] border border-dashed border-white/20 text-slate-500 hover:text-slate-300 hover:border-white/30 transition-all">
                 <Plus className="w-3 h-3" /> Type
               </button>
             ) : (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-white/20 bg-white/5">
-                <input
-                  autoFocus
-                  value={newTypeName}
-                  onChange={e => setNewTypeName(e.target.value)}
-                  placeholder="Nom…"
-                  className="bg-transparent border-none text-xs text-white w-20 focus:outline-none"
+                <input autoFocus value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+                  placeholder="Nom…" className="bg-transparent border-none text-xs text-white w-20 focus:outline-none"
                   onKeyDown={e => {
                     if (e.key === "Enter" && newTypeName.trim()) {
                       const id = `custom_${Date.now()}`;
-                      setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor }]);
-                      setAddType(id);
-                      setNewTypeName("");
-                      setShowNewTypeForm(false);
+                      setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                      setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                       if (tool === "select") setTool("add_rect");
                     }
                     if (e.key === "Escape") { setShowNewTypeForm(false); setNewTypeName(""); }
-                  }}
-                />
+                  }} />
                 <div className="flex gap-0.5">
                   {CUSTOM_COLORS.map(c => (
                     <button key={c} onClick={() => setNewTypeColor(c)}
-                      className={cn("w-4 h-4 rounded-full border-2 transition-all",
-                        newTypeColor === c ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
+                      className={cn("w-3.5 h-3.5 rounded-full border-2 transition-all",
+                        newTypeColor === c ? "border-white scale-110" : "border-transparent opacity-50 hover:opacity-100")}
                       style={{ backgroundColor: c }} />
                   ))}
                 </div>
+                <label className="flex items-center gap-1 text-[9px] text-slate-400 cursor-pointer whitespace-nowrap">
+                  <input type="checkbox" checked={newTypeReplacesWall} onChange={e => setNewTypeReplacesWall(e.target.checked)}
+                    className="w-3 h-3 rounded" />
+                  Remplace mur
+                </label>
                 <button onClick={() => {
                   if (newTypeName.trim()) {
                     const id = `custom_${Date.now()}`;
-                    setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor }]);
-                    setAddType(id);
-                    setNewTypeName("");
-                    setShowNewTypeForm(false);
+                    setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall }]);
+                    setAddType(id); setNewTypeName(""); setShowNewTypeForm(false);
                     if (tool === "select") setTool("add_rect");
                   }
                 }} className="text-green-400 hover:text-green-300 text-[10px] font-semibold">OK</button>
