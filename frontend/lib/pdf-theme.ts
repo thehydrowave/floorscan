@@ -28,10 +28,10 @@ export const PAGE = {
 // ── Header / footer heights ──────────────────────────────────────────────────
 
 export const HEADER = {
-  HEIGHT: 56,
-  LOGO_SIZE: 18,
-  SUBTITLE_SIZE: 9,
-  DATE_SIZE: 8,
+  HEIGHT: 48,
+  LOGO_SIZE: 16,
+  SUBTITLE_SIZE: 8,
+  DATE_SIZE: 7.5,
 } as const;
 
 export const COVER = {
@@ -77,34 +77,42 @@ export const TABLE = {
 // ── Colour palette ───────────────────────────────────────────────────────────
 
 export const C = {
-  // Brand — professional navy palette
-  BLUE: rgb(0.09, 0.22, 0.44),        // Deep navy (headers, bars, main accents)
-  BLUE_MED: rgb(0.22, 0.51, 0.78),    // Medium blue (column separators on dark bg)
-  BLUE_LIGHT: rgb(0.72, 0.84, 0.96),  // Light blue (text/subtle elements on dark bg)
-  BLUE_PALE: rgb(0.93, 0.96, 1.00),   // Very light blue (TTC box, alternating bg)
+  // ── Dark theme backgrounds ──
+  DARK_BG:     rgb(0.06, 0.07, 0.09),    // #0f1117 — main background
+  DARK_CARD:   rgb(0.10, 0.12, 0.16),    // #1a1e28 — card/section background
+  DARK_BORDER: rgb(0.18, 0.20, 0.26),    // #2e3342 — borders
+  DARK_ROW:    rgb(0.08, 0.09, 0.12),    // #14171e — alternating row
 
-  // Neutrals
-  WHITE: rgb(1, 1, 1),
-  DARK: rgb(0.12, 0.15, 0.22),
-  GRAY_700: rgb(0.39, 0.46, 0.54),
-  GRAY_500: rgb(0.50, 0.55, 0.62),
-  GRAY_400: rgb(0.60, 0.65, 0.72),
-  GRAY_300: rgb(0.75, 0.78, 0.83),    // Medium border / separators
-  GRAY_200: rgb(0.86, 0.88, 0.91),    // Light border / hairlines
-  GRAY_100: rgb(0.94, 0.95, 0.97),    // Very light bg
-  BG_SUBTLE: rgb(0.96, 0.97, 0.99),   // Alternating row background
+  // ── Brand accents ──
+  CYAN:        rgb(0.13, 0.83, 0.93),    // #22d3ee — primary accent
+  ACCENT:      rgb(0.40, 0.55, 1.00),    // #668eff — secondary accent
 
-  // Semantic
-  GREEN: rgb(0.15, 0.68, 0.38),
-  GREEN_PALE: rgb(0.90, 0.97, 0.92),
-  RED: rgb(0.82, 0.22, 0.22),
-  RED_PALE: rgb(0.98, 0.91, 0.91),
-  AMBER: rgb(0.82, 0.52, 0.04),
-  AMBER_PALE: rgb(0.99, 0.95, 0.86),
+  // ── Text ──
+  WHITE:       rgb(1, 1, 1),
+  GRAY_100:    rgb(0.90, 0.92, 0.95),    // light text
+  GRAY_300:    rgb(0.58, 0.63, 0.70),    // secondary text
+  GRAY_400:    rgb(0.48, 0.52, 0.58),    // labels
+  GRAY_500:    rgb(0.38, 0.42, 0.48),    // muted
+  GRAY_700:    rgb(0.25, 0.28, 0.33),    // very muted
 
-  // Accent
-  VIOLET: rgb(0.55, 0.33, 0.97),
-  VIOLET_PALE: rgb(0.93, 0.90, 1.00),
+  // ── Semantic ──
+  GREEN:       rgb(0.15, 0.68, 0.38),
+  GREEN_PALE:  rgb(0.10, 0.25, 0.18),    // dark green bg
+  RED:         rgb(0.82, 0.22, 0.22),
+  RED_PALE:    rgb(0.30, 0.12, 0.12),    // dark red bg
+  AMBER:       rgb(0.82, 0.52, 0.04),
+  AMBER_PALE:  rgb(0.28, 0.20, 0.08),   // dark amber bg
+  VIOLET:      rgb(0.55, 0.33, 0.97),
+  VIOLET_PALE: rgb(0.20, 0.15, 0.30),   // dark violet bg
+
+  // ── Legacy aliases (for backward compat) ──
+  BLUE:        rgb(0.06, 0.07, 0.09),    // was navy, now dark bg
+  BLUE_MED:    rgb(0.13, 0.83, 0.93),    // was medium blue, now cyan
+  BLUE_LIGHT:  rgb(0.58, 0.63, 0.70),    // was light blue, now gray
+  BLUE_PALE:   rgb(0.10, 0.12, 0.16),    // was pale blue, now dark card
+  DARK:        rgb(0.90, 0.92, 0.95),    // was dark text, now light (inverted for dark theme)
+  BG_SUBTLE:   rgb(0.08, 0.09, 0.12),    // alternating rows
+  GRAY_200:    rgb(0.18, 0.20, 0.26),    // remapped to dark border
 } as const;
 
 // ── Column layout shared between dpgf-pdf & devis-pdf ────────────────────────
@@ -288,8 +296,8 @@ export class PdfBuilder {
     this.pages.push(p);
     this.page = p;
 
-    // White background
-    p.drawRectangle({ x: 0, y: 0, width: PAGE.W, height: PAGE.H, color: C.WHITE });
+    // Dark background (entire page)
+    p.drawRectangle({ x: 0, y: 0, width: PAGE.W, height: PAGE.H, color: C.DARK_BG });
 
     // Header band
     p.drawRectangle({
@@ -297,31 +305,39 @@ export class PdfBuilder {
       y: PAGE.H - HEADER.HEIGHT,
       width: PAGE.W,
       height: HEADER.HEIGHT,
-      color: C.BLUE,
+      color: C.DARK_BG,
     });
 
-    // Brand name
-    p.drawText("FloorScan", {
+    // Brand name — "Floor" in white, "Scan" in cyan
+    const floorW = this.fontBold.widthOfTextAtSize("Floor", HEADER.LOGO_SIZE);
+    p.drawText("Floor", {
       x: PAGE.MARGIN_X,
-      y: PAGE.H - 34,
+      y: PAGE.H - 30,
       size: HEADER.LOGO_SIZE,
       font: this.fontBold,
       color: C.WHITE,
+    });
+    p.drawText("Scan", {
+      x: PAGE.MARGIN_X + floorW,
+      y: PAGE.H - 30,
+      size: HEADER.LOGO_SIZE,
+      font: this.fontBold,
+      color: C.CYAN,
     });
 
     // Doc subtitle
     p.drawText(this.opts.docSubtitle, {
       x: PAGE.MARGIN_X,
-      y: PAGE.H - 50,
+      y: PAGE.H - 43,
       size: HEADER.SUBTITLE_SIZE,
       font: this.font,
-      color: C.BLUE_LIGHT,
+      color: C.GRAY_300,
     });
 
     // Date (right side)
     p.drawText(this.opts.dateStr, {
       x: PAGE.W - PAGE.MARGIN_X - this.font.widthOfTextAtSize(this.opts.dateStr, HEADER.DATE_SIZE),
-      y: PAGE.H - 34,
+      y: PAGE.H - 30,
       size: HEADER.DATE_SIZE,
       font: this.font,
       color: C.WHITE,
@@ -334,23 +350,23 @@ export class PdfBuilder {
         : this.opts.rightMeta;
       p.drawText(meta, {
         x: PAGE.W - PAGE.MARGIN_X - this.font.widthOfTextAtSize(meta, 7.5),
-        y: PAGE.H - 48,
+        y: PAGE.H - 43,
         size: 7.5,
         font: this.font,
-        color: C.BLUE_LIGHT,
+        color: C.GRAY_300,
       });
     }
 
-    // Thin separator line below header
+    // Cyan accent line below header
     p.drawRectangle({
       x: 0,
-      y: PAGE.H - HEADER.HEIGHT - 0.75,
+      y: PAGE.H - HEADER.HEIGHT - 1,
       width: PAGE.W,
-      height: 0.75,
-      color: C.BLUE_PALE,
+      height: 1,
+      color: C.CYAN,
     });
 
-    this.y = PAGE.H - HEADER.HEIGHT - 20;
+    this.y = PAGE.H - HEADER.HEIGHT - 16; // 16pt padding below header
     this.rowIndex = 0;
     return p;
   }
@@ -388,25 +404,33 @@ export class PdfBuilder {
     this.pages.push(p);
     this.page = p;
 
-    // White bg
-    p.drawRectangle({ x: 0, y: 0, width: PAGE.W, height: PAGE.H, color: C.WHITE });
+    // Dark background (full page)
+    p.drawRectangle({ x: 0, y: 0, width: PAGE.W, height: PAGE.H, color: C.DARK_BG });
 
-    // Large blue band
+    // Large dark card band
     p.drawRectangle({
       x: 0,
       y: PAGE.H - COVER.HEIGHT,
       width: PAGE.W,
       height: COVER.HEIGHT,
-      color: C.BLUE,
+      color: C.DARK_CARD,
     });
 
-    // Brand
-    p.drawText("FloorScan", {
+    // Brand — "Floor" white, "Scan" cyan
+    const coverFloorW = this.fontBold.widthOfTextAtSize("Floor", COVER.LOGO_SIZE);
+    p.drawText("Floor", {
       x: PAGE.MARGIN_X,
       y: PAGE.H - 70,
       size: COVER.LOGO_SIZE,
       font: this.fontBold,
       color: C.WHITE,
+    });
+    p.drawText("Scan", {
+      x: PAGE.MARGIN_X + coverFloorW,
+      y: PAGE.H - 70,
+      size: COVER.LOGO_SIZE,
+      font: this.fontBold,
+      color: C.CYAN,
     });
 
     // Title
@@ -415,7 +439,7 @@ export class PdfBuilder {
       y: PAGE.H - 105,
       size: COVER.TITLE_SIZE,
       font: this.font,
-      color: C.BLUE_LIGHT,
+      color: C.GRAY_300,
     });
 
     // Subtitle
@@ -425,7 +449,7 @@ export class PdfBuilder {
         y: PAGE.H - 125,
         size: TYPO.BODY,
         font: this.font,
-        color: C.BLUE_LIGHT,
+        color: C.GRAY_300,
       });
     }
 
@@ -435,10 +459,19 @@ export class PdfBuilder {
       y: PAGE.H - 50,
       size: HEADER.DATE_SIZE,
       font: this.font,
-      color: C.BLUE_LIGHT,
+      color: C.GRAY_300,
     });
 
-    // Info block below blue band
+    // Cyan accent line below cover band
+    p.drawRectangle({
+      x: 0,
+      y: PAGE.H - COVER.HEIGHT - 1,
+      width: PAGE.W,
+      height: 1,
+      color: C.CYAN,
+    });
+
+    // Info block below cover band
     this.y = PAGE.H - COVER.HEIGHT - 30;
 
     for (const [label, value] of opts.infoLines) {
@@ -454,7 +487,7 @@ export class PdfBuilder {
         y: this.y,
         size: TYPO.COVER_INFO_VALUE,
         font: this.fontBold,
-        color: C.DARK,
+        color: C.GRAY_100,
       });
       this.y -= 22;
     }
@@ -463,18 +496,27 @@ export class PdfBuilder {
   // ── Section helpers ──────────────────────────────────────────────────────
 
   /**
-   * Draw a section title with a thick blue vertical bar.
+   * Draw a section title with a cyan vertical bar and dark card background.
    */
   drawSectionTitle(title: string): void {
     this.ensureSpace(30);
 
-    // Vertical accent bar (3pt wide, 18pt tall)
+    // Subtle dark card band behind title
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
-      y: this.y - 4,
+      y: this.y - 6,
+      width: PAGE.TEXT_WIDTH,
+      height: 22,
+      color: C.DARK_CARD,
+    });
+
+    // Vertical cyan accent bar (3pt wide, 22pt tall)
+    this.page.drawRectangle({
+      x: PAGE.MARGIN_X,
+      y: this.y - 6,
       width: 3,
-      height: 18,
-      color: C.BLUE,
+      height: 22,
+      color: C.CYAN,
     });
 
     this.page.drawText(title, {
@@ -482,7 +524,7 @@ export class PdfBuilder {
       y: this.y,
       size: TYPO.SECTION_TITLE,
       font: this.fontBold,
-      color: C.DARK,
+      color: C.WHITE,
     });
 
     this.y -= 26;
@@ -497,35 +539,35 @@ export class PdfBuilder {
       y: this.y + 4,
       width: PAGE.TEXT_WIDTH,
       height: 0.75,
-      color: C.GRAY_200,
+      color: C.DARK_BORDER,
     });
     this.y -= 8;
   }
 
   /**
-   * Draw a "lot" header bar — navy band with left accent stripe.
+   * Draw a "lot" header bar — dark card band with left cyan accent stripe.
    */
   drawLotHeader(title: string): void {
     this.ensureSpace(65);
 
     const barH = 26;
 
-    // Navy main bar
+    // Dark card main bar
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
       y: this.y - 5,
       width: PAGE.TEXT_WIDTH,
       height: barH,
-      color: C.BLUE,
+      color: C.DARK_CARD,
     });
 
-    // Left accent stripe (medium blue, 5pt wide)
+    // Left accent stripe (cyan, 5pt wide)
     this.page.drawRectangle({
       x: PAGE.MARGIN_X,
       y: this.y - 5,
       width: 5,
       height: barH,
-      color: C.BLUE_MED,
+      color: C.CYAN,
     });
 
     this.page.drawText(title, {
@@ -565,7 +607,7 @@ export class PdfBuilder {
   // ── Table helpers ────────────────────────────────────────────────────────
 
   /**
-   * Draw a table header row with navy background, white text, and column separators.
+   * Draw a table header row with dark card background, cyan text, and column separators.
    */
   drawTableHeader(cols: ColDef[], lang: Lang): void {
     const rowY = this.y - 4;
@@ -577,7 +619,7 @@ export class PdfBuilder {
       y: rowY + rowH,
       width: PAGE.TEXT_WIDTH,
       height: 0.75,
-      color: C.BLUE,
+      color: C.DARK_BORDER,
     });
 
     // Header background (full width)
@@ -586,10 +628,10 @@ export class PdfBuilder {
       y: rowY,
       width: PAGE.TEXT_WIDTH,
       height: rowH,
-      color: C.BLUE,
+      color: C.DARK_CARD,
     });
 
-    // Vertical column separators (medium blue, subtle on navy)
+    // Vertical column separators (dark border, subtle on dark card)
     for (let i = 1; i < cols.length; i++) {
       const prev = cols[i - 1];
       const curr = cols[i];
@@ -599,11 +641,11 @@ export class PdfBuilder {
         y: rowY,
         width: 0.5,
         height: rowH,
-        color: C.BLUE_MED,
+        color: C.DARK_BORDER,
       });
     }
 
-    // Column labels
+    // Column labels (cyan text)
     for (const col of cols) {
       const label = d(col.label, lang);
       const displayLabel = truncateText(label, col.width - 4, this.fontBold, TYPO.TABLE_HEADER);
@@ -615,7 +657,7 @@ export class PdfBuilder {
         y: this.y,
         size: TYPO.TABLE_HEADER,
         font: this.fontBold,
-        color: C.WHITE,
+        color: C.CYAN,
       });
     }
 
@@ -624,7 +666,7 @@ export class PdfBuilder {
   }
 
   /**
-   * Draw a single table data row with alternating bg, outer borders, and column separators.
+   * Draw a single table data row with alternating dark bg, outer borders, and column separators.
    */
   drawTableRow(
     cols: ColDef[],
@@ -640,14 +682,14 @@ export class PdfBuilder {
     const rowY = this.y - 4;
     const rowH = TABLE.ROW_HEIGHT;
 
-    // Alternating subtle background
+    // Alternating dark background
     if (!opts?.skipAlternate && this.rowIndex % 2 === 0) {
       this.page.drawRectangle({
         x: PAGE.MARGIN_X,
         y: rowY,
         width: PAGE.TEXT_WIDTH,
         height: rowH,
-        color: C.BG_SUBTLE,
+        color: C.DARK_ROW,
       });
     }
 
@@ -657,7 +699,7 @@ export class PdfBuilder {
       y: rowY,
       width: 0.75,
       height: rowH,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
 
     // Right outer border
@@ -666,7 +708,7 @@ export class PdfBuilder {
       y: rowY,
       width: 0.75,
       height: rowH,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
 
     // Vertical column separators
@@ -679,12 +721,12 @@ export class PdfBuilder {
         y: rowY,
         width: 0.4,
         height: rowH,
-        color: C.GRAY_200,
+        color: C.DARK_BORDER,
       });
     }
 
     const f = opts?.font ?? this.font;
-    const color = opts?.color ?? C.DARK;
+    const color = opts?.color ?? C.GRAY_100;
 
     for (const col of cols) {
       const val = values[col.key] ?? "";
@@ -707,7 +749,7 @@ export class PdfBuilder {
       y: rowY,
       width: PAGE.TEXT_WIDTH,
       height: 0.3,
-      color: C.GRAY_200,
+      color: C.DARK_BORDER,
     });
 
     this.y -= rowH;
@@ -715,7 +757,7 @@ export class PdfBuilder {
   }
 
   /**
-   * Draw a total/subtotal row with pale background, outer borders, and column separators.
+   * Draw a total/subtotal row with dark card background, outer borders, and column separators.
    */
   drawTableTotalRow(
     cols: ColDef[],
@@ -724,8 +766,8 @@ export class PdfBuilder {
   ): void {
     this.ensureSpace(TABLE.TOTAL_ROW_HEIGHT + 10);
 
-    const bg = opts?.bg ?? C.BLUE_PALE;
-    const color = opts?.color ?? C.BLUE;
+    const bg = opts?.bg ?? C.DARK_CARD;
+    const color = opts?.color ?? C.CYAN;
 
     this.y -= 2;
     const rowY = this.y - 5;
@@ -746,7 +788,7 @@ export class PdfBuilder {
       y: rowY,
       width: 0.75,
       height: rowH,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
 
     // Right outer border
@@ -755,7 +797,7 @@ export class PdfBuilder {
       y: rowY,
       width: 0.75,
       height: rowH,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
 
     // Vertical column separators
@@ -768,7 +810,7 @@ export class PdfBuilder {
         y: rowY,
         width: 0.4,
         height: rowH,
-        color: C.GRAY_300,
+        color: C.DARK_BORDER,
       });
     }
 
@@ -794,7 +836,7 @@ export class PdfBuilder {
       y: rowY,
       width: PAGE.TEXT_WIDTH,
       height: 0.75,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
 
     this.y -= rowH + 8;
@@ -917,24 +959,24 @@ export class PdfBuilder {
     const boxX = labelX - 16;
     const boxW = rightEdge - boxX;
 
-    // Outer box (light gray background, medium border)
+    // Outer box (dark card background, dark border)
     this.page.drawRectangle({
       x: boxX,
       y: this.y - 90,
       width: boxW,
       height: 96,
-      color: C.GRAY_100,
-      borderColor: C.GRAY_300,
+      color: C.DARK_CARD,
+      borderColor: C.DARK_BORDER,
       borderWidth: 0.75,
     });
 
-    // Navy top bar of the totals box
+    // Cyan top bar of the totals box
     this.page.drawRectangle({
       x: boxX,
       y: this.y - 90 + 96 - 4,
       width: boxW,
       height: 4,
-      color: C.BLUE,
+      color: C.CYAN,
     });
 
     this.y -= 14;
@@ -945,7 +987,7 @@ export class PdfBuilder {
       y: this.y,
       size: 10,
       font: this.fontBold,
-      color: C.DARK,
+      color: C.GRAY_100,
     });
     const htText = fmtPrice(totalHt);
     this.page.drawText(htText, {
@@ -953,7 +995,7 @@ export class PdfBuilder {
       y: this.y,
       size: 10,
       font: this.fontBold,
-      color: C.DARK,
+      color: C.GRAY_100,
     });
     this.y -= 20;
 
@@ -982,7 +1024,7 @@ export class PdfBuilder {
       y: this.y,
       width: boxW - 16,
       height: 0.5,
-      color: C.GRAY_300,
+      color: C.DARK_BORDER,
     });
     this.y -= 14;
 
@@ -992,14 +1034,14 @@ export class PdfBuilder {
       y: this.y - 8,
       width: boxW,
       height: 32,
-      color: C.BLUE_PALE,
+      color: C.DARK_ROW,
     });
     this.page.drawText(d("dpgf_total_ttc", lang), {
       x: labelX,
       y: this.y + 2,
       size: 13,
       font: this.fontBold,
-      color: C.BLUE,
+      color: C.CYAN,
     });
     const ttcText = fmtPrice(totalTtc);
     this.page.drawText(ttcText, {
@@ -1007,7 +1049,7 @@ export class PdfBuilder {
       y: this.y + 2,
       size: 13,
       font: this.fontBold,
-      color: C.BLUE,
+      color: C.CYAN,
     });
     this.y -= 40;
   }
@@ -1056,12 +1098,12 @@ export class PdfBuilder {
         y: this.y - 80,
         width: sigW,
         height: 90,
-        color: C.WHITE,
-        borderColor: C.GRAY_200,
+        color: C.DARK_CARD,
+        borderColor: C.DARK_BORDER,
         borderWidth: TABLE.BORDER_WIDTH,
       });
       this.page.drawText(safeTxt(label), {
-        x: x + 10, y: this.y - 2, size: TYPO.BODY, font: this.fontBold, color: C.DARK,
+        x: x + 10, y: this.y - 2, size: TYPO.BODY, font: this.fontBold, color: C.GRAY_100,
       });
       if (sub) {
         this.page.drawText(safeTxt(sub), {
@@ -1091,13 +1133,13 @@ export class PdfBuilder {
       const p = this.pages[i];
       const num = i + 1;
 
-      // Footer separator line
+      // Footer separator line (cyan accent)
       p.drawRectangle({
         x: PAGE.MARGIN_X,
         y: FOOTER.LINE_Y,
         width: PAGE.TEXT_WIDTH,
         height: 0.5,
-        color: C.GRAY_200,
+        color: C.CYAN,
       });
 
       // Left: "FloorScan -- DocType"
