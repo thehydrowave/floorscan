@@ -44,6 +44,10 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
   const [awaitingPage, setAwaitingPage] = useState(false);
 
+  // Thumbnails
+  const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const [loadingThumbs, setLoadingThumbs] = useState(false);
+
   // Auto-enter page selector when returning from editor with saved PDF data
   useEffect(() => {
     if (initialPdfData && !awaitingPage) {
@@ -168,6 +172,30 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
     }
   }, [uploadPage, onUploaded, lang, d]);
 
+  // Fetch thumbnails when PDF is loaded
+  const fetchThumbnails = useCallback(async (b64: string) => {
+    setLoadingThumbs(true);
+    try {
+      const r = await fetch(`${BACKEND}/pdf-thumbnails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdf_base64: b64, max_pages: 20 }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setThumbnails(data.thumbnails ?? []);
+      }
+    } catch { /* silent */ }
+    finally { setLoadingThumbs(false); }
+  }, []);
+
+  // Auto-fetch thumbs when entering page selector
+  useEffect(() => {
+    if (awaitingPage && pdfBase64 && thumbnails.length === 0 && !loadingThumbs) {
+      fetchThumbnails(pdfBase64);
+    }
+  }, [awaitingPage, pdfBase64, thumbnails.length, loadingThumbs, fetchThumbnails]);
+
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
     onPageSelected?.(currentPage);
@@ -191,54 +219,78 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
         {/* ── Page selector ── */}
         {awaitingPage ? (
           <motion.div key="pages" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="glass border border-white/10 rounded-2xl p-8 text-center">
-            <BookOpen className="w-10 h-10 text-accent mx-auto mb-4" />
-            <p className="text-white font-display font-700 text-lg mb-1">{pendingFileName}</p>
-            <p className="text-slate-400 text-sm mb-6">
-              {d("up_multipage_hint")} ({pageCount} pages)
-            </p>
-            {/* Page picker */}
-            <div className="flex items-center justify-center gap-3 mb-6">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
-                className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <div className="flex gap-1.5 flex-wrap justify-center max-w-xs">
+            className="glass border border-white/10 rounded-2xl p-8 max-w-3xl mx-auto">
+            <div className="text-center mb-6">
+              <BookOpen className="w-10 h-10 text-accent mx-auto mb-4" />
+              <p className="text-white font-display font-700 text-lg mb-1">{pendingFileName}</p>
+              <p className="text-slate-400 text-sm">
+                {d("up_multipage_hint")} ({pageCount} pages) — Cliquez sur une page pour la sélectionner
+              </p>
+            </div>
+
+            {/* Thumbnail grid */}
+            {loadingThumbs ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-slate-400">
+                <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Chargement des aperçus...</span>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-6">
                 {Array.from({ length: Math.min(pageCount, 20) }, (_, i) => (
                   <button
                     key={i}
                     onClick={() => setCurrentPage(i)}
                     className={cn(
-                      "w-9 h-9 rounded-lg text-sm font-mono font-600 transition-all relative",
+                      "relative rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.03]",
                       currentPage === i
-                        ? "bg-accent text-white"
-                        : "glass border border-white/10 text-slate-400 hover:text-white"
+                        ? "border-accent shadow-lg shadow-accent/20"
+                        : "border-white/10 hover:border-white/30"
                     )}
                   >
-                    {i + 1}
+                    {/* Thumbnail image */}
+                    {thumbnails[i] ? (
+                      <img
+                        src={`data:image/jpeg;base64,${thumbnails[i]}`}
+                        alt={`Page ${i + 1}`}
+                        className="w-full h-auto block bg-white"
+                        draggable={false}
+                      />
+                    ) : (
+                      <div className="w-full aspect-[3/4] bg-slate-800 flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-slate-600" />
+                      </div>
+                    )}
+                    {/* Page number overlay */}
+                    <span className={cn(
+                      "absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold",
+                      currentPage === i
+                        ? "bg-accent text-white"
+                        : "bg-black/70 text-slate-300"
+                    )}>
+                      {i + 1}
+                    </span>
+                    {/* Analyzed badge */}
                     {analyzedPages?.includes(i) && (
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-[7px] text-white font-bold">✓</span>
+                      <span className="absolute top-1 right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[9px] text-white font-bold shadow">✓</span>
+                    )}
+                    {/* Selected highlight */}
+                    {currentPage === i && (
+                      <div className="absolute inset-0 bg-accent/10 pointer-events-none" />
                     )}
                   </button>
                 ))}
-                {pageCount > 20 && (
-                  <span className="text-slate-500 text-xs self-center">+{pageCount - 20}</span>
-                )}
               </div>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(pageCount - 1, p + 1))}
-                disabled={currentPage === pageCount - 1}
-                className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
+            )}
+
+            {pageCount > 20 && (
+              <p className="text-center text-xs text-slate-500 mb-4">
+                {pageCount - 20} pages supplémentaires non affichées
+              </p>
+            )}
+
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); }}
+                onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); setThumbnails([]); }}
                 className="px-4 py-2 glass border border-white/10 rounded-xl text-sm text-slate-400 hover:text-white transition-colors"
               >
                 {d("up_cancel")}
