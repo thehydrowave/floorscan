@@ -1304,6 +1304,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             eraseRoomPoly(roomEraserPoly);
             setRoomEraserPoly([]);
             setRoomEraserMode(null);
+            { const cv = canvasRef.current; if (cv) cv.getContext("2d")?.clearRect(0, 0, cv.width, cv.height); }
             return;
           }
         }
@@ -1767,6 +1768,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       }
       roomEraserStartRef.current = null;
       setRoomEraserMode(null);
+      { const cv = canvasRef.current; if (cv) cv.getContext("2d")?.clearRect(0, 0, cv.width, cv.height); }
       return;
     }
 
@@ -3976,6 +3978,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     eraseRoomPoly(roomEraserPoly);
                     setRoomEraserPoly([]);
                     setRoomEraserMode(null);
+                    { const cv = canvasRef.current; if (cv) cv.getContext("2d")?.clearRect(0, 0, cv.width, cv.height); }
                     return;
                   }
                   if (selectedTextId) {
