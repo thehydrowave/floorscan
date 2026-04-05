@@ -480,6 +480,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <Ruler className="w-3.5 h-3.5 text-sky-400 shrink-0" />
               <span className="text-xs text-sky-400/80">Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer.</span>
             </div>
+            <button onClick={() => {
+              setMeasureActive(false);
+              setTimeout(() => setMeasureActive(true), 50);
+            }}
+              className="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 border border-red-500/20 rounded transition-colors shrink-0">
+              Clear
+            </button>
             <button onClick={() => setMeasureActive(false)}
               className="text-xs text-slate-500 hover:text-red-400 px-2 py-0.5 border border-white/10 rounded transition-colors shrink-0">
               Fermer
