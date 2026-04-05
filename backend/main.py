@@ -152,6 +152,40 @@ async def upload_pdf(req: UploadPdfRequest):
 
 
 # ============================================================
+# ROUTE 2a-bis — PDF THUMBNAILS (small previews of all pages)
+# ============================================================
+class PdfThumbnailsRequest(BaseModel):
+    pdf_base64: str
+    max_pages: int = 20
+
+@app.post("/pdf-thumbnails")
+async def pdf_thumbnails(req: PdfThumbnailsRequest):
+    try:
+        pdf_bytes = base64.b64decode(req.pdf_base64)
+    except Exception:
+        raise HTTPException(400, "Base64 invalide")
+    try:
+        page_count = pipeline.get_pdf_page_count(pdf_bytes)
+        thumbs = []
+        for i in range(min(page_count, req.max_pages)):
+            # Render at low zoom for thumbnail (0.5 = ~150dpi)
+            img_rgb = pipeline.pdf_to_image(pdf_bytes, zoom=0.5, page_index=i)
+            # Encode as JPEG for small size
+            img_pil = Image.fromarray(img_rgb).convert("RGB")
+            buf = io.BytesIO()
+            img_pil.save(buf, format="JPEG", quality=60)
+            buf.seek(0)
+            thumbs.append(base64.b64encode(buf.read()).decode())
+    except Exception as e:
+        raise HTTPException(500, f"Erreur thumbnails PDF : {e}")
+
+    return {
+        "page_count": page_count,
+        "thumbnails": thumbs,
+    }
+
+
+# ============================================================
 # ROUTE 2b — UPLOAD IMAGE (PNG/JPG) → session
 # ============================================================
 class UploadImageRequest(BaseModel):
