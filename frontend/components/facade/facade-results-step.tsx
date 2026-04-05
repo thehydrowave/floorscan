@@ -370,7 +370,9 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
   /* ── PDF export ── */
   const exportPDF = async () => {
-    const { default: jsPDF } = await import("jspdf");
+    try {
+    const jspdfModule = await import("jspdf");
+    const jsPDF = jspdfModule.jsPDF ?? jspdfModule.default;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pw = 210, margin = 15;
     let y = margin;
@@ -470,6 +472,10 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
     doc.save("rapport_facade.pdf");
     toast({ title: "Rapport PDF exporté", variant: "success" });
+    } catch (err: any) {
+      console.error("PDF export error:", err);
+      toast({ title: "Erreur export PDF", description: err?.message ?? "Erreur inconnue", variant: "error" });
+    }
   };
 
   /* ═══════════════════════════════════════════════ render ══ */
