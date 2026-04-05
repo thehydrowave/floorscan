@@ -10,6 +10,7 @@ import { dt, DTKey } from "@/lib/i18n";
 import * as pdfjsLib from "pdfjs-dist";
 
 import { BACKEND } from "@/lib/backend";
+import UploadTutorialOverlay, { resetUploadTutorial } from "./upload-tutorial-overlay";
 
 // Configure pdf.js worker
 if (typeof window !== "undefined") {
@@ -38,6 +39,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
   const d = (key: DTKey) => dt(key, lang);
 
   const [dragging, setDragging] = useState(false);
+  const [showTuto, setShowTuto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -354,6 +356,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
               onClick={() => !loading && document.getElementById("file-input-demo")?.click()}
+              data-tuto-upload="dropzone"
               className={cn(
                 "relative border-2 border-dashed border-white/10 rounded-2xl p-12 text-center transition-all duration-200 cursor-pointer hover:border-accent/40 hover:bg-accent/5",
                 dragging && "border-accent/60 bg-accent/10"
@@ -415,6 +418,15 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Tutorial replay button — bottom left */}
+      <button onClick={() => { resetUploadTutorial(); setShowTuto(v => !v); }}
+        className="fixed bottom-6 left-6 z-50 flex items-center gap-1.5 px-3 py-2 glass border border-white/10 rounded-xl text-xs text-slate-400 hover:text-white transition-colors">
+        <BookOpen className="w-3.5 h-3.5" /> Tutoriel
+      </button>
+
+      {/* Tutorial overlay */}
+      <UploadTutorialOverlay forceShow={showTuto} />
     </motion.div>
   );
 }
