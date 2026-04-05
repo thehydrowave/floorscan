@@ -294,17 +294,112 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     return () => window.removeEventListener("wheel", handler);
   }, []);
 
-  // Escape key to cancel drawing
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<FacadeElement[]>([]);
+  const [isCut, setIsCut] = useState(false);
+
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Escape to cancel drawing
       if (e.key === "Escape" && drawingPoly.length > 0) {
         setDrawingPoly([]);
         setHoverPoint(null);
+        return;
+      }
+
+      // Don't handle shortcuts when typing in an input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const hasSelection = selectedIds.size > 0;
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Delete / Backspace → delete selected
+      if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
+        e.preventDefault();
+        deleteSelected();
+        return;
+      }
+
+      // Ctrl+C → copy
+      if (ctrl && e.key === "c" && hasSelection) {
+        e.preventDefault();
+        clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
+        setIsCut(false);
+        toast({ title: `${clipboardRef.current.length} élément(s) copié(s)`, variant: "default" });
+        return;
+      }
+
+      // Ctrl+X → cut
+      if (ctrl && e.key === "x" && hasSelection) {
+        e.preventDefault();
+        clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
+        setIsCut(true);
+        setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
+        setSelectedIds(new Set());
+        toast({ title: `${clipboardRef.current.length} élément(s) coupé(s)`, variant: "default" });
+        return;
+      }
+
+      // Ctrl+V → paste (offset by small amount)
+      if (ctrl && e.key === "v" && clipboardRef.current.length > 0) {
+        e.preventDefault();
+        const offset = isCut ? 0 : 0.02; // no offset if cut, small offset if copy
+        let nextId = Math.max(0, ...elements.map(el => el.id)) + 1;
+        const pasted: FacadeElement[] = clipboardRef.current.map(el => {
+          const newPts = (el.polygon_norm ?? []).map(p => ({
+            x: Math.max(0, Math.min(1, p.x + offset)),
+            y: Math.max(0, Math.min(1, p.y + offset)),
+          }));
+          const newBbox = {
+            x: Math.max(0, Math.min(1, el.bbox_norm.x + offset)),
+            y: Math.max(0, Math.min(1, el.bbox_norm.y + offset)),
+            w: el.bbox_norm.w, h: el.bbox_norm.h,
+          };
+          return { ...el, id: nextId++, bbox_norm: newBbox, polygon_norm: newPts };
+        });
+        setElements(prev => [...prev, ...pasted]);
+        setSelectedIds(new Set(pasted.map(p => p.id)));
+        if (isCut) { clipboardRef.current = []; setIsCut(false); }
+        toast({ title: `${pasted.length} élément(s) collé(s)`, variant: "success" });
+        return;
+      }
+
+      // Ctrl+D → duplicate in place (with offset)
+      if (ctrl && e.key === "d" && hasSelection) {
+        e.preventDefault();
+        const toDup = elements.filter(el => selectedIds.has(el.id));
+        let nextId = Math.max(0, ...elements.map(el => el.id)) + 1;
+        const duped: FacadeElement[] = toDup.map(el => {
+          const offset = 0.02;
+          const newPts = (el.polygon_norm ?? []).map(p => ({
+            x: Math.max(0, Math.min(1, p.x + offset)),
+            y: Math.max(0, Math.min(1, p.y + offset)),
+          }));
+          const newBbox = {
+            x: Math.max(0, Math.min(1, el.bbox_norm.x + offset)),
+            y: Math.max(0, Math.min(1, el.bbox_norm.y + offset)),
+            w: el.bbox_norm.w, h: el.bbox_norm.h,
+          };
+          return { ...el, id: nextId++, bbox_norm: newBbox, polygon_norm: newPts };
+        });
+        setElements(prev => [...prev, ...duped]);
+        setSelectedIds(new Set(duped.map(d => d.id)));
+        toast({ title: `${duped.length} élément(s) dupliqué(s)`, variant: "success" });
+        return;
+      }
+
+      // Ctrl+A → select all visible
+      if (ctrl && e.key === "a" && tool === "select") {
+        e.preventDefault();
+        setSelectedIds(new Set(visibleElements.map(el => el.id)));
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [drawingPoly.length]);
+  }, [drawingPoly.length, selectedIds, elements, tool, visibleElements, deleteSelected, isCut]);
 
   // Convert mouse event to normalized coords
   const toNorm = useCallback((e: React.MouseEvent): Pt => {
