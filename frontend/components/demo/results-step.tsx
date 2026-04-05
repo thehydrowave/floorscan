@@ -27,7 +27,7 @@ import MeasureTool from "@/components/demo/measure-tool";
 import RapportDialog from "@/components/demo/rapport-dialog";
 import OcrPanel from "@/components/demo/ocr-panel";
 import HousingPanel from "@/components/demo/housing-panel";
-import { polygonAreaNorm } from "@/lib/measure-types";
+import { polygonAreaNorm, polygonPerimeterM } from "@/lib/measure-types";
 import type { MeasureZone, SurfaceType } from "@/lib/measure-types";
 import { BACKEND } from "@/lib/backend";
 import { getRoomColor } from "@/lib/room-colors";
@@ -184,11 +184,27 @@ export default function ResultsStep({ result, customDetections = [], onDetection
 
     // Sheet 3: Pièces
     if (result.rooms && result.rooms.length > 0) {
-      const data3: (string | number)[][] = [["Type", "Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
-      result.rooms.forEach(r => data3.push([r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]));
-      data3.push(["TOTAL", "", result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0), result.rooms.reduce((s, r) => s + (r.perimeter_m ?? 0), 0), ""]);
+      const ppmR = result.pixels_per_meter;
+      const data3: (string | number)[][] = [["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
+      result.rooms.forEach(r => {
+        // Calculate perimeter from polygon if not available
+        let perim = r.perimeter_m ?? 0;
+        if ((!perim || perim === 0) && r.polygon_norm && ppmR && imgNatural.w > 0) {
+          perim = polygonPerimeterM(r.polygon_norm, imgNatural.w, imgNatural.h, ppmR);
+        }
+        // Get surface type NAME instead of ID
+        const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
+        data3.push([r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, +perim.toFixed(2), stName]);
+      });
+      const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
+      const totalPerim = result.rooms.reduce((s, r) => {
+        let p = r.perimeter_m ?? 0;
+        if ((!p || p === 0) && r.polygon_norm && ppmR && imgNatural.w > 0) p = polygonPerimeterM(r.polygon_norm, imgNatural.w, imgNatural.h, ppmR);
+        return s + p;
+      }, 0);
+      data3.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
       const ws3 = XLSX.utils.aoa_to_sheet(data3);
-      ws3["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
+      ws3["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
       XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
     }
 
@@ -322,7 +338,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setExportOpen(false)} />
                 <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900 border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px]">
-                  <button onClick={() => { handleExportXLSX(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
+                  <button onClick={() => {
+                    if (!measurements) {
+                      if (!confirm("⚠️ Attention : vous n'êtes pas passé par la phase de validation (Mask Editor). Les données exportées sont les résultats bruts de l'IA.\n\nExporter quand même ?")) return;
+                    }
+                    handleExportXLSX(); setExportOpen(false);
+                  }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
                     <Table2 className="w-4 h-4" /> XLSX
                   </button>
                   <button onClick={() => { window.print(); setExportOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
@@ -575,14 +596,23 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             </button>
           )}
 
-          <button onClick={() => {
-            const img = document.querySelector('[data-results-image]') as HTMLImageElement;
-            if (!img) return;
-            const a = document.createElement('a');
-            a.href = img.src;
-            a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`;
-            a.click();
-          }} title="Télécharger l'image"
+          <button onClick={async () => {
+            const container = imgContainerRef.current;
+            if (!container) return;
+            try {
+              const html2canvas = (await import("html2canvas")).default;
+              const canvas = await html2canvas(container, { backgroundColor: "#0d1117", scale: 2, useCORS: true });
+              const a = document.createElement("a");
+              a.href = canvas.toDataURL("image/png");
+              a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`;
+              a.click();
+              toast({ title: "Image téléchargée avec les masques visibles", variant: "success" });
+            } catch {
+              // Fallback: download raw image
+              const img = document.querySelector("[data-results-image]") as HTMLImageElement;
+              if (img) { const a = document.createElement("a"); a.href = img.src; a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click(); }
+            }
+          }} title="Télécharger l'image avec les masques affichés"
             className="px-3 py-1.5 rounded-lg text-xs font-600 border border-white/10 text-slate-500 hover:text-white transition-all flex items-center gap-1.5 ml-auto">
             <Download className="w-3.5 h-3.5" /> Image
           </button>
