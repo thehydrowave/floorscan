@@ -54,6 +54,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loadingThumbs, setLoadingThumbs] = useState(false);
   const thumbsGenerating = useRef(false);
+  const [showThumbs, setShowThumbs] = useState(false); // user opted-in to preview
 
   // Auto-enter page selector when returning from editor with saved PDF data
   useEffect(() => {
@@ -212,12 +213,12 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
     }
   }, []);
 
-  // Auto-generate thumbs when entering page selector
+  // Generate thumbs only when user opts in
   useEffect(() => {
-    if (awaitingPage && pdfBase64 && thumbnails.length === 0 && !loadingThumbs) {
+    if (showThumbs && pdfBase64 && thumbnails.length === 0 && !loadingThumbs) {
       generateThumbnails(pdfBase64, pageCount);
     }
-  }, [awaitingPage, pdfBase64, thumbnails.length, loadingThumbs, pageCount, generateThumbnails]);
+  }, [showThumbs, pdfBase64, thumbnails.length, loadingThumbs, pageCount, generateThumbnails]);
 
   const confirmPage = async () => {
     if (!pdfBase64 || !pendingFileName) return;
@@ -251,69 +252,87 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
               </p>
             </div>
 
-            {/* Thumbnail grid */}
-            {loadingThumbs && thumbnails.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-slate-400">
-                <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Génération des aperçus...</span>
-              </div>
+            {/* Thumbnail grid (opt-in) or numbered buttons */}
+            {showThumbs ? (
+              <>
+                {loadingThumbs && thumbnails.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-slate-400">
+                    <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm">Génération des aperçus...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-6">
+                    {Array.from({ length: Math.min(pageCount, 20) }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(i)}
+                        className={cn(
+                          "relative rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.03]",
+                          currentPage === i
+                            ? "border-accent shadow-lg shadow-accent/20"
+                            : "border-white/10 hover:border-white/30"
+                        )}
+                      >
+                        {thumbnails[i] ? (
+                          <img src={thumbnails[i]} alt={`Page ${i + 1}`}
+                            className="w-full h-auto block bg-white" draggable={false} />
+                        ) : (
+                          <div className="w-full aspect-[3/4] bg-slate-800 flex items-center justify-center">
+                            <FileText className="w-6 h-6 text-slate-600" />
+                          </div>
+                        )}
+                        <span className={cn("absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold",
+                          currentPage === i ? "bg-accent text-white" : "bg-black/70 text-slate-300")}>{i + 1}</span>
+                        {analyzedPages?.includes(i) && (
+                          <span className="absolute top-1 right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[9px] text-white font-bold shadow">✓</span>
+                        )}
+                        {currentPage === i && <div className="absolute inset-0 bg-accent/10 pointer-events-none" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {pageCount > 20 && (
+                  <p className="text-center text-xs text-slate-500 mb-4">{pageCount - 20} pages supplémentaires non affichées</p>
+                )}
+              </>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-6">
-                {Array.from({ length: Math.min(pageCount, 20) }, (_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentPage(i)}
-                    className={cn(
-                      "relative rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.03]",
-                      currentPage === i
-                        ? "border-accent shadow-lg shadow-accent/20"
-                        : "border-white/10 hover:border-white/30"
-                    )}
-                  >
-                    {/* Thumbnail image */}
-                    {thumbnails[i] ? (
-                      <img
-                        src={thumbnails[i]}
-                        alt={`Page ${i + 1}`}
-                        className="w-full h-auto block bg-white"
-                        draggable={false}
-                      />
-                    ) : (
-                      <div className="w-full aspect-[3/4] bg-slate-800 flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-slate-600" />
-                      </div>
-                    )}
-                    {/* Page number overlay */}
-                    <span className={cn(
-                      "absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold",
-                      currentPage === i
-                        ? "bg-accent text-white"
-                        : "bg-black/70 text-slate-300"
-                    )}>
-                      {i + 1}
-                    </span>
-                    {/* Analyzed badge */}
-                    {analyzedPages?.includes(i) && (
-                      <span className="absolute top-1 right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[9px] text-white font-bold shadow">✓</span>
-                    )}
-                    {/* Selected highlight */}
-                    {currentPage === i && (
-                      <div className="absolute inset-0 bg-accent/10 pointer-events-none" />
-                    )}
+              <>
+                {/* Simple numbered buttons (default) */}
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
+                    className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white disabled:opacity-30 transition-colors">
+                    <ChevronLeft className="w-5 h-5" />
                   </button>
-                ))}
-              </div>
-            )}
-
-            {pageCount > 20 && (
-              <p className="text-center text-xs text-slate-500 mb-4">
-                {pageCount - 20} pages supplémentaires non affichées
-              </p>
+                  <div className="flex gap-1.5 flex-wrap justify-center max-w-xs">
+                    {Array.from({ length: Math.min(pageCount, 20) }, (_, i) => (
+                      <button key={i} onClick={() => setCurrentPage(i)}
+                        className={cn("w-9 h-9 rounded-lg text-sm font-mono font-600 transition-all relative",
+                          currentPage === i ? "bg-accent text-white" : "glass border border-white/10 text-slate-400 hover:text-white")}>
+                        {i + 1}
+                        {analyzedPages?.includes(i) && (
+                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-[7px] text-white font-bold">✓</span>
+                        )}
+                      </button>
+                    ))}
+                    {pageCount > 20 && <span className="text-slate-500 text-xs self-center">+{pageCount - 20}</span>}
+                  </div>
+                  <button onClick={() => setCurrentPage(p => Math.min(pageCount - 1, p + 1))} disabled={currentPage === pageCount - 1}
+                    className="glass border border-white/10 rounded-lg p-2 text-slate-400 hover:text-white disabled:opacity-30 transition-colors">
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="text-center mb-4">
+                  <button onClick={() => setShowThumbs(true)}
+                    className="text-xs text-accent hover:text-accent/80 underline underline-offset-2 transition-colors">
+                    👁 Prévisualiser les pages
+                  </button>
+                </div>
+              </>
             )}
 
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); setThumbnails([]); }}
+                onClick={() => { setAwaitingPage(false); setFileName(null); setFileSize(null); setThumbnails([]); setShowThumbs(false); }}
                 className="px-4 py-2 glass border border-white/10 rounded-xl text-sm text-slate-400 hover:text-white transition-colors"
               >
                 {d("up_cancel")}
