@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutGrid, PaintBucket, Hash, Ruler, Search, ChevronRight, ChevronLeft, X, Sparkles, Layers, Eye } from "lucide-react";
+import { LayoutGrid, PaintBucket, Hash, Save, Search, ChevronRight, ChevronLeft, X, Sparkles, Layers, Eye } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -30,8 +30,8 @@ const STEPS: TutorialStep[] = [
   { icon: <LayoutGrid className="w-6 h-6" />,  titleKey: "tuto_ed_step2", color: "text-emerald-300", target: '[data-tuto="rooms-btn"]',   position: "bottom" },
   { icon: <PaintBucket className="w-6 h-6" />, titleKey: "tuto_ed_step3", color: "text-violet-300",  target: '[data-tuto="surface-btn"]', position: "bottom" },
   { icon: <Hash className="w-6 h-6" />,        titleKey: "tuto_ed_step4", color: "text-sky-300",     target: '[data-tuto="tools-btn"]',   position: "bottom" },
-  { icon: <Ruler className="w-6 h-6" />,       titleKey: "tuto_ed_step5", color: "text-amber-300",   target: '[data-tuto="tools-btn"]',   position: "bottom" },
   { icon: <Search className="w-6 h-6" />,      titleKey: "tuto_ed_step6", color: "text-amber-300",   target: '[data-tuto="vs-btn"]',      position: "bottom" },
+  { icon: <Save className="w-6 h-6" />,        titleKey: "tuto_ed_step_save", color: "text-emerald-300", target: '[data-tuto="save-btn"]', position: "top" },
 ];
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
