@@ -84,6 +84,18 @@ function toSvgPoints(pts: Pt[], w: number, h: number): string {
   return pts.map(p => `${p.x * w},${p.y * h}`).join(" ");
 }
 
+/** Perimeter of polygon in pixels */
+function polygonPerimeterPx(pts: Pt[], imgW: number, imgH: number): number {
+  let p = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    const dx = (pts[j].x - pts[i].x) * imgW;
+    const dy = (pts[j].y - pts[i].y) * imgH;
+    p += Math.sqrt(dx * dx + dy * dy);
+  }
+  return p;
+}
+
 /** Distance between two points */
 function dist(a: Pt, b: Pt): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -438,6 +450,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     const bbox = bboxFromPoly(pts);
     const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
     const area_m2 = ppm ? areaPx / (ppm * ppm) : null;
+    const perimPx = polygonPerimeterPx(pts, imgNat.w, imgNat.h);
+    const perimeter_m = ppm ? perimPx / ppm : null;
 
     setElements(prev => [...prev, {
       id: newId,
@@ -446,6 +460,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       bbox_norm: bbox,
       polygon_norm: pts,
       area_m2,
+      perimeter_m,
       floor_level: 0,
       confidence: 1.0,
     }]);
@@ -1025,9 +1040,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // CSV export
   const exportCSV = () => {
     const BOM = "\uFEFF";
-    const header = `ID;${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;Area (m\u00B2)`;
+    const header = `ID;${d("fa_type")};${d("fa_floor_level")};X;Y;W;H;Area (m\u00B2);Périmètre (m)`;
     const rows = elements.map(e =>
-      `${e.id};${d(TYPE_I18N[e.type] ?? "fa_other")};${e.floor_level ?? 0};${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"}`
+      `${e.id};${getTypeLabel(e.type)};${e.floor_level ?? 0};${e.bbox_norm.x.toFixed(3)};${e.bbox_norm.y.toFixed(3)};${e.bbox_norm.w.toFixed(3)};${e.bbox_norm.h.toFixed(3)};${e.area_m2?.toFixed(2) ?? "-"};${e.perimeter_m?.toFixed(2) ?? "-"}`
     );
     const csv = BOM + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -1054,6 +1069,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const windowElements = elements.filter(e => e.type === "window");
   const windowsCount = windowElements.length;
   const windowsArea = windowElements.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+  const windowsPerimeter = windowElements.reduce((s, e) => s + (e.perimeter_m ?? 0), 0);
   const facadeArea = result.facade_area_m2 ?? null;
   // Custom types that replace wall surface
   const wallReplacingArea = useMemo(() => {
@@ -1089,6 +1105,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           <span className="text-[11px] text-slate-300">Fenêtres</span>
           <span className="text-sm text-white font-mono font-semibold">{windowsCount}</span>
           <span className="text-[10px] text-slate-500 font-mono">{windowsArea.toFixed(1)} m²</span>
+          {windowsPerimeter > 0 && <span className="text-[10px] text-slate-500 font-mono">P:{windowsPerimeter.toFixed(1)}m</span>}
         </div>
         {facadeArea != null && (<>
           <div className="w-px h-4 bg-white/10" />

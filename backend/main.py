@@ -1659,16 +1659,18 @@ def analyze_facade(req: AnalyzeFacadeRequest):
         w_norm = min(w_norm, 1.0 - x_norm)
         h_norm = min(h_norm, 1.0 - y_norm)
 
-        # Calcul surface + dimensions (en m², basé sur les pixels du crop proportionnellement)
+        # Calcul surface + dimensions + périmètre (en m², basé sur les pixels du crop)
         area_m2 = None
         w_m = None
         h_m = None
+        perimeter_m = None
         if ppm and ppm > 0:
             pw_orig = pw_inf * roi_scale_x  # largeur en px dans l'image originale
             ph_orig = ph_inf * roi_scale_y
             area_m2 = (pw_orig * ph_orig) / (ppm * ppm)
             w_m = pw_orig / ppm
             h_m = ph_orig / ppm
+            perimeter_m = 2 * (w_m + h_m)
 
         elements.append({
             "id": i,
@@ -1678,6 +1680,7 @@ def analyze_facade(req: AnalyzeFacadeRequest):
             "bbox_norm": {"x": round(x_norm, 5), "y": round(y_norm, 5),
                           "w": round(w_norm, 5), "h": round(h_norm, 5)},
             "area_m2": round(area_m2, 3) if area_m2 is not None else None,
+            "perimeter_m": round(perimeter_m, 3) if perimeter_m is not None else None,
             "w_m": round(w_m, 3) if w_m is not None else None,
             "h_m": round(h_m, 3) if h_m is not None else None,
             "confidence": round(pred.get("confidence", 0), 3),

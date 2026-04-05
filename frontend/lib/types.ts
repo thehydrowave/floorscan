@@ -92,6 +92,7 @@ export interface FacadeElement {
   bbox_norm: { x: number; y: number; w: number; h: number };
   polygon_norm?: { x: number; y: number }[];
   area_m2: number | null;
+  perimeter_m?: number | null;
   /** Dimensions réelles en mètres (disponibles si ppm connu) */
   w_m?: number | null;
   h_m?: number | null;

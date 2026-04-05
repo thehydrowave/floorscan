@@ -209,6 +209,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   // Count "other" as "window" since the model often misclassifies windows as "other"
   const windowCount = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").length, [result]);
   const windowsAreaM2 = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").reduce((s, e) => s + (e.area_m2 ?? 0), 0), [result]);
+  const windowsPerimeterM = useMemo(() => (result.elements ?? []).filter(e => e.type === "window" || e.type === "other").reduce((s, e) => s + (e.perimeter_m ?? 0), 0), [result]);
   // Use delimited zones area if available, otherwise fall back to backend facade_area
   const facadeAreaM2 = totalFacadeZonesM2 > 0 ? totalFacadeZonesM2 : (result.facade_area_m2 ?? 0);
   const wallNetArea = Math.max(0, facadeAreaM2 - windowsAreaM2);
@@ -437,6 +438,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <span className="text-xs text-slate-300">Fenêtres</span>
                 <span className="text-sm text-white font-mono font-semibold">{windowCount}</span>
                 {windowsAreaM2 > 0 && <span className="text-[10px] text-slate-500 font-mono">{windowsAreaM2.toFixed(1)} m²</span>}
+                {windowsPerimeterM > 0 && <span className="text-[10px] text-slate-500 font-mono">P:{windowsPerimeterM.toFixed(1)}m</span>}
               </div>
               <div className="w-px h-5 bg-white/10" />
               <div className="flex items-center gap-2">
