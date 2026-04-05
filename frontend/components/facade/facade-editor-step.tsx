@@ -340,7 +340,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
     setElements(prev => [...prev, {
       id: newId,
-      type: addType,
+      type: addType as FacadeElementType,
       label_fr: getTypeLabel(addType),
       bbox_norm: bbox,
       polygon_norm: pts,
@@ -757,7 +757,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               const newPts: Pt[] = [{ x: ex1, y: ey1 }, { x: ex2, y: ey1 }, { x: ex2, y: ey2 }, { x: ex1, y: ey2 }];
               const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
               kept.push({
-                id: nextId++, type: eraserTarget as any,
+                id: nextId++, type: eraserTarget as FacadeElementType,
                 label_fr: getTypeLabel(eraserTarget),
                 bbox_norm: { x: ex1, y: ey1, w: ex2 - ex1, h: ey2 - ey1 },
                 polygon_norm: newPts, area_m2: ppm ? areaPx / (ppm * ppm) : null,
@@ -840,7 +840,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
       newElements.push({
         id: nextId++,
-        type,
+        type: type as FacadeElementType,
         label_fr: getTypeLabel(type),
         bbox_norm: bbox,
         polygon_norm: pts,
