@@ -36,11 +36,16 @@ const TYPE_I18N: Record<string, DTKey> = {
 const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line", "roof", "column", "other"];
 
 /* ── Only windows and walls editable in facade editor ── */
-const EDITOR_TYPES: FacadeElementType[] = ["window", "wall_opaque"];
+const EDITOR_TYPES: string[] = ["window", "wall_opaque"];
 const EDITOR_LABELS: Record<string, string> = {
   window: "Fenêtres", door: "Portes", balcony: "Balcons",
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
 };
+
+/* ── Custom type definition ── */
+interface CustomType { id: string; name: string; color: string; }
+
+const CUSTOM_COLORS = ["#06b6d4", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#e879f9", "#84cc16", "#fb7185"];
 
 type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search" | "translation" | "eraser";
 
@@ -106,7 +111,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const selectedId = selectedIds.size === 1 ? [...selectedIds][0] : null; // compat
   const setSelectedId = (id: number | null) => setSelectedIds(id != null ? new Set([id]) : new Set());
   const [tool, setTool] = useState<EditorTool>("select");
-  const [addType, setAddType] = useState<FacadeElementType>("window");
+  const [addType, setAddType] = useState<string>("window");
+
+  // Custom element types
+  const [customTypes, setCustomTypes] = useState<CustomType[]>([]);
+  const [showNewTypeForm, setShowNewTypeForm] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [newTypeColor, setNewTypeColor] = useState(CUSTOM_COLORS[0]);
 
   // Masks from backend (editable via add/erase tools)
   const [masks, setMasks] = useState<Record<string, string>>(() => ({
@@ -328,7 +339,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     setElements(prev => [...prev, {
       id: newId,
       type: addType,
-      label_fr: d(TYPE_I18N[addType] ?? "fa_other"),
+      label_fr: getTypeLabel(addType),
       bbox_norm: bbox,
       polygon_norm: pts,
       area_m2,
@@ -689,6 +700,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
 
+        // Determine which types to erase based on active edit layer
+        const isCustomType = customTypes.some(ct => ct.id === addType);
+
         // If editing "Surface nette" → erased zone becomes a window (or extends existing one)
         if (addType === "wall_opaque") {
           // Check if start point is inside an existing window → extend it
@@ -736,6 +750,37 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             }]);
             toast({ title: "Fenêtre créée", description: "Zone gommée du mur → fenêtre", variant: "success" });
           }
+        } else if (isCustomType) {
+          // Editing a custom type → erase (split) elements of that type, no conversion
+          const targetTypes = [addType];
+          let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
+          setElements(prev => {
+            const kept: FacadeElement[] = [];
+            for (const el of prev) {
+              if (!targetTypes.includes(el.type)) { kept.push(el); continue; }
+              const bx = el.bbox_norm;
+              const bx2 = bx.x + bx.w, by2 = bx.y + bx.h;
+              const overlapX = Math.max(0, Math.min(bx2, ex2) - Math.max(bx.x, ex1));
+              const overlapY = Math.max(0, Math.min(by2, ey2) - Math.max(bx.y, ey1));
+              if (overlapX <= 0 || overlapY <= 0) { kept.push(el); continue; }
+              if (ex1 <= bx.x && ex2 >= bx2 && ey1 <= bx.y && ey2 >= by2) continue;
+              const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
+              if (ex1 > bx.x) rects.push({ x: bx.x, y: bx.y, w: ex1 - bx.x, h: bx.h });
+              if (ex2 < bx2) rects.push({ x: ex2, y: bx.y, w: bx2 - ex2, h: bx.h });
+              const midX1 = Math.max(bx.x, ex1), midX2 = Math.min(bx2, ex2);
+              if (ey1 > bx.y && midX2 > midX1) rects.push({ x: midX1, y: bx.y, w: midX2 - midX1, h: ey1 - bx.y });
+              if (ey2 < by2 && midX2 > midX1) rects.push({ x: midX1, y: ey2, w: midX2 - midX1, h: by2 - ey2 });
+              for (const r of rects) {
+                if (r.w < 0.003 || r.h < 0.003) continue;
+                const pts: Pt[] = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+                const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
+                kept.push({ ...el, id: nextId++, bbox_norm: r, polygon_norm: pts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2 });
+              }
+            }
+            return kept;
+          });
+          const ctName = customTypes.find(c => c.id === addType)?.name ?? addType;
+          toast({ title: "Zone gommée", description: `${ctName} ajusté(e)`, variant: "default" });
         } else {
           // Editing "Fenêtres" → erase from windows, possibly splitting them
           const targetTypes = ["window", "other"];
@@ -854,7 +899,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   };
 
   // Translation: apply shape to all anchors, creating elements
-  const applyTranslation = (type: FacadeElementType) => {
+  const applyTranslation = (type: string) => {
     if (transAnchors.length === 0 || transShape.length < 3) return;
     const ppm = result.pixels_per_meter;
     let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
@@ -869,7 +914,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       newElements.push({
         id: nextId++,
         type,
-        label_fr: type === "window" ? "Fenêtre" : "Mur",
+        label_fr: getTypeLabel(type),
         bbox_norm: bbox,
         polygon_norm: pts,
         area_m2: ppm ? areaPx / (ppm * ppm) : null,
@@ -901,6 +946,23 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
   const selectedEl = selectedId != null ? elements.find(e => e.id === selectedId) : undefined;
   const selectedEls = elements.filter(e => selectedIds.has(e.id));
+
+  // Merged color map including custom types
+  const allTypeColors = useMemo(() => {
+    const m: Record<string, string> = { ...TYPE_COLORS };
+    for (const ct of customTypes) m[ct.id] = ct.color;
+    return m;
+  }, [customTypes]);
+
+  // All editor types (built-in + custom)
+  const allEditorTypes = useMemo(() => [...EDITOR_TYPES, ...customTypes.map(ct => ct.id)], [customTypes]);
+
+  // Get label for any type
+  const getTypeLabel = useCallback((t: string) => {
+    const ct = customTypes.find(c => c.id === t);
+    if (ct) return ct.name;
+    return TYPE_I18N[t] ? d(TYPE_I18N[t]) : t;
+  }, [customTypes, d]);
 
   // Build updated result and go back to results
   const goResults = () => {
@@ -1012,6 +1074,21 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <span className="text-sm text-white font-mono font-semibold">{result.floors_count}</span>
           </div>
         </>)}
+        {/* Custom type stats */}
+        {customTypes.map(ct => {
+          const ctEls = elements.filter(e => e.type === ct.id);
+          if (ctEls.length === 0) return null;
+          const ctArea = ctEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
+          return (
+            <span key={ct.id} className="flex items-center gap-1.5">
+              <div className="w-px h-4 bg-white/10" />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ct.color }} />
+              <span className="text-[11px] text-slate-300">{ct.name}</span>
+              <span className="text-sm text-white font-mono font-semibold">{ctEls.length}</span>
+              <span className="text-[10px] text-slate-500 font-mono">{ctArea.toFixed(1)} m²</span>
+            </span>
+          );
+        })}
         {selectedEls.length > 0 && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1">
@@ -1021,7 +1098,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             </span>
             <select value={selectedEls[0]?.type ?? "window"} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
               className="bg-slate-800 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white">
-              {EDITOR_TYPES.map(t => <option key={t} value={t}>{TYPE_I18N[t] ? d(TYPE_I18N[t]) : t}</option>)}
+              {allEditorTypes.map(t => <option key={t} value={t}>{getTypeLabel(t)}</option>)}
             </select>
             <span className="text-[10px] text-white font-mono">
               {selectedEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0).toFixed(2)} m²
@@ -1085,6 +1162,66 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <Building2 className={cn("w-4 h-4 shrink-0", "text-green-400")} />
               <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
             </button>
+
+            {/* Custom type layer buttons */}
+            {customTypes.map(ct => (
+              <button key={ct.id}
+                onClick={() => { setAddType(ct.id); if (tool === "select") setTool("add_rect"); }}
+                className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                  addType === ct.id ? `border-white/30 bg-white/10 text-white` : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+                <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: ct.color }} />
+                <span className={addType === ct.id ? "" : "text-slate-400"}>{ct.name}</span>
+              </button>
+            ))}
+
+            {/* Add custom type button */}
+            {!showNewTypeForm ? (
+              <button onClick={() => setShowNewTypeForm(true)}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] border border-dashed border-white/20 text-slate-500 hover:text-slate-300 hover:border-white/30 transition-all">
+                <Plus className="w-3 h-3" /> Type
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-white/20 bg-white/5">
+                <input
+                  autoFocus
+                  value={newTypeName}
+                  onChange={e => setNewTypeName(e.target.value)}
+                  placeholder="Nom…"
+                  className="bg-transparent border-none text-xs text-white w-20 focus:outline-none"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newTypeName.trim()) {
+                      const id = `custom_${Date.now()}`;
+                      setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor }]);
+                      setAddType(id);
+                      setNewTypeName("");
+                      setShowNewTypeForm(false);
+                      if (tool === "select") setTool("add_rect");
+                    }
+                    if (e.key === "Escape") { setShowNewTypeForm(false); setNewTypeName(""); }
+                  }}
+                />
+                <div className="flex gap-0.5">
+                  {CUSTOM_COLORS.map(c => (
+                    <button key={c} onClick={() => setNewTypeColor(c)}
+                      className={cn("w-4 h-4 rounded-full border-2 transition-all",
+                        newTypeColor === c ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
+                      style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                <button onClick={() => {
+                  if (newTypeName.trim()) {
+                    const id = `custom_${Date.now()}`;
+                    setCustomTypes(prev => [...prev, { id, name: newTypeName.trim(), color: newTypeColor }]);
+                    setAddType(id);
+                    setNewTypeName("");
+                    setShowNewTypeForm(false);
+                    if (tool === "select") setTool("add_rect");
+                  }
+                }} className="text-green-400 hover:text-green-300 text-[10px] font-semibold">OK</button>
+                <button onClick={() => { setShowNewTypeForm(false); setNewTypeName(""); }}
+                  className="text-slate-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+              </div>
+            )}
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
 
@@ -1280,10 +1417,16 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     className="px-2 py-1 rounded text-[10px] border border-pink-500/40 bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 font-medium">
                     <AppWindow className="w-3 h-3 inline mr-1" />Fenêtre
                   </button>
-                  <button onClick={() => applyTranslation("wall_opaque" as FacadeElementType)}
+                  <button onClick={() => applyTranslation("wall_opaque")}
                     className="px-2 py-1 rounded text-[10px] border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 font-medium">
                     <Building2 className="w-3 h-3 inline mr-1" />Surface mur
                   </button>
+                  {customTypes.map(ct => (
+                    <button key={ct.id} onClick={() => applyTranslation(ct.id)}
+                      className="px-2 py-1 rounded text-[10px] border border-white/30 bg-white/5 text-white hover:bg-white/10 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-sm inline-block mr-1" style={{ backgroundColor: ct.color }} />{ct.name}
+                    </button>
+                  ))}
                 </>
               )}
 
@@ -1437,7 +1580,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 >
                   {/* ── Existing elements ── */}
                   {visibleElements.map(el => {
-                    const color = TYPE_COLORS[el.type] ?? "#94a3b8";
+                    const color = allTypeColors[el.type] ?? "#94a3b8";
                     const isSelected = selectedIds.has(el.id);
 
                     // Floor line -> special rendering
@@ -1489,7 +1632,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                         {(() => {
                           const cx = c.x * imgNat.w;
                           const cy = c.y * imgNat.h;
-                          const label = d(TYPE_I18N[el.type] ?? "fa_window");
+                          const label = getTypeLabel(el.type);
                           const areaStr = el.area_m2 != null ? `${el.area_m2.toFixed(2)} m\u00B2` : "";
                           const fs = Math.max(10, Math.min(16, imgNat.w * 0.008));
                           const pw = Math.max(50, Math.max(label.length, areaStr.length) * (fs * 0.6)) + 12;
@@ -1777,18 +1920,20 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     const ry = Math.min(start.y, end.y) * imgNat.h;
                     const rw = Math.abs(end.x - start.x) * imgNat.w;
                     const rh = Math.abs(end.y - start.y) * imgNat.h;
-                    // Color depends on edit mode: pink if erasing wall→window, red if erasing window→wall
+                    // Color depends on edit mode
                     const isWallMode = addType === "wall_opaque";
-                    const color = isWallMode ? "#ff00ff" : "#ef4444";
-                    const fillColor = isWallMode ? "rgba(255,0,255,0.2)" : "rgba(239,68,68,0.2)";
+                    const isCustom = customTypes.some(ct => ct.id === addType);
+                    const eraserColor = isWallMode ? "#ff00ff" : isCustom ? (allTypeColors[addType] ?? "#ef4444") : "#ef4444";
+                    const eraserFill = isWallMode ? "rgba(255,0,255,0.2)" : "rgba(239,68,68,0.2)";
+                    const eraserLabel = isWallMode ? "→ Fenêtre" : isCustom ? `Gomme ${getTypeLabel(addType)}` : "→ Mur";
                     return (
                       <g>
                         <rect x={rx} y={ry} width={rw} height={rh}
-                          fill={fillColor} stroke={color} strokeWidth={2} strokeDasharray="6 3" />
+                          fill={eraserFill} stroke={eraserColor} strokeWidth={2} strokeDasharray="6 3" />
                         <text x={rx + rw / 2} y={ry + rh / 2}
                           textAnchor="middle" dominantBaseline="middle"
-                          fill={color} fontSize={10} fontFamily="system-ui" fontWeight={700}>
-                          {isWallMode ? "→ Fenêtre" : "→ Mur"}
+                          fill={eraserColor} fontSize={10} fontFamily="system-ui" fontWeight={700}>
+                          {eraserLabel}
                         </text>
                       </g>
                     );
