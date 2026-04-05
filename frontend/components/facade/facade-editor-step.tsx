@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
+import { generateFacadeRapportPDF } from "@/lib/facade-rapport-pdf";
 
 /* ── Colors ── */
 const TYPE_COLORS: Record<string, string> = {
@@ -1169,98 +1170,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // ── PDF export ──
   const exportPDF = async () => {
     try {
-      const jspdfModule = await import("jspdf");
-      const jsPDF = jspdfModule.jsPDF ?? jspdfModule.default;
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const margin = 15;
-      let y = margin;
-      const ed = getExportData();
-
-      doc.setFontSize(18); doc.setFont("helvetica", "bold");
-      doc.text("Rapport Analyse Façade", margin, y); y += 10;
-      doc.setFontSize(10); doc.setFont("helvetica", "normal");
-      doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, margin, y); y += 8;
-
-      // Summary
-      doc.setFontSize(12); doc.setFont("helvetica", "bold");
-      doc.text("Résumé", margin, y); y += 6;
-      doc.setFontSize(9); doc.setFont("helvetica", "normal");
-      const sRows = [
-        ["Fenêtres", `${windowsCount} — ${windowsArea.toFixed(2)} m² — P: ${windowsPerimeter.toFixed(2)} m`],
-        ["Surface nette mur", `${(netFacadeArea ?? 0).toFixed(2)} m²`],
-        ["Surface façade", `${(facadeArea ?? 0).toFixed(2)} m²`],
-        ["Étages", `${result.floors_count ?? "-"}`],
-      ];
-      for (const [l, v] of sRows) { doc.text(l, margin, y); doc.text(v, margin + 55, y); y += 5; }
-      y += 3;
-
-      // Retours
-      doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.text("Retours de tableau", margin, y); y += 6;
-      doc.setFontSize(9); doc.setFont("helvetica", "normal");
-      doc.text(`Linéaires — Tableau: ${ed.totLonT.toFixed(2)} ml | Linteau: ${ed.totLonL.toFixed(2)} ml | Appui: ${ed.totLonA.toFixed(2)} ml`, margin, y); y += 5;
-      doc.text(`Surfaces  — Tableau: ${ed.totSurfT.toFixed(2)} m² | Linteau: ${ed.totSurfL.toFixed(2)} m² | Appui: ${ed.totSurfA.toFixed(2)} m² | Total: ${ed.totSurfRetours.toFixed(2)} m²`, margin, y); y += 8;
-
-      // Financial
-      doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.text("Estimations financières", margin, y); y += 6;
-      doc.setFontSize(9); doc.setFont("helvetica", "normal");
-      const fLines = [
-        [`ITE mur: ${(netFacadeArea ?? 0).toFixed(1)} m² × ${ed.pxITE} €`, `${ed.cITE.toFixed(0)} €`],
-        [`Retours: ${(ed.totLonT + ed.totLonL + ed.totLonA).toFixed(1)} ml × ${ed.pxRetour} €`, `${ed.cRet.toFixed(0)} €`],
-        [`Échafaudage: ${(facadeArea ?? 0).toFixed(1)} m² × ${ed.pxEchaf} €`, `${ed.cEch.toFixed(0)} €`],
-      ];
-      for (const [l, v] of fLines) { doc.text(l, margin, y); doc.text(v, margin + 120, y); y += 5; }
-      doc.setFont("helvetica", "bold");
-      doc.text("TOTAL HT", margin, y); doc.text(`${ed.cTotal.toFixed(0)} €`, margin + 120, y); y += 8;
-      doc.setFont("helvetica", "normal");
-
-      // Custom types
-      for (const ct of customTypes) {
-        const ctEls = elements.filter(e => e.type === ct.id);
-        if (ctEls.length > 0) {
-          const ctArea = ctEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
-          doc.text(`${ct.name}: ${ctEls.length} éléments — ${ctArea.toFixed(2)} m²${ct.replacesWall ? " (remplace mur)" : ""}`, margin, y); y += 5;
-        }
-      }
-      y += 3;
-
-      // Elements table
-      doc.setFontSize(10); doc.setFont("helvetica", "bold");
-      doc.text("Éléments détectés", margin, y); y += 6;
-      doc.setFontSize(7); doc.setFont("helvetica", "bold");
-      doc.text("ID", margin, y); doc.text("Type", margin + 10, y); doc.text("m²", margin + 35, y);
-      doc.text("Périm.", margin + 50, y); doc.text("L(m)", margin + 68, y); doc.text("H(m)", margin + 82, y);
-      doc.text("Lint.", margin + 96, y); doc.text("Appui", margin + 110, y); doc.text("Tab.", margin + 125, y);
-      doc.text("Tot.ret.", margin + 140, y); y += 3.5;
-      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-      for (const l of ed.retourLines) {
-        if (y > 280) { doc.addPage(); y = margin; }
-        doc.text(`${l.e.id}`, margin, y);
-        doc.text(getTypeLabel(l.e.type), margin + 10, y);
-        doc.text(l.e.area_m2?.toFixed(2) ?? "-", margin + 35, y);
-        doc.text(l.e.perimeter_m?.toFixed(2) ?? "-", margin + 50, y);
-        doc.text(l.w?.toFixed(2) ?? "-", margin + 68, y);
-        doc.text(l.h?.toFixed(2) ?? "-", margin + 82, y);
-        doc.text(l.lonLinteau?.toFixed(2) ?? "-", margin + 96, y);
-        doc.text(l.lonAppui?.toFixed(2) ?? "-", margin + 110, y);
-        doc.text(l.lonTableau?.toFixed(2) ?? "-", margin + 125, y);
-        doc.text(l.totalRetour?.toFixed(3) ?? "-", margin + 140, y);
-        y += 3;
-      }
-
-      // Plan image
-      if (result.plan_b64) {
-        doc.addPage(); y = margin;
-        doc.setFontSize(12); doc.setFont("helvetica", "bold");
-        doc.text("Plan de façade", margin, y); y += 5;
-        try {
-          const imgW = 180, imgH = imgW * (imgNat.h / imgNat.w);
-          doc.addImage(`data:image/png;base64,${result.plan_b64}`, "PNG", margin, y, imgW, Math.min(imgH, 240));
-        } catch { /* silent */ }
-      }
-
-      doc.save("rapport_facade.pdf");
+      await generateFacadeRapportPDF({
+        result, elements, facadeAreaM2: facadeArea ?? 0, wallNetArea: netFacadeArea ?? 0,
+        windowCount: windowsCount, windowsAreaM2: windowsArea, windowsPerimeterM: windowsPerimeter,
+        perZoneStats: null, imgNat, lang,
+      });
       toast({ title: "PDF exporté", variant: "success" });
     } catch (err: any) {
       console.error("PDF export error:", err);
