@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
-  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler,
+  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -42,7 +42,10 @@ const EDITOR_LABELS: Record<string, string> = {
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
 };
 
-type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search";
+type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search" | "translation";
+
+/* ── Translation tool phases ── */
+type TranslationPhase = "choose_shape" | "place_anchors" | "draw_shape" | "validate" | "choose_type";
 
 /* ── Helpers ── */
 type Pt = { x: number; y: number };
@@ -178,6 +181,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [vsEditMode, setVsEditMode] = useState<"search"|"add"|"remove">("search");
   const [vsSaveOpen, setVsSaveOpen] = useState(false);
   const [vsSaveLabel, setVsSaveLabel] = useState("");
+
+  // Translation tool state
+  const [transPhase, setTransPhase] = useState<TranslationPhase>("choose_shape");
+  const [transShapeMode, setTransShapeMode] = useState<"rect" | "polygon">("rect");
+  const [transAnchors, setTransAnchors] = useState<Pt[]>([]);
+  const [transShape, setTransShape] = useState<Pt[]>([]); // the drawn shape (relative to anchor)
+  const [transDrawing, setTransDrawing] = useState<Pt[]>([]); // points being drawn
+  const [transRectStart, setTransRectStart] = useState<Pt | null>(null); // for rect mode
 
   // ── Blue wall overlay path (facade boundary minus window holes) ──
   // Facade delimitation zones (user-drawn polygons BEFORE crop)
@@ -362,6 +373,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       }
     }
 
+    if (tool === "translation" && transPhase === "draw_shape" && transShapeMode === "rect") {
+      const p = toNorm(e);
+      setTransRectStart(p);
+      return;
+    }
+
     if (tool === "add_rect") {
       const p = toNorm(e);
       rectDragRef.current = p;
@@ -426,6 +443,33 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           }
         }
         linearPtsRef.current = [];
+      }
+      return;
+    }
+
+    // Translation tool
+    if (tool === "translation") {
+      if (transPhase === "place_anchors") {
+        setTransAnchors(prev => [...prev, normPt]);
+        return;
+      }
+      if (transPhase === "draw_shape" && transShapeMode === "polygon") {
+        // If clicking near first point -> close shape
+        if (transDrawing.length >= 3) {
+          const first = transDrawing[0];
+          const threshold = 12 / (imgNat.w * zoom);
+          if (dist(normPt, first) < threshold) {
+            // Shape = offsets from first anchor (or first point of shape)
+            const anchor = transDrawing[0];
+            const shape = transDrawing.map(p => ({ x: p.x - anchor.x, y: p.y - anchor.y }));
+            setTransShape(shape);
+            setTransDrawing([]);
+            setTransPhase("validate");
+            return;
+          }
+        }
+        setTransDrawing(prev => [...prev, normPt]);
+        return;
       }
       return;
     }
@@ -496,6 +540,16 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       return;
     }
 
+    // Translation rect drawing
+    if (tool === "translation" && transPhase === "draw_shape" && transShapeMode === "rect" && transRectStart) {
+      setTransDrawing([transRectStart, p]);
+    }
+
+    // Translation polygon hover
+    if (tool === "translation" && transPhase === "draw_shape" && transShapeMode === "polygon" && transDrawing.length > 0) {
+      setHoverPoint(p);
+    }
+
     // Rect drawing preview
     if (tool === "add_rect" && rectDragRef.current) {
       setRectPreview({ start: rectDragRef.current, end: p });
@@ -564,6 +618,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       } else { setVsCrop(null); }
     }
 
+    // Translation rect: finish drawing rectangle shape
+    if (tool === "translation" && transPhase === "draw_shape" && transShapeMode === "rect" && transRectStart && transDrawing.length === 2) {
+      const s = transDrawing[0], e = transDrawing[1];
+      const dx = Math.abs(e.x - s.x), dy = Math.abs(e.y - s.y);
+      if (dx > 0.005 || dy > 0.005) {
+        const shape: Pt[] = [
+          { x: 0, y: 0 },
+          { x: dx, y: 0 },
+          { x: dx, y: dy },
+          { x: 0, y: dy },
+        ];
+        setTransShape(shape);
+        setTransPhase("validate");
+      }
+      setTransRectStart(null);
+      setTransDrawing([]);
+      return;
+    }
+
     // Rectangle: create 4-point polygon on mouseup
     if (tool === "add_rect" && rectDragRef.current && rectPreview) {
       const { start, end } = rectPreview;
@@ -591,6 +664,40 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       dragElRef.current = null;
       setIsDraggingEl(false);
     }
+  };
+
+  // Translation: apply shape to all anchors, creating elements
+  const applyTranslation = (type: FacadeElementType) => {
+    if (transAnchors.length === 0 || transShape.length < 3) return;
+    const ppm = result.pixels_per_meter;
+    let nextId = Math.max(0, ...elements.map(e => e.id)) + 1;
+    const newElements: FacadeElement[] = [];
+    for (const anchor of transAnchors) {
+      const pts = transShape.map(s => ({
+        x: Math.max(0, Math.min(1, anchor.x + s.x)),
+        y: Math.max(0, Math.min(1, anchor.y + s.y)),
+      }));
+      const bbox = bboxFromPoly(pts);
+      const areaPx = polygonAreaPx(pts, imgNat.w, imgNat.h);
+      newElements.push({
+        id: nextId++,
+        type,
+        label_fr: type === "window" ? "Fenêtre" : "Mur",
+        bbox_norm: bbox,
+        polygon_norm: pts,
+        area_m2: ppm ? areaPx / (ppm * ppm) : null,
+        floor_level: 0,
+        confidence: 1.0,
+      });
+    }
+    setElements(prev => [...prev, ...newElements]);
+    // Reset translation tool
+    setTransAnchors([]);
+    setTransShape([]);
+    setTransDrawing([]);
+    setTransPhase("choose_shape");
+    setTool("select");
+    toast({ title: `${newElements.length} ${type === "window" ? "fenêtre(s)" : "zone(s) mur"} créée(s)`, variant: "success" });
   };
 
   // Update selected element
@@ -789,6 +896,19 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <Ruler className="w-2.5 h-2.5" /> Échelle
             </button>
 
+            <button onClick={() => {
+              setTool("translation");
+              setTransPhase("choose_shape");
+              setTransAnchors([]);
+              setTransShape([]);
+              setTransDrawing([]);
+              setSelectedId(null);
+            }} title="Translation"
+              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
+                tool === "translation" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <ArrowLeft className="w-2.5 h-2.5 rotate-45" /> Translation
+            </button>
+
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
 
             {/* Visual Search */}
@@ -838,6 +958,97 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               </span>
             )}
           </div>
+
+          {/* ══ TRANSLATION TOOL PANEL ══ */}
+          {tool === "translation" && (
+            <div className="flex items-center gap-2 px-3 py-2 glass rounded-xl border border-violet-500/30 bg-violet-500/5 mb-1">
+              <Copy className="w-4 h-4 text-violet-400 shrink-0" />
+              <span className="text-xs font-semibold text-violet-400">Translation</span>
+              <div className="w-px h-4 bg-white/10" />
+
+              {transPhase === "choose_shape" && (
+                <>
+                  <span className="text-[10px] text-slate-400">Forme :</span>
+                  <button onClick={() => { setTransShapeMode("rect"); setTransPhase("place_anchors"); }}
+                    className="px-2 py-1 rounded text-[10px] border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20">
+                    <Square className="w-3 h-3 inline mr-1" />Rectangle
+                  </button>
+                  <button onClick={() => { setTransShapeMode("polygon"); setTransPhase("place_anchors"); }}
+                    className="px-2 py-1 rounded text-[10px] border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20">
+                    <Pentagon className="w-3 h-3 inline mr-1" />Polygone
+                  </button>
+                </>
+              )}
+
+              {transPhase === "place_anchors" && (
+                <>
+                  <span className="text-[10px] text-slate-400">
+                    Cliquez pour placer les points d&apos;ancrage ({transAnchors.length} placé{transAnchors.length > 1 ? "s" : ""})
+                  </span>
+                  <button onClick={() => { if (transAnchors.length > 0) setTransPhase("draw_shape"); }}
+                    disabled={transAnchors.length === 0}
+                    className={cn("px-2 py-1 rounded text-[10px] border font-medium",
+                      transAnchors.length > 0
+                        ? "border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20"
+                        : "border-white/10 text-slate-600 cursor-not-allowed")}>
+                    Valider les points ✓
+                  </button>
+                  {transAnchors.length > 0 && (
+                    <button onClick={() => setTransAnchors(prev => prev.slice(0, -1))}
+                      className="px-1.5 py-1 rounded text-[10px] border border-red-500/30 text-red-400 hover:bg-red-500/10">
+                      Annuler dernier
+                    </button>
+                  )}
+                </>
+              )}
+
+              {transPhase === "draw_shape" && (
+                <span className="text-[10px] text-slate-400">
+                  {transShapeMode === "rect"
+                    ? "Dessinez un rectangle (cliquez-glissez)"
+                    : `Dessinez un polygone (${transDrawing.length} pts — cliquez sur le 1er pour fermer)`}
+                </span>
+              )}
+
+              {transPhase === "validate" && (
+                <>
+                  <span className="text-[10px] text-green-400 font-medium">Forme dessinée sur {transAnchors.length} point(s)</span>
+                  <button onClick={() => setTransPhase("choose_type")}
+                    className="px-2 py-1 rounded text-[10px] border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 font-medium">
+                    Valider ✓
+                  </button>
+                  <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("draw_shape"); }}
+                    className="px-2 py-1 rounded text-[10px] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
+                    Recommencer forme
+                  </button>
+                  <button onClick={() => { setTransPhase("place_anchors"); }}
+                    className="px-2 py-1 rounded text-[10px] border border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+                    + Ajouter ancrages
+                  </button>
+                </>
+              )}
+
+              {transPhase === "choose_type" && (
+                <>
+                  <span className="text-[10px] text-slate-400">Type de zone :</span>
+                  <button onClick={() => applyTranslation("window")}
+                    className="px-2 py-1 rounded text-[10px] border border-pink-500/40 bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 font-medium">
+                    <AppWindow className="w-3 h-3 inline mr-1" />Fenêtre
+                  </button>
+                  <button onClick={() => applyTranslation("wall_opaque" as FacadeElementType)}
+                    className="px-2 py-1 rounded text-[10px] border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 font-medium">
+                    <Building2 className="w-3 h-3 inline mr-1" />Surface mur
+                  </button>
+                </>
+              )}
+
+              <div className="flex-1" />
+              <button onClick={() => { setTool("select"); setTransAnchors([]); setTransShape([]); setTransDrawing([]); setTransPhase("choose_shape"); }}
+                className="px-1.5 py-1 rounded text-[10px] text-slate-500 hover:text-red-400">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
 
           {/* ══ CANVAS ══ */}
           <div
@@ -1313,6 +1524,75 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       </g>
                     );
                   })()}
+
+                  {/* ── Translation tool overlays ── */}
+                  {tool === "translation" && (
+                    <g>
+                      {/* Anchor points */}
+                      {transAnchors.map((a, i) => (
+                        <g key={`ta-${i}`}>
+                          <circle cx={a.x * imgNat.w} cy={a.y * imgNat.h} r={8}
+                            fill="#8b5cf6" stroke="#fff" strokeWidth={2} opacity={0.9} />
+                          <text x={a.x * imgNat.w} y={a.y * imgNat.h + 1}
+                            textAnchor="middle" dominantBaseline="middle"
+                            fill="#fff" fontSize={9} fontWeight={700} fontFamily="system-ui">{i + 1}</text>
+                        </g>
+                      ))}
+
+                      {/* Shape preview on all anchors (during draw or after validate) */}
+                      {transShape.length >= 3 && transAnchors.map((a, ai) => {
+                        const pts = transShape.map(s => `${(a.x + s.x) * imgNat.w},${(a.y + s.y) * imgNat.h}`).join(" ");
+                        return (
+                          <polygon key={`ts-${ai}`} points={pts}
+                            fill="rgba(139,92,246,0.2)" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="5 3" />
+                        );
+                      })}
+
+                      {/* Drawing preview — polygon mode */}
+                      {transPhase === "draw_shape" && transShapeMode === "polygon" && transDrawing.length > 0 && (() => {
+                        const previewPts = hoverPoint ? [...transDrawing, hoverPoint] : transDrawing;
+                        // Show on all anchors
+                        return transAnchors.map((a, ai) => {
+                          const offset = { x: a.x - transDrawing[0].x, y: a.y - transDrawing[0].y };
+                          const pts = previewPts.map(p => `${(p.x + offset.x) * imgNat.w},${(p.y + offset.y) * imgNat.h}`).join(" ");
+                          return (
+                            <g key={`tdp-${ai}`}>
+                              {previewPts.length >= 3 ? (
+                                <polygon points={pts} fill="rgba(139,92,246,0.15)" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 2" />
+                              ) : (
+                                <polyline points={pts} fill="none" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 2" />
+                              )}
+                            </g>
+                          );
+                        });
+                      })()}
+
+                      {/* Drawing preview — rect mode */}
+                      {transPhase === "draw_shape" && transShapeMode === "rect" && transDrawing.length === 2 && (() => {
+                        const [s, e] = transDrawing;
+                        const rw = Math.abs(e.x - s.x), rh = Math.abs(e.y - s.y);
+                        return transAnchors.map((a, ai) => (
+                          <rect key={`tdr-${ai}`}
+                            x={a.x * imgNat.w} y={a.y * imgNat.h}
+                            width={rw * imgNat.w} height={rh * imgNat.h}
+                            fill="rgba(139,92,246,0.15)" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 2" />
+                        ));
+                      })()}
+
+                      {/* Drawing polygon: vertex dots */}
+                      {transPhase === "draw_shape" && transShapeMode === "polygon" && transDrawing.map((p, i) => (
+                        <circle key={`tdv-${i}`} cx={p.x * imgNat.w} cy={p.y * imgNat.h}
+                          r={i === 0 && transDrawing.length >= 3 ? 9 : 5}
+                          fill={i === 0 && transDrawing.length >= 3 ? "#8b5cf6" : "#fff"}
+                          stroke="#8b5cf6" strokeWidth={2} />
+                      ))}
+                      {/* Close hint ring */}
+                      {transPhase === "draw_shape" && transShapeMode === "polygon" && transDrawing.length >= 3 && (
+                        <circle cx={transDrawing[0].x * imgNat.w} cy={transDrawing[0].y * imgNat.h}
+                          r={14} fill="none" stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="4 2" opacity={0.5} />
+                      )}
+                    </g>
+                  )}
                 </svg>
 
               </div>
