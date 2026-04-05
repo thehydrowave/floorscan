@@ -355,9 +355,21 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     acc[key]!.push(room);
     return acc;
   }, {});
+  // Helper: compute perimeter for a room (always from polygon if possible)
+  const computeRoomPerim = useCallback((r: any): number => {
+    const ppmVal = result.pixels_per_meter;
+    const imgEl = document.querySelector('[data-results-image]') as HTMLImageElement;
+    const w = imgNatural.w > 10 ? imgNatural.w : (imgEl?.naturalWidth || 2000);
+    const h = imgNatural.h > 10 ? imgNatural.h : (imgEl?.naturalHeight || 2000);
+    if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmVal && ppmVal > 0) {
+      return polygonPerimeterM(r.polygon_norm, w, h, ppmVal);
+    }
+    return r.perimeter_m ?? 0;
+  }, [result.pixels_per_meter, imgNatural]);
+
   const totalRooms = (result.rooms ?? []).length;
   const totalArea = (result.rooms ?? []).reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2);
-  const totalPerim = (result.rooms ?? []).reduce((s, r) => s + (r.perimeter_m ?? 0), 0).toFixed(2);
+  const totalPerim = (result.rooms ?? []).reduce((s, r) => s + computeRoomPerim(r), 0).toFixed(2);
 
   const sf = result.surfaces ?? {};
 
@@ -967,7 +979,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                   <tbody>
                     {Object.entries(roomsByType).map(([type, rooms]) => {
                       const groupArea = rooms!.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
-                      const groupPerim = rooms!.reduce((s, r) => s + (r.perimeter_m ?? 0), 0);
+                      const groupPerim = rooms!.reduce((s, r) => s + computeRoomPerim(r), 0);
                       const color = getRoomColor(type);
                       return (
                         <tr key={type} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
