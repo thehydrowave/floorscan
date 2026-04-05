@@ -2378,9 +2378,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Room type selector */}
                   <select
                     value={activeRoomType}
-                    onChange={e => setActiveRoomType(e.target.value)}
+                    onChange={e => {
+                      const newType = e.target.value;
+                      setActiveRoomType(newType);
+                      // Also update selected room if any
+                      if (selectedRoomId) {
+                        const rt = ROOM_TYPES.find(r => r.type === newType);
+                        updateRoomLabel(selectedRoomId, newType, rt ? d(rt.i18nKey) : newType);
+                      }
+                    }}
                     className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white"
-                    title="Type de pièce pour la création"
+                    title="Type de pièce"
                   >
                     {ROOM_TYPES.map(rt => (
                       <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
@@ -2418,7 +2426,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   )}
                   <div className="flex gap-0.5 items-center ml-1">
                     {ROOM_TYPES.slice(0, 8).map(rt => (
-                      <button key={rt.type} onClick={() => setActiveRoomType(rt.type)}
+                      <button key={rt.type} onClick={() => {
+                        setActiveRoomType(rt.type);
+                        if (selectedRoomId) updateRoomLabel(selectedRoomId, rt.type, d(rt.i18nKey));
+                      }}
                         title={d(rt.i18nKey)}
                         className={cn("w-4 h-4 rounded-full border-2 transition-all shrink-0",
                           activeRoomType === rt.type ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100")}
