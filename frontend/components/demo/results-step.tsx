@@ -114,7 +114,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     surfaceTypes?: SurfaceType[];
     linearMeasures?: any[];
     angleMeasures?: any[];
+    countCategories?: Array<{ name: string; color: string; count: number }>;
   } | undefined;
+  const countCategories = useMemo(() => measurements?.countCategories ?? [], [measurements]);
   const editorZones = useMemo(() => (measurements?.zones ?? []).filter((z: MeasureZone) => z.typeId !== "__count__" && z.points?.length >= 3), [measurements]);
   const editorSurfaceTypes = useMemo(() => measurements?.surfaceTypes ?? [], [measurements]);
   const hasSurfaces = editorZones.length > 0;
@@ -171,6 +173,16 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       const ws3 = XLSX.utils.aoa_to_sheet(data3);
       ws3["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
       XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
+    }
+
+    // Sheet 4: Comptage (if available from editor)
+    if (countCategories.length > 0) {
+      const data4: (string | number)[][] = [["Catégorie", "Nombre"]];
+      countCategories.forEach(c => data4.push([c.name, c.count]));
+      data4.push(["TOTAL", countCategories.reduce((s, c) => s + c.count, 0)]);
+      const ws4 = XLSX.utils.aoa_to_sheet(data4);
+      ws4["!cols"] = [{ wch: 20 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws4, "Comptage");
     }
 
     XLSX.writeFile(wb, `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -315,6 +327,23 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 ×{det.count}
               </p>
               {det.total_area_m2 !== null && (<p className="text-xs text-slate-500 mt-1">{det.total_area_m2.toFixed(2)} m²</p>)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Comptage (from editor) */}
+      {countCategories.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {countCategories.map((cat, i) => (
+            <div key={i} className="glass rounded-xl border border-white/10 p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                <p className="text-xs text-slate-500">{cat.name}</p>
+              </div>
+              <p className="text-3xl font-bold" style={{ color: cat.color, fontFamily: "ui-monospace, 'SF Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
+                ×{cat.count}
+              </p>
             </div>
           ))}
         </div>

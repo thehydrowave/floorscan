@@ -228,6 +228,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [textColor, setTextColor] = useState("#38BDF8");
   const [textFontSize, setTextFontSize] = useState(12);
   const [circleCenter, setCircleCenter] = useState<{ x: number; y: number } | null>(null);
+  const [showLinearMeasures, setShowLinearMeasures] = useState(true);
   const [showTuto, setShowTuto] = useState(false);
   const [showCountDropdown, setShowCountDropdown] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1174,7 +1175,33 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         }
       });
       if (bestIdx >= 0 && (bestDist === 0 || bestDist < 150)) {
-        setSelectedOpeningIdx(prev => prev === bestIdx ? null : bestIdx);
+        const newIdx = selectedOpeningIdx === bestIdx ? null : bestIdx;
+        setSelectedOpeningIdx(newIdx);
+        if (newIdx !== null) {
+          setSidebarTab("visibility");
+          // Zoom to opening
+          const opening = result.openings![newIdx];
+          if (opening && imgRef.current && zoomContainerRef.current) {
+            const img = imgRef.current;
+            const container = zoomContainerRef.current;
+            const scx = img.offsetWidth / (imageNatural.w || 1);
+            const scy = img.offsetHeight / (imageNatural.h || 1);
+            const bx = opening.x_px * scx;
+            const by = opening.y_px * scy;
+            const bw = opening.width_px * scx;
+            const bh = opening.height_px * scy;
+            const pad = 120;
+            const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
+            const zoomVal = Math.max(0.8, newZoom);
+            const cx = (bx + bw/2) - img.offsetWidth/2;
+            const cy = (by + bh/2) - img.offsetHeight/2;
+            setZoom(zoomVal);
+            setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
+            setShowDoors(opening.class === "door");
+            setShowWindows(opening.class === "window");
+            setShowFrenchDoors(opening.class === "french_door");
+          }
+        }
       } else {
         setSelectedOpeningIdx(null);
       }
@@ -1760,6 +1787,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <span className="text-[8px]">A</span>
             </button>
             )}
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+            {/* Linear + Count visibility */}
+            <button onClick={() => { setShowLinearMeasures(v => !v); }}
+              title="Mesures lin\u00e9aires"
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                showLinearMeasures ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Ruler size={10} className="text-sky-400" />
+              {showLinearMeasures ? <Eye className="w-2.5 h-2.5 text-sky-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
@@ -1903,7 +1939,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); setShowCountDropdown(false); }}
                         className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs w-full text-left transition-colors",
                           activeCountGroupId === grp.id ? "bg-sky-500/15 text-sky-300" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: grp.color }} />
+                        <span className="relative w-3 h-3 rounded-full shrink-0 cursor-pointer" style={{ background: grp.color }}>
+                          <input type="color" value={grp.color}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setCountGroups(prev => prev.map(g => g.id === grp.id ? {...g, color: e.target.value} : g)); }}
+                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+                        </span>
                         {grp.name}
                         <span className="ml-auto text-[10px] text-slate-600 font-mono">{countPoints.filter(p => p.groupId === grp.id).length}</span>
                       </button>
@@ -1933,7 +1974,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {tool === "linear" && !ppm && (
               <span className="text-[10px] text-amber-400 ml-1">⚠ Calibrez l'échelle pour afficher en mètres</span>
             )}
-            {tool === "linear" && ppm && linearMeasures.length > 0 && (
+            {ppm && linearMeasures.length > 0 && (
               <span className="text-[10px] text-sky-400 font-mono ml-1">
                 Total : {linearMeasures.reduce((s, lm) => s + (lm.distPx / ppm), 0).toFixed(2)} m
               </span>
@@ -2604,6 +2645,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </g>
                     );
                   })}
+                </svg>
+              )}
+
+              {/* ── Linear & Angle measurements (always visible when toggled) ── */}
+              {showLinearMeasures && (linearMeasures.length > 0 || angleMeasures.length > 0) && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imageNatural.w} ${imageNatural.h}`}
+                  style={{ zIndex: 2 }}
+                >
                   {/* Linear measurements */}
                   {linearMeasures.map(lm => {
                     const x1 = lm.p1.x * imageNatural.w, y1 = lm.p1.y * imageNatural.h;
@@ -3721,12 +3774,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                               const by = opening.y_px * scy;
                               const bw = opening.width_px * scx;
                               const bh = opening.height_px * scy;
-                              const pad = 80;
-                              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 6);
+                              const pad = 120;
+                              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
+                              const zoomVal = Math.max(0.8, Math.min(newZoom, 5));
                               const cx = (bx + bw/2) - img.offsetWidth/2;
                               const cy = (by + bh/2) - img.offsetHeight/2;
-                              setZoom(Math.max(1, newZoom));
-                              setTranslate({ x: -cx * Math.max(1, newZoom), y: -cy * Math.max(1, newZoom) });
+                              setZoom(zoomVal);
+                              setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
                             }
                             // Isolate: show only this element's mask type
                             setShowDoors(opening.class === "door");
