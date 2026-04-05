@@ -165,108 +165,145 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     const XLSX = require("xlsx");
     const wb = XLSX.utils.book_new();
     const sf = result.surfaces ?? {};
+    const ppm = result.pixels_per_meter;
+    const imgEl = document.querySelector('[data-results-image]') as HTMLImageElement;
+    const iw = imgNatural.w > 10 ? imgNatural.w : (imgEl?.naturalWidth || 2000);
+    const ih = imgNatural.h > 10 ? imgNatural.h : (imgEl?.naturalHeight || 2000);
 
-    // Sheet 1: Résultats
-    const data1: (string | number)[][] = [
-      ["FloorScan — Résultats d'analyse IA"],
+    // ═══════════ Sheet 1: Synthèse générale ═══════════
+    const d1: (string | number)[][] = [
+      ["FloorScan — Rapport d'analyse complet"],
       ["Date", new Date().toLocaleDateString("fr-FR")],
+      ["Échelle (px/m)", ppm ? +ppm.toFixed(2) : "Non calibrée"],
       [],
-      ["ÉLÉMENTS DÉTECTÉS"],
+      ["═══ ÉLÉMENTS DÉTECTÉS ═══"],
       ["Portes", result.doors_count],
       ["Fenêtres", result.windows_count],
       ...(result.french_doors_count ? [["Portes-fenêtres", result.french_doors_count]] : []),
+      ["Total ouvertures", result.doors_count + result.windows_count + (result.french_doors_count ?? 0)],
       [],
-      ["SURFACES"],
+      ["═══ SURFACES & PÉRIMÈTRES ═══"],
       ["Emprise bâtiment (m²)", sf.area_building_m2 != null ? +sf.area_building_m2.toFixed(2) : "—"],
       ["Périmètre bâtiment (m)", sf.perim_building_m != null ? +sf.perim_building_m.toFixed(2) : "—"],
       ["Surface habitable (m²)", sf.area_hab_m2 != null ? +sf.area_hab_m2.toFixed(2) : "—"],
       ["Périmètre intérieur (m)", sf.perim_interior_m != null ? +sf.perim_interior_m.toFixed(2) : "—"],
       ["Surface murs (m²)", sf.area_walls_m2 != null ? +sf.area_walls_m2.toFixed(2) : "—"],
+      [],
+      ["═══ PIÈCES ═══"],
+      ["Nombre de pièces", (result.rooms ?? []).length],
+      ["Surface totale pièces (m²)", +(result.rooms ?? []).reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2)],
+      ["Périmètre total pièces (m)", +(result.rooms ?? []).reduce((s, r) => s + computeRoomPerim(r), 0).toFixed(2)],
     ];
-    const ws1 = XLSX.utils.aoa_to_sheet(data1);
-    ws1["!cols"] = [{ wch: 25 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws1, "Résultats");
+    // Add custom detections summary
+    if (customDetections.length > 0) {
+      d1.push([], ["═══ DÉTECTIONS PERSONNALISÉES ═══"]);
+      customDetections.forEach(det => {
+        d1.push([det.label, det.count, det.total_area_m2 != null ? `${det.total_area_m2.toFixed(2)} m²` : ""]);
+      });
+    }
+    // Add count categories summary
+    if (countCategories.length > 0) {
+      d1.push([], ["═══ COMPTAGES ═══"]);
+      countCategories.forEach(c => d1.push([c.name, c.count]));
+      d1.push(["Total comptages", countCategories.reduce((s, c) => s + c.count, 0)]);
+    }
+    const ws1 = XLSX.utils.aoa_to_sheet(d1);
+    ws1["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws1, "Synthèse");
 
-    // Sheet 2: Ouvertures
+    // ═══════════ Sheet 2: Ouvertures détaillées ═══════════
     if (result.openings && result.openings.length > 0) {
-      const data2: (string | number)[][] = [["Type", "Longueur (m)"]];
-      result.openings.forEach(o => data2.push([o.class === "door" ? "Porte" : "Fenêtre", o.length_m != null ? +o.length_m.toFixed(2) : 0]));
-      const ws2 = XLSX.utils.aoa_to_sheet(data2);
-      ws2["!cols"] = [{ wch: 15 }, { wch: 15 }];
+      const d2: (string | number)[][] = [["#", "Type", "Longueur (m)", "Largeur (m)", "Hauteur (m)", "Surface (m²)"]];
+      result.openings.forEach((o, i) => d2.push([
+        i + 1,
+        o.class === "door" ? "Porte" : o.class === "french_door" ? "Porte-fenêtre" : "Fenêtre",
+        o.length_m != null ? +o.length_m.toFixed(2) : "—",
+        o.width_m != null ? +o.width_m.toFixed(2) : "—",
+        o.height_m != null ? +o.height_m.toFixed(2) : "—",
+        o.length_m && o.width_m ? +(o.length_m * o.width_m).toFixed(2) : "—",
+      ]));
+      const ws2 = XLSX.utils.aoa_to_sheet(d2);
+      ws2["!cols"] = [{ wch: 5 }, { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, ws2, "Ouvertures");
     }
 
-    // Sheet 3: Pièces
+    // ═══════════ Sheet 3: Pièces détaillées ═══════════
     if (result.rooms && result.rooms.length > 0) {
-      const ppmR = result.pixels_per_meter;
-      // Get image dimensions — try imgNatural, then DOM, then fallback
-      const imgEl = document.querySelector('[data-results-image]') as HTMLImageElement;
-      const iw = imgNatural.w > 10 ? imgNatural.w : (imgEl?.naturalWidth || 2000);
-      const ih = imgNatural.h > 10 ? imgNatural.h : (imgEl?.naturalHeight || 2000);
-      const data3: (string | number)[][] = [["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"]];
+      const d3: (string | number)[][] = [["Pièce", "Type", "Surface (m²)", "Périmètre (m)", "Type de sol", "Nb vertices"]];
       result.rooms.forEach(r => {
-        // Always calculate perimeter from polygon_norm
-        let perim = 0;
-        if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) {
-          perim = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
-        } else if (r.perimeter_m && r.perimeter_m > 0) {
-          perim = r.perimeter_m;
-        }
-        // Get surface type NAME instead of ID
+        const perim = computeRoomPerim(r);
         const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
-        data3.push([r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, +perim.toFixed(2), stName]);
+        d3.push([r.label_fr, r.type, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, +perim.toFixed(2), stName, r.polygon_norm?.length ?? 0]);
       });
-      const totalArea = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
-      const totalPerim = result.rooms.reduce((s, r) => {
-        let p = 0;
-        if (r.polygon_norm && r.polygon_norm.length >= 3 && ppmR && ppmR > 0) p = polygonPerimeterM(r.polygon_norm, iw, ih, ppmR);
-        else if (r.perimeter_m && r.perimeter_m > 0) p = r.perimeter_m;
-        return s + p;
-      }, 0);
-      data3.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
-      const ws3 = XLSX.utils.aoa_to_sheet(data3);
-      ws3["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
+      const tA = result.rooms.reduce((s, r) => s + (r.area_m2 ?? 0), 0);
+      const tP = result.rooms.reduce((s, r) => s + computeRoomPerim(r), 0);
+      d3.push(["TOTAL", "", +tA.toFixed(2), +tP.toFixed(2), "", ""]);
+      // Group by type
+      d3.push([], ["═══ PAR TYPE DE PIÈCE ═══"], ["Type", "Nombre", "Surface totale (m²)", "Périmètre total (m)"]);
+      const byType = new Map<string, { count: number; area: number; perim: number }>();
+      result.rooms.forEach(r => {
+        const e = byType.get(r.type) ?? { count: 0, area: 0, perim: 0 };
+        e.count++; e.area += r.area_m2 ?? 0; e.perim += computeRoomPerim(r);
+        byType.set(r.type, e);
+      });
+      byType.forEach((v, k) => d3.push([k, v.count, +v.area.toFixed(2), +v.perim.toFixed(2)]));
+      // Group by surface type
+      if (editorSurfaceTypes.length > 0) {
+        d3.push([], ["═══ PAR TYPE DE SOL ═══"], ["Sol", "Nombre pièces", "Surface totale (m²)"]);
+        const bySurf = new Map<string, { count: number; area: number }>();
+        result.rooms.forEach(r => {
+          const stId = r.surfaceTypeId ?? "aucun";
+          const e = bySurf.get(stId) ?? { count: 0, area: 0 };
+          e.count++; e.area += r.area_m2 ?? 0;
+          bySurf.set(stId, e);
+        });
+        bySurf.forEach((v, k) => {
+          const name = k === "aucun" ? "— Aucun —" : (editorSurfaceTypes.find(st => st.id === k)?.name ?? k);
+          d3.push([name, v.count, +v.area.toFixed(2)]);
+        });
+      }
+      const ws3 = XLSX.utils.aoa_to_sheet(d3);
+      ws3["!cols"] = [{ wch: 20 }, { wch: 15 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
     }
 
-    // Sheet 4: Comptage (if available from editor)
+    // ═══════════ Sheet 4: Comptage ═══════════
     if (countCategories.length > 0) {
-      const data4: (string | number)[][] = [["Catégorie", "Nombre"]];
-      countCategories.forEach(c => data4.push([c.name, c.count]));
-      data4.push(["TOTAL", countCategories.reduce((s, c) => s + c.count, 0)]);
-      const ws4 = XLSX.utils.aoa_to_sheet(data4);
-      ws4["!cols"] = [{ wch: 20 }, { wch: 10 }];
+      const d4: (string | number)[][] = [["Catégorie", "Couleur", "Nombre"]];
+      countCategories.forEach(c => d4.push([c.name, c.color, c.count]));
+      d4.push(["TOTAL", "", countCategories.reduce((s, c) => s + c.count, 0)]);
+      const ws4 = XLSX.utils.aoa_to_sheet(d4);
+      ws4["!cols"] = [{ wch: 20 }, { wch: 10 }, { wch: 10 }];
       XLSX.utils.book_append_sheet(wb, ws4, "Comptage");
     }
 
-    // Sheet: Linéaires
+    // ═══════════ Sheet 5: Linéaires ═══════════
     if (linearMeasures.length > 0) {
-      const ppm = result.pixels_per_meter;
-      const dataL: (string | number)[][] = [["#", "Distance (m)", "Distance (px)"]];
+      const dL: (string | number)[][] = [["#", "Distance (m)", "Distance (px)"]];
       linearMeasures.forEach((lm, i) => {
         const distM = ppm ? +(lm.distPx / ppm).toFixed(3) : 0;
-        dataL.push([i + 1, distM, Math.round(lm.distPx)]);
+        dL.push([i + 1, distM, Math.round(lm.distPx)]);
       });
-      dataL.push(["TOTAL", ppm ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppm!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
-      const wsL = XLSX.utils.aoa_to_sheet(dataL);
+      dL.push(["TOTAL", ppm ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppm!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
+      const wsL = XLSX.utils.aoa_to_sheet(dL);
       wsL["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, wsL, "Linéaires");
     }
 
-    // Sheet: Angles
+    // ═══════════ Sheet 6: Angles ═══════════
     if (angleMeasures.length > 0) {
-      const dataA: (string | number)[][] = [["#", "Angle (°)"]];
-      angleMeasures.forEach((am, i) => dataA.push([i + 1, +am.angleDeg.toFixed(1)]));
-      const wsA = XLSX.utils.aoa_to_sheet(dataA);
+      const dA: (string | number)[][] = [["#", "Angle (°)"]];
+      angleMeasures.forEach((am, i) => dA.push([i + 1, +am.angleDeg.toFixed(1)]));
+      const wsA = XLSX.utils.aoa_to_sheet(dA);
       wsA["!cols"] = [{ wch: 5 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, wsA, "Angles");
     }
 
-    // Sheet: Textes
+    // ═══════════ Sheet 7: Textes ═══════════
     if (textAnnotations.length > 0) {
-      const dataT: (string | number)[][] = [["Texte", "Couleur", "Taille"]];
-      textAnnotations.forEach(ta => dataT.push([ta.text, ta.color, ta.fontSize ?? 12]));
-      const wsT = XLSX.utils.aoa_to_sheet(dataT);
+      const dT: (string | number)[][] = [["Texte", "Couleur", "Taille"]];
+      textAnnotations.forEach(ta => dT.push([ta.text, ta.color, ta.fontSize ?? 12]));
+      const wsT = XLSX.utils.aoa_to_sheet(dT);
       wsT["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 8 }];
       XLSX.utils.book_append_sheet(wb, wsT, "Textes");
     }

@@ -19,6 +19,32 @@ import {
   type ColDef,
 } from "@/lib/pdf-theme";
 
+/** Composite two base64 PNG images (base + overlay with transparency) */
+async function compositeImages(baseB64: string, overlayB64: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const baseImg = new Image();
+    baseImg.onload = () => {
+      const cv = document.createElement("canvas");
+      cv.width = baseImg.naturalWidth;
+      cv.height = baseImg.naturalHeight;
+      const ctx = cv.getContext("2d")!;
+      ctx.drawImage(baseImg, 0, 0);
+
+      const overlayImg = new Image();
+      overlayImg.onload = () => {
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(overlayImg, 0, 0, cv.width, cv.height);
+        ctx.globalAlpha = 1.0;
+        resolve(cv.toDataURL("image/png").split(",")[1]);
+      };
+      overlayImg.onerror = () => reject(new Error("overlay load failed"));
+      overlayImg.src = `data:image/png;base64,${overlayB64}`;
+    };
+    baseImg.onerror = () => reject(new Error("base load failed"));
+    baseImg.src = `data:image/png;base64,${baseB64}`;
+  });
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface RapportOptions {
@@ -325,16 +351,36 @@ export async function downloadRapportPdf(
   // PAGE 4 — PLAN ANNOTÉ : PIÈCES COLORÉES
   // ═══════════════════════════════════════════════════════════════════════
 
-  if (result.mask_rooms_b64) {
+  // ── Page: Plan annoté — Pièces et surfaces ──
+  {
     b.newPage();
     b.drawSectionTitle("PLAN ANNOTE — PIECES ET SURFACES");
-    b.moveDown(6);
+
+    const roomCount = result.rooms?.length ?? 0;
+    const totalHab = result.surfaces?.area_hab_m2;
     b.drawText(
-      `${rooms.length} piece${rooms.length > 1 ? "s" : ""} detectee${rooms.length > 1 ? "s" : ""} — Surface totale : ${fmt2(sf.area_hab_m2, " m2")}`,
+      `${roomCount} piece${roomCount > 1 ? "s" : ""} detectee${roomCount > 1 ? "s" : ""} -- Surface totale : ${totalHab ? totalHab.toFixed(2) + " m2" : "N/A"}`,
       { size: TYPO.BODY, color: C.GRAY_500 }
     );
-    b.moveDown(14);
-    await embedImg(b, result.mask_rooms_b64);
+    b.moveDown(8);
+
+    // Composite: plan + rooms overlay
+    const planB64ForRooms = result.plan_b64 || result.overlay_openings_b64;
+    const roomsOverlayB64 = result.mask_rooms_b64;
+    if (planB64ForRooms) {
+      if (roomsOverlayB64) {
+        // Create composite image: plan + rooms overlay
+        try {
+          const compositeB64 = await compositeImages(planB64ForRooms, roomsOverlayB64);
+          await embedImg(b, compositeB64);
+        } catch {
+          // Fallback: just show the plan
+          await embedImg(b, planB64ForRooms);
+        }
+      } else {
+        await embedImg(b, planB64ForRooms);
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
