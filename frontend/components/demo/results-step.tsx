@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, Edit3, RotateCcw, Table2, Printer, Search, Ruler, FileDown, ChevronDown, ChevronRight, Eye, EyeOff, Layers, DoorOpen, AppWindow, Home, ArrowLeftRight, Wrench, PaintBucket, ClipboardList, ZoomIn, ZoomOut, Hash, Type, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnalysisResult, CustomDetection, ComparisonResult } from "@/lib/types";
 import { toast } from "@/components/ui/use-toast";
@@ -68,6 +68,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const [showDetectionsOverlay, setShowDetectionsOverlay] = useState(false);
   // ── Surfaces overlay (from editor _measurements) ──
   const [showSurfacesOverlay, setShowSurfacesOverlay] = useState(true);
+  // ── Measurement overlays ──
+  const [showLinears, setShowLinears] = useState(true);
+  const [showCounts, setShowCounts] = useState(true);
+  const [showTexts, setShowTexts] = useState(true);
+  const [showCircles, setShowCircles] = useState(true);
   // ── Multi-model comparison ──
   const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
   const [comparingModels, setComparingModels] = useState(false);
@@ -112,11 +117,23 @@ export default function ResultsStep({ result, customDetections = [], onDetection
   const measurements = (result as any)._measurements as {
     zones?: MeasureZone[];
     surfaceTypes?: SurfaceType[];
-    linearMeasures?: any[];
-    angleMeasures?: any[];
-    countCategories?: Array<{ name: string; color: string; count: number }>;
+    linearMeasures?: Array<{id: string; p1: {x:number;y:number}; p2: {x:number;y:number}; distPx: number}>;
+    angleMeasures?: Array<{id: string; p1: {x:number;y:number}; vertex: {x:number;y:number}; p3: {x:number;y:number}; angleDeg: number}>;
+    countPoints?: Array<{id: string; groupId: string; x: number; y: number}>;
+    countGroups?: Array<{id: string; name: string; color: string}>;
+    textAnnotations?: Array<{id: string; x: number; y: number; text: string; color: string; fontSize?: number}>;
+    circleMeasures?: Array<{id: string; center: {x:number;y:number}; edgePoint: {x:number;y:number}}>;
   } | undefined;
-  const countCategories = useMemo(() => measurements?.countCategories ?? [], [measurements]);
+  const countCategories = useMemo(() => {
+    const groups = measurements?.countGroups ?? [];
+    const points = measurements?.countPoints ?? [];
+    return groups.map(g => ({ ...g, count: points.filter(p => p.groupId === g.id).length })).filter(c => c.count > 0);
+  }, [measurements]);
+  const linearMeasures = measurements?.linearMeasures ?? [];
+  const angleMeasures = measurements?.angleMeasures ?? [];
+  const textAnnotations = measurements?.textAnnotations ?? [];
+  const circleMeasures = measurements?.circleMeasures ?? [];
+  const countPoints = measurements?.countPoints ?? [];
   const editorZones = useMemo(() => (measurements?.zones ?? []).filter((z: MeasureZone) => z.typeId !== "__count__" && z.points?.length >= 3), [measurements]);
   const editorSurfaceTypes = useMemo(() => measurements?.surfaceTypes ?? [], [measurements]);
   const hasSurfaces = editorZones.length > 0;
@@ -183,6 +200,74 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       const ws4 = XLSX.utils.aoa_to_sheet(data4);
       ws4["!cols"] = [{ wch: 20 }, { wch: 10 }];
       XLSX.utils.book_append_sheet(wb, ws4, "Comptage");
+    }
+
+    // Sheet: Linéaires
+    if (linearMeasures.length > 0) {
+      const ppm = result.pixels_per_meter;
+      const dataL: (string | number)[][] = [["#", "Distance (m)", "Distance (px)"]];
+      linearMeasures.forEach((lm, i) => {
+        const distM = ppm ? +(lm.distPx / ppm).toFixed(3) : 0;
+        dataL.push([i + 1, distM, Math.round(lm.distPx)]);
+      });
+      dataL.push(["TOTAL", ppm ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppm!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
+      const wsL = XLSX.utils.aoa_to_sheet(dataL);
+      wsL["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, wsL, "Linéaires");
+    }
+
+    // Sheet: Angles
+    if (angleMeasures.length > 0) {
+      const dataA: (string | number)[][] = [["#", "Angle (°)"]];
+      angleMeasures.forEach((am, i) => dataA.push([i + 1, +am.angleDeg.toFixed(1)]));
+      const wsA = XLSX.utils.aoa_to_sheet(dataA);
+      wsA["!cols"] = [{ wch: 5 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsA, "Angles");
+    }
+
+    // Sheet: Textes
+    if (textAnnotations.length > 0) {
+      const dataT: (string | number)[][] = [["Texte", "Couleur", "Taille"]];
+      textAnnotations.forEach(ta => dataT.push([ta.text, ta.color, ta.fontSize ?? 12]));
+      const wsT = XLSX.utils.aoa_to_sheet(dataT);
+      wsT["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 8 }];
+      XLSX.utils.book_append_sheet(wb, wsT, "Textes");
+    }
+
+    // Sheet: Cercles
+    if (circleMeasures.length > 0) {
+      const ppm = result.pixels_per_meter;
+      const dataC: (string | number)[][] = [["#", "Rayon (m)", "Diamètre (m)", "Périmètre (m)", "Surface (m²)"]];
+      circleMeasures.forEach((cm, i) => {
+        const rPx = Math.hypot((cm.edgePoint.x - cm.center.x) * imgNatural.w, (cm.edgePoint.y - cm.center.y) * imgNatural.h);
+        const rM = ppm ? rPx / ppm : 0;
+        dataC.push([i + 1, +rM.toFixed(3), +(rM * 2).toFixed(3), +(2 * Math.PI * rM).toFixed(3), +(Math.PI * rM * rM).toFixed(3)]);
+      });
+      const wsC = XLSX.utils.aoa_to_sheet(dataC);
+      wsC["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsC, "Cercles");
+    }
+
+    // Sheet: Surfaces (from editor zones)
+    if (hasSurfaces) {
+      const ppm = result.pixels_per_meter;
+      const dataS: (string | number)[][] = [["Type", "Surface (m²)", "Nb zones", "Prix/m²", "Chute %", "Total HT"]];
+      editorSurfaceTypes.forEach(st => {
+        const stZones = editorZones.filter(z => z.typeId === st.id);
+        if (stZones.length === 0) return;
+        const totalArea = ppm ? stZones.reduce((s, z) => {
+          let a = 0; const pts = z.points;
+          for (let j = 0; j < pts.length; j++) { const k = (j+1)%pts.length; a += pts[j].x * imgNatural.w * pts[k].y * imgNatural.h - pts[k].x * imgNatural.w * pts[j].y * imgNatural.h; }
+          return s + Math.abs(a) / 2 / (ppm * ppm);
+        }, 0) : 0;
+        const waste = st.wastePercent ?? 10;
+        const price = st.pricePerM2 ?? 0;
+        const ht = totalArea * price * (1 + waste / 100);
+        dataS.push([st.name, +totalArea.toFixed(2), stZones.length, price, waste, +ht.toFixed(2)]);
+      });
+      const wsS = XLSX.utils.aoa_to_sheet(dataS);
+      wsS["!cols"] = [{ wch: 15 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, wsS, "Surfaces");
     }
 
     XLSX.writeFile(wb, `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -461,6 +546,35 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             <Ruler className="w-3.5 h-3.5" /> {d("meas_btn" as DTKey)}
           </button>
 
+          {linearMeasures.length > 0 && (
+            <button onClick={() => setShowLinears(v => !v)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showLinears ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+              <Ruler className="w-3.5 h-3.5" /> Lin&#233;aires ({linearMeasures.length})
+            </button>
+          )}
+          {countCategories.length > 0 && (
+            <button onClick={() => setShowCounts(v => !v)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showCounts ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+              <Hash className="w-3.5 h-3.5" /> Comptage ({countPoints.length})
+            </button>
+          )}
+          {textAnnotations.length > 0 && (
+            <button onClick={() => setShowTexts(v => !v)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showTexts ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+              <Type className="w-3.5 h-3.5" /> Textes ({textAnnotations.length})
+            </button>
+          )}
+          {circleMeasures.length > 0 && (
+            <button onClick={() => setShowCircles(v => !v)}
+              className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
+                showCircles ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
+              <Circle className="w-3.5 h-3.5" /> Cercles ({circleMeasures.length})
+            </button>
+          )}
+
           <button onClick={() => {
             const img = document.querySelector('[data-results-image]') as HTMLImageElement;
             if (!img) return;
@@ -480,6 +594,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <Ruler className="w-3.5 h-3.5 text-sky-400 shrink-0" />
               <span className="text-xs text-sky-400/80">Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer.</span>
             </div>
+            <button onClick={() => {
+              setMeasureActive(false);
+              setTimeout(() => setMeasureActive(true), 50);
+            }}
+              className="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 border border-red-500/20 rounded transition-colors shrink-0">
+              Clear
+            </button>
             <button onClick={() => setMeasureActive(false)}
               className="text-xs text-slate-500 hover:text-red-400 px-2 py-0.5 border border-white/10 rounded transition-colors shrink-0">
               Fermer
@@ -626,6 +747,94 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                               {areaStr}
                             </text>
                           )}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
+
+                {/* ── Measurement overlays ── */}
+                {(showLinears || showCounts || showTexts || showCircles) && imgNatural.w > 0 && (
+                  <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    viewBox={`0 0 ${imgNatural.w} ${imgNatural.h}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    style={{ zIndex: 3 }}
+                  >
+                    {/* Linear measurements */}
+                    {showLinears && linearMeasures.map(lm => {
+                      const x1 = lm.p1.x * imgNatural.w, y1 = lm.p1.y * imgNatural.h;
+                      const x2 = lm.p2.x * imgNatural.w, y2 = lm.p2.y * imgNatural.h;
+                      const mx = (x1+x2)/2, my = (y1+y2)/2;
+                      const ppm = result.pixels_per_meter;
+                      const distM = ppm ? lm.distPx / ppm : null;
+                      const label = distM ? `${distM.toFixed(2)} m` : `${Math.round(lm.distPx)} px`;
+                      return (
+                        <g key={lm.id}>
+                          <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth={2} strokeDasharray="4 2" />
+                          <circle cx={x1} cy={y1} r={4} fill="#38bdf8" />
+                          <circle cx={x2} cy={y2} r={4} fill="#38bdf8" />
+                          <rect x={mx-30} y={my-9} width={60} height={18} rx={4} fill="rgba(10,16,32,0.92)" stroke="#38bdf8" strokeWidth={1} />
+                          <text x={mx} y={my+4} textAnchor="middle" fill="#38bdf8" fontSize={10} fontWeight="600" fontFamily="monospace">{label}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Angle measurements */}
+                    {showLinears && angleMeasures.map(am => {
+                      const vx = am.vertex.x * imgNatural.w, vy = am.vertex.y * imgNatural.h;
+                      const ax = am.p1.x * imgNatural.w, ay = am.p1.y * imgNatural.h;
+                      const acx = am.p3.x * imgNatural.w, acy = am.p3.y * imgNatural.h;
+                      return (
+                        <g key={am.id}>
+                          <line x1={ax} y1={ay} x2={vx} y2={vy} stroke="#f59e0b" strokeWidth={1.5} />
+                          <line x1={vx} y1={vy} x2={acx} y2={acy} stroke="#f59e0b" strokeWidth={1.5} />
+                          <circle cx={vx} cy={vy} r={5} fill="#f59e0b" />
+                          <text x={vx+12} y={vy-8} fill="#f59e0b" fontSize={10} fontWeight="700" fontFamily="monospace">{am.angleDeg.toFixed(1)}&deg;</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Count points */}
+                    {showCounts && countPoints.map((cp, idx) => {
+                      const grp = (measurements?.countGroups ?? []).find(g => g.id === cp.groupId);
+                      const color = grp?.color ?? "#fbbf24";
+                      const px = cp.x * imgNatural.w, py = cp.y * imgNatural.h;
+                      return (
+                        <g key={cp.id}>
+                          <circle cx={px} cy={py} r={12} fill={color} fillOpacity={0.4} stroke={color} strokeWidth={2} />
+                          <text x={px} y={py+4} textAnchor="middle" fill="white" fontSize={9} fontWeight="800" fontFamily="monospace">{idx+1}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Text annotations */}
+                    {showTexts && textAnnotations.map(ta => {
+                      const tpx = ta.x * imgNatural.w, tpy = ta.y * imgNatural.h;
+                      const fs = ta.fontSize ?? 12;
+                      const tw = ta.text.length * fs * 0.6 + 16;
+                      return (
+                        <g key={ta.id}>
+                          <rect x={tpx-4} y={tpy-fs-2} width={tw} height={fs+10} rx={4} fill="rgba(0,0,0,0.8)" stroke={ta.color} strokeWidth={1} />
+                          <text x={tpx+4} y={tpy} fill={ta.color} fontSize={fs} fontFamily="system-ui">{ta.text}</text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Circle measurements */}
+                    {showCircles && circleMeasures.map(cm => {
+                      const ccx = cm.center.x * imgNatural.w, ccy = cm.center.y * imgNatural.h;
+                      const ex = cm.edgePoint.x * imgNatural.w, ey = cm.edgePoint.y * imgNatural.h;
+                      const r = Math.hypot(ex-ccx, ey-ccy);
+                      const ppm = result.pixels_per_meter;
+                      const rM = ppm ? r / ppm : null;
+                      const label = rM ? `r=${rM.toFixed(2)}m` : `r=${Math.round(r)}px`;
+                      return (
+                        <g key={cm.id}>
+                          <circle cx={ccx} cy={ccy} r={r} fill="rgba(20,184,166,0.08)" stroke="#14B8A6" strokeWidth={2} />
+                          <line x1={ccx} y1={ccy} x2={ex} y2={ey} stroke="#14B8A6" strokeWidth={1} strokeDasharray="4 2" />
+                          <circle cx={ccx} cy={ccy} r={3} fill="#14B8A6" />
+                          <text x={ccx} y={ccy-r-8} textAnchor="middle" fill="#14B8A6" fontSize={9} fontWeight="600" fontFamily="monospace">{label}</text>
                         </g>
                       );
                     })}
