@@ -159,6 +159,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [editingRoomId, setEditingRoomId] = useState<number | null>(null);
   const [activeRoomType, setActiveRoomType] = useState<string>("bedroom");
 
+  // Multi-selection
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<number>>(new Set());
+  const [selectedOpeningIdxs, setSelectedOpeningIdxs] = useState<Set<number>>(new Set());
+  // Clipboard
+  const clipboardRef = useRef<{ rooms: any[]; openings: any[] } | null>(null);
+
   // Auto-enable overlays + reset tool on layer change
   useEffect(() => {
     if (layer === null) {
@@ -167,6 +173,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       setTool("add_rect");
       setSelectedRoomId(null);
       setEditingRoomId(null);
+      setSelectedRoomIds(new Set());
+      setSelectedOpeningIdxs(new Set());
       return;
     }
     // Visibilité exclusive : n'afficher que l'overlay de l'élément sélectionné
@@ -187,6 +195,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
     if (layer !== "rooms") {
       setSelectedRoomId(null);
       setEditingRoomId(null);
+      setSelectedRoomIds(new Set());
+      setSelectedOpeningIdxs(new Set());
     }
   }, [layer]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -228,9 +238,14 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [textColor, setTextColor] = useState("#38BDF8");
   const [textFontSize, setTextFontSize] = useState(12);
   const [circleCenter, setCircleCenter] = useState<{ x: number; y: number } | null>(null);
+  const [showLinearMeasures, setShowLinearMeasures] = useState(true);
   const [showTuto, setShowTuto] = useState(false);
   const [showCountDropdown, setShowCountDropdown] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [activeFloorTypeId, setActiveFloorTypeId] = useState<string>("");
+  const [showNewFloorType, setShowNewFloorType] = useState(false);
+  const [newFloorTypeName, setNewFloorTypeName] = useState("");
+  const [newFloorTypeColor, setNewFloorTypeColor] = useState("#3B82F6");
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
@@ -580,6 +595,103 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       }
       if (e.key === "Escape" && tool === "add_poly" && layer === "rooms") {
         pts.current = []; drawCanvas(); setTool("select");
+      }
+
+      // Ctrl+C: Copy selected elements
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        const rooms: any[] = [];
+        const openings: any[] = [];
+        // Collect from multi-select
+        if (selectedRoomIds.size > 0) {
+          (result.rooms ?? []).forEach(r => { if (selectedRoomIds.has(r.id)) rooms.push(r); });
+        } else if (selectedRoomId) {
+          const r = (result.rooms ?? []).find(r => r.id === selectedRoomId);
+          if (r) rooms.push(r);
+        }
+        if (selectedOpeningIdxs.size > 0) {
+          (result.openings ?? []).forEach((o, i) => { if (selectedOpeningIdxs.has(i)) openings.push(o); });
+        } else if (selectedOpeningIdx !== null) {
+          const o = result.openings?.[selectedOpeningIdx];
+          if (o) openings.push(o);
+        }
+        if (rooms.length > 0 || openings.length > 0) {
+          clipboardRef.current = { rooms, openings };
+          toast({ title: `${rooms.length + openings.length} element(s) copied`, variant: "success" });
+        }
+      }
+
+      // Ctrl+V: Paste
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault();
+        if (!clipboardRef.current) return;
+        const offset = 0.02;
+        if (clipboardRef.current.rooms.length > 0) {
+          const maxId = Math.max(0, ...(result.rooms ?? []).map(r => r.id));
+          const newRooms = clipboardRef.current.rooms.map((r: any, i: number) => ({
+            ...r,
+            id: maxId + i + 1,
+            label_fr: `${r.label_fr} (copie)`,
+            centroid_norm: { x: r.centroid_norm.x + offset, y: r.centroid_norm.y + offset },
+            bbox_norm: { ...r.bbox_norm, x: r.bbox_norm.x + offset, y: r.bbox_norm.y + offset },
+            polygon_norm: r.polygon_norm?.map((p: any) => ({ x: p.x + offset, y: p.y + offset })),
+          }));
+          setResult(prev => ({ ...prev, rooms: [...(prev.rooms ?? []), ...newRooms] }));
+        }
+        if (clipboardRef.current.openings.length > 0) {
+          const pxOff = 30;
+          const newOpenings = clipboardRef.current.openings.map((o: any) => ({
+            ...o, x_px: o.x_px + pxOff, y_px: o.y_px + pxOff,
+          }));
+          setResult(prev => ({ ...prev, openings: [...(prev.openings ?? []), ...newOpenings] }));
+        }
+        toast({ title: "Elements pasted", variant: "success" });
+      }
+
+      // Delete/Backspace: Delete selected
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // Don't prevent default if focused on an input
+        if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "SELECT") return;
+        e.preventDefault();
+        if (selectedRoomIds.size > 0) {
+          selectedRoomIds.forEach(id => sendEditRoom({ action: "delete_room", room_id: id }));
+          setSelectedRoomIds(new Set());
+        } else if (selectedRoomId) {
+          sendEditRoom({ action: "delete_room", room_id: selectedRoomId });
+          setSelectedRoomId(null);
+        }
+      }
+
+      // Arrow keys: Move selected rooms
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key) && (selectedRoomIds.size > 0 || selectedRoomId)) {
+        if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+        e.preventDefault();
+        const delta = 0.005;
+        const dx = e.key === "ArrowLeft" ? -delta : e.key === "ArrowRight" ? delta : 0;
+        const dy = e.key === "ArrowUp" ? -delta : e.key === "ArrowDown" ? delta : 0;
+        const idsToMove = selectedRoomIds.size > 0 ? selectedRoomIds : new Set(selectedRoomId ? [selectedRoomId] : []);
+        if (idsToMove.size > 0) {
+          setResult(prev => ({
+            ...prev,
+            rooms: (prev.rooms ?? []).map(r => {
+              if (!idsToMove.has(r.id)) return r;
+              return {
+                ...r,
+                centroid_norm: { x: r.centroid_norm.x + dx, y: r.centroid_norm.y + dy },
+                bbox_norm: { ...r.bbox_norm, x: r.bbox_norm.x + dx, y: r.bbox_norm.y + dy },
+                polygon_norm: r.polygon_norm?.map(p => ({ x: p.x + dx, y: p.y + dy })),
+              };
+            }),
+          }));
+        }
+      }
+
+      // Escape: Clear all selection
+      if (e.key === "Escape") {
+        setSelectedRoomIds(new Set());
+        setSelectedOpeningIdxs(new Set());
+        setSelectedRoomId(null);
+        setSelectedOpeningIdx(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1144,13 +1256,26 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           return;
         }
         if (hitRoom) {
-          setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
+          if (e.ctrlKey || e.metaKey) {
+            // Multi-select: toggle room in set
+            setSelectedRoomIds(prev => {
+              const s = new Set(prev);
+              if (s.has(hitRoom!.id)) s.delete(hitRoom!.id); else s.add(hitRoom!.id);
+              return s;
+            });
+          } else {
+            // Single select
+            setSelectedRoomId(prev => prev === hitRoom!.id ? null : hitRoom!.id);
+            setSelectedRoomIds(new Set());
+            setSelectedOpeningIdxs(new Set());
+          }
           setEditingRoomId(hitRoom.id);
           setActiveRoomType(hitRoom.type);
           setSidebarTab("rooms");
         } else {
           setSelectedRoomId(null);
           setEditingRoomId(null);
+          setSelectedRoomIds(new Set());
         }
         return;
       }
@@ -1170,7 +1295,44 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         }
       });
       if (bestIdx >= 0 && (bestDist === 0 || bestDist < 150)) {
-        setSelectedOpeningIdx(prev => prev === bestIdx ? null : bestIdx);
+        if (e.ctrlKey || e.metaKey) {
+          // Multi-select
+          setSelectedOpeningIdxs(prev => {
+            const s = new Set(prev);
+            if (s.has(bestIdx)) s.delete(bestIdx); else s.add(bestIdx);
+            return s;
+          });
+        } else {
+          const newIdx = selectedOpeningIdx === bestIdx ? null : bestIdx;
+          setSelectedOpeningIdx(newIdx);
+          setSelectedRoomIds(new Set());
+          setSelectedOpeningIdxs(new Set());
+          if (newIdx !== null) {
+            setSidebarTab("visibility");
+            // Zoom to opening
+            const opening = result.openings![newIdx];
+            if (opening && imgRef.current && zoomContainerRef.current) {
+              const img = imgRef.current;
+              const container = zoomContainerRef.current;
+              const scx = img.offsetWidth / (imageNatural.w || 1);
+              const scy = img.offsetHeight / (imageNatural.h || 1);
+              const bx = opening.x_px * scx;
+              const by = opening.y_px * scy;
+              const bw = opening.width_px * scx;
+              const bh = opening.height_px * scy;
+              const pad = 120;
+              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
+              const zoomVal = Math.max(0.8, newZoom);
+              const cx = (bx + bw/2) - img.offsetWidth/2;
+              const cy = (by + bh/2) - img.offsetHeight/2;
+              setZoom(zoomVal);
+              setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
+              setShowDoors(opening.class === "door");
+              setShowWindows(opening.class === "window");
+              setShowFrenchDoors(opening.class === "french_door");
+            }
+          }
+        }
       } else {
         setSelectedOpeningIdx(null);
       }
@@ -1358,8 +1520,25 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         area_m2,
         area_px2: areaPx,
         polygon_norm: polyNorm,
+        surfaceTypeId: activeFloorTypeId || undefined,
       };
       setResult(prev => ({ ...prev, rooms: [...(prev.rooms ?? []), newRoom] }));
+      // Auto-create linked MeasureZone if floor type selected
+      if (activeFloorTypeId && polyNorm.length >= 3) {
+        const zoneId = crypto.randomUUID();
+        const linkedZone: MeasureZone = {
+          id: zoneId,
+          typeId: activeFloorTypeId,
+          points: polyNorm.map(p => ({ x: p.x, y: p.y })),
+          name: `auto:room:${newId}`,
+        };
+        setZones(prev => [...prev, linkedZone]);
+        // Update room with linkedZoneId
+        setResult(prev => ({
+          ...prev,
+          rooms: (prev.rooms ?? []).map(r => r.id === newId ? { ...r, linkedZoneId: zoneId } : r),
+        }));
+      }
       toast({ title: `Pièce créée : ${newRoom.label_fr}`, variant: "success" });
       pts.current = [];
       const ctx = canvasRef.current?.getContext("2d");
@@ -1739,6 +1918,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <span className="text-[8px]">A</span>
             </button>
             )}
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+            {/* Linear + Count visibility */}
+            <button onClick={() => { setShowLinearMeasures(v => !v); }}
+              title="Mesures lin\u00e9aires"
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
+                showLinearMeasures ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
+              <Ruler size={10} className="text-sky-400" />
+              {showLinearMeasures ? <Eye className="w-2.5 h-2.5 text-sky-400" /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
+            </button>
           </div>
 
 {/* ══ BAR 2 : SÉLECTION ÉLÉMENT ══ */}
@@ -1882,7 +2070,12 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); setShowCountDropdown(false); }}
                         className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs w-full text-left transition-colors",
                           activeCountGroupId === grp.id ? "bg-sky-500/15 text-sky-300" : "text-slate-400 hover:text-white hover:bg-white/5")}>
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: grp.color }} />
+                        <span className="relative w-3 h-3 rounded-full shrink-0 cursor-pointer" style={{ background: grp.color }}>
+                          <input type="color" value={grp.color}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); setCountGroups(prev => prev.map(g => g.id === grp.id ? {...g, color: e.target.value} : g)); }}
+                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer" />
+                        </span>
                         {grp.name}
                         <span className="ml-auto text-[10px] text-slate-600 font-mono">{countPoints.filter(p => p.groupId === grp.id).length}</span>
                       </button>
@@ -1912,7 +2105,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {tool === "linear" && !ppm && (
               <span className="text-[10px] text-amber-400 ml-1">⚠ Calibrez l'échelle pour afficher en mètres</span>
             )}
-            {tool === "linear" && ppm && linearMeasures.length > 0 && (
+            {ppm && linearMeasures.length > 0 && (
               <span className="text-[10px] text-sky-400 font-mono ml-1">
                 Total : {linearMeasures.reduce((s, lm) => s + (lm.distPx / ppm), 0).toFixed(2)} m
               </span>
@@ -1986,6 +2179,90 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
                     ))}
                   </select>
+                  {/* Floor type (surface) selector */}
+                  <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+                  <div className="flex items-center gap-1 relative">
+                    <span className="text-[9px] text-slate-500 shrink-0">Sol :</span>
+                    <select
+                      value={activeFloorTypeId}
+                      onChange={e => setActiveFloorTypeId(e.target.value)}
+                      className="bg-slate-800 border border-white/10 rounded-lg px-1.5 py-0.5 text-[10px] text-white max-w-28"
+                    >
+                      <option value="">— Aucun —</option>
+                      {surfaceTypes.map(st => (
+                        <option key={st.id} value={st.id}>{st.name}</option>
+                      ))}
+                    </select>
+                    {activeFloorTypeId && (() => {
+                      const st = surfaceTypes.find(s => s.id === activeFloorTypeId);
+                      return st ? <span className="w-3 h-3 rounded-full shrink-0" style={{ background: st.color }} /> : null;
+                    })()}
+
+                    {/* Create new floor type button */}
+                    <button onClick={() => setShowNewFloorType(v => !v)} title="Créer un type de sol"
+                      className="w-5 h-5 rounded-full border border-dashed border-violet-500/40 text-violet-400 text-[10px] flex items-center justify-center hover:bg-violet-500/10 transition-colors shrink-0">
+                      +
+                    </button>
+
+                    {/* New floor type form (dropdown) */}
+                    {showNewFloorType && (
+                      <div className="absolute top-full left-0 mt-1 z-50 glass border border-violet-500/20 rounded-xl p-3 shadow-2xl min-w-52"
+                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <p className="text-[9px] text-violet-400 uppercase tracking-wider font-semibold mb-2">Nouveau type de sol</p>
+                        <div className="flex flex-col gap-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={newFloorTypeName}
+                            onChange={e => setNewFloorTypeName(e.target.value)}
+                            onKeyDown={e => {
+                              e.stopPropagation();
+                              if (e.key === "Enter" && newFloorTypeName.trim()) {
+                                const id = newFloorTypeName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+                                setSurfaceTypes(prev => [...prev, { id, name: newFloorTypeName.trim(), color: newFloorTypeColor, wastePercent: 10, pricePerM2: 0 }]);
+                                setActiveFloorTypeId(id);
+                                setNewFloorTypeName("");
+                                setShowNewFloorType(false);
+                              }
+                              if (e.key === "Escape") setShowNewFloorType(false);
+                            }}
+                            placeholder="Nom du type de sol…"
+                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40"
+                          />
+                          <div className="flex items-center gap-2">
+                            <label className="text-[10px] text-slate-500 shrink-0">Couleur</label>
+                            <div className="flex gap-1 flex-wrap">
+                              {["#3B82F6", "#F97316", "#8B5CF6", "#6B7280", "#EC4899", "#10B981", "#F59E0B", "#EF4444"].map(c => (
+                                <button key={c} onClick={() => setNewFloorTypeColor(c)}
+                                  className="w-4 h-4 rounded-full border-2 transition-all"
+                                  style={{ background: c, borderColor: newFloorTypeColor === c ? "white" : "transparent" }} />
+                              ))}
+                              <input type="color" value={newFloorTypeColor} onChange={e => setNewFloorTypeColor(e.target.value)}
+                                className="w-4 h-4 rounded-full border-0 cursor-pointer p-0" />
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              disabled={!newFloorTypeName.trim()}
+                              onClick={() => {
+                                const id = newFloorTypeName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
+                                setSurfaceTypes(prev => [...prev, { id, name: newFloorTypeName.trim(), color: newFloorTypeColor, wastePercent: 10, pricePerM2: 0 }]);
+                                setActiveFloorTypeId(id);
+                                setNewFloorTypeName("");
+                                setShowNewFloorType(false);
+                              }}
+                              className="flex-1 py-1 text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 rounded-lg hover:bg-violet-500/30 transition-colors disabled:opacity-30">
+                              Créer
+                            </button>
+                            <button onClick={() => setShowNewFloorType(false)}
+                              className="px-2 py-1 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     disabled={selectedRoomId === null}
@@ -2345,10 +2622,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {showRooms && displayRooms.filter(room =>
                     // When vertex editing, the selected room is rendered in the vertex SVG instead
                     (vertexEditActive ? room.id !== selectedRoomId : true)
-                    && (selectedRoomId === null || room.id === selectedRoomId)
+                    && (selectedRoomId === null || room.id === selectedRoomId || selectedRoomIds.has(room.id))
                   ).map(room => {
                     const rcolor = getRoomColor(room.type);
                     const isSelected = selectedRoomId === room.id;
+                    const isMultiSelected = selectedRoomIds.has(room.id);
 
                     // Polygon SVG points
                     const polyPoints = room.polygon_norm
@@ -2371,6 +2649,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             style={{ pointerEvents: "none" }}
                           />
                         )}
+                        {/* Multi-selection highlight (dashed border) */}
+                        {isMultiSelected && !isSelected && polyPoints && (
+                          <polygon
+                            points={polyPoints}
+                            fill={rcolor + "15"}
+                            stroke={rcolor}
+                            strokeWidth={2.5}
+                            strokeDasharray="8 4"
+                            strokeLinejoin="round"
+                            style={{ pointerEvents: "none" }}
+                          />
+                        )}
                         {/* Invisible polygon for click detection */}
                         {polyPoints && (
                           <polygon
@@ -2380,7 +2670,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             style={{ pointerEvents: "all", cursor: "pointer" }}
                             onClick={e => {
                               e.stopPropagation();
-                              setSelectedRoomId(id => id === room.id ? null : room.id);
+                              if (e.ctrlKey || e.metaKey) {
+                                setSelectedRoomIds(prev => {
+                                  const s = new Set(prev);
+                                  if (s.has(room.id)) s.delete(room.id); else s.add(room.id);
+                                  return s;
+                                });
+                              } else {
+                                setSelectedRoomId(id => id === room.id ? null : room.id);
+                                setSelectedRoomIds(new Set());
+                                setSelectedOpeningIdxs(new Set());
+                              }
                               setEditingRoomId(room.id);
                               setActiveRoomType(room.type);
                             }}
@@ -2499,6 +2799,18 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       </g>
                     );
                   })}
+                </svg>
+              )}
+
+              {/* ── Linear & Angle measurements (always visible when toggled) ── */}
+              {showLinearMeasures && (linearMeasures.length > 0 || angleMeasures.length > 0) && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
+                <svg
+                  className="absolute top-0 left-0 pointer-events-none"
+                  width={imgDisplaySize.w}
+                  height={imgDisplaySize.h}
+                  viewBox={`0 0 ${imageNatural.w} ${imageNatural.h}`}
+                  style={{ zIndex: 2 }}
+                >
                   {/* Linear measurements */}
                   {linearMeasures.map(lm => {
                     const x1 = lm.p1.x * imageNatural.w, y1 = lm.p1.y * imageNatural.h;
@@ -3616,12 +3928,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                               const by = opening.y_px * scy;
                               const bw = opening.width_px * scx;
                               const bh = opening.height_px * scy;
-                              const pad = 80;
-                              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 6);
+                              const pad = 120;
+                              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 5);
+                              const zoomVal = Math.max(0.8, Math.min(newZoom, 5));
                               const cx = (bx + bw/2) - img.offsetWidth/2;
                               const cy = (by + bh/2) - img.offsetHeight/2;
-                              setZoom(Math.max(1, newZoom));
-                              setTranslate({ x: -cx * Math.max(1, newZoom), y: -cy * Math.max(1, newZoom) });
+                              setZoom(zoomVal);
+                              setTranslate({ x: -cx * zoomVal, y: -cy * zoomVal });
                             }
                             // Isolate: show only this element's mask type
                             setShowDoors(opening.class === "door");
