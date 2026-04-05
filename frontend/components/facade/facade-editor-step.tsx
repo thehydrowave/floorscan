@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
-  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy,
+  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy, Eraser,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -42,7 +42,7 @@ const EDITOR_LABELS: Record<string, string> = {
   floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
 };
 
-type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search" | "translation";
+type EditorTool = "select" | "add_rect" | "erase_rect" | "add_polygon" | "erase_polygon" | "linear" | "count" | "text" | "rescale" | "visual_search" | "translation" | "eraser";
 
 /* ── Translation tool phases ── */
 type TranslationPhase = "choose_shape" | "place_anchors" | "draw_shape" | "validate" | "choose_type";
@@ -181,6 +181,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [vsEditMode, setVsEditMode] = useState<"search"|"add"|"remove">("search");
   const [vsSaveOpen, setVsSaveOpen] = useState(false);
   const [vsSaveLabel, setVsSaveLabel] = useState("");
+
+  // Eraser tool state — draw a rect to subtract from an element's polygon
+  const [eraserStart, setEraserStart] = useState<Pt | null>(null);
+  const [eraserPreview, setEraserPreview] = useState<{ start: Pt; end: Pt } | null>(null);
 
   // Translation tool state
   const [transPhase, setTransPhase] = useState<TranslationPhase>("choose_shape");
@@ -379,6 +383,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       return;
     }
 
+    if (tool === "eraser") {
+      const p = toNorm(e);
+      setEraserStart(p);
+      setEraserPreview({ start: p, end: p });
+      return;
+    }
+
     if (tool === "add_rect") {
       const p = toNorm(e);
       rectDragRef.current = p;
@@ -540,6 +551,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       return;
     }
 
+    // Eraser preview
+    if (tool === "eraser" && eraserStart) {
+      setEraserPreview({ start: eraserStart, end: p });
+    }
+
     // Translation rect drawing
     if (tool === "translation" && transPhase === "draw_shape" && transShapeMode === "rect" && transRectStart) {
       setTransDrawing([transRectStart, p]);
@@ -616,6 +632,65 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         }
         setVsCrop(null);
       } else { setVsCrop(null); }
+    }
+
+    // Eraser: subtract eraser rect from overlapping elements
+    if (tool === "eraser" && eraserStart && eraserPreview) {
+      const { start, end } = eraserPreview;
+      const ex1 = Math.min(start.x, end.x), ey1 = Math.min(start.y, end.y);
+      const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
+      if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
+        const ppm = result.pixels_per_meter;
+        setElements(prev => prev.map(el => {
+          const poly = getPolyPoints(el);
+          // Check if eraser rect overlaps this element's bbox
+          const bx = el.bbox_norm;
+          const overlapX = Math.max(0, Math.min(bx.x + bx.w, ex2) - Math.max(bx.x, ex1));
+          const overlapY = Math.max(0, Math.min(bx.y + bx.h, ey2) - Math.max(bx.y, ey1));
+          if (overlapX <= 0 || overlapY <= 0) return el; // no overlap
+
+          // Clip the bbox: remove the erased portion
+          // Strategy: shrink bbox from the side that overlaps the eraser
+          let newX = bx.x, newY = bx.y, newW = bx.w, newH = bx.h;
+
+          // If eraser covers left side
+          if (ex1 <= bx.x && ex2 > bx.x && ex2 < bx.x + bx.w) {
+            newX = ex2; newW = (bx.x + bx.w) - ex2;
+          }
+          // If eraser covers right side
+          else if (ex1 > bx.x && ex1 < bx.x + bx.w && ex2 >= bx.x + bx.w) {
+            newW = ex1 - bx.x;
+          }
+          // If eraser covers top
+          if (ey1 <= bx.y && ey2 > bx.y && ey2 < bx.y + bx.h) {
+            newY = ey2; newH = (bx.y + bx.h) - ey2;
+          }
+          // If eraser covers bottom
+          else if (ey1 > bx.y && ey1 < bx.y + bx.h && ey2 >= bx.y + bx.h) {
+            newH = ey1 - bx.y;
+          }
+          // If eraser fully contains element, delete it
+          if (newW <= 0.003 || newH <= 0.003) return null as any;
+
+          const newPts: Pt[] = [
+            { x: newX, y: newY },
+            { x: newX + newW, y: newY },
+            { x: newX + newW, y: newY + newH },
+            { x: newX, y: newY + newH },
+          ];
+          const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
+          return {
+            ...el,
+            bbox_norm: { x: newX, y: newY, w: newW, h: newH },
+            polygon_norm: newPts,
+            area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
+          };
+        }).filter(Boolean));
+        toast({ title: "Zone gommée", description: "Éléments ajustés", variant: "default" });
+      }
+      setEraserStart(null);
+      setEraserPreview(null);
+      return;
     }
 
     // Translation rect: finish drawing rectangle shape
@@ -866,10 +941,15 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "add_polygon" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Pentagon className="w-3 h-3" /> Forme libre
             </button>
-            <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Effacer"
+            <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Supprimer élément"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Trash2 className="w-3 h-3" /> Effacer
+              <Trash2 className="w-3 h-3" /> Supprimer
+            </button>
+            <button onClick={() => { setTool("eraser"); setSelectedId(null); }} title="Gomme — affiner les zones"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "eraser" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <Eraser className="w-3 h-3" /> Gomme
             </button>
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
@@ -903,10 +983,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               setTransShape([]);
               setTransDrawing([]);
               setSelectedId(null);
-            }} title="Translation"
-              className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
-                tool === "translation" ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <ArrowLeft className="w-2.5 h-2.5 rotate-45" /> Translation
+            }} title="Translation — dupliquer une forme sur plusieurs points"
+              className={cn("flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border-2 transition-all",
+                tool === "translation"
+                  ? "border-orange-500 bg-orange-500/20 text-orange-300 shadow-lg shadow-orange-500/20"
+                  : "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20")}>
+              <Copy className="w-3.5 h-3.5" /> Translation
             </button>
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
@@ -1522,6 +1604,19 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                           />
                         )}
                       </g>
+                    );
+                  })()}
+
+                  {/* ── Eraser preview ── */}
+                  {tool === "eraser" && eraserPreview && (() => {
+                    const { start, end } = eraserPreview;
+                    const rx = Math.min(start.x, end.x) * imgNat.w;
+                    const ry = Math.min(start.y, end.y) * imgNat.h;
+                    const rw = Math.abs(end.x - start.x) * imgNat.w;
+                    const rh = Math.abs(end.y - start.y) * imgNat.h;
+                    return (
+                      <rect x={rx} y={ry} width={rw} height={rh}
+                        fill="rgba(239,68,68,0.2)" stroke="#ef4444" strokeWidth={2} strokeDasharray="6 3" />
                     );
                   })()}
 
