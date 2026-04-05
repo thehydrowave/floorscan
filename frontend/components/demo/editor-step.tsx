@@ -225,8 +225,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [showFullPlan, setShowFullPlan] = useState(false);
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
   const [textInputValue, setTextInputValue] = useState("");
+  const [textColor, setTextColor] = useState("#38BDF8");
+  const [textFontSize, setTextFontSize] = useState(12);
   const [circleCenter, setCircleCenter] = useState<{ x: number; y: number } | null>(null);
   const [showTuto, setShowTuto] = useState(false);
+  const [showCountDropdown, setShowCountDropdown] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const allMeasureTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
@@ -1787,6 +1790,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">TOOLS</span>
 
+            <button onClick={() => { setTool("select"); setLayer(null); fitToView(); setShowDoors(true); setShowWindows(true); setShowFrenchDoors(false); setShowWalls(false); setShowCloisons(false); }}
+              title="Selection — reinitialiser la vue"
+              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                tool === "select" && layer === null ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+              <MousePointer2 className="w-3 h-3" /> Select
+            </button>
+
+            <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
+
             {/* AI Detection (was "Detect similar") */}
             <button data-tuto="vs-btn"
               onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
@@ -1850,13 +1862,51 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <Ruler className="w-3 h-3" /> Linéaire
             </button>
 
-            {/* Count tool */}
-            <button onClick={() => setTool("count" as EditorTool)}
-              title="Comptage — placez des points numérotés"
-              className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
-                tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Hash className="w-3 h-3" /> Comptage
-            </button>
+            {/* Count tool with dropdown */}
+            <div className="relative">
+              <button onClick={() => { setShowCountDropdown(v => !v); }}
+                title="Comptage"
+                className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
+                  tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
+                <Hash className="w-3 h-3" /> Comptage
+                <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+              </button>
+              {showCountDropdown && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowCountDropdown(false)} />
+                  <div className="absolute top-full left-0 mt-1 z-50 glass border border-sky-500/20 rounded-xl p-2 shadow-2xl min-w-48"
+                    onClick={e => e.stopPropagation()}>
+                    <p className="text-[9px] text-sky-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Categories</p>
+                    {countGroups.map(grp => (
+                      <button key={grp.id}
+                        onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); setShowCountDropdown(false); }}
+                        className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs w-full text-left transition-colors",
+                          activeCountGroupId === grp.id ? "bg-sky-500/15 text-sky-300" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: grp.color }} />
+                        {grp.name}
+                        <span className="ml-auto text-[10px] text-slate-600 font-mono">{countPoints.filter(p => p.groupId === grp.id).length}</span>
+                      </button>
+                    ))}
+                    <div className="border-t border-white/10 mt-1.5 pt-1.5">
+                      <button onClick={() => {
+                        const name = prompt("Nom de la categorie :");
+                        if (!name?.trim()) return;
+                        const colors = ["#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee", "#fbbf24"];
+                        const color = colors[countGroups.length % colors.length];
+                        const newGroup = { id: `grp_${Date.now()}`, name: name.trim(), color };
+                        setCountGroups(prev => [...prev, newGroup]);
+                        setActiveCountGroupId(newGroup.id);
+                        setTool("count");
+                        setShowCountDropdown(false);
+                      }}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white hover:bg-white/5 w-full text-left">
+                        <Plus className="w-3 h-3" /> Creer une categorie
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Measurement info */}
             {tool === "linear" && !ppm && (
@@ -1925,6 +1975,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <MousePointer2 className="w-3 h-3" /> {d("ed_select")}
                   </button>
+                  {/* Floor type selector */}
+                  <select
+                    value={activeRoomType}
+                    onChange={e => setActiveRoomType(e.target.value)}
+                    className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white"
+                    title="Type de pièce pour la création"
+                  >
+                    {ROOM_TYPES.map(rt => (
+                      <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => { if (!selectedRoomId) return; setTool("split"); pts.current = []; toast({ title: d("ed_mode_split"), description: d("ed_mode_split_d"), variant: "default" }); }}
                     disabled={selectedRoomId === null}
@@ -2380,20 +2441,20 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               )}
 
               {/* ── Surface zones (carrelage, parquet, etc.) ── */}
-              {showSurfaces && zones.length > 0 && imgDisplaySize.w > 0 && (
+              {showSurfaces && zones.length > 0 && imgDisplaySize.w > 0 && imageNatural.w > 0 && (
                 <svg
                   className="absolute top-0 left-0 pointer-events-none"
                   width={imgDisplaySize.w}
                   height={imgDisplaySize.h}
-                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  viewBox={`0 0 ${imageNatural.w} ${imageNatural.h}`}
                   style={{ zIndex: 2 }}
                 >
                   {zones.filter(z => z.typeId !== "__count__").map(zone => {
                     const st = allMeasureTypes.find(t => t.id === zone.typeId);
                     if (!st || !zone.points || zone.points.length < 3) return null;
-                    const ptsSvg = zone.points.map(p => `${p.x * imgDisplaySize.w},${p.y * imgDisplaySize.h}`).join(" ");
-                    const cx = zone.points.reduce((s, p) => s + p.x, 0) / zone.points.length * imgDisplaySize.w;
-                    const cy = zone.points.reduce((s, p) => s + p.y, 0) / zone.points.length * imgDisplaySize.h;
+                    const ptsSvg = zone.points.map(p => `${p.x * imageNatural.w},${p.y * imageNatural.h}`).join(" ");
+                    const cx = zone.points.reduce((s, p) => s + p.x, 0) / zone.points.length * imageNatural.w;
+                    const cy = zone.points.reduce((s, p) => s + p.y, 0) / zone.points.length * imageNatural.h;
                     const areaPx = polygonAreaNorm(zone.points, imageNatural.w, imageNatural.h);
                     const areaM2 = ppm ? areaPx / (ppm * ppm) : null;
                     const label = st.name;
@@ -2413,8 +2474,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {countPoints.filter(cp => countGroupVisibility[cp.groupId] !== false).map(cp => {
                     const grp = countGroups.find(g => g.id === cp.groupId);
                     const color = grp?.color ?? "#38bdf8";
-                    const px = cp.x * imgDisplaySize.w;
-                    const py = cp.y * imgDisplaySize.h;
+                    const px = cp.x * imageNatural.w;
+                    const py = cp.y * imageNatural.h;
                     const num = countPoints.filter(p => p.groupId === cp.groupId).indexOf(cp) + 1;
                     const label = grp?.name ?? "";
                     return (
@@ -2429,8 +2490,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Legacy __count__ points (backward compat) */}
                   {zones.filter(z => z.typeId === "__count__").map((zone, i) => {
                     if (!zone.points || zone.points.length < 1) return null;
-                    const px = zone.points[0].x * imgDisplaySize.w;
-                    const py = zone.points[0].y * imgDisplaySize.h;
+                    const px = zone.points[0].x * imageNatural.w;
+                    const py = zone.points[0].y * imageNatural.h;
                     return (
                       <g key={zone.id}>
                         <circle cx={px} cy={py} r={8} fill="rgba(56,189,248,0.25)" stroke="#38bdf8" strokeWidth={1.5} />
@@ -2440,8 +2501,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   })}
                   {/* Linear measurements */}
                   {linearMeasures.map(lm => {
-                    const x1 = lm.p1.x * imgDisplaySize.w, y1 = lm.p1.y * imgDisplaySize.h;
-                    const x2 = lm.p2.x * imgDisplaySize.w, y2 = lm.p2.y * imgDisplaySize.h;
+                    const x1 = lm.p1.x * imageNatural.w, y1 = lm.p1.y * imageNatural.h;
+                    const x2 = lm.p2.x * imageNatural.w, y2 = lm.p2.y * imageNatural.h;
                     const mx = (x1+x2)/2, my = (y1+y2)/2;
                     const distM = ppm ? lm.distPx / ppm : null;
                     const label = distM ? `${distM.toFixed(2)} m` : `${Math.round(lm.distPx)} px`;
@@ -2459,9 +2520,9 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   })}
                   {/* Angle measurements */}
                   {angleMeasures.map(am => {
-                    const vx = am.vertex.x * imgDisplaySize.w, vy = am.vertex.y * imgDisplaySize.h;
-                    const ax = am.p1.x * imgDisplaySize.w, ay = am.p1.y * imgDisplaySize.h;
-                    const cx = am.p3.x * imgDisplaySize.w, cy = am.p3.y * imgDisplaySize.h;
+                    const vx = am.vertex.x * imageNatural.w, vy = am.vertex.y * imageNatural.h;
+                    const ax = am.p1.x * imageNatural.w, ay = am.p1.y * imageNatural.h;
+                    const cx = am.p3.x * imageNatural.w, cy = am.p3.y * imageNatural.h;
                     return (
                       <g key={am.id}>
                         <line x1={ax} y1={ay} x2={vx} y2={vy} stroke="#f59e0b" strokeWidth={1.5} />
@@ -2508,38 +2569,53 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {/* ── SVG overlay: text annotations + circle measurements ── */}
               {imgDisplaySize.w > 0 && (textAnnotations.length > 0 || circleMeasures.length > 0) && (
                 <svg className="absolute inset-0 w-full h-full pointer-events-none"
-                  viewBox={`0 0 ${imgDisplaySize.w} ${imgDisplaySize.h}`}
+                  viewBox={`0 0 ${imageNatural.w || imgDisplaySize.w} ${imageNatural.h || imgDisplaySize.h}`}
                   style={{ zIndex: 4 }}
                 >
-                  {/* Text annotations */}
+                  {/* Text annotations (draggable) */}
                   {textAnnotations.map(ta => {
-                    const px = ta.x * imgDisplaySize.w;
-                    const py = ta.y * imgDisplaySize.h;
+                    const nw = imageNatural.w || imgDisplaySize.w;
+                    const nh = imageNatural.h || imgDisplaySize.h;
+                    const px = ta.x * nw;
+                    const py = ta.y * nh;
                     const fs = ta.fontSize ?? 12;
-                    const lines = ta.text.split("\n");
-                    const lineH = fs + 3;
-                    const maxW = Math.max(...lines.map(l => l.length)) * fs * 0.58 + 16;
-                    const totalH = lines.length * lineH + 8;
+                    const color = ta.color ?? "#38BDF8";
+                    const w = ta.text.length * fs * 0.6 + 16;
                     return (
-                      <g key={ta.id} style={{ pointerEvents: "all", cursor: "pointer" }}
-                        onClick={() => setTextAnnotations(prev => prev.filter(t => t.id !== ta.id))}>
-                        <rect x={px - 4} y={py - 4} width={maxW} height={totalH} rx={4}
-                          fill="rgba(0,0,0,0.75)" stroke={ta.color} strokeWidth={1} />
-                        {lines.map((line, li) => (
-                          <text key={li} x={px + 4} y={py + 8 + li * lineH}
-                            fontSize={fs} fill={ta.color} fontFamily="system-ui, sans-serif">
-                            {line}
-                          </text>
-                        ))}
+                      <g key={ta.id}
+                        style={{ pointerEvents: "all", cursor: "move" }}
+                        onMouseDown={e => {
+                          e.stopPropagation();
+                          const startX = e.clientX, startY = e.clientY;
+                          const origX = ta.x, origY = ta.y;
+                          const onMove = (ev: MouseEvent) => {
+                            const img = imgRef.current;
+                            if (!img) return;
+                            const rect = img.getBoundingClientRect();
+                            const dx = (ev.clientX - startX) / rect.width / zoom;
+                            const dy = (ev.clientY - startY) / rect.height / zoom;
+                            setTextAnnotations(prev => prev.map(t => t.id === ta.id ? { ...t, x: origX + dx, y: origY + dy } : t));
+                          };
+                          const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+                          window.addEventListener("mousemove", onMove);
+                          window.addEventListener("mouseup", onUp);
+                        }}
+                      >
+                        <rect x={px - 4} y={py - fs - 2} width={w} height={fs + 10} rx={4}
+                          fill="rgba(0,0,0,0.8)" stroke={color} strokeWidth={1} />
+                        <text x={px + 4} y={py} fill={color} fontSize={fs}
+                          fontFamily="system-ui" style={{ pointerEvents: "none" }}>{ta.text}</text>
                       </g>
                     );
                   })}
                   {/* Circle measurements */}
                   {circleMeasures.map(cm => {
-                    const cx = cm.center.x * imgDisplaySize.w;
-                    const cy = cm.center.y * imgDisplaySize.h;
-                    const ex = cm.edgePoint.x * imgDisplaySize.w;
-                    const ey = cm.edgePoint.y * imgDisplaySize.h;
+                    const cmNw = imageNatural.w || imgDisplaySize.w;
+                    const cmNh = imageNatural.h || imgDisplaySize.h;
+                    const cx = cm.center.x * cmNw;
+                    const cy = cm.center.y * cmNh;
+                    const ex = cm.edgePoint.x * cmNw;
+                    const ey = cm.edgePoint.y * cmNh;
                     const rSvg = Math.hypot(ex - cx, ey - cy);
                     const metrics = ppm ? circleMetrics(cm, imageNatural.w, imageNatural.h, ppm) : null;
                     const cLabel = metrics ? `r=${fmtLinear(metrics.radiusM)}` : "";
@@ -2588,7 +2664,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                             x: textInputPos.x,
                             y: textInputPos.y,
                             text: textInputValue.trim(),
-                            color: "#38BDF8",
+                            color: textColor,
+                            fontSize: textFontSize,
                           }]);
                           setTextInputPos(null);
                           setTextInputValue("");
@@ -2600,6 +2677,20 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       placeholder="Texte…"
                       className="bg-black/90 border border-sky-500/60 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-sky-400 min-w-44 shadow-xl"
                     />
+                    <div className="flex items-center gap-1 mt-1">
+                      <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)}
+                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+                        className="w-5 h-5 rounded border-0 cursor-pointer p-0" />
+                      <select value={textFontSize} onChange={e => setTextFontSize(Number(e.target.value))}
+                        onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}
+                        className="bg-black/90 border border-white/20 rounded px-1 py-0.5 text-[10px] text-white">
+                        <option value={8}>8px</option>
+                        <option value={10}>10px</option>
+                        <option value={12}>12px</option>
+                        <option value={16}>16px</option>
+                        <option value={20}>20px</option>
+                      </select>
+                    </div>
                   </div>
                 );
               })()}
@@ -3509,7 +3600,35 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       const isSelected = selectedOpeningIdx === i;
                       const color = o.class === "door" ? "purple" : "cyan";
                       return (
-                        <div key={i} onClick={() => { setSelectedOpeningIdx(prev => prev === i ? null : i); setTool("select"); }}
+                        <div key={i} onClick={() => {
+                          const newIdx = selectedOpeningIdx === i ? null : i;
+                          setSelectedOpeningIdx(newIdx);
+                          setTool("select");
+                          // Zoom to element + isolate its mask layer
+                          if (newIdx !== null) {
+                            const opening = result.openings![newIdx];
+                            if (opening && imgRef.current && zoomContainerRef.current) {
+                              const img = imgRef.current;
+                              const container = zoomContainerRef.current;
+                              const scx = img.offsetWidth / (imageNatural.w || 1);
+                              const scy = img.offsetHeight / (imageNatural.h || 1);
+                              const bx = opening.x_px * scx;
+                              const by = opening.y_px * scy;
+                              const bw = opening.width_px * scx;
+                              const bh = opening.height_px * scy;
+                              const pad = 80;
+                              const newZoom = Math.min((container.clientWidth - pad*2) / Math.max(bw, 20), (container.clientHeight - pad*2) / Math.max(bh, 20), 6);
+                              const cx = (bx + bw/2) - img.offsetWidth/2;
+                              const cy = (by + bh/2) - img.offsetHeight/2;
+                              setZoom(Math.max(1, newZoom));
+                              setTranslate({ x: -cx * Math.max(1, newZoom), y: -cy * Math.max(1, newZoom) });
+                            }
+                            // Isolate: show only this element's mask type
+                            setShowDoors(opening.class === "door");
+                            setShowWindows(opening.class === "window");
+                            setShowFrenchDoors(opening.class === "french_door");
+                          }
+                        }}
                           className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all border",
                             isSelected
                               ? color === "purple" ? "bg-purple-500/15 border-purple-500/40 text-white" : "bg-cyan-500/15 border-cyan-500/40 text-white"
@@ -3536,11 +3655,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       <div className="flex flex-col gap-1.5">
                         <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("add_rect"); toast({ title: d("ed_mode_extend"), description: d("ed_mode_extend_d"), variant: "default" }); }}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors text-xs">
-                          <span className="text-sm">\uff0b</span> {d("ed_extend_mask")}
+                          <Plus className="w-3 h-3" /> {d("ed_extend_mask")}
                         </button>
                         <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("erase_rect"); toast({ title: d("ed_mode_reduce"), description: d("ed_mode_reduce_d"), variant: "default" }); }}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition-colors text-xs">
-                          <span className="text-sm">\uff0d</span> {d("ed_reduce_mask")}
+                          <Minus className="w-3 h-3" /> {d("ed_reduce_mask")}
                         </button>
                         <button onClick={() => { const o = result.openings![selectedOpeningIdx]; setLayer(o.class === "door" ? "door" : "window"); setTool("add_poly"); toast({ title: d("ed_mode_poly"), description: d("ed_mode_poly_d"), variant: "default" }); }}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-xs">

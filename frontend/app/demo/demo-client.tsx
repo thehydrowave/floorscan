@@ -77,6 +77,7 @@ export default function DemoClient() {
   const [currentPageIdx,setCurrentPageIdx]=useState<number>(0);
   const [customDetections,setCustomDetections]=useState<CustomDetection[]>([]);
   const [cropRect,setCropRect]=useState<{x:number;y:number;w:number;h:number}|null>(null);
+  const [detectionRoi,setDetectionRoi]=useState<{x:number;y:number;w:number;h:number}|null>(null);
   const [facadeResult,setFacadeResult]=useState<FacadeAnalysisResult|null>(null);
   const [facadeZones,setFacadeZones]=useState<FacadeZoneCrop[]>([]);
   const [measurementData,setMeasurementData]=useState<any>(null);
@@ -231,9 +232,9 @@ export default function DemoClient() {
                 <motion.div key={step} initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:0.25}}>
                   {step===1&&isAdmin&&<ConnectStep onConnected={handleConnected}/>}
                   {step===2&&<UploadStep onUploaded={handleUploaded} onPdfMetadata={handlePdfMetadata} onPageSelected={setCurrentPageIdx} initialPdfData={savedPdfData??undefined} analyzedPages={[...pageResults.keys()]}/>}
-                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart} onBack={handleBack}/>}
+                  {step===3&&sessionId&&<CropStep sessionId={sessionId} imageB64={uploadedImageB64!} onCropped={handleCropped} onSkip={handleCropped} onSessionExpired={handleRestart} onBack={handleBack} showDetectionZone onDetectionZoneChange={setDetectionRoi}/>}
                   {step===4&&<ScaleStep imageB64={uploadedImageB64!} onScaled={handleScaled} onBack={handleBack}/>}
-                  {step===5&&sessionId&&config&&<AnalyzeStep sessionId={sessionId} config={config} ppm={ppm} onAnalyzed={handleAnalyzed} onSessionExpired={handleRestart} onBack={handleBack}/>}
+                  {step===5&&sessionId&&config&&<AnalyzeStep sessionId={sessionId} config={config} ppm={ppm} onAnalyzed={handleAnalyzed} onSessionExpired={handleRestart} onBack={handleBack} detectionRoi={detectionRoi}/>}
                   {step===6&&analysisResult&&<ResultsStep result={analysisResult} customDetections={customDetections} onDetectionsChange={setCustomDetections} onGoEditor={handleGoEditor} onGoChantier={() => setDemoMode("chantier")} onRestart={handleRestart} pageCount={savedPdfData?.pageCount} currentPage={savedPdfData?currentPageIdx:undefined} onSwitchPage={savedPdfData&&pageResults.size>1?handleSwitchPage:undefined} analyzedPages={savedPdfData?[...pageResults.keys()]:undefined} onAddPage={savedPdfData?handleAddPage:undefined}/>}
                   {step===7&&analysisResult&&sessionId&&<EditorStep sessionId={sessionId} initialResult={analysisResult} initialCustomDetections={customDetections} onRestart={handleRestart} onSessionExpired={handleRestart} onAddPage={savedPdfData?handleAddPage:undefined} onGoResults={handleGoResults} onMeasurementDataChange={setMeasurementData} originalImageB64={uploadedImageB64} cropRect={cropRect}/>}
                 </motion.div>
