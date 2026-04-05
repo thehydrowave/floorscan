@@ -9,6 +9,8 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 
 import { BACKEND } from "@/lib/backend";
+import CropTutorialOverlay, { resetCropTutorial } from "./crop-tutorial-overlay";
+import { BookOpen } from "lucide-react";
 
 /* ── Facade polygon zone (4 normalized points 0-1) ── */
 export interface FacadeZoneCrop {
@@ -65,6 +67,7 @@ export default function CropStep({
 
   /* ── Facade delimitation state ── */
   const [facadeZones, setFacadeZones] = useState<FacadeZoneCrop[]>(initialFacadeZones ?? []);
+  const [showCropTuto, setShowCropTuto] = useState(false);
   const [drawingFacade, setDrawingFacade] = useState(false);
   const [pendingPts, setPendingPts] = useState<Array<{ x: number; y: number }>>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
@@ -558,6 +561,7 @@ export default function CropStep({
       {/* Image container */}
       <div
         ref={containerRef}
+        data-tuto-crop="image"
         className="relative mx-auto max-w-3xl rounded-2xl border border-white/10 overflow-hidden bg-white select-none"
         style={{ cursor: isPanningRef.current ? "grabbing" : cursor }}
         onMouseDown={handleMouseDown}
@@ -761,7 +765,7 @@ export default function CropStep({
         </p>
       )}
 
-      <div className="flex gap-3 justify-center mt-6">
+      <div className="flex gap-3 justify-center mt-6" data-tuto-crop="buttons">
         {onBack && (
           <Button variant="ghost" size="sm" onClick={onBack} disabled={confirming}>
             <ChevronLeft className="w-4 h-4" />
@@ -779,6 +783,14 @@ export default function CropStep({
             : <>{d("cr_confirm")} <ArrowRight className="w-4 h-4" /></>}
         </Button>
       </div>
+
+      {/* Tutorial replay button */}
+      <button onClick={() => { resetCropTutorial(); setShowCropTuto(v => !v); }}
+        className="fixed bottom-6 left-6 z-50 flex items-center gap-1.5 px-3 py-2 glass border border-white/10 rounded-xl text-xs text-slate-400 hover:text-white transition-colors">
+        <BookOpen className="w-3.5 h-3.5" /> Tutoriel
+      </button>
+
+      <CropTutorialOverlay forceShow={showCropTuto} />
     </motion.div>
   );
 }
