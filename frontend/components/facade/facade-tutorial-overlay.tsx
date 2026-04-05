@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, Pencil, PlusCircle, RefreshCw, Crop, ChevronRight, ChevronLeft, X, Sparkles } from "lucide-react";
+import { Eye, Pencil, PlusCircle, RefreshCw, Crop, ChevronRight, ChevronLeft, X, Sparkles, Eraser, Copy, MousePointer2, Square, Pentagon, Trash2, Ruler, Download } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -22,11 +22,17 @@ interface TutorialStep {
 }
 
 const STEPS: TutorialStep[] = [
-  { icon: <Eye className="w-6 h-6" />,        titleKey: "tuto_step1", color: "text-slate-300",  target: '[data-tuto-fa="layers"]',   position: "left" },
-  { icon: <Pencil className="w-6 h-6" />,     titleKey: "tuto_step2", color: "text-blue-300",   target: '[data-tuto-fa="edit"]',     position: "left" },
-  { icon: <PlusCircle className="w-6 h-6" />, titleKey: "tuto_step3", color: "text-emerald-300",target: '[data-tuto-fa="edit"]',     position: "left" },
-  { icon: <RefreshCw className="w-6 h-6" />,  titleKey: "tuto_step4", color: "text-amber-300",  target: '[data-tuto-fa="edit"]',     position: "left" },
-  { icon: <Crop className="w-6 h-6" />,       titleKey: "tuto_step5", color: "text-amber-300",  target: '[data-tuto-fa="delim"]',    position: "left" },
+  { icon: <Eye className="w-6 h-6" />,            titleKey: "tuto_fa_visibility" as DTKey,  color: "text-slate-300",   target: '[data-tuto-fa="visibility"]', position: "bottom" },
+  { icon: <Pencil className="w-6 h-6" />,         titleKey: "tuto_fa_edit_layer" as DTKey,  color: "text-pink-300",    target: '[data-tuto-fa="edit-layer"]', position: "bottom" },
+  { icon: <MousePointer2 className="w-6 h-6" />,  titleKey: "tuto_fa_select" as DTKey,      color: "text-teal-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
+  { icon: <Square className="w-6 h-6" />,         titleKey: "tuto_fa_draw" as DTKey,        color: "text-cyan-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
+  { icon: <Trash2 className="w-6 h-6" />,         titleKey: "tuto_fa_delete" as DTKey,      color: "text-red-300",     target: '[data-tuto-fa="tools"]',      position: "bottom" },
+  { icon: <Eraser className="w-6 h-6" />,         titleKey: "tuto_fa_eraser" as DTKey,      color: "text-orange-300",  target: '[data-tuto-fa="tools"]',      position: "bottom" },
+  { icon: <Copy className="w-6 h-6" />,           titleKey: "tuto_fa_translation" as DTKey, color: "text-orange-300",  target: '[data-tuto-fa="translation"]',position: "bottom" },
+  { icon: <PlusCircle className="w-6 h-6" />,     titleKey: "tuto_fa_custom_type" as DTKey, color: "text-violet-300",  target: '[data-tuto-fa="custom-type"]',position: "bottom" },
+  { icon: <Ruler className="w-6 h-6" />,          titleKey: "tuto_fa_measure" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fa="measure"]',    position: "bottom" },
+  { icon: <Download className="w-6 h-6" />,       titleKey: "tuto_fa_export" as DTKey,      color: "text-emerald-300", target: '[data-tuto-fa="export"]',     position: "bottom" },
+  { icon: <RefreshCw className="w-6 h-6" />,      titleKey: "tuto_fa_shortcuts" as DTKey,   color: "text-amber-300" },
 ];
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
