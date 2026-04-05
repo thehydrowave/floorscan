@@ -1908,6 +1908,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   linearMeasures,
                   angleMeasures,
                   surfaceTypes,
+                  countPoints,
+                  countGroups,
+                  textAnnotations,
+                  circleMeasures,
                 },
               };
               onGoResults(updatedResult, customDetections);
