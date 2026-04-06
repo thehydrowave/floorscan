@@ -2,12 +2,12 @@ import type { AnalysisResult } from "@/lib/types";
 
 interface SurfaceType { id: string; name: string; color: string; pricePerM2?: number; wastePercent?: number; }
 interface LinearMeasure { id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; distPx: number; }
-interface Zone { typeId: string; polygon: Array<{ x: number; y: number }>; }
+interface Zone { typeId: string; points: Array<{ x: number; y: number }>; }
 
 function aggregateByType(zones: Zone[], imgW: number, imgH: number, ppm: number | null): Record<string, number> {
   const totals: Record<string, number> = {};
   for (const z of zones) {
-    const pts = z.polygon;
+    const pts = z.points;
     let areaPx = 0;
     for (let i = 0; i < pts.length; i++) {
       const j = (i + 1) % pts.length;
@@ -23,7 +23,7 @@ function aggregateByType(zones: Zone[], imgW: number, imgH: number, ppm: number 
 function aggregatePerimeterByType(zones: Zone[], imgW: number, imgH: number, ppm: number): Record<string, number> {
   const totals: Record<string, number> = {};
   for (const z of zones) {
-    const pts = z.polygon;
+    const pts = z.points;
     let perim = 0;
     for (let i = 0; i < pts.length; i++) {
       const j = (i + 1) % pts.length;
