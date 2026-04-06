@@ -427,7 +427,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           ))}
           <button data-tuto-fr="filter" onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
-            <Sparkles className="w-3.5 h-3.5" /> Tutorial
+            <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
           </button>
         </div>
       </div>

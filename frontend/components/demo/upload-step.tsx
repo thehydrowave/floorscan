@@ -422,7 +422,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
       {/* Tutorial replay button — bottom left */}
       <button onClick={() => { resetUploadTutorial(); setShowTuto(v => !v); }}
         className="fixed bottom-6 left-6 z-50 flex items-center gap-1.5 px-3 py-2 glass border border-white/10 rounded-xl text-xs text-slate-400 hover:text-white transition-colors">
-        <BookOpen className="w-3.5 h-3.5" /> Tutoriel
+        <BookOpen className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
       </button>
 
       {/* Tutorial overlay */}

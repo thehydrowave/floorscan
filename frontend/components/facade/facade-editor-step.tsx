@@ -1204,7 +1204,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
               <Button size="sm" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
                 className="flex items-center gap-1 border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
-                <Sparkles className="w-3 h-3" /> Tutorial
+                <Sparkles className="w-3 h-3" /> {d("tuto_header" as DTKey)}
               </Button>
             </div>
           </div>
