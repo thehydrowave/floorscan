@@ -814,18 +814,23 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       } else { setVsCrop(null); }
     }
 
-    // Eraser: subtract eraser rect from overlapping elements + split if needed
-    // Behavior depends on active edit layer:
-    // Eraser: generic source → target logic
+    // ══ ERASER LOGIC ══
     // eraserSource = type to erase FROM (split/shrink)
-    // eraserTarget = type to convert erased zone TO ("__none__" = just remove)
+    // eraserTarget = what erased zone becomes ("__none__" = empty/neutral)
+    //
+    // Rules:
+    // 1. "→ Rien" = zone becomes empty, no mask at all
+    // 2. "X → window": if eraser rect overlaps ANY existing window → extend it (never create new)
+    // 3. "X → custom type": apply custom type properties (replacesWall etc.)
+    // 4. New windows are NEVER created by the eraser — use the draw tool for that
+    // 5. Splitting a window with the eraser is correct behavior (kept)
     if (tool === "eraser" && eraserStart && eraserPreview) {
       const { start, end } = eraserPreview;
       const ex1 = Math.min(start.x, end.x), ey1 = Math.min(start.y, end.y);
       const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
-        // When target is "Rien", erase ALL types in the zone (everything goes)
+        // When target is "Rien", erase ALL types in the zone (zone becomes neutral)
         const sourceTypes = eraserTarget === "__none__"
           ? null // null = match all types
           : eraserSource === "window" ? ["window", "other"] : [eraserSource];
@@ -858,17 +863,21 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             }
           }
 
-          // Step 2: If target is not "none", create a new element in the erased zone
+          // Step 2: If target is not "none", handle conversion
           if (eraserTarget !== "__none__") {
-            // Check if start point is inside an existing target element → extend it
-            const startPt = eraserStart!;
-            const hitTarget = kept.find(el =>
-              el.type === eraserTarget &&
-              startPt.x >= el.bbox_norm.x && startPt.x <= el.bbox_norm.x + el.bbox_norm.w &&
-              startPt.y >= el.bbox_norm.y && startPt.y <= el.bbox_norm.y + el.bbox_norm.h
-            );
+            const targetTypes = eraserTarget === "window" ? ["window", "other"] : [eraserTarget];
+
+            // Find ANY existing target element that OVERLAPS the eraser rect (not just start point)
+            const hitTarget = kept.find(el => {
+              if (!targetTypes.includes(el.type)) return false;
+              const hb = el.bbox_norm;
+              const oX = Math.max(0, Math.min(hb.x + hb.w, ex2) - Math.max(hb.x, ex1));
+              const oY = Math.max(0, Math.min(hb.y + hb.h, ey2) - Math.max(hb.y, ey1));
+              return oX > 0 && oY > 0;
+            });
+
             if (hitTarget) {
-              // Extend existing element
+              // Extend the overlapping element to include the erased zone
               const hb = hitTarget.bbox_norm;
               const nx1 = Math.min(hb.x, ex1), ny1 = Math.min(hb.y, ey1);
               const nx2 = Math.max(hb.x + hb.w, ex2), ny2 = Math.max(hb.y + hb.h, ey2);
@@ -878,8 +887,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 ...el, bbox_norm: { x: nx1, y: ny1, w: nx2 - nx1, h: ny2 - ny1 },
                 polygon_norm: newPts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
               } : el);
-            } else {
-              // Create new element of target type
+            } else if (eraserTarget !== "window") {
+              // Only create new element if target is NOT window (windows = draw tool only)
+              // Custom types and surface nette can be created by eraser
               const newPts: Pt[] = [{ x: ex1, y: ey1 }, { x: ex2, y: ey1 }, { x: ex2, y: ey2 }, { x: ex1, y: ey2 }];
               const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
               kept.push({
@@ -890,6 +900,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 floor_level: 0, confidence: 1.0,
               });
             }
+            // If target is "window" and no existing window overlaps → do nothing (use draw tool)
           }
           return kept;
         });
