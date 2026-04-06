@@ -32,7 +32,7 @@ import FacadeChatPanel from "./facade-chat-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
-import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
+import FacadeResultsTutorial, { resetFacadeResultsTutorial } from "./facade-results-tutorial";
 import { FileText, Receipt } from "lucide-react";
 
 /* ── Component type alias ── */
@@ -425,7 +425,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {f.label}
             </button>
           ))}
-          <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
+          <button data-tuto-fr="filter" onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
             <Sparkles className="w-3.5 h-3.5" /> Tutorial
           </button>
@@ -434,11 +434,11 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
 
       {/* ── Image panel (Masques view) ── */}
       <div className="glass rounded-2xl border border-white/10 p-2 mb-8 overflow-hidden">
-        <FacadeTutorialOverlay forceShow={showTuto} />
+        <FacadeResultsTutorial forceShow={showTuto} />
         <div className="flex flex-col gap-4">
 
             {/* Summary bar — ABOVE image */}
-            <div className="flex items-center gap-6 px-4 py-3 glass rounded-xl border border-white/10">
+            <div data-tuto-fr="summary" className="flex items-center gap-6 px-4 py-3 glass rounded-xl border border-white/10">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide shrink-0">Résumé façade</h4>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-sm" style={{ background: "#ff00ff" }} />
@@ -459,7 +459,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <span className="text-sm text-accent font-mono font-semibold">{facadeAreaM2.toFixed(1)} m²</span>
               </div>
               <div className="flex-1" />
-              <button onClick={() => onGoEditor?.()}
+              <button data-tuto-fr="edit" onClick={() => onGoEditor?.()}
                 className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded-lg text-xs font-semibold transition-colors">
                 <PenSquare className="w-3.5 h-3.5" /> Éditer les masques
               </button>
@@ -606,7 +606,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               </div>{/* /centered transform */}
 
               {/* Floating zoom controls */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+              <div data-tuto-fr="zoom" className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
                 <button onClick={() => setMaskZoom(z => Math.min(12, z * 1.3))}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom +">
                   <ZoomIn className="w-3.5 h-3.5" />
@@ -782,6 +782,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={() => setShowDevis(true)}>
           <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
+        <span data-tuto-fr="export" className="contents">
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> CSV
         </Button>
@@ -791,6 +792,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={exportPDF}>
           <Download className="w-4 h-4" /> PDF
         </Button>
+        </span>
         <Button onClick={onGoEditor} className="bg-amber-600 hover:bg-amber-700">
           {d("fa_go_editor")} <ArrowRight className="w-4 h-4" />
         </Button>
