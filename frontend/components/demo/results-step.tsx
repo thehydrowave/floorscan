@@ -173,52 +173,53 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     const ih = imgNatural.h > 10 ? imgNatural.h : (imgEl?.naturalHeight || 2000);
 
     // ═══════════ Sheet 1: Synthèse générale ═══════════
+    const locale = lang === "de" ? "de-DE" : lang === "es" ? "es-ES" : lang === "it" ? "it-IT" : lang === "en" ? "en-GB" : "fr-FR";
     const d1: (string | number)[][] = [
-      ["FloorScan — Rapport d'analyse complet"],
-      ["Date", new Date().toLocaleDateString("fr-FR")],
-      ["Échelle (px/m)", ppm ? +ppm.toFixed(2) : "Non calibrée"],
+      [d("xl_title" as DTKey)],
+      [d("xl_date" as DTKey), new Date().toLocaleDateString(locale)],
+      [d("xl_scale" as DTKey), ppm ? +ppm.toFixed(2) : d("xl_not_calibrated" as DTKey)],
       [],
-      ["═══ ÉLÉMENTS DÉTECTÉS ═══"],
-      ["Portes", result.doors_count],
-      ["Fenêtres", result.windows_count],
-      ...(result.french_doors_count ? [["Portes-fenêtres", result.french_doors_count]] : []),
-      ["Total ouvertures", result.doors_count + result.windows_count + (result.french_doors_count ?? 0)],
+      [d("xl_detected" as DTKey)],
+      [d("xl_doors" as DTKey), result.doors_count],
+      [d("xl_windows" as DTKey), result.windows_count],
+      ...(result.french_doors_count ? [[d("xl_french_doors" as DTKey), result.french_doors_count]] : []),
+      [d("xl_total_openings" as DTKey), result.doors_count + result.windows_count + (result.french_doors_count ?? 0)],
       [],
-      ["═══ SURFACES & PÉRIMÈTRES ═══"],
-      ["Emprise bâtiment (m²)", sf.area_building_m2 != null ? +sf.area_building_m2.toFixed(2) : "—"],
-      ["Périmètre bâtiment (m)", sf.perim_building_m != null ? +sf.perim_building_m.toFixed(2) : "—"],
-      ["Surface habitable (m²)", sf.area_hab_m2 != null ? +sf.area_hab_m2.toFixed(2) : "—"],
-      ["Périmètre intérieur (m)", sf.perim_interior_m != null ? +sf.perim_interior_m.toFixed(2) : "—"],
-      ["Surface murs (m²)", sf.area_walls_m2 != null ? +sf.area_walls_m2.toFixed(2) : "—"],
+      [d("xl_surfaces" as DTKey)],
+      [d("xl_building_area" as DTKey), sf.area_building_m2 != null ? +sf.area_building_m2.toFixed(2) : "—"],
+      [d("xl_building_perim" as DTKey), sf.perim_building_m != null ? +sf.perim_building_m.toFixed(2) : "—"],
+      [d("xl_living_area" as DTKey), sf.area_hab_m2 != null ? +sf.area_hab_m2.toFixed(2) : "—"],
+      [d("xl_interior_perim" as DTKey), sf.perim_interior_m != null ? +sf.perim_interior_m.toFixed(2) : "—"],
+      [d("xl_walls_area" as DTKey), sf.area_walls_m2 != null ? +sf.area_walls_m2.toFixed(2) : "—"],
       [],
-      ["═══ PIÈCES ═══"],
-      ["Nombre de pièces", (result.rooms ?? []).length],
-      ["Surface totale pièces (m²)", +(result.rooms ?? []).reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2)],
-      ["Périmètre total pièces (m)", +(result.rooms ?? []).reduce((s, r) => s + computeRoomPerim(r), 0).toFixed(2)],
+      [d("xl_rooms" as DTKey)],
+      [d("xl_room_count" as DTKey), (result.rooms ?? []).length],
+      [d("xl_rooms_total_area" as DTKey), +(result.rooms ?? []).reduce((s, r) => s + (r.area_m2 ?? 0), 0).toFixed(2)],
+      [d("xl_rooms_total_perim" as DTKey), +(result.rooms ?? []).reduce((s, r) => s + computeRoomPerim(r), 0).toFixed(2)],
     ];
     // Add custom detections summary
     if (customDetections.length > 0) {
-      d1.push([], ["═══ DÉTECTIONS PERSONNALISÉES ═══"]);
+      d1.push([], [d("xl_custom_detections" as DTKey)]);
       customDetections.forEach(det => {
         d1.push([det.label, det.count, det.total_area_m2 != null ? `${det.total_area_m2.toFixed(2)} m²` : ""]);
       });
     }
     // Add count categories summary
     if (countCategories.length > 0) {
-      d1.push([], ["═══ COMPTAGES ═══"]);
+      d1.push([], [d("xl_countings" as DTKey)]);
       countCategories.forEach(c => d1.push([c.name, c.count]));
-      d1.push(["Total comptages", countCategories.reduce((s, c) => s + c.count, 0)]);
+      d1.push([d("xl_total_counts" as DTKey), countCategories.reduce((s, c) => s + c.count, 0)]);
     }
     const ws1 = XLSX.utils.aoa_to_sheet(d1);
     ws1["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws1, "Synthèse");
+    XLSX.utils.book_append_sheet(wb, ws1, d("xl_sheet_summary" as DTKey));
 
     // ═══════════ Sheet 2: Ouvertures détaillées ═══════════
     if (result.openings && result.openings.length > 0) {
-      const d2: (string | number)[][] = [["#", "Type", "Longueur (m)", "Largeur (m)", "Hauteur (m)", "Surface (m²)"]];
+      const d2: (string | number)[][] = [[d("xl_col_num" as DTKey), d("xl_col_type" as DTKey), d("xl_col_length" as DTKey), d("xl_col_width" as DTKey), d("xl_col_height" as DTKey), d("xl_col_area" as DTKey)]];
       result.openings.forEach((o, i) => d2.push([
         i + 1,
-        o.class === "door" ? "Porte" : o.class === "french_door" ? "Porte-fenêtre" : "Fenêtre",
+        o.class === "door" ? d("xl_door" as DTKey) : o.class === "french_door" ? d("xl_french_door" as DTKey) : d("xl_window" as DTKey),
         o.length_m != null ? +o.length_m.toFixed(2) : "—",
         o.width_m != null ? +o.width_m.toFixed(2) : "—",
         o.height_m != null ? +o.height_m.toFixed(2) : "—",
@@ -226,12 +227,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       ]));
       const ws2 = XLSX.utils.aoa_to_sheet(d2);
       ws2["!cols"] = [{ wch: 5 }, { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, ws2, "Ouvertures");
+      XLSX.utils.book_append_sheet(wb, ws2, d("xl_sheet_openings" as DTKey));
     }
 
     // ═══════════ Sheet 3: Pièces détaillées ═══════════
     if (result.rooms && result.rooms.length > 0) {
-      const d3: (string | number)[][] = [["Pièce", "Type", "Surface (m²)", "Périmètre (m)", "Type de sol", "Nb vertices"]];
+      const d3: (string | number)[][] = [[d("xl_col_room" as DTKey), d("xl_col_type" as DTKey), d("xl_col_area" as DTKey), d("xl_col_perim" as DTKey), d("xl_col_floor_type" as DTKey), d("xl_col_vertices" as DTKey)]];
       result.rooms.forEach(r => {
         const perim = computeRoomPerim(r);
         const stName = r.surfaceTypeId ? (editorSurfaceTypes.find(st => st.id === r.surfaceTypeId)?.name ?? r.surfaceTypeId) : "—";
@@ -241,7 +242,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       const tP = result.rooms.reduce((s, r) => s + computeRoomPerim(r), 0);
       d3.push(["TOTAL", "", +tA.toFixed(2), +tP.toFixed(2), "", ""]);
       // Group by type
-      d3.push([], ["═══ PAR TYPE DE PIÈCE ═══"], ["Type", "Nombre", "Surface totale (m²)", "Périmètre total (m)"]);
+      d3.push([], [d("xl_by_room_type" as DTKey)], [d("xl_col_type" as DTKey), d("xl_col_count" as DTKey), d("xl_col_total_area" as DTKey), d("xl_col_total_perim" as DTKey)]);
       const byType = new Map<string, { count: number; area: number; perim: number }>();
       result.rooms.forEach(r => {
         const e = byType.get(r.type) ?? { count: 0, area: 0, perim: 0 };
@@ -251,37 +252,37 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       byType.forEach((v, k) => d3.push([k, v.count, +v.area.toFixed(2), +v.perim.toFixed(2)]));
       // Group by surface type
       if (editorSurfaceTypes.length > 0) {
-        d3.push([], ["═══ PAR TYPE DE SOL ═══"], ["Sol", "Nombre pièces", "Surface totale (m²)"]);
+        d3.push([], [d("xl_by_floor_type" as DTKey)], [d("xl_col_floor" as DTKey), d("xl_col_room_count" as DTKey), d("xl_col_total_area" as DTKey)]);
         const bySurf = new Map<string, { count: number; area: number }>();
         result.rooms.forEach(r => {
-          const stId = r.surfaceTypeId ?? "aucun";
+          const stId = r.surfaceTypeId ?? d("xl_no_type" as DTKey);
           const e = bySurf.get(stId) ?? { count: 0, area: 0 };
           e.count++; e.area += r.area_m2 ?? 0;
           bySurf.set(stId, e);
         });
         bySurf.forEach((v, k) => {
-          const name = k === "aucun" ? "— Aucun —" : (editorSurfaceTypes.find(st => st.id === k)?.name ?? k);
+          const name = k === d("xl_no_type" as DTKey) ? d("xl_none" as DTKey) : (editorSurfaceTypes.find(st => st.id === k)?.name ?? k);
           d3.push([name, v.count, +v.area.toFixed(2)]);
         });
       }
       const ws3 = XLSX.utils.aoa_to_sheet(d3);
       ws3["!cols"] = [{ wch: 20 }, { wch: 15 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, ws3, "Pièces");
+      XLSX.utils.book_append_sheet(wb, ws3, d("xl_sheet_rooms" as DTKey));
     }
 
     // ═══════════ Sheet 4: Comptage ═══════════
     if (countCategories.length > 0) {
-      const d4: (string | number)[][] = [["Catégorie", "Couleur", "Nombre"]];
+      const d4: (string | number)[][] = [[d("xl_col_category" as DTKey), d("xl_col_color" as DTKey), d("xl_col_count" as DTKey)]];
       countCategories.forEach(c => d4.push([c.name, c.color, c.count]));
       d4.push(["TOTAL", "", countCategories.reduce((s, c) => s + c.count, 0)]);
       const ws4 = XLSX.utils.aoa_to_sheet(d4);
       ws4["!cols"] = [{ wch: 20 }, { wch: 10 }, { wch: 10 }];
-      XLSX.utils.book_append_sheet(wb, ws4, "Comptage");
+      XLSX.utils.book_append_sheet(wb, ws4, d("xl_sheet_counting" as DTKey));
     }
 
     // ═══════════ Sheet 5: Linéaires ═══════════
     if (linearMeasures.length > 0) {
-      const dL: (string | number)[][] = [["#", "Distance (m)", "Distance (px)"]];
+      const dL: (string | number)[][] = [[d("xl_col_num" as DTKey), d("xl_col_distance_m" as DTKey), d("xl_col_distance_px" as DTKey)]];
       linearMeasures.forEach((lm, i) => {
         const distM = ppm ? +(lm.distPx / ppm).toFixed(3) : 0;
         dL.push([i + 1, distM, Math.round(lm.distPx)]);
@@ -289,31 +290,31 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       dL.push(["TOTAL", ppm ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppm!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
       const wsL = XLSX.utils.aoa_to_sheet(dL);
       wsL["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, wsL, "Linéaires");
+      XLSX.utils.book_append_sheet(wb, wsL, d("xl_sheet_linears" as DTKey));
     }
 
     // ═══════════ Sheet 6: Angles ═══════════
     if (angleMeasures.length > 0) {
-      const dA: (string | number)[][] = [["#", "Angle (°)"]];
+      const dA: (string | number)[][] = [[d("xl_col_num" as DTKey), d("xl_col_angle" as DTKey)]];
       angleMeasures.forEach((am, i) => dA.push([i + 1, +am.angleDeg.toFixed(1)]));
       const wsA = XLSX.utils.aoa_to_sheet(dA);
       wsA["!cols"] = [{ wch: 5 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsA, "Angles");
+      XLSX.utils.book_append_sheet(wb, wsA, d("xl_sheet_angles" as DTKey));
     }
 
     // ═══════════ Sheet 7: Textes ═══════════
     if (textAnnotations.length > 0) {
-      const dT: (string | number)[][] = [["Texte", "Couleur", "Taille"]];
+      const dT: (string | number)[][] = [[d("xl_col_text" as DTKey), d("xl_col_color" as DTKey), d("xl_col_size" as DTKey)]];
       textAnnotations.forEach(ta => dT.push([ta.text, ta.color, ta.fontSize ?? 12]));
       const wsT = XLSX.utils.aoa_to_sheet(dT);
       wsT["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 8 }];
-      XLSX.utils.book_append_sheet(wb, wsT, "Textes");
+      XLSX.utils.book_append_sheet(wb, wsT, d("xl_sheet_texts" as DTKey));
     }
 
     // Sheet: Cercles
     if (circleMeasures.length > 0) {
       const ppm = result.pixels_per_meter;
-      const dataC: (string | number)[][] = [["#", "Rayon (m)", "Diamètre (m)", "Périmètre (m)", "Surface (m²)"]];
+      const dataC: (string | number)[][] = [[d("xl_col_num" as DTKey), d("xl_col_radius" as DTKey), d("xl_col_diameter" as DTKey), d("xl_col_circumference" as DTKey), d("xl_col_area" as DTKey)]];
       circleMeasures.forEach((cm, i) => {
         const rPx = Math.hypot((cm.edgePoint.x - cm.center.x) * imgNatural.w, (cm.edgePoint.y - cm.center.y) * imgNatural.h);
         const rM = ppm ? rPx / ppm : 0;
@@ -321,13 +322,13 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       });
       const wsC = XLSX.utils.aoa_to_sheet(dataC);
       wsC["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsC, "Cercles");
+      XLSX.utils.book_append_sheet(wb, wsC, d("xl_sheet_circles" as DTKey));
     }
 
     // Sheet: Surfaces (from editor zones)
     if (hasSurfaces) {
       const ppm = result.pixels_per_meter;
-      const dataS: (string | number)[][] = [["Type", "Surface (m²)", "Nb zones", "Prix/m²", "Chute %", "Total HT"]];
+      const dataS: (string | number)[][] = [[d("xl_col_type" as DTKey), d("xl_col_area" as DTKey), d("xl_col_nb_zones" as DTKey), d("xl_col_price" as DTKey), d("xl_col_waste" as DTKey), d("xl_col_total_ht" as DTKey)]];
       editorSurfaceTypes.forEach(st => {
         const stZones = editorZones.filter(z => z.typeId === st.id);
         if (stZones.length === 0) return;
@@ -343,11 +344,11 @@ export default function ResultsStep({ result, customDetections = [], onDetection
       });
       const wsS = XLSX.utils.aoa_to_sheet(dataS);
       wsS["!cols"] = [{ wch: 15 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(wb, wsS, "Surfaces");
+      XLSX.utils.book_append_sheet(wb, wsS, d("xl_sheet_surfaces" as DTKey));
     }
 
     XLSX.writeFile(wb, `floorscan_analyse_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast({ title: "Export XLSX ✓", variant: "success" });
+    toast({ title: d("re_xlsx_ok" as DTKey), variant: "success" });
   };
 
   const handleExportRoomsXLSX = () => {
@@ -358,11 +359,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     const imgElRx = document.querySelector('[data-results-image]') as HTMLImageElement;
     const iwx = imgNatural.w > 10 ? imgNatural.w : (imgElRx?.naturalWidth || 2000);
     const ihx = imgNatural.h > 10 ? imgNatural.h : (imgElRx?.naturalHeight || 2000);
+    const localeRx = lang === "de" ? "de-DE" : lang === "es" ? "es-ES" : lang === "it" ? "it-IT" : lang === "en" ? "en-GB" : "fr-FR";
     const data: (string | number)[][] = [
-      ["FloorScan — Récapitulatif des pièces"],
-      ["Date", new Date().toLocaleDateString("fr-FR")],
+      [d("xl_rooms_recap" as DTKey)],
+      [d("xl_date" as DTKey), new Date().toLocaleDateString(localeRx)],
       [],
-      ["Pièce", "Surface (m²)", "Périmètre (m)", "Type de sol"],
+      [d("xl_col_room_name" as DTKey), d("xl_col_area" as DTKey), d("xl_col_perim" as DTKey), d("xl_col_floor_type" as DTKey)],
     ];
     result.rooms.forEach(r => {
       let perim = 0;
@@ -383,9 +385,9 @@ export default function ResultsStep({ result, customDetections = [], onDetection
     data.push(["TOTAL", +totalArea.toFixed(2), +totalPerim.toFixed(2), ""]);
     const ws = XLSX.utils.aoa_to_sheet(data);
     ws["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Pièces");
+    XLSX.utils.book_append_sheet(wb, ws, d("xl_sheet_rooms" as DTKey));
     XLSX.writeFile(wb, `floorscan_pieces_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast({ title: "Export XLSX ✓", variant: "success" });
+    toast({ title: d("re_xlsx_ok" as DTKey), variant: "success" });
   };
 
   const roomsByType = (result.rooms ?? []).reduce<Record<string, typeof result.rooms>>((acc, room) => {
@@ -422,12 +424,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => { resetResultsTutorial(); setForceShowTuto(f => !f); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
-            title="Tutoriel">
-            <Sparkles className="w-3.5 h-3.5" /> Tutoriel
+            title={d("re_tutorial" as DTKey)}>
+            <Sparkles className="w-3.5 h-3.5" /> {d("re_tutorial" as DTKey)}
           </button>
           <div className="relative" data-tuto-results="export-btn">
             <Button onClick={() => setExportOpen(v => !v)} variant="outline">
-              <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3 ml-1" />
+              <Download className="w-4 h-4" /> {d("re_export" as DTKey)} <ChevronDown className="w-3 h-3 ml-1" />
             </Button>
             {exportOpen && (
               <>
@@ -435,7 +437,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
                 <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900 border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px]">
                   <button onClick={() => {
                     if (!measurements) {
-                      if (!confirm("⚠️ Attention : vous n'êtes pas passé par la phase de validation (Mask Editor). Les données exportées sont les résultats bruts de l'IA.\n\nExporter quand même ?")) return;
+                      if (!confirm(d("re_export_warn" as DTKey))) return;
                     }
                     handleExportXLSX(); setExportOpen(false);
                   }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors">
@@ -453,7 +455,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           </Button>
           {onGoChantier && (
             <Button onClick={onGoChantier} variant="outline" className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10">
-              <ClipboardList className="w-4 h-4" /> Chantier
+              <ClipboardList className="w-4 h-4" /> {d("re_chantier" as DTKey)}
             </Button>
           )}
         </div>
@@ -489,7 +491,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
         const kpis = [
           { Icon: DoorOpen,      label: d("re_doors" as DTKey),      value: result.doors_count,                color: "#a78bfa" },
           { Icon: AppWindow,     label: d("re_windows" as DTKey),    value: result.windows_count,              color: "#38bdf8" },
-          ...(result.french_doors_count ? [{ Icon: ArrowLeftRight, label: "Portes-fenêtres", value: result.french_doors_count, color: "#fb923c" }] : []),
+          ...(result.french_doors_count ? [{ Icon: ArrowLeftRight, label: d("re_french_doors" as DTKey), value: result.french_doors_count, color: "#fb923c" }] : []),
           { Icon: Home,          label: d("re_living" as DTKey),     value: fmt(sf.area_hab_m2, 1, " m²"),    color: "#34d399" },
           { Icon: Ruler,         label: d("re_walls_area" as DTKey), value: fmt(sf.area_walls_m2, 1, " m²"),  color: "#60a5fa" },
         ];
@@ -599,7 +601,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             <button onClick={() => setShowFrenchDoors(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showFrenchDoors ? "bg-orange-500/15 text-orange-400 border-orange-500/30" : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10")}>
-              {showFrenchDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} Portes-fenêtres
+              {showFrenchDoors ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {d("re_french_doors" as DTKey)}
             </button>
           )}
           {result.mask_walls_ai_b64 && (
@@ -648,7 +650,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showSurfacesOverlay ? "bg-violet-500/15 text-violet-400 border-violet-500/30" : "text-slate-500 hover:text-slate-300 border-transparent hover:border-white/10")}>
               {showSurfacesOverlay ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-              <PaintBucket className="w-3 h-3" /> Surfaces
+              <PaintBucket className="w-3 h-3" /> {d("re_surfaces" as DTKey)}
               <span className="text-[10px] opacity-60 font-mono">{editorZones.length}</span>
             </button>
           )}
@@ -663,35 +665,35 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             <button onClick={() => setShowLinears(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showLinears ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-3.5 h-3.5" /> Lin&#233;aires ({linearMeasures.length})
+              <Ruler className="w-3.5 h-3.5" /> {d("re_linears" as DTKey)} ({linearMeasures.length})
             </button>
           )}
           {countCategories.length > 0 && (
             <button onClick={() => setShowCounts(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showCounts ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-              <Hash className="w-3.5 h-3.5" /> Comptage ({countPoints.length})
+              <Hash className="w-3.5 h-3.5" /> {d("re_counting" as DTKey)} ({countPoints.length})
             </button>
           )}
           {textAnnotations.length > 0 && (
             <button onClick={() => setShowTexts(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showTexts ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-              <Type className="w-3.5 h-3.5" /> Textes ({textAnnotations.length})
+              <Type className="w-3.5 h-3.5" /> {d("re_texts" as DTKey)} ({textAnnotations.length})
             </button>
           )}
           {circleMeasures.length > 0 && (
             <button onClick={() => setShowCircles(v => !v)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-600 border transition-all flex items-center gap-1.5",
                 showCircles ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/10 text-slate-500 hover:text-slate-300")}>
-              <Circle className="w-3.5 h-3.5" /> Cercles ({circleMeasures.length})
+              <Circle className="w-3.5 h-3.5" /> {d("re_circles" as DTKey)} ({circleMeasures.length})
             </button>
           )}
 
           <button onClick={async () => {
             // Canvas-based compositing (html2canvas doesn't support WebkitMaskImage)
             const imgEl = document.querySelector("[data-results-image]") as HTMLImageElement;
-            if (!imgEl || !imgEl.naturalWidth) { toast({ title: "Image non chargée", variant: "error" }); return; }
+            if (!imgEl || !imgEl.naturalWidth) { toast({ title: d("re_img_not_loaded" as DTKey), variant: "error" }); return; }
             try {
               const cv = document.createElement("canvas");
               cv.width = imgEl.naturalWidth; cv.height = imgEl.naturalHeight;
@@ -720,14 +722,14 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               }
               const a = document.createElement("a");
               a.href = cv.toDataURL("image/png"); a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click();
-              toast({ title: "Image téléchargée avec masques", variant: "success" });
+              toast({ title: d("re_img_downloaded" as DTKey), variant: "success" });
             } catch {
               const a = document.createElement("a"); a.href = imgEl.src;
               a.download = `floorscan_plan_${new Date().toISOString().slice(0, 10)}.png`; a.click();
             }
-          }} title="Télécharger l'image avec les masques affichés"
+          }} title={d("re_img_downloaded" as DTKey)}
             className="px-3 py-1.5 rounded-lg text-xs font-600 border border-white/10 text-slate-500 hover:text-white transition-all flex items-center gap-1.5 ml-auto">
-            <Download className="w-3.5 h-3.5" /> Image
+            <Download className="w-3.5 h-3.5" /> {d("re_img_btn" as DTKey)}
           </button>
         </div>
 
@@ -735,18 +737,18 @@ export default function ResultsStep({ result, customDetections = [], onDetection
           <div className="flex items-center justify-between gap-2 mb-3 bg-sky-500/5 border border-sky-500/20 rounded-lg px-3 py-2">
             <div className="flex items-center gap-2">
               <Ruler className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-              <span className="text-xs text-sky-400/80">Cliquez deux points sur l&apos;image pour mesurer une distance. Clic droit pour d&#233;placer.</span>
+              <span className="text-xs text-sky-400/80">{d("re_measure_hint" as DTKey)}</span>
             </div>
             <button onClick={() => {
               setMeasureActive(false);
               setTimeout(() => setMeasureActive(true), 50);
             }}
               className="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 border border-red-500/20 rounded transition-colors shrink-0">
-              Clear
+              {d("re_clear" as DTKey)}
             </button>
             <button onClick={() => setMeasureActive(false)}
               className="text-xs text-slate-500 hover:text-red-400 px-2 py-0.5 border border-white/10 rounded transition-colors shrink-0">
-              Fermer
+              {d("re_close" as DTKey)}
             </button>
           </div>
         )}
@@ -1015,7 +1017,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.02] transition-colors">
             <p className="text-xs font-mono text-accent uppercase tracking-widest">{d("recap_title")}</p>
             <div className="flex items-center gap-3">
-              {!recapOpen && hasRooms && <span className="text-xs text-slate-500 font-mono">{totalRooms} pièces · {totalArea} m²</span>}
+              {!recapOpen && hasRooms && <span className="text-xs text-slate-500 font-mono">{totalRooms} {d("re_rooms_summary" as DTKey)} · {totalArea} m²</span>}
               {recapOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
             </div>
           </button>
@@ -1024,7 +1026,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               {hasRooms && (
                 <div className="flex justify-end mb-3">
                   <button onClick={handleExportRoomsXLSX} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
-                    <Table2 className="w-3.5 h-3.5" /> XLSX Pièces
+                    <Table2 className="w-3.5 h-3.5" /> {d("re_xlsx_rooms" as DTKey)}
                   </button>
                 </div>
               )}
@@ -1112,12 +1114,12 @@ export default function ResultsStep({ result, customDetections = [], onDetection
               <Wrench className="w-3.5 h-3.5 text-accent" />
             </div>
             <div className="text-left">
-              <p className="text-sm font-600 text-white">Advanced Tools</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Material estimate · DPGF · CCTP · Scenario · Schedule · Compliance · Housing · Unit/Lot · BTP Toolkit</p>
+              <p className="text-sm font-600 text-white">{d("re_advanced_tools" as DTKey)}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{d("re_advanced_desc" as DTKey)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-4">
-            <span className="text-[10px] text-slate-600 border border-white/10 rounded px-1.5 py-0.5 font-mono">9 outils</span>
+            <span className="text-[10px] text-slate-600 border border-white/10 rounded px-1.5 py-0.5 font-mono">{d("re_tools_count" as DTKey)}</span>
             {advancedOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
           </div>
         </button>
@@ -1153,7 +1155,7 @@ export default function ResultsStep({ result, customDetections = [], onDetection
             }} disabled={comparingModels}
               className={cn("w-full px-4 py-3 rounded-xl text-sm font-500 border transition-all flex items-center justify-center gap-2",
                 comparingModels ? "border-amber-500/20 text-amber-400/50 cursor-wait" : "border-amber-500/30 text-amber-400 hover:bg-amber-500/10")}>
-              {comparingModels ? <><Layers className="w-4 h-4" /> Comparaison en cours...</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
+              {comparingModels ? <><Layers className="w-4 h-4" /> {d("re_comparing" as DTKey)}</> : <><Layers className="w-4 h-4" /> {d("cmp_btn_compare")}</>}
             </button>
           ) : (
             <ComparisonPanel result={comparisonResult} basePlanB64={basePlanB64} ppm={result.pixels_per_meter} />
