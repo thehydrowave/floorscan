@@ -134,24 +134,24 @@ export default function HeroSection() {
                   {[{ x: 182, y: 243, w: 68, h: 12 }, { x: 333, y: 122, w: 12, h: 56 }, { x: 538, y: 334, w: 12, h: 60 }].map((d, i) => (
                     <g key={`door${i}`}>
                       <rect x={d.x} y={d.y} width={d.w} height={d.h} fill="rgba(239,68,68,0.15)" stroke="#f87171" strokeWidth="1.5" rx="2" />
-                      <text x={d.x + d.w / 2} y={d.y - 6} textAnchor="middle" fill="#f87171" fontSize="9" fontFamily="monospace" fontWeight="bold">PORTE</text>
+                      <text x={d.x + d.w / 2} y={d.y - 6} textAnchor="middle" fill="#f87171" fontSize="9" fontFamily="monospace" fontWeight="bold">{t("hero_door", lang)}</text>
                     </g>
                   ))}
                   {/* Windows */}
                   {[{ x: 122, y: 36, w: 88, h: 10 }, { x: 442, y: 36, w: 88, h: 10 }, { x: 54, y: 152, w: 10, h: 66 }].map((w, i) => (
                     <g key={`win${i}`}>
                       <rect x={w.x} y={w.y} width={w.w} height={w.h} fill="rgba(59,130,246,0.18)" stroke="#60a5fa" strokeWidth="1.5" rx="2" />
-                      <text x={w.x + w.w / 2} y={w.y - 6} textAnchor="middle" fill="#60a5fa" fontSize="9" fontFamily="monospace" fontWeight="bold">FENÊTRE</text>
+                      <text x={w.x + w.w / 2} y={w.y - 6} textAnchor="middle" fill="#60a5fa" fontSize="9" fontFamily="monospace" fontWeight="bold">{t("hero_window", lang)}</text>
                     </g>
                   ))}
                   {/* Room labels */}
-                  <text x="199" y="144" textAnchor="middle" fill="#38bdf8" fontSize="12" fontFamily="Syne, sans-serif" fontWeight="600">Séjour</text>
+                  <text x="199" y="144" textAnchor="middle" fill="#38bdf8" fontSize="12" fontFamily="Syne, sans-serif" fontWeight="600">{t("hero_living", lang)}</text>
                   <text x="199" y="160" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">34,5 m²</text>
-                  <text x="539" y="139" textAnchor="middle" fill="#7dd3fc" fontSize="12" fontFamily="Syne, sans-serif" fontWeight="600">Chambre</text>
+                  <text x="539" y="139" textAnchor="middle" fill="#7dd3fc" fontSize="12" fontFamily="Syne, sans-serif" fontWeight="600">{t("hero_bedroom", lang)}</text>
                   <text x="539" y="155" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">28,2 m²</text>
-                  <text x="254" y="329" textAnchor="middle" fill="#38bdf8" fontSize="11" fontFamily="Syne, sans-serif" fontWeight="600">Cuisine</text>
+                  <text x="254" y="329" textAnchor="middle" fill="#38bdf8" fontSize="11" fontFamily="Syne, sans-serif" fontWeight="600">{t("hero_kitchen", lang)}</text>
                   <text x="254" y="344" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">16,8 m²</text>
-                  <text x="599" y="329" textAnchor="middle" fill="#7dd3fc" fontSize="11" fontFamily="Syne, sans-serif" fontWeight="600">Salle de bain</text>
+                  <text x="599" y="329" textAnchor="middle" fill="#7dd3fc" fontSize="11" fontFamily="Syne, sans-serif" fontWeight="600">{t("hero_bathroom", lang)}</text>
                   <text x="599" y="344" textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">8,4 m²</text>
                   {/* Confidence indicator */}
                   <circle cx="728" cy="56" r="4" fill="#10b981" />
@@ -161,9 +161,9 @@ export default function HeroSection() {
                 {/* Overlay badges */}
                 <div className="absolute top-4 left-4 flex flex-col gap-1.5">
                   {[
-                    { color: "bg-red-400", label: "3 Portes détectées" },
-                    { color: "bg-blue-400", label: "3 Fenêtres détectées" },
-                    { color: "bg-emerald-400", label: "84,2 m² habitables" },
+                    { color: "bg-red-400", label: `3 ${t("hero_doors_det", lang)}` },
+                    { color: "bg-blue-400", label: `3 ${t("hero_wins_det", lang)}` },
+                    { color: "bg-emerald-400", label: `84,2 ${t("hero_hab", lang)}` },
                   ].map(({ color, label }) => (
                     <div key={label} className="flex items-center gap-1.5 bg-slate-800/90 backdrop-blur rounded-lg px-2.5 py-1 text-xs text-slate-200 border border-slate-600/40 shadow-sm">
                       <span className={`w-2 h-2 rounded-full ${color}`} />
