@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
-  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy, Eraser,
+  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy, Eraser, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -1202,8 +1202,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <ArrowLeft className="w-3.5 h-3.5" /> {d("fe_results" as DTKey)}
               </Button>
               <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
-              <Button size="sm" variant="ghost" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
-                className="text-slate-500 hover:text-amber-400">?</Button>
+              <Button size="sm" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
+                className="flex items-center gap-1 border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
+                <Sparkles className="w-3 h-3" /> Tutorial
+              </Button>
             </div>
           </div>
           <FacadeTutorialOverlay forceShow={showTuto} />

@@ -91,6 +91,22 @@ export const T = {
 
   // ── Footer ────────────────────────────────────────────────────────────────
   footer_built:    { fr:"Site créé par Marco · Développé avec Next.js · IA propriétaire FloorScan", en:"Site created by Marco · Built with Next.js · Powered by FloorScan AI", es:"Sitio creado por Marco · Desarrollado con Next.js · Impulsado por FloorScan IA", de:"Website erstellt von Marco · Entwickelt mit Next.js · Betrieben von FloorScan KI", it:"Sito creato da Marco · Sviluppato con Next.js · Alimentato da FloorScan IA" },
+  footer_desc:     { fr:"Analyse de plans architecturaux par IA. Détection ouvertures, métrés, rapports pro — en 30 secondes.", en:"AI-powered architectural plan analysis. Opening detection, measurements, pro reports — in 30 seconds.", es:"Análisis de planos arquitectónicos por IA. Detección de aberturas, métricas, informes pro — en 30 segundos.", de:"KI-gestützte Analyse von Bauplänen. Öffnungserkennung, Vermessung, Pro-Berichte — in 30 Sekunden.", it:"Analisi di piante architettoniche con IA. Rilevamento aperture, misure, report pro — in 30 secondi." },
+  footer_product:  { fr:"Produit", en:"Product", es:"Producto", de:"Produkt", it:"Prodotto" },
+  footer_features: { fr:"Fonctionnalités", en:"Features", es:"Funcionalidades", de:"Funktionen", it:"Funzionalità" },
+  footer_how:      { fr:"Comment ça marche", en:"How it works", es:"Cómo funciona", de:"Wie es funktioniert", it:"Come funziona" },
+  footer_cases:    { fr:"Cas d'usage", en:"Use cases", es:"Casos de uso", de:"Anwendungsfälle", it:"Casi d'uso" },
+  footer_try:      { fr:"Essayer gratuitement", en:"Try for free", es:"Probar gratis", de:"Kostenlos testen", it:"Prova gratis" },
+  footer_resources:{ fr:"Ressources", en:"Resources", es:"Recursos", de:"Ressourcen", it:"Risorse" },
+  footer_contact:  { fr:"Contact", en:"Contact", es:"Contacto", de:"Kontakt", it:"Contatto" },
+  footer_blog:     { fr:"Blog", en:"Blog", es:"Blog", de:"Blog", it:"Blog" },
+  footer_api:      { fr:"API (bientôt)", en:"API (coming soon)", es:"API (próximamente)", de:"API (bald)", it:"API (presto)" },
+  footer_legal:    { fr:"Légal", en:"Legal", es:"Legal", de:"Rechtliches", it:"Legale" },
+  footer_mentions: { fr:"Mentions légales", en:"Legal notices", es:"Aviso legal", de:"Impressum", it:"Note legali" },
+  footer_privacy:  { fr:"Politique de confidentialité", en:"Privacy policy", es:"Política de privacidad", de:"Datenschutz", it:"Privacy" },
+  footer_terms:    { fr:"CGU", en:"Terms", es:"Términos", de:"AGB", it:"Termini" },
+  footer_rights:   { fr:"Tous droits réservés.", en:"All rights reserved.", es:"Todos los derechos reservados.", de:"Alle Rechte vorbehalten.", it:"Tutti i diritti riservati." },
+  footer_confid:   { fr:"Confidentialité", en:"Privacy", es:"Privacidad", de:"Datenschutz", it:"Privacy" },
 
   // ── Landing — Trust section ──────────────────────────────────────────────
   trust_title1:    { fr:"La confiance des", en:"Trusted by", es:"La confianza de los", de:"Das Vertrauen der", it:"La fiducia dei" },

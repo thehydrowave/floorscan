@@ -6,7 +6,7 @@ import {
   ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
   LayoutPanelTop, Columns2, Frame, Crop,
-  ZoomIn, ZoomOut, PenSquare, ChevronLeft, ChevronDown, ChevronUp, Wrench,
+  ZoomIn, ZoomOut, PenSquare, ChevronLeft, ChevronDown, ChevronUp, Wrench, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
@@ -426,8 +426,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
             </button>
           ))}
           <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
-            className="px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-white hover:bg-white/10 transition-all">
-            ?
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
+            <Sparkles className="w-3.5 h-3.5" /> Tutorial
           </button>
         </div>
       </div>
