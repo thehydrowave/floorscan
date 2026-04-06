@@ -1058,10 +1058,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   // CSV export
   // ── Exports (delegated to shared lib) ──
   const getExportData = () => computeExportData(elements, result.pixels_per_meter, imgNat, netFacadeArea ?? 0, facadeArea ?? 0);
-  const exportStats = { windowsCount, windowsArea, windowsPerimeter, netFacadeArea: netFacadeArea ?? 0, facadeArea: facadeArea ?? 0, floorsCount: result.floors_count };
-
   const exportCSV = () => { exportFacadeCSV(getExportData(), getTypeLabel); toast({ title: d("fe_csv_exported" as DTKey), variant: "success" }); };
-  const exportXLSX = async () => { await exportFacadeXLSX(getExportData(), exportStats, elements, customTypes, getTypeLabel); toast({ title: d("fe_xlsx_exported" as DTKey), variant: "success" }); };
+  const exportXLSX = async () => {
+    const stats = { windowsCount, windowsArea, windowsPerimeter, netFacadeArea: netFacadeArea ?? 0, facadeArea: facadeArea ?? 0, floorsCount: result.floors_count };
+    await exportFacadeXLSX(getExportData(), stats, elements, customTypes, getTypeLabel);
+    toast({ title: d("fe_xlsx_exported" as DTKey), variant: "success" });
+  };
   const exportPDF = async () => {
     try {
       await generateFacadeRapportPDF({ result, elements, facadeAreaM2: facadeArea ?? 0, wallNetArea: netFacadeArea ?? 0, windowCount: windowsCount, windowsAreaM2: windowsArea, windowsPerimeterM: windowsPerimeter, perZoneStats: null, imgNat, lang });
