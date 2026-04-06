@@ -2132,7 +2132,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         <div className="flex items-center gap-1.5">
           {/* Save button */}
           {onGoResults && (
-            <Button size="sm" variant="outline" onClick={() => {
+            <Button size="sm" variant="outline" data-tuto="save-btn" onClick={() => {
               const updatedResult = {
                 ...result,
                 _measurements: {

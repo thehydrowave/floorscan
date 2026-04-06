@@ -298,6 +298,7 @@ export default function ChatPanel({ result, facadeResult, currentStep, autoOpen,
         )}
         title={d("chat_title")}
         aria-label={d("chat_title")}
+        data-tuto-results="chat"
       >
         <AvatarIcon size={30} />
         <span className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-950 animate-pulse" />

@@ -31,13 +31,12 @@ export default function Stepper({ currentStep, totalSteps, skipConnect, onStepCl
 
   const handleClick = (visualStepNum: number) => {
     if (!onStepClick) return;
-    // Convert visual step back to internal step
     const internalStep = skipConnect ? visualStepNum + 1 : visualStepNum;
     onStepClick(internalStep);
   };
 
   return (
-    <div className="flex items-center w-full max-w-3xl mx-auto">
+    <div className="flex items-center w-full max-w-3xl mx-auto px-2">
       {Array.from({ length: count }).map((_, index) => {
         const stepNum = index + 1;
         const isActive = stepNum === visualStep;
@@ -48,48 +47,56 @@ export default function Stepper({ currentStep, totalSteps, skipConnect, onStepCl
         const isClickable = isDone && !!onStepClick;
 
         return (
-          <div key={index} className="flex items-center flex-1">
+          <div key={index} className={cn("flex items-center", isLast ? "flex-shrink-0" : "flex-1")}>
+            {/* Step circle + label */}
             <div
               className={cn(
-                "flex flex-col items-center gap-1.5 flex-shrink-0",
+                "flex flex-col items-center gap-1 flex-shrink-0 relative",
                 isClickable && "cursor-pointer group"
               )}
               onClick={isClickable ? () => handleClick(stepNum) : undefined}
             >
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-600 font-display transition-all duration-300",
-                  isActive && "step-active text-white",
-                  isDone && "step-done text-accent-green",
-                  !isActive && !isDone && "step-inactive text-slate-500",
-                  isClickable && "group-hover:ring-2 group-hover:ring-accent-green/40 group-hover:scale-110"
+                  "w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 relative",
+                  isActive && "bg-gradient-to-br from-cyan-400 to-sky-600 text-white shadow-[0_0_20px_rgba(34,211,238,0.35)]",
+                  isDone && "bg-emerald-500/15 border-[1.5px] border-emerald-500/40 text-emerald-400",
+                  !isActive && !isDone && "bg-white/[0.04] border-[1.5px] border-white/[0.08] text-slate-500",
+                  isClickable && "group-hover:border-emerald-400/60 group-hover:scale-110 group-hover:shadow-[0_0_12px_rgba(16,185,129,0.2)]"
                 )}
               >
                 {isDone ? (
-                  <Check className="w-3.5 h-3.5" />
+                  <Check className="w-4 h-4" strokeWidth={2.5} />
                 ) : (
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-4 h-4" />
                 )}
               </div>
               <span
                 className={cn(
-                  "text-xs font-medium transition-colors hidden sm:block",
-                  isActive && "text-white",
-                  isDone && "text-accent-green",
+                  "text-[10px] font-semibold transition-colors hidden sm:block whitespace-nowrap max-w-[72px] truncate text-center",
+                  isActive && "text-cyan-300",
+                  isDone && "text-emerald-400/80",
                   !isActive && !isDone && "text-slate-600",
-                  isClickable && "group-hover:text-white"
+                  isClickable && "group-hover:text-emerald-300"
                 )}
               >
                 {label}
               </span>
             </div>
+            {/* Connector line */}
             {!isLast && (
-              <div
-                className={cn(
-                  "flex-1 h-px mx-2 transition-colors duration-300 -mt-5 sm:-mt-5",
-                  isDone ? "bg-accent-green/40" : "bg-white/5"
-                )}
-              />
+              <div className="flex-1 flex items-center px-1.5 -mt-4 sm:-mt-4">
+                <div
+                  className={cn(
+                    "h-[2px] w-full rounded-full transition-all duration-500",
+                    isDone
+                      ? "bg-gradient-to-r from-emerald-500/50 to-emerald-500/20"
+                      : isActive
+                        ? "bg-gradient-to-r from-cyan-500/30 to-transparent"
+                        : "bg-white/[0.04]"
+                  )}
+                />
+              </div>
             )}
           </div>
         );
