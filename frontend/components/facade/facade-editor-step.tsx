@@ -40,10 +40,7 @@ const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line
 
 /* ── Only windows and walls editable in facade editor ── */
 const EDITOR_TYPES: string[] = ["window", "wall_opaque"];
-const EDITOR_LABELS: Record<string, string> = {
-  window: "Fenêtres", door: "Portes", balcony: "Balcons",
-  floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
-};
+// EDITOR_LABELS removed — use getTypeLabel()/d() for i18n
 
 /* ── Custom type definition ── */
 interface CustomType { id: string; name: string; color: string; replacesWall: boolean; }
@@ -347,7 +344,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         e.preventDefault();
         clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
         setIsCut(false);
-        toast({ title: `${clipboardRef.current.length} élément(s) copié(s)`, variant: "default" });
+        toast({ title: `${clipboardRef.current.length} ${d("fe_copied" as DTKey)}`, variant: "default" });
         return;
       }
 
@@ -358,7 +355,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         setIsCut(true);
         setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
         setSelectedIds(new Set());
-        toast({ title: `${clipboardRef.current.length} élément(s) coupé(s)`, variant: "default" });
+        toast({ title: `${clipboardRef.current.length} ${d("fe_cut" as DTKey)}`, variant: "default" });
         return;
       }
 
@@ -382,7 +379,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         setElements(prev => [...prev, ...pasted]);
         setSelectedIds(new Set(pasted.map(p => p.id)));
         if (isCut) { clipboardRef.current = []; setIsCut(false); }
-        toast({ title: `${pasted.length} élément(s) collé(s)`, variant: "success" });
+        toast({ title: `${pasted.length} ${d("fe_pasted" as DTKey)}`, variant: "success" });
         return;
       }
 
@@ -406,7 +403,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         });
         setElements(prev => [...prev, ...duped]);
         setSelectedIds(new Set(duped.map(d => d.id)));
-        toast({ title: `${duped.length} élément(s) dupliqué(s)`, variant: "success" });
+        toast({ title: `${duped.length} ${d("fe_duplicated" as DTKey)}`, variant: "success" });
         return;
       }
 
@@ -907,8 +904,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           return kept;
         });
         const srcName = getTypeLabel(eraserSource);
-        const tgtName = eraserTarget === "__none__" ? "rien" : getTypeLabel(eraserTarget);
-        toast({ title: "Zone gommée", description: `${srcName} → ${tgtName}`, variant: "default" });
+        const tgtName = eraserTarget === "__none__" ? d("fe_nothing" as DTKey) : getTypeLabel(eraserTarget);
+        toast({ title: d("fe_zone_erased" as DTKey), description: `${srcName} → ${tgtName}`, variant: "default" });
       }
       setEraserStart(null);
       setEraserPreview(null);
@@ -995,7 +992,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     setTransDrawing([]);
     setTransPhase("choose_shape");
     setTool("select");
-    toast({ title: `${newElements.length} ${type === "window" ? "fenêtre(s)" : "zone(s) mur"} créée(s)`, variant: "success" });
+    toast({ title: `${newElements.length} ${getTypeLabel(type)} ${d("fe_created" as DTKey)}`, variant: "success" });
   };
 
   // Update selected elements (applies to all selected)
@@ -1063,13 +1060,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const getExportData = () => computeExportData(elements, result.pixels_per_meter, imgNat, netFacadeArea ?? 0, facadeArea ?? 0);
   const exportStats = { windowsCount, windowsArea, windowsPerimeter, netFacadeArea: netFacadeArea ?? 0, facadeArea: facadeArea ?? 0, floorsCount: result.floors_count };
 
-  const exportCSV = () => { exportFacadeCSV(getExportData(), getTypeLabel); toast({ title: "CSV exporté", variant: "success" }); };
-  const exportXLSX = async () => { await exportFacadeXLSX(getExportData(), exportStats, elements, customTypes, getTypeLabel); toast({ title: "XLSX exporté", variant: "success" }); };
+  const exportCSV = () => { exportFacadeCSV(getExportData(), getTypeLabel); toast({ title: d("fe_csv_exported" as DTKey), variant: "success" }); };
+  const exportXLSX = async () => { await exportFacadeXLSX(getExportData(), exportStats, elements, customTypes, getTypeLabel); toast({ title: d("fe_xlsx_exported" as DTKey), variant: "success" }); };
   const exportPDF = async () => {
     try {
       await generateFacadeRapportPDF({ result, elements, facadeAreaM2: facadeArea ?? 0, wallNetArea: netFacadeArea ?? 0, windowCount: windowsCount, windowsAreaM2: windowsArea, windowsPerimeterM: windowsPerimeter, perZoneStats: null, imgNat, lang });
-      toast({ title: "PDF exporté", variant: "success" });
-    } catch (err: any) { console.error("PDF export error:", err); toast({ title: "Erreur PDF", description: err?.message ?? "Erreur", variant: "error" }); }
+      toast({ title: d("fe_pdf_exported" as DTKey), variant: "success" });
+    } catch (err: any) { console.error("PDF export error:", err); toast({ title: d("fe_pdf_error" as DTKey), description: err?.message ?? "Erreur", variant: "error" }); }
   };
 
   // Visible elements filter — respects visibility toggles
@@ -1118,10 +1115,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
       {/* ── Summary bar ABOVE canvas ── */}
       <div className="flex items-center gap-4 px-4 py-2 glass rounded-xl border border-white/10 mb-2 flex-wrap">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">RÉSUMÉ</span>
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">{d("fe_summary" as DTKey)}</span>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TYPE_COLORS.window }} />
-          <span className="text-[11px] text-slate-300">Fenêtres</span>
+          <span className="text-[11px] text-slate-300">{d("fe_windows" as DTKey)}</span>
           <span className="text-sm text-white font-mono font-semibold">{windowsCount}</span>
           <span className="text-[10px] text-slate-500 font-mono">{windowsArea.toFixed(1)} m²</span>
           {windowsPerimeter > 0 && <span className="text-[10px] text-slate-500 font-mono">P:{windowsPerimeter.toFixed(1)}m</span>}
@@ -1129,7 +1126,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         {facadeArea != null && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">Façade</span>
+            <span className="text-[11px] text-slate-400">{d("fe_facade" as DTKey)}</span>
             <span className="text-sm text-white font-mono font-semibold">{facadeArea.toFixed(1)} m²</span>
           </div>
         </>)}
@@ -1137,14 +1134,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#22c55e" }} />
-            <span className="text-[11px] text-slate-300">Nette</span>
+            <span className="text-[11px] text-slate-300">{d("fe_nette" as DTKey)}</span>
             <span className="text-sm text-emerald-400 font-mono font-semibold">{netFacadeArea.toFixed(1)} m²</span>
           </div>
         </>)}
         {result.floors_count != null && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">Étages</span>
+            <span className="text-[11px] text-slate-400">{d("fe_floors" as DTKey)}</span>
             <span className="text-sm text-white font-mono font-semibold">{result.floors_count}</span>
           </div>
         </>)}
@@ -1167,7 +1164,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1">
             <span className="text-[10px] text-slate-400">
-              {selectedEls.length > 1 ? `${selectedEls.length} sélectionnés` : "Sélection"}
+              {selectedEls.length > 1 ? `${selectedEls.length} ${d("fe_selected" as DTKey)}` : d("fe_selection" as DTKey)}
               {selectedEls.length > 1 && " (Ctrl+clic)"}:
             </span>
             <select value={selectedEls[0]?.type ?? "window"} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
@@ -1200,7 +1197,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <Download className="w-3.5 h-3.5" /> PDF
               </Button>
               <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
-                <ArrowLeft className="w-3.5 h-3.5" /> Résultats
+                <ArrowLeft className="w-3.5 h-3.5" /> {d("fe_results" as DTKey)}
               </Button>
               <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
               <Button size="sm" variant="ghost" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
@@ -1246,13 +1243,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                 addType === "window" ? "border-pink-500/40 bg-pink-500/10 text-pink-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <AppWindow className={cn("w-4 h-4 shrink-0", "text-pink-400")} />
-              <span className={addType === "window" ? "" : "text-slate-400"}>Fenêtres</span>
+              <span className={addType === "window" ? "" : "text-slate-400"}>{d("fe_windows" as DTKey)}</span>
             </button>
             <button onClick={() => { setAddType("wall_opaque"); setActiveLayer("wall_opaque"); setVisibility(v => ({ ...v, wall_opaque: true })); if (tool === "select") setTool("add_rect"); }}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                 addType === "wall_opaque" ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <Building2 className={cn("w-4 h-4 shrink-0", "text-green-400")} />
-              <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
+              <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>{d("fe_net_surface" as DTKey)}</span>
             </button>
 
             {/* Custom type layer buttons with edit/delete on right-click */}
@@ -1280,7 +1277,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     <label className="flex items-center gap-1 text-[9px] text-slate-400 cursor-pointer">
                       <input type="checkbox" checked={newTypeReplacesWall} onChange={e => setNewTypeReplacesWall(e.target.checked)}
                         className="w-3 h-3 rounded" />
-                      Remplace mur
+                      {d("fe_replaces_wall" as DTKey)}
                     </label>
                     <button onClick={() => {
                       if (newTypeName.trim()) setCustomTypes(prev => prev.map(c => c.id === ct.id ? { ...c, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall } : c));
@@ -1321,7 +1318,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             {!showNewTypeForm ? (
               <button onClick={() => { setShowNewTypeForm(true); setNewTypeName(""); setNewTypeColor(CUSTOM_COLORS[0]); setNewTypeReplacesWall(false); }}
                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] border border-dashed border-white/20 text-slate-500 hover:text-slate-300 hover:border-white/30 transition-all">
-                <Plus className="w-3 h-3" /> Type
+                <Plus className="w-3 h-3" /> {d("fe_add_type" as DTKey)}
               </button>
             ) : (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-white/20 bg-white/5">
@@ -1372,27 +1369,27 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <button onClick={() => { setTool("select"); setDrawingPoly([]); }} title="Sélection"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <MousePointer2 className="w-3 h-3" /> Sélection
+              <MousePointer2 className="w-3 h-3" /> {d("fe_selection" as DTKey)}
             </button>
             <button onClick={() => { setTool("add_rect"); setSelectedId(null); }} title="Dessiner rectangle"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "add_rect" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Square className="w-3 h-3" /> Dessiner
+              <Square className="w-3 h-3" /> {d("fe_draw" as DTKey)}
             </button>
             <button onClick={() => { setTool("add_polygon"); setSelectedId(null); }} title="Forme libre"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "add_polygon" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Pentagon className="w-3 h-3" /> Forme libre
+              <Pentagon className="w-3 h-3" /> {d("fe_free_shape" as DTKey)}
             </button>
             <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Supprimer élément"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Trash2 className="w-3 h-3" /> Supprimer
+              <Trash2 className="w-3 h-3" /> {d("fe_delete" as DTKey)}
             </button>
             <button onClick={() => { setTool("eraser"); setSelectedId(null); }} title="Gomme — affiner les zones"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "eraser" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Eraser className="w-3 h-3" /> Gomme
+              <Eraser className="w-3 h-3" /> {d("fe_eraser" as DTKey)}
             </button>
             {tool === "eraser" && (
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px]">
@@ -1403,7 +1400,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <span className="text-slate-500">→</span>
                 <select value={eraserTarget} onChange={e => setEraserTarget(e.target.value)}
                   className="bg-slate-800 border border-white/10 rounded px-1 py-0.5 text-[9px] text-white">
-                  <option value="__none__">Rien</option>
+                  <option value="__none__">{d("fe_nothing" as DTKey)}</option>
                   {allEditorTypes.map(t => <option key={t} value={t}>{getTypeLabel(t)}</option>)}
                 </select>
               </div>
@@ -1418,22 +1415,22 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <button onClick={() => setTool("linear")} title="Mesure de distance"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-2.5 h-2.5" /> Linéaire
+              <Ruler className="w-2.5 h-2.5" /> {d("fe_linear" as DTKey)}
             </button>
             <button onClick={() => setTool("count")} title="Annotation points"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Hash className="w-2.5 h-2.5" /> Comptage
+              <Hash className="w-2.5 h-2.5" /> {d("fe_count" as DTKey)}
             </button>
             <button onClick={() => setTool("text")} title="Annotation texte"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Type className="w-2.5 h-2.5" /> Texte
+              <Type className="w-2.5 h-2.5" /> {d("fe_text" as DTKey)}
             </button>
             <button onClick={() => setTool("rescale")} title="Recalibrer l'échelle"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-2.5 h-2.5" /> Échelle
+              <Ruler className="w-2.5 h-2.5" /> {d("fe_scale" as DTKey)}
             </button>
             </span>{/* end measure tuto target */}
 
@@ -1449,7 +1446,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "translation"
                   ? "border-orange-500 bg-orange-500/20 text-orange-300 shadow-lg shadow-orange-500/20"
                   : "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20")}>
-              <Copy className="w-3.5 h-3.5" /> Translation
+              <Copy className="w-3.5 h-3.5" /> {d("fe_translation" as DTKey)}
             </button>
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
@@ -1511,7 +1508,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
               {transPhase === "choose_shape" && (
                 <>
-                  <span className="text-[10px] text-slate-400">Forme :</span>
+                  <span className="text-[10px] text-slate-400">{d("fe_shape_type" as DTKey)}</span>
                   <button onClick={() => { setTransShapeMode("rect"); setTransPhase("place_anchors"); }}
                     className="px-2 py-1 rounded text-[10px] border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20">
                     <Square className="w-3 h-3 inline mr-1" />Rectangle
@@ -1526,7 +1523,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               {transPhase === "place_anchors" && (
                 <>
                   <span className="text-[10px] text-slate-400">
-                    Cliquez pour placer les points d&apos;ancrage ({transAnchors.length} placé{transAnchors.length > 1 ? "s" : ""})
+                    {d("fe_place_anchors" as DTKey)} ({transAnchors.length} {d("fe_placed" as DTKey)})
                   </span>
                   <button onClick={() => { if (transAnchors.length > 0) setTransPhase("draw_shape"); }}
                     disabled={transAnchors.length === 0}
@@ -1534,18 +1531,18 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       transAnchors.length > 0
                         ? "border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20"
                         : "border-white/10 text-slate-600 cursor-not-allowed")}>
-                    Valider les points ✓
+                    {d("fe_validate_pts" as DTKey)} ✓
                   </button>
                   {transAnchors.length > 0 && (
                     <button onClick={() => setTransAnchors(prev => prev.slice(0, -1))}
                       className="px-1.5 py-1 rounded text-[10px] border border-red-500/30 text-red-400 hover:bg-red-500/10">
-                      Annuler dernier
+                      {d("fe_undo_last" as DTKey)}
                     </button>
                   )}
                   {transAnchors.length >= 2 && !transRepeatShow && (
                     <button onClick={() => setTransRepeatShow(true)}
                       className="px-2 py-1 rounded text-[10px] border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
-                      ↻ Répéter points
+                      ↻ {d("fe_repeat_pts" as DTKey)}
                     </button>
                   )}
                   {transRepeatShow && transAnchors.length >= 2 && (
@@ -1577,7 +1574,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                         setTransAnchors(prev => [...prev, ...newPts]);
                         setTransRepeatShow(false);
                       }} className="px-2 py-0.5 rounded text-[9px] border border-green-500/40 bg-green-500/10 text-green-400 font-semibold">
-                        Appliquer
+                        {d("fe_apply" as DTKey)}
                       </button>
                       <button onClick={() => setTransRepeatShow(false)} className="text-slate-500 hover:text-red-400">
                         <X className="w-3 h-3" />
@@ -1590,32 +1587,32 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               {transPhase === "draw_shape" && (
                 <span className="text-[10px] text-slate-400">
                   {transShapeMode === "rect"
-                    ? "Dessinez un rectangle (cliquez-glissez)"
-                    : `Dessinez un polygone (${transDrawing.length} pts — cliquez sur le 1er pour fermer)`}
+                    ? d("fe_draw_rect" as DTKey)
+                    : `${transDrawing.length} ${d("fe_draw_poly_hint" as DTKey)}`}
                 </span>
               )}
 
               {transPhase === "validate" && (
                 <>
-                  <span className="text-[10px] text-green-400 font-medium">Forme dessinée sur {transAnchors.length} point(s)</span>
+                  <span className="text-[10px] text-green-400 font-medium">{d("fe_shape_drawn" as DTKey)} {transAnchors.length} {d("fe_point_s" as DTKey)}</span>
                   <button onClick={() => setTransPhase("choose_type")}
                     className="px-2 py-1 rounded text-[10px] border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 font-medium">
                     Valider ✓
                   </button>
                   <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("draw_shape"); }}
                     className="px-2 py-1 rounded text-[10px] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
-                    Recommencer forme
+                    {d("fe_redo_shape" as DTKey)}
                   </button>
                   <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("place_anchors"); }}
                     className="px-2 py-1 rounded text-[10px] border border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
-                    + Ajouter ancrages
+                    {d("fe_add_anchors" as DTKey)}
                   </button>
                 </>
               )}
 
               {transPhase === "choose_type" && (
                 <>
-                  <span className="text-[10px] text-slate-400">Type de zone :</span>
+                  <span className="text-[10px] text-slate-400">{d("fe_zone_type" as DTKey)}</span>
                   <button onClick={() => applyTranslation("window")}
                     className="px-2 py-1 rounded text-[10px] border border-pink-500/40 bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 font-medium">
                     <AppWindow className="w-3 h-3 inline mr-1" />Fenêtre
