@@ -129,7 +129,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [addType, setAddType] = useState<string>("window");
 
   // Custom element types
-  const [customTypes, setCustomTypes] = useState<CustomType[]>([]);
+  const [customTypes, setCustomTypes] = useState<CustomType[]>(() => result.custom_types ?? []);
   const [showNewTypeForm, setShowNewTypeForm] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_COLORS[0]);
@@ -147,10 +147,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     mask_wall_opaque: result.mask_wall_opaque_b64 ?? "",
   }));
 
-  // Visibility toggles per type
-  const [visibility, setVisibility] = useState<Record<string, boolean>>({
-    window: true, door: true, balcony: true, floor_line: true,
-    roof: true, column: true, other: true, wall_opaque: false,
+  // Visibility toggles per type (include restored custom types)
+  const [visibility, setVisibility] = useState<Record<string, boolean>>(() => {
+    const v: Record<string, boolean> = { window: true, door: true, balcony: true, floor_line: true, roof: true, column: true, other: true, wall_opaque: false };
+    for (const ct of result.custom_types ?? []) v[ct.id] = true;
+    return v;
   });
 
   // Active mask layer for editing
@@ -1052,6 +1053,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       ratio_openings: result.facade_area_m2 && openings_area_m2
         ? openings_area_m2 / result.facade_area_m2
         : null,
+      custom_types: customTypes.length > 0 ? customTypes : undefined,
     };
     onGoResults(updated);
   };
