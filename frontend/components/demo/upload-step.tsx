@@ -250,7 +250,7 @@ export default function UploadStep({ onUploaded, onPdfMetadata, onPageSelected, 
               <BookOpen className="w-10 h-10 text-accent mx-auto mb-4" />
               <p className="text-white font-display font-700 text-lg mb-1">{pendingFileName}</p>
               <p className="text-slate-400 text-sm">
-                {d("up_multipage_hint")} ({pageCount} pages) — Cliquez sur une page pour la sélectionner
+                {d("up_multipage_hint")} ({pageCount} pages)
               </p>
             </div>
 

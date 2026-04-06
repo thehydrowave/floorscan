@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   ZoomIn, ZoomOut, MousePointer2, Plus, Trash2, Download,
   ArrowLeft, RotateCcw, AlertTriangle, Eye, EyeOff, Pentagon, Square,
-  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy, Eraser,
+  AppWindow, Building2, X, Hash, Type, Search, Loader2, Save, Ruler, Copy, Eraser, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement, FacadeElementType } from "@/lib/types";
@@ -15,6 +15,7 @@ import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import { pointInPolygon, polygonAreaPx } from "@/lib/measure-types";
 import { generateFacadeRapportPDF } from "@/lib/facade-rapport-pdf";
+import { computeExportData, exportFacadeCSV, exportFacadeXLSX } from "@/lib/facade-export-utils";
 import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
 
 /* ── Colors ── */
@@ -39,10 +40,7 @@ const ALL_TYPES: FacadeElementType[] = ["window", "door", "balcony", "floor_line
 
 /* ── Only windows and walls editable in facade editor ── */
 const EDITOR_TYPES: string[] = ["window", "wall_opaque"];
-const EDITOR_LABELS: Record<string, string> = {
-  window: "Fenêtres", door: "Portes", balcony: "Balcons",
-  floor_line: "Lignes étage", roof: "Toiture", column: "Colonnes", other: "Autres",
-};
+// EDITOR_LABELS removed — use getTypeLabel()/d() for i18n
 
 /* ── Custom type definition ── */
 interface CustomType { id: string; name: string; color: string; replacesWall: boolean; }
@@ -128,7 +126,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
   const [addType, setAddType] = useState<string>("window");
 
   // Custom element types
-  const [customTypes, setCustomTypes] = useState<CustomType[]>([]);
+  const [customTypes, setCustomTypes] = useState<CustomType[]>(() => result.custom_types ?? []);
   const [showNewTypeForm, setShowNewTypeForm] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState(CUSTOM_COLORS[0]);
@@ -146,10 +144,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     mask_wall_opaque: result.mask_wall_opaque_b64 ?? "",
   }));
 
-  // Visibility toggles per type
-  const [visibility, setVisibility] = useState<Record<string, boolean>>({
-    window: true, door: true, balcony: true, floor_line: true,
-    roof: true, column: true, other: true, wall_opaque: false,
+  // Visibility toggles per type (include restored custom types)
+  const [visibility, setVisibility] = useState<Record<string, boolean>>(() => {
+    const v: Record<string, boolean> = { window: true, door: true, balcony: true, floor_line: true, roof: true, column: true, other: true, wall_opaque: false };
+    for (const ct of result.custom_types ?? []) v[ct.id] = true;
+    return v;
   });
 
   // Active mask layer for editing
@@ -345,7 +344,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         e.preventDefault();
         clipboardRef.current = elements.filter(el => selectedIds.has(el.id));
         setIsCut(false);
-        toast({ title: `${clipboardRef.current.length} élément(s) copié(s)`, variant: "default" });
+        toast({ title: `${clipboardRef.current.length} ${d("fe_copied" as DTKey)}`, variant: "default" });
         return;
       }
 
@@ -356,7 +355,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         setIsCut(true);
         setElements(prev => prev.filter(el => !selectedIds.has(el.id)));
         setSelectedIds(new Set());
-        toast({ title: `${clipboardRef.current.length} élément(s) coupé(s)`, variant: "default" });
+        toast({ title: `${clipboardRef.current.length} ${d("fe_cut" as DTKey)}`, variant: "default" });
         return;
       }
 
@@ -380,7 +379,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         setElements(prev => [...prev, ...pasted]);
         setSelectedIds(new Set(pasted.map(p => p.id)));
         if (isCut) { clipboardRef.current = []; setIsCut(false); }
-        toast({ title: `${pasted.length} élément(s) collé(s)`, variant: "success" });
+        toast({ title: `${pasted.length} ${d("fe_pasted" as DTKey)}`, variant: "success" });
         return;
       }
 
@@ -404,7 +403,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         });
         setElements(prev => [...prev, ...duped]);
         setSelectedIds(new Set(duped.map(d => d.id)));
-        toast({ title: `${duped.length} élément(s) dupliqué(s)`, variant: "success" });
+        toast({ title: `${duped.length} ${d("fe_duplicated" as DTKey)}`, variant: "success" });
         return;
       }
 
@@ -814,18 +813,23 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       } else { setVsCrop(null); }
     }
 
-    // Eraser: subtract eraser rect from overlapping elements + split if needed
-    // Behavior depends on active edit layer:
-    // Eraser: generic source → target logic
+    // ══ ERASER LOGIC ══
     // eraserSource = type to erase FROM (split/shrink)
-    // eraserTarget = type to convert erased zone TO ("__none__" = just remove)
+    // eraserTarget = what erased zone becomes ("__none__" = empty/neutral)
+    //
+    // Rules:
+    // 1. "→ Rien" = zone becomes empty, no mask at all
+    // 2. "X → window": if eraser rect overlaps ANY existing window → extend it (never create new)
+    // 3. "X → custom type": apply custom type properties (replacesWall etc.)
+    // 4. New windows are NEVER created by the eraser — use the draw tool for that
+    // 5. Splitting a window with the eraser is correct behavior (kept)
     if (tool === "eraser" && eraserStart && eraserPreview) {
       const { start, end } = eraserPreview;
       const ex1 = Math.min(start.x, end.x), ey1 = Math.min(start.y, end.y);
       const ex2 = Math.max(start.x, end.x), ey2 = Math.max(start.y, end.y);
       if (ex2 - ex1 > 0.003 && ey2 - ey1 > 0.003) {
         const ppm = result.pixels_per_meter;
-        // When target is "Rien", erase ALL types in the zone (everything goes)
+        // When target is "Rien", erase ALL types in the zone (zone becomes neutral)
         const sourceTypes = eraserTarget === "__none__"
           ? null // null = match all types
           : eraserSource === "window" ? ["window", "other"] : [eraserSource];
@@ -858,17 +862,21 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             }
           }
 
-          // Step 2: If target is not "none", create a new element in the erased zone
+          // Step 2: If target is not "none", handle conversion
           if (eraserTarget !== "__none__") {
-            // Check if start point is inside an existing target element → extend it
-            const startPt = eraserStart!;
-            const hitTarget = kept.find(el =>
-              el.type === eraserTarget &&
-              startPt.x >= el.bbox_norm.x && startPt.x <= el.bbox_norm.x + el.bbox_norm.w &&
-              startPt.y >= el.bbox_norm.y && startPt.y <= el.bbox_norm.y + el.bbox_norm.h
-            );
+            const targetTypes = eraserTarget === "window" ? ["window", "other"] : [eraserTarget];
+
+            // Find ANY existing target element that OVERLAPS the eraser rect (not just start point)
+            const hitTarget = kept.find(el => {
+              if (!targetTypes.includes(el.type)) return false;
+              const hb = el.bbox_norm;
+              const oX = Math.max(0, Math.min(hb.x + hb.w, ex2) - Math.max(hb.x, ex1));
+              const oY = Math.max(0, Math.min(hb.y + hb.h, ey2) - Math.max(hb.y, ey1));
+              return oX > 0 && oY > 0;
+            });
+
             if (hitTarget) {
-              // Extend existing element
+              // Extend the overlapping element to include the erased zone
               const hb = hitTarget.bbox_norm;
               const nx1 = Math.min(hb.x, ex1), ny1 = Math.min(hb.y, ey1);
               const nx2 = Math.max(hb.x + hb.w, ex2), ny2 = Math.max(hb.y + hb.h, ey2);
@@ -878,8 +886,9 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 ...el, bbox_norm: { x: nx1, y: ny1, w: nx2 - nx1, h: ny2 - ny1 },
                 polygon_norm: newPts, area_m2: ppm ? areaPx / (ppm * ppm) : el.area_m2,
               } : el);
-            } else {
-              // Create new element of target type
+            } else if (eraserTarget !== "window") {
+              // Only create new element if target is NOT window (windows = draw tool only)
+              // Custom types and surface nette can be created by eraser
               const newPts: Pt[] = [{ x: ex1, y: ey1 }, { x: ex2, y: ey1 }, { x: ex2, y: ey2 }, { x: ex1, y: ey2 }];
               const areaPx = polygonAreaPx(newPts, imgNat.w, imgNat.h);
               kept.push({
@@ -890,12 +899,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 floor_level: 0, confidence: 1.0,
               });
             }
+            // If target is "window" and no existing window overlaps → do nothing (use draw tool)
           }
           return kept;
         });
         const srcName = getTypeLabel(eraserSource);
-        const tgtName = eraserTarget === "__none__" ? "rien" : getTypeLabel(eraserTarget);
-        toast({ title: "Zone gommée", description: `${srcName} → ${tgtName}`, variant: "default" });
+        const tgtName = eraserTarget === "__none__" ? d("fe_nothing" as DTKey) : getTypeLabel(eraserTarget);
+        toast({ title: d("fe_zone_erased" as DTKey), description: `${srcName} → ${tgtName}`, variant: "default" });
       }
       setEraserStart(null);
       setEraserPreview(null);
@@ -982,7 +992,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
     setTransDrawing([]);
     setTransPhase("choose_shape");
     setTool("select");
-    toast({ title: `${newElements.length} ${type === "window" ? "fenêtre(s)" : "zone(s) mur"} créée(s)`, variant: "success" });
+    toast({ title: `${newElements.length} ${getTypeLabel(type)} ${d("fe_created" as DTKey)}`, variant: "success" });
   };
 
   // Update selected elements (applies to all selected)
@@ -1040,148 +1050,25 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
       ratio_openings: result.facade_area_m2 && openings_area_m2
         ? openings_area_m2 / result.facade_area_m2
         : null,
+      custom_types: customTypes.length > 0 ? customTypes : undefined,
     };
     onGoResults(updated);
   };
 
   // CSV export
-  // ── Shared export data computation ──
-  const getExportData = () => {
-    const ppm = result.pixels_per_meter;
-    const epT = 0.14, epL = 0.14, epA = 0.14;
-    const openings = elements.filter(e => !["floor_line", "roof", "column", "wall_opaque"].includes(e.type));
-    const retourLines = openings.map(e => {
-      const w = e.w_m ?? (ppm && imgNat.w > 0 ? (e.bbox_norm.w * imgNat.w / ppm) : null);
-      const h = e.h_m ?? (ppm && imgNat.h > 0 ? (e.bbox_norm.h * imgNat.h / ppm) : null);
-      const lonLinteau = w, lonAppui = w, lonTableau = h != null ? h * 2 : null;
-      const surfLinteau = lonLinteau != null ? lonLinteau * epL : null;
-      const surfAppui = lonAppui != null ? lonAppui * epA : null;
-      const surfTableau = lonTableau != null ? lonTableau * epT : null;
-      const totalRetour = surfLinteau != null && surfAppui != null && surfTableau != null ? surfLinteau + surfAppui + surfTableau : null;
-      return { e, w, h, lonLinteau, lonAppui, lonTableau, surfLinteau, surfAppui, surfTableau, totalRetour };
-    });
-    const totLonT = retourLines.reduce((s, l) => s + (l.lonTableau ?? 0), 0);
-    const totLonL = retourLines.reduce((s, l) => s + (l.lonLinteau ?? 0), 0);
-    const totLonA = retourLines.reduce((s, l) => s + (l.lonAppui ?? 0), 0);
-    const totSurfT = retourLines.reduce((s, l) => s + (l.surfTableau ?? 0), 0);
-    const totSurfL = retourLines.reduce((s, l) => s + (l.surfLinteau ?? 0), 0);
-    const totSurfA = retourLines.reduce((s, l) => s + (l.surfAppui ?? 0), 0);
-    const totSurfRetours = totSurfT + totSurfL + totSurfA;
-    const pxITE = 120, pxRetour = 45, pxEchaf = 25;
-    const cITE = (netFacadeArea ?? 0) * pxITE;
-    const cRet = (totLonT + totLonL + totLonA) * pxRetour;
-    const cEch = (facadeArea ?? 0) * pxEchaf;
-    return { retourLines, totLonT, totLonL, totLonA, totSurfT, totSurfL, totSurfA, totSurfRetours, pxITE, pxRetour, pxEchaf, cITE, cRet, cEch, cTotal: cITE + cRet + cEch, epT, epL, epA };
-  };
-
-  // ── CSV export ──
-  const exportCSV = () => {
-    const { retourLines } = getExportData();
-    const BOM = "\uFEFF";
-    const header = "ID;Type;Étage;Surface (m²);Périmètre (m);Largeur (m);Hauteur (m);Linteau (ml);Appui (ml);Tableau (ml);Surf. linteau (m²);Surf. appui (m²);Surf. tableau (m²);Total retours (m²)";
-    const rows = retourLines.map(l =>
-      `${l.e.id};${getTypeLabel(l.e.type)};${l.e.floor_level ?? 0};${l.e.area_m2?.toFixed(3) ?? "-"};${l.e.perimeter_m?.toFixed(3) ?? "-"};${l.w?.toFixed(3) ?? "-"};${l.h?.toFixed(3) ?? "-"};${l.lonLinteau?.toFixed(3) ?? "-"};${l.lonAppui?.toFixed(3) ?? "-"};${l.lonTableau?.toFixed(3) ?? "-"};${l.surfLinteau?.toFixed(4) ?? "-"};${l.surfAppui?.toFixed(4) ?? "-"};${l.surfTableau?.toFixed(4) ?? "-"};${l.totalRetour?.toFixed(4) ?? "-"}`
-    );
-    const csv = BOM + [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "facade_elements.csv"; a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "CSV exporté", variant: "success" });
-  };
-
-  // ── XLSX export ──
+  // ── Exports (delegated to shared lib) ──
+  const getExportData = () => computeExportData(elements, result.pixels_per_meter, imgNat, netFacadeArea ?? 0, facadeArea ?? 0);
+  const exportCSV = () => { exportFacadeCSV(getExportData(), getTypeLabel); toast({ title: d("fe_csv_exported" as DTKey), variant: "success" }); };
   const exportXLSX = async () => {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    const d = getExportData();
-
-    // Sheet 1: Résumé
-    const summary = [
-      ["RAPPORT ANALYSE FAÇADE"], ["Date", new Date().toLocaleDateString("fr-FR")], [],
-      ["═══ SURFACES ═══"],
-      ["Fenêtres (nombre)", windowsCount],
-      ["Fenêtres surface (m²)", Number(windowsArea.toFixed(2))],
-      ["Périmètre fenêtres (m)", Number(windowsPerimeter.toFixed(2))],
-      ["Surface nette mur (m²)", Number((netFacadeArea ?? 0).toFixed(2))],
-      ["Surface façade (m²)", Number((facadeArea ?? 0).toFixed(2))],
-      ["Étages détectés", result.floors_count ?? "-"],
-      [],
-      ["═══ RETOURS DE TABLEAU ═══"],
-      ["Épaisseur (cm)", d.epT * 100],
-      ["", "Tableau (ml)", "Linteau (ml)", "Appui (ml)", "Total (ml)"],
-      ["Linéaires", Number(d.totLonT.toFixed(2)), Number(d.totLonL.toFixed(2)), Number(d.totLonA.toFixed(2)), Number((d.totLonT + d.totLonL + d.totLonA).toFixed(2))],
-      ["", "Tableau (m²)", "Linteau (m²)", "Appui (m²)", "Total (m²)"],
-      ["Surfaces retours", Number(d.totSurfT.toFixed(2)), Number(d.totSurfL.toFixed(2)), Number(d.totSurfA.toFixed(2)), Number(d.totSurfRetours.toFixed(2))],
-      [],
-      ["═══ ESTIMATIONS FINANCIÈRES ═══"],
-      ["Poste", "Quantité", "Prix unit.", "Montant HT"],
-      ["ITE mur opaque", `${(netFacadeArea ?? 0).toFixed(1)} m²`, `${d.pxITE} €/m²`, `${d.cITE.toFixed(0)} €`],
-      ["Retours linteau", `${d.totLonL.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonL * d.pxRetour).toFixed(0)} €`],
-      ["Retours appui", `${d.totLonA.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonA * d.pxRetour).toFixed(0)} €`],
-      ["Retours tableau", `${d.totLonT.toFixed(1)} ml`, `${d.pxRetour} €/ml`, `${(d.totLonT * d.pxRetour).toFixed(0)} €`],
-      ["Échafaudage", `${(facadeArea ?? 0).toFixed(1)} m²`, `${d.pxEchaf} €/m²`, `${d.cEch.toFixed(0)} €`],
-      [], ["TOTAL ESTIMÉ HT", "", "", `${d.cTotal.toFixed(0)} €`],
-    ];
-    // Custom types stats
-    for (const ct of customTypes) {
-      const ctEls = elements.filter(e => e.type === ct.id);
-      if (ctEls.length > 0) {
-        const ctArea = ctEls.reduce((s, e) => s + (e.area_m2 ?? 0), 0);
-        summary.push([], [`Type "${ct.name}"`, ctEls.length, `${ctArea.toFixed(2)} m²`, ct.replacesWall ? "(remplace mur)" : ""]);
-      }
-    }
-    const ws1 = XLSX.utils.aoa_to_sheet(summary);
-    ws1["!cols"] = [{ wch: 28 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws1, "Résumé");
-
-    // Sheet 2: Éléments
-    const hdr = ["ID", "Type", "Étage", "Surface (m²)", "Périmètre (m)", "L (m)", "H (m)", "Linteau (ml)", "Appui (ml)", "Tableau (ml)", "Surf linteau", "Surf appui", "Surf tableau", "Total retours"];
-    const rows = d.retourLines.map(l => [
-      l.e.id, getTypeLabel(l.e.type), l.e.floor_level ?? 0,
-      l.e.area_m2 != null ? Number(l.e.area_m2.toFixed(3)) : "",
-      l.e.perimeter_m != null ? Number(l.e.perimeter_m.toFixed(3)) : "",
-      l.w != null ? Number(l.w.toFixed(3)) : "", l.h != null ? Number(l.h.toFixed(3)) : "",
-      l.lonLinteau != null ? Number(l.lonLinteau.toFixed(3)) : "", l.lonAppui != null ? Number(l.lonAppui.toFixed(3)) : "",
-      l.lonTableau != null ? Number(l.lonTableau.toFixed(3)) : "",
-      l.surfLinteau != null ? Number(l.surfLinteau.toFixed(4)) : "", l.surfAppui != null ? Number(l.surfAppui.toFixed(4)) : "",
-      l.surfTableau != null ? Number(l.surfTableau.toFixed(4)) : "", l.totalRetour != null ? Number(l.totalRetour.toFixed(4)) : "",
-    ]);
-    const ws2 = XLSX.utils.aoa_to_sheet([hdr, ...rows]);
-    ws2["!cols"] = hdr.map(() => ({ wch: 14 }));
-    XLSX.utils.book_append_sheet(wb, ws2, "Éléments");
-
-    // Sheet 3: Financier détaillé
-    const fHdr = ["Poste", "Quantité", "Unité", "Prix unit. (€)", "Montant HT (€)"];
-    const fRows = [
-      ["ITE mur opaque", Number((netFacadeArea ?? 0).toFixed(2)), "m²", d.pxITE, Number(d.cITE.toFixed(0))],
-      ["Retours linteau", Number(d.totLonL.toFixed(2)), "ml", d.pxRetour, Number((d.totLonL * d.pxRetour).toFixed(0))],
-      ["Retours appui", Number(d.totLonA.toFixed(2)), "ml", d.pxRetour, Number((d.totLonA * d.pxRetour).toFixed(0))],
-      ["Retours tableau", Number(d.totLonT.toFixed(2)), "ml", d.pxRetour, Number((d.totLonT * d.pxRetour).toFixed(0))],
-      ["Échafaudage", Number((facadeArea ?? 0).toFixed(2)), "m²", d.pxEchaf, Number(d.cEch.toFixed(0))],
-      [], ["TOTAL HT", "", "", "", Number(d.cTotal.toFixed(0))],
-    ];
-    const ws3 = XLSX.utils.aoa_to_sheet([fHdr, ...fRows]);
-    ws3["!cols"] = [{ wch: 22 }, { wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws3, "Estimations");
-
-    XLSX.writeFile(wb, "rapport_facade.xlsx");
-    toast({ title: "XLSX exporté", variant: "success" });
+    const stats = { windowsCount, windowsArea, windowsPerimeter, netFacadeArea: netFacadeArea ?? 0, facadeArea: facadeArea ?? 0, floorsCount: result.floors_count };
+    await exportFacadeXLSX(getExportData(), stats, elements, customTypes, getTypeLabel);
+    toast({ title: d("fe_xlsx_exported" as DTKey), variant: "success" });
   };
-
-  // ── PDF export ──
   const exportPDF = async () => {
     try {
-      await generateFacadeRapportPDF({
-        result, elements, facadeAreaM2: facadeArea ?? 0, wallNetArea: netFacadeArea ?? 0,
-        windowCount: windowsCount, windowsAreaM2: windowsArea, windowsPerimeterM: windowsPerimeter,
-        perZoneStats: null, imgNat, lang,
-      });
-      toast({ title: "PDF exporté", variant: "success" });
-    } catch (err: any) {
-      console.error("PDF export error:", err);
-      toast({ title: "Erreur PDF", description: err?.message ?? "Erreur", variant: "error" });
-    }
+      await generateFacadeRapportPDF({ result, elements, facadeAreaM2: facadeArea ?? 0, wallNetArea: netFacadeArea ?? 0, windowCount: windowsCount, windowsAreaM2: windowsArea, windowsPerimeterM: windowsPerimeter, perZoneStats: null, imgNat, lang });
+      toast({ title: d("fe_pdf_exported" as DTKey), variant: "success" });
+    } catch (err: any) { console.error("PDF export error:", err); toast({ title: d("fe_pdf_error" as DTKey), description: err?.message ?? "Erreur", variant: "error" }); }
   };
 
   // Visible elements filter — respects visibility toggles
@@ -1230,10 +1117,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
       {/* ── Summary bar ABOVE canvas ── */}
       <div className="flex items-center gap-4 px-4 py-2 glass rounded-xl border border-white/10 mb-2 flex-wrap">
-        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">RÉSUMÉ</span>
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide shrink-0">{d("fe_summary" as DTKey)}</span>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: TYPE_COLORS.window }} />
-          <span className="text-[11px] text-slate-300">Fenêtres</span>
+          <span className="text-[11px] text-slate-300">{d("fe_windows" as DTKey)}</span>
           <span className="text-sm text-white font-mono font-semibold">{windowsCount}</span>
           <span className="text-[10px] text-slate-500 font-mono">{windowsArea.toFixed(1)} m²</span>
           {windowsPerimeter > 0 && <span className="text-[10px] text-slate-500 font-mono">P:{windowsPerimeter.toFixed(1)}m</span>}
@@ -1241,7 +1128,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
         {facadeArea != null && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">Façade</span>
+            <span className="text-[11px] text-slate-400">{d("fe_facade" as DTKey)}</span>
             <span className="text-sm text-white font-mono font-semibold">{facadeArea.toFixed(1)} m²</span>
           </div>
         </>)}
@@ -1249,14 +1136,14 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#22c55e" }} />
-            <span className="text-[11px] text-slate-300">Nette</span>
+            <span className="text-[11px] text-slate-300">{d("fe_nette" as DTKey)}</span>
             <span className="text-sm text-emerald-400 font-mono font-semibold">{netFacadeArea.toFixed(1)} m²</span>
           </div>
         </>)}
         {result.floors_count != null && (<>
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-slate-400">Étages</span>
+            <span className="text-[11px] text-slate-400">{d("fe_floors" as DTKey)}</span>
             <span className="text-sm text-white font-mono font-semibold">{result.floors_count}</span>
           </div>
         </>)}
@@ -1279,7 +1166,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           <div className="w-px h-4 bg-white/10" />
           <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1">
             <span className="text-[10px] text-slate-400">
-              {selectedEls.length > 1 ? `${selectedEls.length} sélectionnés` : "Sélection"}
+              {selectedEls.length > 1 ? `${selectedEls.length} ${d("fe_selected" as DTKey)}` : d("fe_selection" as DTKey)}
               {selectedEls.length > 1 && " (Ctrl+clic)"}:
             </span>
             <select value={selectedEls[0]?.type ?? "window"} onChange={e => updateSelected({ type: e.target.value as FacadeElementType })}
@@ -1312,11 +1199,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <Download className="w-3.5 h-3.5" /> PDF
               </Button>
               <Button size="sm" onClick={goResults} className="bg-amber-600 hover:bg-amber-700">
-                <ArrowLeft className="w-3.5 h-3.5" /> Résultats
+                <ArrowLeft className="w-3.5 h-3.5" /> {d("fe_results" as DTKey)}
               </Button>
               <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
-              <Button size="sm" variant="ghost" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
-                className="text-slate-500 hover:text-amber-400">?</Button>
+              <Button size="sm" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
+                className="flex items-center gap-1 border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
+                <Sparkles className="w-3 h-3" /> Tutorial
+              </Button>
             </div>
           </div>
           <FacadeTutorialOverlay forceShow={showTuto} />
@@ -1358,13 +1247,13 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                 addType === "window" ? "border-pink-500/40 bg-pink-500/10 text-pink-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <AppWindow className={cn("w-4 h-4 shrink-0", "text-pink-400")} />
-              <span className={addType === "window" ? "" : "text-slate-400"}>Fenêtres</span>
+              <span className={addType === "window" ? "" : "text-slate-400"}>{d("fe_windows" as DTKey)}</span>
             </button>
             <button onClick={() => { setAddType("wall_opaque"); setActiveLayer("wall_opaque"); setVisibility(v => ({ ...v, wall_opaque: true })); if (tool === "select") setTool("add_rect"); }}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                 addType === "wall_opaque" ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <Building2 className={cn("w-4 h-4 shrink-0", "text-green-400")} />
-              <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>Surface nette</span>
+              <span className={addType === "wall_opaque" ? "" : "text-slate-400"}>{d("fe_net_surface" as DTKey)}</span>
             </button>
 
             {/* Custom type layer buttons with edit/delete on right-click */}
@@ -1392,7 +1281,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                     <label className="flex items-center gap-1 text-[9px] text-slate-400 cursor-pointer">
                       <input type="checkbox" checked={newTypeReplacesWall} onChange={e => setNewTypeReplacesWall(e.target.checked)}
                         className="w-3 h-3 rounded" />
-                      Remplace mur
+                      {d("fe_replaces_wall" as DTKey)}
                     </label>
                     <button onClick={() => {
                       if (newTypeName.trim()) setCustomTypes(prev => prev.map(c => c.id === ct.id ? { ...c, name: newTypeName.trim(), color: newTypeColor, replacesWall: newTypeReplacesWall } : c));
@@ -1433,7 +1322,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             {!showNewTypeForm ? (
               <button onClick={() => { setShowNewTypeForm(true); setNewTypeName(""); setNewTypeColor(CUSTOM_COLORS[0]); setNewTypeReplacesWall(false); }}
                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] border border-dashed border-white/20 text-slate-500 hover:text-slate-300 hover:border-white/30 transition-all">
-                <Plus className="w-3 h-3" /> Type
+                <Plus className="w-3 h-3" /> {d("fe_add_type" as DTKey)}
               </button>
             ) : (
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-white/20 bg-white/5">
@@ -1484,27 +1373,27 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <button onClick={() => { setTool("select"); setDrawingPoly([]); }} title="Sélection"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <MousePointer2 className="w-3 h-3" /> Sélection
+              <MousePointer2 className="w-3 h-3" /> {d("fe_selection" as DTKey)}
             </button>
             <button onClick={() => { setTool("add_rect"); setSelectedId(null); }} title="Dessiner rectangle"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "add_rect" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Square className="w-3 h-3" /> Dessiner
+              <Square className="w-3 h-3" /> {d("fe_draw" as DTKey)}
             </button>
             <button onClick={() => { setTool("add_polygon"); setSelectedId(null); }} title="Forme libre"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "add_polygon" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Pentagon className="w-3 h-3" /> Forme libre
+              <Pentagon className="w-3 h-3" /> {d("fe_free_shape" as DTKey)}
             </button>
             <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Supprimer élément"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Trash2 className="w-3 h-3" /> Supprimer
+              <Trash2 className="w-3 h-3" /> {d("fe_delete" as DTKey)}
             </button>
             <button onClick={() => { setTool("eraser"); setSelectedId(null); }} title="Gomme — affiner les zones"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "eraser" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Eraser className="w-3 h-3" /> Gomme
+              <Eraser className="w-3 h-3" /> {d("fe_eraser" as DTKey)}
             </button>
             {tool === "eraser" && (
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[9px]">
@@ -1515,7 +1404,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <span className="text-slate-500">→</span>
                 <select value={eraserTarget} onChange={e => setEraserTarget(e.target.value)}
                   className="bg-slate-800 border border-white/10 rounded px-1 py-0.5 text-[9px] text-white">
-                  <option value="__none__">Rien</option>
+                  <option value="__none__">{d("fe_nothing" as DTKey)}</option>
                   {allEditorTypes.map(t => <option key={t} value={t}>{getTypeLabel(t)}</option>)}
                 </select>
               </div>
@@ -1530,22 +1419,22 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             <button onClick={() => setTool("linear")} title="Mesure de distance"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-2.5 h-2.5" /> Linéaire
+              <Ruler className="w-2.5 h-2.5" /> {d("fe_linear" as DTKey)}
             </button>
             <button onClick={() => setTool("count")} title="Annotation points"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Hash className="w-2.5 h-2.5" /> Comptage
+              <Hash className="w-2.5 h-2.5" /> {d("fe_count" as DTKey)}
             </button>
             <button onClick={() => setTool("text")} title="Annotation texte"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Type className="w-2.5 h-2.5" /> Texte
+              <Type className="w-2.5 h-2.5" /> {d("fe_text" as DTKey)}
             </button>
             <button onClick={() => setTool("rescale")} title="Recalibrer l'échelle"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-2.5 h-2.5" /> Échelle
+              <Ruler className="w-2.5 h-2.5" /> {d("fe_scale" as DTKey)}
             </button>
             </span>{/* end measure tuto target */}
 
@@ -1561,7 +1450,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "translation"
                   ? "border-orange-500 bg-orange-500/20 text-orange-300 shadow-lg shadow-orange-500/20"
                   : "border-orange-500/50 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20")}>
-              <Copy className="w-3.5 h-3.5" /> Translation
+              <Copy className="w-3.5 h-3.5" /> {d("fe_translation" as DTKey)}
             </button>
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
@@ -1623,7 +1512,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
               {transPhase === "choose_shape" && (
                 <>
-                  <span className="text-[10px] text-slate-400">Forme :</span>
+                  <span className="text-[10px] text-slate-400">{d("fe_shape_type" as DTKey)}</span>
                   <button onClick={() => { setTransShapeMode("rect"); setTransPhase("place_anchors"); }}
                     className="px-2 py-1 rounded text-[10px] border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20">
                     <Square className="w-3 h-3 inline mr-1" />Rectangle
@@ -1638,7 +1527,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               {transPhase === "place_anchors" && (
                 <>
                   <span className="text-[10px] text-slate-400">
-                    Cliquez pour placer les points d&apos;ancrage ({transAnchors.length} placé{transAnchors.length > 1 ? "s" : ""})
+                    {d("fe_place_anchors" as DTKey)} ({transAnchors.length} {d("fe_placed" as DTKey)})
                   </span>
                   <button onClick={() => { if (transAnchors.length > 0) setTransPhase("draw_shape"); }}
                     disabled={transAnchors.length === 0}
@@ -1646,18 +1535,18 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                       transAnchors.length > 0
                         ? "border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20"
                         : "border-white/10 text-slate-600 cursor-not-allowed")}>
-                    Valider les points ✓
+                    {d("fe_validate_pts" as DTKey)} ✓
                   </button>
                   {transAnchors.length > 0 && (
                     <button onClick={() => setTransAnchors(prev => prev.slice(0, -1))}
                       className="px-1.5 py-1 rounded text-[10px] border border-red-500/30 text-red-400 hover:bg-red-500/10">
-                      Annuler dernier
+                      {d("fe_undo_last" as DTKey)}
                     </button>
                   )}
                   {transAnchors.length >= 2 && !transRepeatShow && (
                     <button onClick={() => setTransRepeatShow(true)}
                       className="px-2 py-1 rounded text-[10px] border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10">
-                      ↻ Répéter points
+                      ↻ {d("fe_repeat_pts" as DTKey)}
                     </button>
                   )}
                   {transRepeatShow && transAnchors.length >= 2 && (
@@ -1689,7 +1578,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                         setTransAnchors(prev => [...prev, ...newPts]);
                         setTransRepeatShow(false);
                       }} className="px-2 py-0.5 rounded text-[9px] border border-green-500/40 bg-green-500/10 text-green-400 font-semibold">
-                        Appliquer
+                        {d("fe_apply" as DTKey)}
                       </button>
                       <button onClick={() => setTransRepeatShow(false)} className="text-slate-500 hover:text-red-400">
                         <X className="w-3 h-3" />
@@ -1702,32 +1591,32 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               {transPhase === "draw_shape" && (
                 <span className="text-[10px] text-slate-400">
                   {transShapeMode === "rect"
-                    ? "Dessinez un rectangle (cliquez-glissez)"
-                    : `Dessinez un polygone (${transDrawing.length} pts — cliquez sur le 1er pour fermer)`}
+                    ? d("fe_draw_rect" as DTKey)
+                    : `${transDrawing.length} ${d("fe_draw_poly_hint" as DTKey)}`}
                 </span>
               )}
 
               {transPhase === "validate" && (
                 <>
-                  <span className="text-[10px] text-green-400 font-medium">Forme dessinée sur {transAnchors.length} point(s)</span>
+                  <span className="text-[10px] text-green-400 font-medium">{d("fe_shape_drawn" as DTKey)} {transAnchors.length} {d("fe_point_s" as DTKey)}</span>
                   <button onClick={() => setTransPhase("choose_type")}
                     className="px-2 py-1 rounded text-[10px] border border-green-500/40 bg-green-500/10 text-green-400 hover:bg-green-500/20 font-medium">
                     Valider ✓
                   </button>
                   <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("draw_shape"); }}
                     className="px-2 py-1 rounded text-[10px] border border-amber-500/30 text-amber-400 hover:bg-amber-500/10">
-                    Recommencer forme
+                    {d("fe_redo_shape" as DTKey)}
                   </button>
                   <button onClick={() => { setTransShape([]); setTransDrawing([]); setTransPhase("place_anchors"); }}
                     className="px-2 py-1 rounded text-[10px] border border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
-                    + Ajouter ancrages
+                    {d("fe_add_anchors" as DTKey)}
                   </button>
                 </>
               )}
 
               {transPhase === "choose_type" && (
                 <>
-                  <span className="text-[10px] text-slate-400">Type de zone :</span>
+                  <span className="text-[10px] text-slate-400">{d("fe_zone_type" as DTKey)}</span>
                   <button onClick={() => applyTranslation("window")}
                     className="px-2 py-1 rounded text-[10px] border border-pink-500/40 bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 font-medium">
                     <AppWindow className="w-3 h-3 inline mr-1" />Fenêtre

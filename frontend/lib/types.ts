@@ -122,6 +122,8 @@ export interface FacadeAnalysisResult {
   mask_wall_opaque_b64?: string;
   overlay_openings_b64?: string;
   is_mock?: boolean;
+  /** Custom element types created in the editor (persisted across editor↔results) */
+  custom_types?: Array<{ id: string; name: string; color: string; replacesWall: boolean }>;
 }
 
 export interface DiffResult {

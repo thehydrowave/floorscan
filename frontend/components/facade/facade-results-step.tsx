@@ -6,12 +6,13 @@ import {
   ArrowRight, RotateCcw, Download, Eye, EyeOff,
   AlertTriangle, Building2, AppWindow, DoorOpen, Layers,
   LayoutPanelTop, Columns2, Frame, Crop,
-  ZoomIn, ZoomOut, PenSquare, ChevronLeft, ChevronDown, ChevronUp, Wrench,
+  ZoomIn, ZoomOut, PenSquare, ChevronLeft, ChevronDown, ChevronUp, Wrench, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FacadeAnalysisResult, FacadeElement } from "@/lib/types";
 import { pointInPolygon } from "@/lib/measure-types";
 import { generateFacadeRapportPDF } from "@/lib/facade-rapport-pdf";
+import { computeExportData, exportFacadeCSV, exportFacadeXLSX } from "@/lib/facade-export-utils";
 import { toast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
@@ -31,7 +32,7 @@ import FacadeChatPanel from "./facade-chat-panel";
 import FacadeDebugPanel from "./facade-debug-panel";
 import FacadeRapportDialog from "./facade-rapport-dialog";
 import FacadeDevisDialog from "./facade-devis-dialog";
-import FacadeTutorialOverlay, { resetFacadeTutorial } from "./facade-tutorial-overlay";
+import FacadeResultsTutorial, { resetFacadeResultsTutorial } from "./facade-results-tutorial";
 import { FileText, Receipt } from "lucide-react";
 
 /* ── Component type alias ── */
@@ -302,163 +303,13 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
     setIsMaskPanning(false);
   }, []);
 
-  /* ── Shared retour computation for exports ── */
-  const getRetourData = () => {
-    const ppm = result.pixels_per_meter;
-    const epT = 0.14, epL = 0.14, epA = 0.14;
-    const opens = localElements.filter(e => !["floor_line", "roof", "column", "wall_opaque"].includes(e.type));
-    return opens.map(e => {
-      const w = e.w_m ?? (ppm && imgNat.w > 0 ? (e.bbox_norm.w * imgNat.w / ppm) : null);
-      const h = e.h_m ?? (ppm && imgNat.h > 0 ? (e.bbox_norm.h * imgNat.h / ppm) : null);
-      const lL = w, lA = w, lT = h != null ? h * 2 : null;
-      const sL = lL != null ? lL * epL : null, sA = lA != null ? lA * epA : null, sT = lT != null ? lT * epT : null;
-      const tot = sL != null && sA != null && sT != null ? sL + sA + sT : null;
-      return { e, w, h, lL, lA, lT, sL, sA, sT, tot };
-    });
-  };
+  /* ── Exports (delegated to shared lib) ── */
+  const getTypeLabel = (t: string) => d(TYPE_I18N[t] ?? "fa_other");
+  const getExportData = () => computeExportData(localElements, result.pixels_per_meter, imgNat, wallNetArea, facadeAreaM2);
+  const exportStats = { windowsCount: windowCount, windowsArea: windowsAreaM2, windowsPerimeter: windowsPerimeterM, netFacadeArea: wallNetArea, facadeArea: facadeAreaM2, floorsCount: result.floors_count };
 
-  /* ── CSV export ── */
-  const exportCSV = () => {
-    const rl = getRetourData();
-    const BOM = "\uFEFF";
-    const header = "ID;Type;Étage;Surface (m²);Périmètre (m);L (m);H (m);Linteau (ml);Appui (ml);Tableau (ml);Surf linteau;Surf appui;Surf tableau;Total retours";
-    const rows = rl.map(l =>
-      `${l.e.id};${d(TYPE_I18N[l.e.type] ?? "fa_other")};${l.e.floor_level ?? 0};${l.e.area_m2?.toFixed(3) ?? "-"};${l.e.perimeter_m?.toFixed(3) ?? "-"};${l.w?.toFixed(3) ?? "-"};${l.h?.toFixed(3) ?? "-"};${l.lL?.toFixed(3) ?? "-"};${l.lA?.toFixed(3) ?? "-"};${l.lT?.toFixed(3) ?? "-"};${l.sL?.toFixed(4) ?? "-"};${l.sA?.toFixed(4) ?? "-"};${l.sT?.toFixed(4) ?? "-"};${l.tot?.toFixed(4) ?? "-"}`
-    );
-    const csv = BOM + [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "facade_analysis.csv"; a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "CSV exporté", variant: "success" });
-  };
-
-  /* ── XLSX export ── */
-  const exportXLSX = async () => {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.utils.book_new();
-    const ppm = result.pixels_per_meter;
-
-    // ── Compute retours de tableau/linteau/appui ──
-    const epTableau = 0.14, epLinteau = 0.14, epAppui = 0.14; // 14cm default
-    const openings = localElements.filter(e => !["floor_line", "roof", "column", "wall_opaque"].includes(e.type));
-    const retourLines = openings.map(e => {
-      const w = e.w_m ?? (ppm && imgNat.w > 0 ? (e.bbox_norm.w * imgNat.w / ppm) : null);
-      const h = e.h_m ?? (ppm && imgNat.h > 0 ? (e.bbox_norm.h * imgNat.h / ppm) : null);
-      const lonLinteau = w;
-      const lonAppui = w;
-      const lonTableau = h != null ? h * 2 : null;
-      const surfLinteau = lonLinteau != null ? lonLinteau * epLinteau : null;
-      const surfAppui = lonAppui != null ? lonAppui * epAppui : null;
-      const surfTableau = lonTableau != null ? lonTableau * epTableau : null;
-      const totalRetour = surfLinteau != null && surfAppui != null && surfTableau != null
-        ? surfLinteau + surfAppui + surfTableau : null;
-      return { e, w, h, lonLinteau, lonAppui, lonTableau, surfLinteau, surfAppui, surfTableau, totalRetour };
-    });
-    const totLonTableau = retourLines.reduce((s, l) => s + (l.lonTableau ?? 0), 0);
-    const totLonLinteau = retourLines.reduce((s, l) => s + (l.lonLinteau ?? 0), 0);
-    const totLonAppui = retourLines.reduce((s, l) => s + (l.lonAppui ?? 0), 0);
-    const totSurfTableau = retourLines.reduce((s, l) => s + (l.surfTableau ?? 0), 0);
-    const totSurfLinteau = retourLines.reduce((s, l) => s + (l.surfLinteau ?? 0), 0);
-    const totSurfAppui = retourLines.reduce((s, l) => s + (l.surfAppui ?? 0), 0);
-    const totSurfRetours = totSurfTableau + totSurfLinteau + totSurfAppui;
-
-    // ── Financial estimates (prix indicatifs) ──
-    const prixITEm2 = 120; // €/m² ITE
-    const prixFenetreMl = 45; // €/ml retours de tableau
-    const prixEchafaudage = 25; // €/m² façade
-    const coutITE = wallNetArea * prixITEm2;
-    const coutRetours = (totLonTableau + totLonLinteau + totLonAppui) * prixFenetreMl;
-    const coutEchafaudage = facadeAreaM2 * prixEchafaudage;
-    const coutTotal = coutITE + coutRetours + coutEchafaudage;
-
-    // Sheet 1: Résumé
-    const summary = [
-      ["RAPPORT ANALYSE FAÇADE"],
-      ["Date", new Date().toLocaleDateString("fr-FR")],
-      [],
-      ["═══ SURFACES ═══"],
-      ["Fenêtres (nombre)", windowCount],
-      ["Fenêtres surface (m²)", Number(windowsAreaM2.toFixed(2))],
-      ["Périmètre total fenêtres (m)", Number(windowsPerimeterM.toFixed(2))],
-      ["Surface nette mur (m²)", Number(wallNetArea.toFixed(2))],
-      ["Surface totale délimitée (m²)", Number(facadeAreaM2.toFixed(2))],
-      ["Ratio ouvertures (%)", result.ratio_openings != null ? Number((result.ratio_openings * 100).toFixed(1)) : "-"],
-      ["Étages détectés", result.floors_count ?? "-"],
-      [],
-      ["═══ RETOURS DE TABLEAU ═══"],
-      ["Épaisseur tableau (cm)", epTableau * 100],
-      ["Épaisseur linteau (cm)", epLinteau * 100],
-      ["Épaisseur appui (cm)", epAppui * 100],
-      [],
-      ["", "Tableau (ml)", "Linteau (ml)", "Appui (ml)", "Total (ml)"],
-      ["Linéaires totaux", Number(totLonTableau.toFixed(2)), Number(totLonLinteau.toFixed(2)), Number(totLonAppui.toFixed(2)), Number((totLonTableau + totLonLinteau + totLonAppui).toFixed(2))],
-      [],
-      ["", "Tableau (m²)", "Linteau (m²)", "Appui (m²)", "Total (m²)"],
-      ["Surfaces retours", Number(totSurfTableau.toFixed(2)), Number(totSurfLinteau.toFixed(2)), Number(totSurfAppui.toFixed(2)), Number(totSurfRetours.toFixed(2))],
-      [],
-      ["═══ ESTIMATIONS FINANCIÈRES (indicatives) ═══"],
-      ["ITE mur opaque", `${wallNetArea.toFixed(1)} m²`, `${prixITEm2} €/m²`, `${coutITE.toFixed(0)} €`],
-      ["Retours de tableau", `${(totLonTableau + totLonLinteau + totLonAppui).toFixed(1)} ml`, `${prixFenetreMl} €/ml`, `${coutRetours.toFixed(0)} €`],
-      ["Échafaudage", `${facadeAreaM2.toFixed(1)} m²`, `${prixEchafaudage} €/m²`, `${coutEchafaudage.toFixed(0)} €`],
-      [],
-      ["TOTAL ESTIMÉ HT", "", "", `${coutTotal.toFixed(0)} €`],
-    ];
-    const wsSummary = XLSX.utils.aoa_to_sheet(summary);
-    wsSummary["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Résumé");
-
-    // Sheet 2: Éléments détaillés
-    const elHeaders = ["ID", "Type", "Étage", "Surface (m²)", "Périmètre (m)", "Largeur (m)", "Hauteur (m)", "Linteau (ml)", "Appui (ml)", "Tableau (ml)", "Surf. linteau (m²)", "Surf. appui (m²)", "Surf. tableau (m²)", "Total retours (m²)"];
-    const elRows = retourLines.map((l, i) => [
-      l.e.id,
-      (l.e.type === "window" || l.e.type === "other") ? "Fenêtre" : l.e.type === "door" ? "Porte" : l.e.type === "balcony" ? "Balcon" : l.e.type,
-      l.e.floor_level ?? 0,
-      l.e.area_m2 != null ? Number(l.e.area_m2.toFixed(3)) : "",
-      l.e.perimeter_m != null ? Number(l.e.perimeter_m.toFixed(3)) : "",
-      l.w != null ? Number(l.w.toFixed(3)) : "",
-      l.h != null ? Number(l.h.toFixed(3)) : "",
-      l.lonLinteau != null ? Number(l.lonLinteau.toFixed(3)) : "",
-      l.lonAppui != null ? Number(l.lonAppui.toFixed(3)) : "",
-      l.lonTableau != null ? Number(l.lonTableau.toFixed(3)) : "",
-      l.surfLinteau != null ? Number(l.surfLinteau.toFixed(4)) : "",
-      l.surfAppui != null ? Number(l.surfAppui.toFixed(4)) : "",
-      l.surfTableau != null ? Number(l.surfTableau.toFixed(4)) : "",
-      l.totalRetour != null ? Number(l.totalRetour.toFixed(4)) : "",
-    ]);
-    const wsElements = XLSX.utils.aoa_to_sheet([elHeaders, ...elRows]);
-    wsElements["!cols"] = elHeaders.map(() => ({ wch: 16 }));
-    XLSX.utils.book_append_sheet(wb, wsElements, "Éléments");
-
-    // Sheet 3: Par façade (if zones)
-    if (perZoneStats && perZoneStats.length > 0) {
-      const zHeaders = ["Façade", "Fenêtres (nb)", "Fenêtres (m²)", "Surface nette (m²)", "Zone délimitée (m²)"];
-      const zRows = perZoneStats.map(zs => [
-        `Façade ${zs.idx + 1}`, zs.fenetresCount, Number(zs.fenetresArea.toFixed(2)),
-        zs.nette != null ? Number(zs.nette.toFixed(2)) : "-", Number(zs.zoneArea.toFixed(2)),
-      ]);
-      const wsZones = XLSX.utils.aoa_to_sheet([zHeaders, ...zRows]);
-      XLSX.utils.book_append_sheet(wb, wsZones, "Par façade");
-    }
-
-    // Sheet 4: Estimations financières détaillées
-    const finHeaders = ["Poste", "Quantité", "Unité", "Prix unitaire (€)", "Montant HT (€)"];
-    const finRows = [
-      ["ITE mur opaque", Number(wallNetArea.toFixed(2)), "m²", prixITEm2, Number(coutITE.toFixed(0))],
-      ["Retours linteau", Number(totLonLinteau.toFixed(2)), "ml", prixFenetreMl, Number((totLonLinteau * prixFenetreMl).toFixed(0))],
-      ["Retours appui", Number(totLonAppui.toFixed(2)), "ml", prixFenetreMl, Number((totLonAppui * prixFenetreMl).toFixed(0))],
-      ["Retours tableau", Number(totLonTableau.toFixed(2)), "ml", prixFenetreMl, Number((totLonTableau * prixFenetreMl).toFixed(0))],
-      ["Échafaudage", Number(facadeAreaM2.toFixed(2)), "m²", prixEchafaudage, Number(coutEchafaudage.toFixed(0))],
-      [],
-      ["TOTAL HT", "", "", "", Number(coutTotal.toFixed(0))],
-    ];
-    const wsFin = XLSX.utils.aoa_to_sheet([finHeaders, ...finRows]);
-    wsFin["!cols"] = [{ wch: 22 }, { wch: 12 }, { wch: 8 }, { wch: 18 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, wsFin, "Estimations financières");
-
-    XLSX.writeFile(wb, "rapport_facade.xlsx");
-    toast({ title: "Rapport XLSX exporté", variant: "success" });
-  };
+  const exportCSV = () => { exportFacadeCSV(getExportData(), getTypeLabel); toast({ title: "CSV exporté", variant: "success" }); };
+  const exportXLSX = async () => { await exportFacadeXLSX(getExportData(), exportStats, localElements, [], getTypeLabel); toast({ title: "XLSX exporté", variant: "success" }); };
 
   /* ── PDF export (uses PdfBuilder — same design as AI Analysis) ── */
   const exportPDF = async () => {
@@ -574,20 +425,20 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {f.label}
             </button>
           ))}
-          <button onClick={() => { resetFacadeTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
-            className="px-2 py-1 rounded-md text-xs font-medium text-slate-500 hover:text-white hover:bg-white/10 transition-all">
-            ?
+          <button data-tuto-fr="filter" onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
+            <Sparkles className="w-3.5 h-3.5" /> Tutorial
           </button>
         </div>
       </div>
 
       {/* ── Image panel (Masques view) ── */}
       <div className="glass rounded-2xl border border-white/10 p-2 mb-8 overflow-hidden">
-        <FacadeTutorialOverlay forceShow={showTuto} />
+        <FacadeResultsTutorial forceShow={showTuto} />
         <div className="flex flex-col gap-4">
 
             {/* Summary bar — ABOVE image */}
-            <div className="flex items-center gap-6 px-4 py-3 glass rounded-xl border border-white/10">
+            <div data-tuto-fr="summary" className="flex items-center gap-6 px-4 py-3 glass rounded-xl border border-white/10">
               <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide shrink-0">Résumé façade</h4>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-sm" style={{ background: "#ff00ff" }} />
@@ -608,7 +459,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 <span className="text-sm text-accent font-mono font-semibold">{facadeAreaM2.toFixed(1)} m²</span>
               </div>
               <div className="flex-1" />
-              <button onClick={() => onGoEditor?.()}
+              <button data-tuto-fr="edit" onClick={() => onGoEditor?.()}
                 className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded-lg text-xs font-semibold transition-colors">
                 <PenSquare className="w-3.5 h-3.5" /> Éditer les masques
               </button>
@@ -755,7 +606,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               </div>{/* /centered transform */}
 
               {/* Floating zoom controls */}
-              <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
+              <div data-tuto-fr="zoom" className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
                 <button onClick={() => setMaskZoom(z => Math.min(12, z * 1.3))}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors" title="Zoom +">
                   <ZoomIn className="w-3.5 h-3.5" />
@@ -931,6 +782,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={() => setShowDevis(true)}>
           <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
+        <span data-tuto-fr="export" className="contents">
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> CSV
         </Button>
@@ -940,6 +792,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={exportPDF}>
           <Download className="w-4 h-4" /> PDF
         </Button>
+        </span>
         <Button onClick={onGoEditor} className="bg-amber-600 hover:bg-amber-700">
           {d("fa_go_editor")} <ArrowRight className="w-4 h-4" />
         </Button>

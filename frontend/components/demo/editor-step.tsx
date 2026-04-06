@@ -18,6 +18,7 @@ import type { WallSegment } from "@/lib/types";
 import { snapIntelligent, SnapResult, SnapConfig, DEFAULT_SNAP_CONFIG } from "@/lib/snap-engine";
 
 import { BACKEND } from "@/lib/backend";
+import { exportEditorXlsx, exportEditorMeasurePdf } from "@/components/demo/editor/export-utils";
 import { getRoomColor } from "@/lib/room-colors";
 // @ts-ignore — no types for polygon-clipping
 import polygonClipping from "polygon-clipping";
@@ -1937,151 +1938,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
   // ── Export CSV (mode mesure, editor) ──────────────────────────────────────
   const exportMeasureXlsx = () => {
-    const XLSX = require("xlsx");
-    const wb = XLSX.utils.book_new();
-    const ppmVal = result.pixels_per_meter ?? null;
-    const totals = imageNatural.w > 0 ? aggregateByType(zones, imageNatural.w, imageNatural.h, ppmVal) : {};
-    const unit = ppmVal ? "m²" : "px²";
-
-    // Sheet 1: Métré surfaces
-    const data1: (string | number)[][] = [
-      [d("ed_xl_title" as DTKey)],
-      ["Date", new Date().toLocaleDateString(lang === "de" ? "de-DE" : lang === "es" ? "es-ES" : lang === "it" ? "it-IT" : lang === "en" ? "en-GB" : "fr-FR")],
-      [],
-      [d("ed_xl_surface_type" as DTKey), `Surface (${unit})`],
-      ...surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0).map(t => [t.name, ppmVal ? +totals[t.id].toFixed(4) : Math.round(totals[t.id])]),
-      [],
-      ["TOTAL", ppmVal ? +Object.values(totals).reduce((a, b) => a + b, 0).toFixed(4) : Math.round(Object.values(totals).reduce((a, b) => a + b, 0))],
-    ];
-    const ws1 = XLSX.utils.aoa_to_sheet(data1);
-    ws1["!cols"] = [{ wch: 25 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws1, d("ed_xl_sheet_metre" as DTKey));
-
-    // Sheet 2: Mesures linéaires
-    if (linearMeasures.length > 0) {
-      const data2: (string | number)[][] = [[d("xl_col_num" as DTKey), d("xl_col_distance_m" as DTKey), d("xl_col_distance_px" as DTKey)]];
-      linearMeasures.forEach((lm, i) => {
-        const distM = ppmVal ? +(lm.distPx / ppmVal).toFixed(3) : 0;
-        data2.push([i + 1, distM, Math.round(lm.distPx)]);
-      });
-      data2.push(["TOTAL", ppmVal ? +linearMeasures.reduce((s, lm) => s + lm.distPx / ppmVal!, 0).toFixed(3) : 0, Math.round(linearMeasures.reduce((s, lm) => s + lm.distPx, 0))]);
-      const ws2 = XLSX.utils.aoa_to_sheet(data2);
-      ws2["!cols"] = [{ wch: 5 }, { wch: 14 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, ws2, d("xl_sheet_linears" as DTKey));
-    }
-
-    // Sheet 3: Pièces
-    if (result.rooms && result.rooms.length > 0) {
-      const data3: (string | number)[][] = [[d("xl_col_type" as DTKey), d("xl_col_room" as DTKey), d("xl_col_area" as DTKey), d("xl_col_perim" as DTKey), d("xl_col_floor_type" as DTKey)]];
-      result.rooms.forEach(r => data3.push([r.type, r.label_fr, r.area_m2 != null ? +r.area_m2.toFixed(2) : 0, r.perimeter_m != null ? +r.perimeter_m.toFixed(2) : 0, r.surfaceTypeId ?? "—"]));
-      const ws3 = XLSX.utils.aoa_to_sheet(data3);
-      ws3["!cols"] = [{ wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 15 }];
-      XLSX.utils.book_append_sheet(wb, ws3, d("xl_sheet_rooms" as DTKey));
-    }
-
-    XLSX.writeFile(wb, `floorscan_metre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportEditorXlsx(result, zones, surfaceTypes, linearMeasures, imageNatural);
     toast({ title: d("re_xlsx_ok" as DTKey), variant: "success" });
   };
 
-  // ── Export PDF Devis (mode mesure, client-side jsPDF) ──────────────────────
   const exportMeasurePdf = async () => {
     setExportingMeasurePdf(true);
     try {
-      const { jsPDF } = await import("jspdf");
-      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const W = 210, M = 15;
-      let y = M;
-
-      // ppm est défini dans le JSX mais on en a besoin ici aussi
-      const ppmVal = result.pixels_per_meter ?? null;
-
-      const hex2rgb = (hex: string): [number, number, number] => [
-        parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16),
-      ];
-
-      // En-tête
-      doc.setFillColor(15,23,42); doc.rect(0,0,W,28,"F");
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(18); doc.setFont("helvetica","bold"); doc.text("FloorScan", M, 12);
-      doc.setFontSize(9); doc.setFont("helvetica","normal");
-      doc.setTextColor(148,163,184);
-      doc.text(d("ed_pdf_title" as DTKey), M, 18);
-      doc.text(new Date().toLocaleDateString(lang === "de" ? "de-DE" : lang === "es" ? "es-ES" : lang === "it" ? "it-IT" : lang === "en" ? "en-GB" : "fr-FR",{day:"2-digit",month:"long",year:"numeric"}), W-M, 18, {align:"right"});
-      y = 36;
-
-      // Récap IA
-      const sfData = result.surfaces ?? {};
-      if (Object.values(sfData).some(v => v != null)) {
-        doc.setTextColor(30,41,59); doc.setFontSize(9); doc.setFont("helvetica","bold");
-        doc.text(d("ed_pdf_results" as DTKey), M, y); y += 5;
-        doc.setFont("helvetica","normal");
-        if (sfData.area_hab_m2)      { doc.text(`${d("ed_pdf_living" as DTKey)}${sfData.area_hab_m2.toFixed(1)} m²`, M, y); y += 4; }
-        if (sfData.area_building_m2) { doc.text(`${d("ed_pdf_building" as DTKey)}${sfData.area_building_m2.toFixed(1)} m²`, M, y); y += 4; }
-        if (sfData.area_walls_m2)    { doc.text(`${d("ed_pdf_walls" as DTKey)}${sfData.area_walls_m2.toFixed(1)} m²`, M, y); y += 4; }
-        doc.text(`${d("ed_pdf_doors" as DTKey)}${result.doors_count}   ${d("ed_pdf_windows" as DTKey)}${result.windows_count}`, M, y); y += 8;
-        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 6;
-      }
-
-      // Table zones métré
-      if (zones.length > 0 && imageNatural.w > 0) {
-        const totals = aggregateByType(zones, imageNatural.w, imageNatural.h, ppmVal);
-        const perims = ppmVal ? aggregatePerimeterByType(zones, imageNatural.w, imageNatural.h, ppmVal) : {};
-        const activeSurfaces = surfaceTypes.filter(t => (totals[t.id] ?? 0) > 0);
-        const hasPrices = activeSurfaces.some(t => (t.pricePerM2 ?? 0) > 0);
-
-        if (activeSurfaces.length > 0) {
-          doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(30,41,59);
-          doc.text(d("ed_pdf_zones" as DTKey), M, y); y += 6;
-
-          const cols = hasPrices && ppmVal ? [M, 70, 100, 120, 145, 170] : [M, 90, 130, 160];
-          const headers = hasPrices && ppmVal
-            ? [d("ed_pdf_col_type" as DTKey), d("ed_pdf_col_surface" as DTKey), d("ed_pdf_col_perim" as DTKey), d("ed_pdf_col_waste" as DTKey), d("ed_pdf_col_qty" as DTKey), d("ed_pdf_col_amount" as DTKey)]
-            : [d("ed_pdf_col_type" as DTKey), d("ed_pdf_col_surface" as DTKey), d("ed_pdf_col_perim" as DTKey), "—"];
-
-          doc.setFillColor(248,250,252); doc.rect(M, y-4, W-2*M, 8, "F");
-          doc.setFont("helvetica","bold"); doc.setFontSize(8); doc.setTextColor(100,116,139);
-          headers.forEach((h,i) => doc.text(h, cols[i], y));
-          y += 5; doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 4;
-
-          let totalHT = 0;
-          doc.setFont("helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(30,41,59);
-          for (const type of activeSurfaces) {
-            const area  = totals[type.id] ?? 0;
-            const perim = perims[type.id] ?? 0;
-            const waste = type.wastePercent ?? 10;
-            const cmd   = area * (1 + waste/100);
-            const lineHT = area * (type.pricePerM2 ?? 0);
-            totalHT += lineHT;
-            const [r,g,b] = hex2rgb(type.color);
-            doc.setFillColor(r,g,b); doc.circle(cols[0]+1.5, y-1.5, 1.5, "F");
-            doc.text(type.name, cols[0]+5, y);
-            doc.text(ppmVal ? `${area.toFixed(2)} m²` : "—", cols[1], y);
-            if (hasPrices && ppmVal) {
-              doc.text(perim > 0 ? `${perim.toFixed(1)} ml` : "—", cols[2], y);
-              doc.text(`+${waste}%`, cols[3], y);
-              doc.text(`${cmd.toFixed(2)} m²`, cols[4], y);
-              doc.text(lineHT > 0 ? `${lineHT.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €` : "—", cols[5], y);
-            } else if (ppmVal) {
-              doc.text(perim > 0 ? `${perim.toFixed(1)} ml` : "—", cols[2], y);
-            }
-            y += 5;
-            if (y > 265) { doc.addPage(); y = M; }
-          }
-
-          if (hasPrices && totalHT > 0) {
-            doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 4;
-            doc.setFont("helvetica","bold"); doc.setFontSize(9);
-            doc.text(d("ed_pdf_total_ht" as DTKey), W-M-50, y);
-            doc.text(`${totalHT.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} €`, W-M, y, {align:"right"});
-          }
-        }
-      }
-
-      // Pied de page
-      doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(148,163,184);
-      doc.text(d("ed_pdf_footer" as DTKey), W/2, 292, {align:"center"});
-
-      doc.save(`floorscan_metre_${new Date().toISOString().slice(0,10)}.pdf`);
+      await exportEditorMeasurePdf(result, zones, surfaceTypes, imageNatural);
+      await exportEditorMeasurePdf(result, zones, surfaceTypes, imageNatural);
       toast({ title: d("ed_export_ok"), variant: "success" });
     } catch (e: any) {
       toast({ title: d("ed_export_err"), description: e.message, variant: "error" });
