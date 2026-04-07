@@ -363,6 +363,11 @@ def analyze(req: AnalyzeRequest):
             client = InferenceHTTPClient(api_url="https://serverless.roboflow.com", api_key=cfg["api_key"])
             raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
             plan_b64 = pipeline._np_to_b64(img_rgb)
+            H, W = img_rgb.shape[:2]
+            _empty = np.zeros((H, W), np.uint8)
+            _m_doors_raw = raw.get("_m_doors_raw", _empty)
+            _m_wins_raw = raw.get("_m_windows_raw", _empty)
+            _m_walls_raw = raw.get("_m_walls_raw", _empty)
             result = {
                 "doors_count": raw.get("doors_count", 0),
                 "windows_count": raw.get("windows_count", 0),
@@ -383,6 +388,15 @@ def analyze(req: AnalyzeRequest):
                 "pixels_per_meter": ppm,
                 "rooms": raw.get("rooms", []),
                 "openings": [],
+                # Internal raw masks for session storage (editor needs these)
+                "_m_doors": _m_doors_raw,
+                "_m_windows": _m_wins_raw,
+                "_walls": _m_walls_raw,
+                "_m_walls_ai": _m_walls_raw,
+                "_m_walls_pixel": _empty,
+                "_m_cloisons": _empty,
+                "_m_french_doors": _empty,
+                "_mask_rooms_rgba": None,
             }
         else:
             result = pipeline.run_analysis(img_rgb, pixels_per_meter=ppm, cfg=cfg)
