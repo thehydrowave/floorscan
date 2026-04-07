@@ -731,9 +731,7 @@ def run_pipeline_z(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        # Use cfg model_id for doors/windows, fallback to default if it's a virtual pipeline id
-        _mid = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
-        model_id = pip.DEFAULT_CONFIG["model_id"] if _mid in ("pixel_ia_mix",) else _mid
+        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
 
         _, _, md1, mw1, _, _, _ = pip.infer_pass(img_pil, client, model_id,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -760,23 +758,14 @@ def run_pipeline_z(img_rgb: np.ndarray, img_pil,
         logger.info("[Z] après passes diag : doors=%d px, wins=%d px",
                     cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
-        # Create a low-confidence client for wall detection (1% threshold)
-        from inference_sdk import InferenceHTTPClient, InferenceConfiguration
-        low_conf_config = InferenceConfiguration(confidence_threshold=0.01)
-        low_conf_client = InferenceHTTPClient(
-            api_url="https://detect.roboflow.com",
-            api_key=cfg.get("api_key", pip.DEFAULT_CONFIG["api_key"]),
-        )
-        low_conf_client.configure(low_conf_config)
-
-        _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, low_conf_client, MODEL_Z_WALLS,
+        _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
             conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
-        _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, low_conf_client, MODEL_Z_WALLS,
+        _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
             cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
             conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
         m_walls = cv2.bitwise_or(_ww1, _ww2)
-        logger.info("[Z] walls_ai=%d px (qpxun v1, conf=1%%), doors=%d px, windows=%d px",
+        logger.info("[Z] walls_ai=%d px (qpxun v1), doors=%d px, windows=%d px",
                     cv2.countNonZero(m_walls), cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
         cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
@@ -870,9 +859,8 @@ def run_pipeline_i(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        # Use cfg model_id for doors/windows, fallback to default if it's a virtual pipeline id
         _mid = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
-        model_id = pip.DEFAULT_CONFIG["model_id"] if _mid in ("pixel_ia_mix",) else _mid
+        model_id = pip.DEFAULT_CONFIG["model_id"] if _mid == "pixel_ia_mix" else _mid
 
         m_walls = pip._detect_walls_pixel(img_rgb)
         logger.info("[I] walls_pixel=%d px", cv2.countNonZero(m_walls))
