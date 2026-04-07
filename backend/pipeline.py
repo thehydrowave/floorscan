@@ -122,13 +122,6 @@ PIPELINE_DEFINITIONS = [
         "description": "Cherry-pick: murs D + portes A + fenêtres D",
         "color": "#EC4899",  # pink
     },
-    {
-        "id": "Z", "name": "Diagonal Z (qpxun v1)",
-        "model_ids": ["wall-detection-qpxun/1"],
-        "type": "diagonal",
-        "description": "Murs via wall-detection-qpxun/1 + morphologie + Hough",
-        "color": "#0EA5E9",  # sky
-    },
 ]
 
 # Labels structurels à exclure des pièces détectées
@@ -2596,27 +2589,6 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e), "is_diagonal": True,
         }
 
-    # ── Pipeline Z: Diagonal (wall-detection-qpxun/1) ──
-    try:
-        logger.info("Building diagonal pipeline Z (qpxun v1)...")
-        from pipeline_diagonal import run_pipeline_z
-        results["Z"] = run_pipeline_z(img_rgb, img_pil, client, ppm, cfg)
-        logger.info("Pipeline Z built: doors=%d, windows=%d, diagonal_pct=%.1f%%",
-                     results["Z"].get("doors_count", 0), results["Z"].get("windows_count", 0),
-                     (results["Z"].get("diagonal_stats") or {}).get("diagonal_pct", 0))
-    except Exception as e:
-        logger.error("Pipeline Z failed: %s", e, exc_info=True)
-        results["Z"] = {
-            "id": "Z", "name": "Diagonal Z (qpxun v1)",
-            "description": "Murs wall-detection-qpxun/1 + morphologie + Hough",
-            "color": "#0EA5E9",
-            "doors_count": 0, "windows_count": 0,
-            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
-            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
-            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
-            "is_diagonal": True,
-        }
-
     # ── Pipeline P: Hybrid IA (straight) + pixel (diagonal) ──
     try:
         logger.info("Building hybrid pipeline P (IA+pixel)...")
@@ -2646,7 +2618,7 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
     total_time = round(time.time() - t0, 2)
 
     # ── Build comparison table (K, P first = latest tests) ──
-    ordered = ["Z", "K", "P", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    ordered = ["K", "P", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})

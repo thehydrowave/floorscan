@@ -50,7 +50,6 @@ logger = logging.getLogger(__name__)
 
 MODEL_H_WALLS = "wall-detection-xi9ox/1"
 MODEL_J_WALLS = "architecture-plan/wall-detection-qpxun/2"  # modèle test universe
-MODEL_Z_WALLS = "wall-detection-qpxun/1"  # version 1 du modèle qpxun
 
 
 def _detect_walls_pixel_color(img_rgb: np.ndarray) -> np.ndarray:
@@ -710,134 +709,6 @@ def run_pipeline_j(img_rgb: np.ndarray, img_pil,
 
 
 # ============================================================
-# PIPELINE Z — wall-detection-qpxun/1 (v1)
-# ============================================================
-
-def run_pipeline_z(img_rgb: np.ndarray, img_pil,
-                   client, ppm: float, cfg: dict) -> dict:
-    """Pipeline Z : test du modèle wall-detection-qpxun/1 (v1)."""
-    import time
-    import pipeline as pip
-
-    t0 = time.time()
-    H, W = img_rgb.shape[:2]
-    m_doors = m_wins = m_walls = np.zeros((H, W), np.uint8)
-    interior_mask = cnt = footprint_mask = None
-    footprint_area_m2 = walls_area_m2 = hab_area_m2 = None
-    rooms_list = []; error = None
-    all_segs = diag_segs = h_segs = v_segs = []
-    doors_count = windows_count = 0; diagonal_pct = 0.0
-    mask_doors_b64 = mask_windows_b64 = mask_walls_b64 = None
-    mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
-
-    try:
-        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
-
-        _, _, md1, mw1, _, _, _ = pip.infer_pass(img_pil, client, model_id,
-            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg)
-        _, _, md2, mw2, _, _, _ = pip.infer_pass(img_pil, client, model_id,
-            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=cfg["conf_min_door"], conf_min_win=cfg["conf_min_win"], cfg=cfg)
-        m_doors = cv2.bitwise_or(
-            pip.clean_mask(md1, cfg["min_area_door_px"], cfg["clean_close_k_door"]),
-            pip.clean_mask(md2, cfg["min_area_door_px"], cfg["clean_close_k_door"]))
-        m_wins = cv2.bitwise_or(
-            pip.clean_mask(mw1, cfg["min_area_win_px"], cfg["clean_close_k_win"]),
-            pip.clean_mask(mw2, cfg["min_area_win_px"], cfg["clean_close_k_win"]))
-
-        md_diag, mw_diag = _infer_diagonal_openings(img_rgb, img_pil, client, model_id,
-            angles=[-45, 45], conf_min_door=cfg["conf_min_door"],
-            conf_min_win=cfg["conf_min_win"], cfg=cfg)
-        if cv2.countNonZero(md_diag) > 0:
-            m_doors = cv2.bitwise_or(m_doors,
-                pip.clean_mask(md_diag, cfg["min_area_door_px"], cfg["clean_close_k_door"]))
-        if cv2.countNonZero(mw_diag) > 0:
-            m_wins = cv2.bitwise_or(m_wins,
-                pip.clean_mask(mw_diag, cfg["min_area_win_px"], cfg["clean_close_k_win"]))
-        logger.info("[Z] après passes diag : doors=%d px, wins=%d px",
-                    cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
-
-        _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
-            cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
-        _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
-            cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
-        m_walls = cv2.bitwise_or(_ww1, _ww2)
-        logger.info("[Z] walls_ai=%d px (qpxun v1), doors=%d px, windows=%d px",
-                    cv2.countNonZero(m_walls), cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
-
-        cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)
-        if cnt is None: logger.warning("[Z] Empreinte non trouvée")
-        elif ppm is not None: footprint_area_m2 = float(cv2.contourArea(cnt)) / (ppm ** 2)
-
-        if cnt is not None:
-            building = np.zeros((H, W), np.uint8); cv2.fillPoly(building, [cnt], 255)
-            walls_bin = (m_walls > 0).astype(np.uint8) * 255
-            r_px = (max(1, int(round((cfg.get("wall_thickness_m", 0.20) * ppm) / 2.0)))
-                    if ppm is not None else max(1, cfg.get("wall_thickness_px_fallback", 10) // 2))
-            k_w = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r_px + 1, 2 * r_px + 1))
-            walls_thick = cv2.bitwise_and(cv2.dilate(walls_bin, k_w), building)
-            interior_mask = cv2.morphologyEx(cv2.subtract(building, walls_thick), cv2.MORPH_OPEN,
-                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)), iterations=1)
-            if ppm is not None:
-                walls_area_m2 = round(cv2.countNonZero(walls_thick) / ppm ** 2, 2)
-                hab_area_m2   = round(cv2.countNonZero(interior_mask) / ppm ** 2, 2)
-
-        rooms_list = segment_rooms_diagonal(m_walls, m_doors, m_wins, cnt, H, W, ppm)
-        doors_count   = pip._count_connected_components(m_doors)
-        windows_count = pip._count_connected_components(m_wins)
-        all_segs, diag_segs, h_segs, v_segs = _hough_stats(m_walls, H, W)
-        diagonal_pct = len(diag_segs) / max(len(all_segs), 1) * 100
-
-        def _ov(mask, color, alpha):
-            return (pip._np_to_b64(pip._mask_to_rgba(mask, color, alpha))
-                    if cv2.countNonZero(mask) > 0 else None)
-        mask_doors_b64     = _ov(m_doors,   (217, 70,  239), 90)
-        mask_windows_b64   = _ov(m_wins,    (34,  211, 238), 90)
-        mask_walls_b64     = _ov(m_walls,   (96,  165, 250), 90)
-        mask_rooms_b64     = (pip._np_to_b64(pip._build_rooms_color_mask(rooms_list, H, W))
-                              if rooms_list else None)
-        mask_footprint_b64 = (pip._np_to_b64(pip._mask_to_rgba(footprint_mask, (251, 191, 36), 50))
-                              if footprint_mask is not None and cv2.countNonZero(footprint_mask) > 0 else None)
-        mask_hab_b64       = (pip._np_to_b64(pip._mask_to_rgba(interior_mask, (74, 222, 128), 60))
-                              if interior_mask is not None and cv2.countNonZero(interior_mask) > 0 else None)
-        diag_overlay = np.zeros((H, W), np.uint8)
-        for seg in diag_segs:
-            cv2.line(diag_overlay, (seg["x1"], seg["y1"]), (seg["x2"], seg["y2"]), 255, 3, cv2.LINE_AA)
-        mask_diagonal_b64 = _ov(diag_overlay, (249, 115, 22), 200)
-
-    except Exception as e:
-        error = str(e); logger.error("Pipeline Z failed: %s", e, exc_info=True)
-
-    elapsed = time.time() - t0
-    return {
-        "id": "Z", "name": "Diagonal Z (qpxun v1)",
-        "description": "Murs wall-detection-qpxun/1 + portes/fenetres ±45° + segmentation diagonale",
-        "color": "#0EA5E9",
-        "doors_count": doors_count, "windows_count": windows_count,
-        "mask_doors_b64": mask_doors_b64, "mask_windows_b64": mask_windows_b64,
-        "mask_walls_b64": mask_walls_b64, "mask_footprint_b64": mask_footprint_b64,
-        "mask_hab_b64": mask_hab_b64,
-        "footprint_area_m2": round(footprint_area_m2, 2) if footprint_area_m2 else None,
-        "walls_area_m2": walls_area_m2, "hab_area_m2": hab_area_m2,
-        "rooms_count": len(rooms_list),
-        "rooms": [{k: v for k, v in r.items() if not k.startswith("_")} for r in rooms_list],
-        "mask_rooms_b64": mask_rooms_b64, "timing_seconds": round(elapsed, 2), "error": error,
-        "is_diagonal": True, "mask_diagonal_walls_b64": mask_diagonal_b64,
-        "wall_segments": [{"x1_norm": s["x1_norm"], "y1_norm": s["y1_norm"],
-             "x2_norm": s["x2_norm"], "y2_norm": s["y2_norm"],
-             "length_m": round(s["length_px"] / ppm, 2) if ppm else None,
-             "angle_deg": s["angle_deg"], "is_diagonal": s["is_diagonal"]} for s in all_segs],
-        "diagonal_stats": {"total_segments": len(all_segs), "diagonal_segments": len(diag_segs),
-            "horizontal_segments": len(h_segs), "vertical_segments": len(v_segs),
-            "diagonal_pct": round(diagonal_pct, 1)},
-        "_m_doors_raw": m_doors, "_m_windows_raw": m_wins, "_m_walls_raw": m_walls,
-    }
-
-
-# ============================================================
 # PIPELINE I — Pixel (OTSU) murs + IA portes/fenêtres + segmentation diagonale
 # ============================================================
 
@@ -859,8 +730,7 @@ def run_pipeline_i(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        _mid = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
-        model_id = pip.DEFAULT_CONFIG["model_id"] if _mid == "pixel_ia_mix" else _mid
+        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
 
         m_walls = pip._detect_walls_pixel(img_rgb)
         logger.info("[I] walls_pixel=%d px", cv2.countNonZero(m_walls))
