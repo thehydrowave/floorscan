@@ -366,6 +366,8 @@ def analyze(req: AnalyzeRequest):
                 api_key=cfg["api_key"],
             )
             raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
+            # Encode the base plan image
+            plan_b64 = pipeline._np_to_b64(img_rgb)
             # Convert pipeline_diagonal output to standard analysis result format
             result = {
                 "doors_count": raw.get("doors_count", 0),
@@ -374,9 +376,9 @@ def analyze(req: AnalyzeRequest):
                 "mask_doors_b64": raw.get("mask_doors_b64"),
                 "mask_windows_b64": raw.get("mask_windows_b64"),
                 "mask_walls_ai_b64": raw.get("mask_walls_b64"),
-                "overlay_openings_b64": None,
+                "overlay_openings_b64": plan_b64,
                 "overlay_interior_b64": raw.get("mask_hab_b64"),
-                "plan_b64": None,
+                "plan_b64": plan_b64,
                 "surfaces": {
                     "area_building_m2": raw.get("footprint_area_m2"),
                     "perim_building_m": None,
