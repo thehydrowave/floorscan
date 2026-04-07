@@ -758,14 +758,21 @@ def run_pipeline_z(img_rgb: np.ndarray, img_pil,
         logger.info("[Z] après passes diag : doors=%d px, wins=%d px",
                     cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
-        _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
+        # Create a low-confidence client for wall detection (1% threshold)
+        from inference_sdk import InferenceHTTPClient, InferenceConfiguration
+        low_conf_config = InferenceConfiguration(confidence_threshold=0.01)
+        low_conf_client = InferenceHTTPClient(
+            api_url="https://detect.roboflow.com",
+            api_key=cfg.get("api_key", pip.DEFAULT_CONFIG["api_key"]),
+        )
+        low_conf_client.configure(low_conf_config)
+
+        _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, low_conf_client, MODEL_Z_WALLS,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
-            confidence_threshold=0.01)
-        _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+        _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, low_conf_client, MODEL_Z_WALLS,
             cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
-            confidence_threshold=0.01)
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
         m_walls = cv2.bitwise_or(_ww1, _ww2)
         logger.info("[Z] walls_ai=%d px (qpxun v1, conf=1%%), doors=%d px, windows=%d px",
                     cv2.countNonZero(m_walls), cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
