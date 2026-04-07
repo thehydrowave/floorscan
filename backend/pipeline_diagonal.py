@@ -859,7 +859,8 @@ def run_pipeline_i(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
+        _mid = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
+        model_id = pip.DEFAULT_CONFIG["model_id"] if _mid == "pixel_ia_mix" else _mid
 
         m_walls = pip._detect_walls_pixel(img_rgb)
         logger.info("[I] walls_pixel=%d px", cv2.countNonZero(m_walls))
