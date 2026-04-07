@@ -160,12 +160,12 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
 
   // Room panel mode
-  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count" | "layers">("metre");
   const allTypes = useMemo(
     () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
     [surfaceTypes]
   );
-  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count") => {
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count" | "layers") => {
     setPanelMode(mode);
     if (mode === "rooms") {
       setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
@@ -1155,6 +1155,10 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   angleMeasurements={angleMeasurements}
                   circleMeasures={circleMeasures}
                   displayUnit={displayUnit}
+                  layers={measureLayers}
+                  onLayersChange={setMeasureLayers}
+                  activeLayerId={activeLayerId}
+                  onActiveLayerIdChange={setActiveLayerId}
                 />
               </div>
             </div>

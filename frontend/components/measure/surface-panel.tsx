@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2, Upload } from "lucide-react";
+import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2, Upload, Layers, Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
@@ -13,7 +13,9 @@ import {
   CircleMeasure, circleMetrics,
   DisplayUnit, UNIT_LABELS_AREA, UNIT_LABELS_VOLUME,
   slopeCorrectedArea, zoneVolumeM3,
+  MeasureLayer,
 } from "@/lib/measure-types";
+import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
 import { dt, DTKey } from "@/lib/i18n";
 import type { CustomDetection } from "@/lib/types";
@@ -39,8 +41,8 @@ interface SurfacePanelProps {
   customDetections?: CustomDetection[];
   onDeleteDetection?: (id: string) => void;
   // Room mode
-  panelMode?: "metre" | "rooms" | "linear" | "count";
-  onPanelModeChange?: (mode: "metre" | "rooms" | "linear" | "count") => void;
+  panelMode?: "metre" | "rooms" | "linear" | "count" | "layers";
+  onPanelModeChange?: (mode: "metre" | "rooms" | "linear" | "count" | "layers") => void;
   roomTypes?: SurfaceType[];
   // Linear tool
   linearCategories?: LinearCategory[];
@@ -60,6 +62,11 @@ interface SurfacePanelProps {
   angleMeasurements?: AngleMeasurement[];
   circleMeasures?: CircleMeasure[];
   displayUnit?: DisplayUnit;
+  // Layers
+  layers?: MeasureLayer[];
+  onLayersChange?: (layers: MeasureLayer[]) => void;
+  activeLayerId?: string;
+  onActiveLayerIdChange?: (id: string) => void;
 }
 
 export default function SurfacePanel({
@@ -74,6 +81,7 @@ export default function SurfacePanel({
   onCountGroupsChange, onCountPointsChange,
   activeCountGroupId = "", onActiveCountGroupChange,
   angleMeasurements = [], circleMeasures = [], displayUnit = "m" as DisplayUnit,
+  layers, onLayersChange, activeLayerId, onActiveLayerIdChange,
 }: SurfacePanelProps) {
   const { lang } = useLang();
   const d = (k: string) => dt(k as any, lang);
@@ -643,6 +651,13 @@ export default function SurfacePanel({
               className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
                 panelMode === "count" ? "bg-pink-500/20 text-pink-400" : "text-slate-500 hover:text-slate-300"}`}>
               <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_count" as DTKey)}</span>
+            </button>
+          )}
+          {layers && layers.length > 0 && (
+            <button onClick={() => onPanelModeChange?.("layers")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
+                panelMode === "layers" ? "bg-blue-500/20 text-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+              <Layers className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_layers" as DTKey)}</span>
             </button>
           )}
         </div>
@@ -1220,6 +1235,69 @@ export default function SurfacePanel({
             </p>
           )}
         </>
+      )}
+
+      {/* ── LAYERS MODE ── */}
+      {panelMode === "layers" && layers && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_tab_layers" as DTKey)}</h3>
+          </div>
+
+          {/* Layer list */}
+          <div className="flex flex-col gap-1">
+            {layers.map(lyr => {
+              const isActive = activeLayerId === lyr.id;
+              const isProtected = ["lyr_general", "lyr_structure", "lyr_annotation"].includes(lyr.id);
+              return (
+                <div key={lyr.id}
+                  className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all cursor-pointer",
+                    isActive ? "bg-white/10 border border-white/20" : "border border-transparent hover:bg-white/5")}
+                  onClick={() => onActiveLayerIdChange?.(lyr.id)}>
+                  {/* Color dot */}
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: lyr.color }} />
+                  {/* Name */}
+                  <span className={cn("flex-1 text-xs truncate", isActive ? "text-white font-medium" : "text-slate-400")}>
+                    {lyr.name}
+                  </span>
+                  {/* Visibility toggle */}
+                  <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l)); }}
+                    className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                    title={lyr.visible ? d("sv_layer_visible" as DTKey) : d("sv_layer_hidden" as DTKey)}>
+                    {lyr.visible ? <Eye className="w-3 h-3 text-slate-400" /> : <EyeOff className="w-3 h-3 text-slate-600" />}
+                  </button>
+                  {/* Lock toggle */}
+                  <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l)); }}
+                    className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                    title={lyr.locked ? d("sv_layer_locked" as DTKey) : d("sv_layer_unlocked" as DTKey)}>
+                    {lyr.locked ? <Lock className="w-3 h-3 text-amber-400" /> : <Unlock className="w-3 h-3 text-slate-600" />}
+                  </button>
+                  {/* Delete */}
+                  {!isProtected && (
+                    <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.filter(l => l.id !== lyr.id)); }}
+                      className="p-0.5 rounded hover:bg-red-500/10 transition-colors"
+                      title={d("sv_layer_delete" as DTKey)}>
+                      <Trash2 className="w-3 h-3 text-slate-600 hover:text-red-400" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add new layer button */}
+          <button onClick={() => {
+            const newId = `lyr_${Date.now()}`;
+            const colors = ["#6B7280", "#3B82F6", "#F97316", "#EF4444", "#06B6D4", "#10B981", "#F59E0B", "#8B5CF6"];
+            const color = colors[layers.length % colors.length];
+            const name = d("sv_layer_new" as DTKey);
+            onLayersChange?.([...layers, { id: newId, name, color, visible: true, locked: false }]);
+            onActiveLayerIdChange?.(newId);
+          }}
+            className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-white border border-dashed border-white/10 hover:border-white/30 rounded-xl py-2 transition-colors">
+            <Plus className="w-3.5 h-3.5" /> {d("sv_layer_new" as DTKey)}
+          </button>
+        </div>
       )}
     </div>
   );
