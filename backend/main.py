@@ -360,7 +360,7 @@ def analyze(req: AnalyzeRequest):
             from inference_sdk import InferenceHTTPClient
             from pipeline_diagonal import run_pipeline_i
             img_pil = Image.fromarray(img_rgb).convert("RGB")
-            client = InferenceHTTPClient(api_url="https://detect.roboflow.com", api_key=cfg["api_key"])
+            client = InferenceHTTPClient(api_url="https://serverless.roboflow.com", api_key=cfg["api_key"])
             raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
             plan_b64 = pipeline._np_to_b64(img_rgb)
             result = {
