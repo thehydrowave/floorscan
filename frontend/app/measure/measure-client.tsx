@@ -3,12 +3,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
+import MeasureTutorialOverlay, { resetMeasureTutorial } from "@/components/measure/measure-tutorial-overlay";
 import MarkupsList from "@/components/measure/markups-list";
 import { SurfaceType, MeasureZone, PlanSnapshot, getDefaultSurfaceTypes, getRoomSurfaceTypes, getEmpriseType, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, getDefaultLinearCategories, getDefaultCountGroups, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, getDefaultLayers } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
@@ -245,6 +246,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [sessionId, setSessionId]           = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+  const [showMeasureTuto, setShowMeasureTuto] = useState(false);
   const [vsMatches, setVsMatches]               = useState<VisualSearchMatch[]>([]);
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
@@ -1054,6 +1056,11 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
+                    <button onClick={() => { resetMeasureTutorial(); setShowMeasureTuto(v => !v); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
+                      title={d("tuto_header" as DTKey)}>
+                      <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
+                    </button>
                     <button
                       onClick={newProject}
                       className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-2.5 py-1.5 transition-colors"
@@ -1571,6 +1578,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       </div>
 
       {content}
+
+      <MeasureTutorialOverlay forceShow={showMeasureTuto} />
     </div>
   );
 }
