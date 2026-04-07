@@ -605,6 +605,14 @@ export const DEMO_T = {
   // ── Survey — Pièces & Emprise ────────────────────────────────────────────────
   sv_tab_metre:    { fr:"Métré",                       en:"Measurement",            es:"Medición",                 de:"Aufmaß",                   it:"Misura"                   },
   sv_tab_rooms:    { fr:"Pièces",                      en:"Rooms",                  es:"Estancias",                de:"Räume",                    it:"Stanze"                   },
+  sv_tab_linear:   { fr:"ml",                          en:"lm",                     es:"ml",                       de:"lfm",                      it:"ml"                       },
+  sv_tab_count:    { fr:"Comptage",                    en:"Counting",               es:"Conteo",                   de:"Zählung",                  it:"Conteggio"                },
+  sv_surface_types:{ fr:"Types de surface",             en:"Surface types",          es:"Tipos de superficie",      de:"Flächentypen",             it:"Tipi di superficie"       },
+  sv_add:          { fr:"Ajouter",                     en:"Add",                    es:"Añadir",                   de:"Hinzufügen",               it:"Aggiungi"                 },
+  sv_restart:      { fr:"Recommencer",                 en:"Restart",                es:"Reiniciar",                de:"Neustart",                 it:"Ricomincia"               },
+  sv_new_plan:     { fr:"Nouveau plan",                en:"New plan",               es:"Nuevo plano",              de:"Neuer Plan",               it:"Nuovo piano"              },
+  sv_count_groups: { fr:"Groupes de comptage",          en:"Count groups",           es:"Grupos de conteo",         de:"Zählgruppen",              it:"Gruppi di conteggio"      },
+  sv_layers:       { fr:"CALQUES",                     en:"LAYERS",                 es:"CAPAS",                    de:"EBENEN",                   it:"LIVELLI"                  },
   sv_emprise:      { fr:"Emprise au sol",              en:"Building footprint",     es:"Huella del edificio",      de:"Grundfläche",              it:"Impronta"                 },
   sv_room_count:   { fr:"Pièces",                      en:"Rooms",                  es:"Estancias",                de:"Räume",                    it:"Stanze"                   },
   sv_hab_area:     { fr:"Surface habitable",           en:"Living area",            es:"Superficie habitable",     de:"Wohnfläche",               it:"Superficie abitabile"     },
@@ -2042,6 +2050,16 @@ export const DEMO_T = {
   tuto_ed_step6:       { fr:"Détecter similaires : dessinez un rectangle autour d'un élément, l'IA trouvera tous les éléments similaires sur le plan.", en:"Detect similar: draw a rectangle around an element, the AI will find all similar elements on the plan.", es:"Detectar similares: dibuje un rectángulo alrededor de un elemento.", de:"Ähnliche erkennen: Zeichnen Sie ein Rechteck um ein Element.", it:"Rileva simili: disegna un rettangolo attorno a un elemento." },
   tuto_ed_step7:       { fr:"Visibilité : la barre en haut à gauche permet d'afficher/masquer les murs, pièces, ouvertures, surfaces et annotations sur le plan.", en:"Visibility: the top-left bar lets you show/hide walls, rooms, openings, surfaces and annotations on the plan.", es:"Visibilidad: la barra superior izquierda permite mostrar/ocultar muros, habitaciones, aperturas.", de:"Sichtbarkeit: Die Leiste oben links blendet Wände, Räume, Öffnungen ein/aus.", it:"Visibilità: la barra in alto a sinistra mostra/nasconde muri, stanze, aperture." },
   tuto_ed_step_save:   { fr:"Sauvegarder : cliquez ici pour enregistrer toutes vos modifications (pièces, surfaces, mesures, annotations) et revenir aux résultats.", en:"Save: click here to save all your changes (rooms, surfaces, measurements, annotations) and return to results.", es:"Guardar: haga clic aquí para guardar todos los cambios y volver a los resultados.", de:"Speichern: Klicken Sie hier, um alle Änderungen zu speichern und zu den Ergebnissen zurückzukehren.", it:"Salva: cliccate qui per salvare tutte le modifiche e tornare ai risultati." },
+
+  // ── Default layer names ──
+  layer_general:       { fr:"Général",                    en:"General",                es:"General",                  de:"Allgemein",                it:"Generale"                 },
+  layer_architecture:  { fr:"Architecture",               en:"Architecture",           es:"Arquitectura",             de:"Architektur",              it:"Architettura"             },
+  layer_structure:     { fr:"Structure",                  en:"Structure",              es:"Estructura",               de:"Tragwerk",                 it:"Struttura"                },
+  layer_electricite:   { fr:"Électricité",                en:"Electrical",             es:"Electricidad",             de:"Elektrik",                 it:"Elettricità"              },
+  layer_plomberie:     { fr:"Plomberie",                  en:"Plumbing",               es:"Fontanería",               de:"Sanitär",                  it:"Idraulica"                },
+  layer_cvc:           { fr:"CVC",                        en:"HVAC",                   es:"HVAC",                     de:"HLK",                      it:"HVAC"                     },
+  layer_incendie:      { fr:"Incendie",                   en:"Fire safety",            es:"Incendios",                de:"Brandschutz",              it:"Antincendio"              },
+  layer_finitions:     { fr:"Finitions",                  en:"Interior finishes",      es:"Acabados",                 de:"Ausbau",                   it:"Finiture"                 },
 
   // ── MEASURE CANVAS (mc_) ──────────────────────────────────────────
   mc_create_layer:     { fr:"Créer un calque", en:"Create layer", es:"Crear capa", de:"Ebene erstellen", it:"Crea livello" },

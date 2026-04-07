@@ -1762,7 +1762,7 @@ export default function MeasureCanvas({
       {/* ══ BAR 1 : CALQUES ══ */}
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 min-w-0 overflow-x-auto overflow-y-visible">
         <Layers size={12} className="text-blue-400 shrink-0" />
-        <span className="text-[9px] text-blue-400 uppercase tracking-wider font-semibold mr-1 shrink-0">CALQUES</span>
+        <span className="text-[9px] text-blue-400 uppercase tracking-wider font-semibold mr-1 shrink-0">{d("sv_layers" as DTKey)}</span>
 
         {/* ── Inline layer buttons ── */}
         {layers.map(lyr => (

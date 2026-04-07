@@ -15,7 +15,7 @@ import {
   slopeCorrectedArea, zoneVolumeM3,
 } from "@/lib/measure-types";
 import { useLang } from "@/lib/lang-context";
-import { dt } from "@/lib/i18n";
+import { dt, DTKey } from "@/lib/i18n";
 import type { CustomDetection } from "@/lib/types";
 import { PdfBuilder, safeTxt, fmtQty, C, TABLE, TYPO, PAGE } from "@/lib/pdf-theme";
 import * as XLSX from "xlsx";
@@ -635,14 +635,14 @@ export default function SurfacePanel({
             <button onClick={() => onPanelModeChange?.("linear")}
               className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors border-r border-white/10 truncate ${
                 panelMode === "linear" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-500 hover:text-slate-300"}`}>
-              <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">ml</span>
+              <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_linear" as DTKey)}</span>
             </button>
           )}
           {hasCountTab && (
             <button onClick={() => onPanelModeChange?.("count")}
               className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
                 panelMode === "count" ? "bg-pink-500/20 text-pink-400" : "text-slate-500 hover:text-slate-300"}`}>
-              <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">Comptage</span>
+              <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_count" as DTKey)}</span>
             </button>
           )}
         </div>
@@ -652,7 +652,7 @@ export default function SurfacePanel({
       {panelMode === "metre" && (
         <>
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_surface_types" as DTKey)}</h3>
             <div className="flex items-center gap-1">
               {/* Import CSV prix */}
               <input ref={csvInputRef} type="file" accept=".csv,.txt" onChange={importPriceCSV} className="hidden" />
@@ -704,7 +704,7 @@ export default function SurfacePanel({
               </div>
               <button onClick={addType} disabled={!newName.trim()}
                 className="flex items-center justify-center gap-1.5 bg-accent hover:bg-accent/80 disabled:opacity-40 text-white rounded-lg py-1.5 text-xs font-medium transition-colors">
-                <Check className="w-3.5 h-3.5" /> Ajouter
+                <Check className="w-3.5 h-3.5" /> {d("sv_add" as DTKey)}
               </button>
             </div>
           )}
@@ -1100,7 +1100,7 @@ export default function SurfacePanel({
       {panelMode === "count" && (
         <>
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Groupes de comptage</h3>
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_count_groups" as DTKey)}</h3>
             <button onClick={() => setAddingCount(v => !v)}
               className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />

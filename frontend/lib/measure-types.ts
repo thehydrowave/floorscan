@@ -1,3 +1,5 @@
+import { dt, DTKey } from "@/lib/i18n";
+
 export interface AssemblyItem {
   ref: string;       // référence article / SKU
   label: string;     // description
@@ -499,16 +501,17 @@ export interface MeasureLayer {
   locked: boolean;
 }
 
-export const DEFAULT_LAYERS: MeasureLayer[] = [
-  { id: "lyr_general",    name: "Général",      color: "#6B7280", visible: true, locked: false },
-  { id: "lyr_archi",      name: "Architecture", color: "#3B82F6", visible: true, locked: false },
-  { id: "lyr_structure",  name: "Structure",    color: "#F97316", visible: true, locked: false },
-  { id: "lyr_electrical", name: "Électricité",  color: "#EF4444", visible: true, locked: false },
-  { id: "lyr_plumbing",   name: "Plomberie",    color: "#06B6D4", visible: true, locked: false },
-  { id: "lyr_mechanical", name: "CVC",          color: "#10B981", visible: true, locked: false },
-  { id: "lyr_fire",       name: "Incendie",     color: "#F59E0B", visible: true, locked: false },
-  { id: "lyr_interior",   name: "Finitions",    color: "#8B5CF6", visible: true, locked: false },
+export const getDefaultLayers = (lang: string): MeasureLayer[] => [
+  { id: "lyr_general",    name: dt("layer_general" as DTKey, lang as any),      color: "#6B7280", visible: true, locked: false },
+  { id: "lyr_archi",      name: dt("layer_architecture" as DTKey, lang as any), color: "#3B82F6", visible: true, locked: false },
+  { id: "lyr_structure",  name: dt("layer_structure" as DTKey, lang as any),    color: "#F97316", visible: true, locked: false },
+  { id: "lyr_electrical", name: dt("layer_electricite" as DTKey, lang as any),  color: "#EF4444", visible: true, locked: false },
+  { id: "lyr_plumbing",   name: dt("layer_plomberie" as DTKey, lang as any),   color: "#06B6D4", visible: true, locked: false },
+  { id: "lyr_mechanical", name: dt("layer_cvc" as DTKey, lang as any),         color: "#10B981", visible: true, locked: false },
+  { id: "lyr_fire",       name: dt("layer_incendie" as DTKey, lang as any),    color: "#F59E0B", visible: true, locked: false },
+  { id: "lyr_interior",   name: dt("layer_finitions" as DTKey, lang as any),   color: "#8B5CF6", visible: true, locked: false },
 ];
+export const DEFAULT_LAYERS: MeasureLayer[] = getDefaultLayers("fr");
 
 // ── Tool Chest presets (Bluebeam-style) ─────────────────────────────────────
 

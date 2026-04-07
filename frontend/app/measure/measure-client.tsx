@@ -10,7 +10,7 @@ import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
 import MarkupsList from "@/components/measure/markups-list";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, DEFAULT_LAYERS } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, DEFAULT_LAYERS, getDefaultLayers } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -203,7 +203,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [markupAnnotations, setMarkupAnnotations] = useState<MarkupAnnotation[]>([]);
   // Groups & Layers
   const [markupGroups, setMarkupGroups] = useState<MarkupGroup[]>([]);
-  const [measureLayers, setMeasureLayers] = useState<MeasureLayer[]>(DEFAULT_LAYERS);
+  const [measureLayers, setMeasureLayers] = useState<MeasureLayer[]>(() => getDefaultLayers(lang));
   const [activeLayerId, setActiveLayerId] = useState("lyr_general");
 
   // Undo / Redo history
@@ -393,7 +393,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     setCountPoints([]); setCountGroups(DEFAULT_COUNT_GROUPS);
     setAngleMeasurements([]); setCircleMeasures([]);
     setTextAnnotations([]); setMarkupAnnotations([]);
-    setMarkupGroups([]); setMeasureLayers(DEFAULT_LAYERS);
+    setMarkupGroups([]); setMeasureLayers(getDefaultLayers(lang));
     setActiveLayerId("lyr_general"); setDisplayUnit("m");
     setSelectedZoneId(null); setSelectedLinearId(null);
     setCustomDetections([]); setVsMatches([]);
@@ -1042,7 +1042,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     ))}
                     <button onClick={addNewPlan}
                       className="glass border border-white/10 border-dashed rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:text-white hover:border-white/30 transition-colors flex items-center gap-1">
-                      <Plus className="w-3 h-3" /> Nouveau plan
+                      <Plus className="w-3 h-3" /> {d("sv_new_plan" as DTKey)}
                     </button>
                   </div>
                 )}
@@ -1058,7 +1058,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                       onClick={newProject}
                       className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-2.5 py-1.5 transition-colors"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                      <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
                     </button>
                     <Button size="sm" onClick={() => setStep(4)} disabled={zones.length === 0}>
                       {d("me_view_results")}
@@ -1463,7 +1463,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     onClick={newProject}
                     className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-3 py-2 transition-colors"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                    <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
                   </button>
                   <Button variant="outline" onClick={() => setStep(3)}>
                     {d("me_back_survey")}
@@ -1556,7 +1556,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                 className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 glass border border-red-500/25 hover:border-red-500/50 rounded-lg px-3 py-1.5 transition-colors"
                 title="Effacer le projet et repartir de zéro"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
               </button>
             )}
             <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
