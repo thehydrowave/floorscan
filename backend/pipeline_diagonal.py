@@ -731,7 +731,8 @@ def run_pipeline_z(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
+        # Always use default Roboflow model for doors/windows detection
+        model_id = pip.DEFAULT_CONFIG["model_id"]
 
         _, _, md1, mw1, _, _, _ = pip.infer_pass(img_pil, client, model_id,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
@@ -868,7 +869,8 @@ def run_pipeline_i(img_rgb: np.ndarray, img_pil,
     mask_rooms_b64 = mask_footprint_b64 = mask_hab_b64 = mask_diagonal_b64 = None
 
     try:
-        model_id = cfg.get("model_id", pip.DEFAULT_CONFIG["model_id"])
+        # Always use default Roboflow model for doors/windows detection
+        model_id = pip.DEFAULT_CONFIG["model_id"]
 
         m_walls = pip._detect_walls_pixel(img_rgb)
         logger.info("[I] walls_pixel=%d px", cv2.countNonZero(m_walls))
