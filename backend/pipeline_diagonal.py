@@ -760,12 +760,14 @@ def run_pipeline_z(img_rgb: np.ndarray, img_pil,
 
         _, _, _, _, _ww1, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
             cfg["pass1_tile"], cfg["pass1_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
+            confidence_threshold=0.01)
         _, _, _, _, _ww2, _, _ = pip.infer_pass(img_pil, client, MODEL_Z_WALLS,
             cfg["pass2_tile"], cfg["pass2_over"], write_rooms=False,
-            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg)
+            conf_min_door=0.01, conf_min_win=0.01, cfg=cfg,
+            confidence_threshold=0.01)
         m_walls = cv2.bitwise_or(_ww1, _ww2)
-        logger.info("[Z] walls_ai=%d px (qpxun v1), doors=%d px, windows=%d px",
+        logger.info("[Z] walls_ai=%d px (qpxun v1, conf=1%%), doors=%d px, windows=%d px",
                     cv2.countNonZero(m_walls), cv2.countNonZero(m_doors), cv2.countNonZero(m_wins))
 
         cnt, footprint_mask = _compute_footprint_diagonal(m_walls, m_doors, m_wins, H, W)

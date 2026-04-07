@@ -991,7 +991,8 @@ def vectorize_walls(mask_walls: np.ndarray, H: int, W: int, ppm) -> list:
 # STEP 4 — INFÉRENCE MULTI-SCALE
 # ============================================================
 def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, overlap: int,
-               write_rooms: bool, conf_min_door: float, conf_min_win: float, cfg: dict):
+               write_rooms: bool, conf_min_door: float, conf_min_win: float, cfg: dict,
+               confidence_threshold: float | None = None):
     W, H = img_pil.size
     rooms_index = np.zeros((H, W), np.int32) if write_rooms else None
     legend = {}
@@ -1030,7 +1031,10 @@ def infer_pass(img_pil: Image.Image, client, model_id: str, tile_size: int, over
     def _infer_one(job):
         jx0, jy0, jtw, jth, jb64 = job
         try:
-            res = client.infer(jb64, model_id=model_id)
+            infer_kwargs = {"model_id": model_id}
+            if confidence_threshold is not None:
+                infer_kwargs["confidence"] = confidence_threshold
+            res = client.infer(jb64, **infer_kwargs)
             preds = res.get("predictions", []) or res.get("data", [])
             if isinstance(preds, dict) and "predictions" in preds:
                 preds = preds["predictions"]
