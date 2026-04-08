@@ -64,21 +64,15 @@ export default function FacadeTutorialOverlay({ forceShow }: { forceShow?: boole
 
   useEffect(() => {
     if (!show) return;
+    setSpotlight(null); // clear stale position from previous step
     const current = STEPS[step];
-    if (current?.target) {
-      const el = document.querySelector(current.target);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    }
-    const timeouts = [50, 200, 450, 800].map(t => setTimeout(updateSpotlight, t));
+    if (!current?.target) return;
+    const el = document.querySelector(current.target);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    const timeouts = [100, 350, 600, 900].map(t => setTimeout(updateSpotlight, t));
     return () => { timeouts.forEach(clearTimeout); };
   }, [step, show, updateSpotlight]);
-
-  useEffect(() => {
-    if (!show) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [show]);
 
   useEffect(() => {
     if (!show) return;

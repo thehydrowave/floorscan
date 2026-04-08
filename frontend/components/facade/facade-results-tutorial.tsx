@@ -57,26 +57,19 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
     setSpotlight({ x: rect.left - pad, y: rect.top - pad, w: rect.width + pad * 2, h: rect.height + pad * 2 });
   }, [step, show]);
 
-  // Scroll target into view + lock body scroll
+  // Clear spotlight immediately on step change, then scroll + recompute
   useEffect(() => {
     if (!show) return;
+    setSpotlight(null); // clear stale position from previous step
     const current = STEPS[step];
-    if (current?.target) {
-      const el = document.querySelector(current.target);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-    }
-    // Multiple recomputes to catch the spotlight after scroll animation
-    const timeouts = [50, 200, 450, 800].map(t => setTimeout(updateSpotlight, t));
+    if (!current?.target) return;
+    const el = document.querySelector(current.target);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    // Recompute spotlight after scroll animation completes
+    const timeouts = [100, 350, 600, 900].map(t => setTimeout(updateSpotlight, t));
     return () => { timeouts.forEach(clearTimeout); };
   }, [step, show, updateSpotlight]);
-
-  // Lock body scroll while open
-  useEffect(() => {
-    if (!show) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, [show]);
 
   // Re-position on resize
   useEffect(() => {
