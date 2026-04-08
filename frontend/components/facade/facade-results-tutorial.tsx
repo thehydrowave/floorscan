@@ -45,37 +45,6 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
 
   useEffect(() => { if (forceShow) { setShow(true); setStep(0); } }, [forceShow]);
 
-  // Scroll target into view when step changes
-  useEffect(() => {
-    if (!show) return;
-    const current = STEPS[step];
-    if (!current?.target) { setSpotlight(null); return; }
-    const el = document.querySelector(current.target);
-    if (!el) { setSpotlight(null); return; }
-    el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-  }, [step, show]);
-
-  // Lock body scroll + block wheel/keys while tutorial is open
-  useEffect(() => {
-    if (!show) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const blockWheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); };
-    const blockKeys = (e: KeyboardEvent) => {
-      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","PageUp","PageDown","Space","Home","End"].includes(e.code)) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener("wheel", blockWheel, { passive: false });
-    window.addEventListener("keydown", blockKeys);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("wheel", blockWheel);
-      window.removeEventListener("keydown", blockKeys);
-    };
-  }, [show]);
-
-  // Track spotlight position (updates on scroll/resize)
   const updateSpotlight = useCallback(() => {
     if (!show) { setSpotlight(null); return; }
     const current = STEPS[step];
@@ -83,19 +52,39 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
     const el = document.querySelector(current.target);
     if (!el) { setSpotlight(null); return; }
     const rect = el.getBoundingClientRect();
-    const pad = 8;
+    if (rect.width === 0 || rect.height === 0) { setSpotlight(null); return; }
+    const pad = 6;
     setSpotlight({ x: rect.left - pad, y: rect.top - pad, w: rect.width + pad * 2, h: rect.height + pad * 2 });
   }, [step, show]);
 
+  // Scroll target into view + lock body scroll
   useEffect(() => {
-    // After scrollIntoView completes, capture the spotlight position
-    const t1 = setTimeout(updateSpotlight, 50);
-    const t2 = setTimeout(updateSpotlight, 350);
-    const t3 = setTimeout(updateSpotlight, 700);
-    const onUpdate = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(updateSpotlight); };
-    window.addEventListener("resize", onUpdate);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); window.removeEventListener("resize", onUpdate); cancelAnimationFrame(rafRef.current); };
-  }, [updateSpotlight]);
+    if (!show) return;
+    const current = STEPS[step];
+    if (current?.target) {
+      const el = document.querySelector(current.target);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }
+    // Multiple recomputes to catch the spotlight after scroll animation
+    const timeouts = [50, 200, 450, 800].map(t => setTimeout(updateSpotlight, t));
+    return () => { timeouts.forEach(clearTimeout); };
+  }, [step, show, updateSpotlight]);
+
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!show) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [show]);
+
+  // Re-position on resize
+  useEffect(() => {
+    if (!show) return;
+    const onResize = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(updateSpotlight); };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); cancelAnimationFrame(rafRef.current); };
+  }, [show, updateSpotlight]);
 
   const dismiss = () => { setShow(false); try { localStorage.setItem(STORAGE_KEY, "1"); } catch {} };
   const next = () => setStep(s => Math.min(STEPS.length - 1, s + 1));
@@ -105,71 +94,66 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
 
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
+  const sp = spotlight;
 
   return (
     <>
-      {/* Strict overlay — captures all clicks, blocks page interaction */}
-      <div className="fixed inset-0 z-[9999]" style={{ pointerEvents: "auto" }} onClick={e => e.stopPropagation()} onWheel={e => e.preventDefault()}>
-        <svg className="w-full h-full pointer-events-none">
-          <defs>
-            <mask id="fr-tuto-mask">
-              <rect width="100%" height="100%" fill="white" />
-              {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
-            </mask>
-          </defs>
-          <rect width="100%" height="100%" fill="rgba(0,0,0,0.7)" mask="url(#fr-tuto-mask)" />
-          {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
-        </svg>
-      </div>
+      {/* 4 dark divs around the spotlight (or one full overlay if no spotlight) */}
+      {sp ? (
+        <>
+          <div className="fixed left-0 right-0 top-0 z-[9999] bg-black/75 pointer-events-auto" style={{ height: Math.max(0, sp.y) }} onClick={e => e.stopPropagation()} />
+          <div className="fixed left-0 right-0 z-[9999] bg-black/75 pointer-events-auto" style={{ top: sp.y + sp.h, bottom: 0 }} onClick={e => e.stopPropagation()} />
+          <div className="fixed top-0 z-[9999] bg-black/75 pointer-events-auto" style={{ left: 0, top: sp.y, width: Math.max(0, sp.x), height: sp.h }} onClick={e => e.stopPropagation()} />
+          <div className="fixed z-[9999] bg-black/75 pointer-events-auto" style={{ left: sp.x + sp.w, top: sp.y, right: 0, height: sp.h }} onClick={e => e.stopPropagation()} />
+          {/* Orange highlight border */}
+          <div className="fixed z-[9999] border-2 border-orange-500 rounded-xl pointer-events-none animate-pulse" style={{ left: sp.x, top: sp.y, width: sp.w, height: sp.h, boxShadow: "0 0 30px rgba(245,158,11,0.6)" }} />
+        </>
+      ) : (
+        <div className="fixed inset-0 z-[9999] bg-black/75 pointer-events-auto" onClick={e => e.stopPropagation()} />
+      )}
 
-      {/* Popup — FIXED bottom-right, always visible regardless of scroll */}
+      {/* Popup — bottom-center, always visible */}
       <AnimatePresence mode="wait">
         <motion.div
           key={step}
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
-          transition={{ duration: 0.25 }}
-          className="fixed bottom-6 right-6 z-[10000] w-96 glass border-2 border-orange-500/50 bg-slate-900/95 rounded-2xl p-5 shadow-2xl shadow-orange-500/20"
+          transition={{ duration: 0.2 }}
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] w-[min(480px,calc(100vw-32px))] glass border-2 border-orange-500/60 bg-slate-900/98 rounded-2xl p-5 shadow-2xl"
+          style={{ boxShadow: "0 0 60px rgba(245,158,11,0.3)" }}
         >
-          {/* Progress bar */}
           <div className="flex gap-1 mb-4">
             {STEPS.map((_, i) => (
               <div key={i} className={cn("h-1 flex-1 rounded-full transition-colors", i <= step ? "bg-orange-500" : "bg-white/10")} />
             ))}
           </div>
-
-          {/* Close button top-right */}
           <button onClick={dismiss} className="absolute top-3 right-3 text-slate-500 hover:text-white">
             <X className="w-4 h-4" />
           </button>
-
-          {/* Content */}
-          <div className="flex items-start gap-3 mb-5 pr-6">
+          <div className="flex items-start gap-3 mb-4 pr-6">
             <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", current.color)} style={{ background: "rgba(245,158,11,0.15)" }}>
               {current.icon}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[10px] text-orange-400 font-semibold uppercase tracking-wide mb-1">
-                {d("common_tutorial" as DTKey)} · {step + 1} {d("tuto_of" as DTKey)} {STEPS.length}
+                {d("common_tutorial" as DTKey)} · {step + 1} / {STEPS.length}
               </div>
               <p className="text-sm text-white leading-relaxed">{d(current.titleKey)}</p>
             </div>
           </div>
-
-          {/* Navigation */}
           <div className="flex items-center justify-between gap-3">
             <button onClick={prev} disabled={step === 0}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
-              <ChevronLeft className="w-3.5 h-3.5" /> {d("tuto_prev" as DTKey)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs text-slate-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+              <ChevronLeft className="w-4 h-4" /> {d("tuto_prev" as DTKey)}
             </button>
             {isLast ? (
-              <button onClick={dismiss} className="px-5 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors">
-                {d("tuto_close" as DTKey)}
+              <button onClick={dismiss} className="px-5 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors shadow-lg">
+                {d("tuto_close" as DTKey)} ✓
               </button>
             ) : (
-              <button onClick={next} className="flex items-center gap-1 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-colors">
-                {d("tuto_next" as DTKey)} <ChevronRight className="w-3.5 h-3.5" />
+              <button onClick={next} className="flex items-center gap-1 px-5 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold transition-colors shadow-lg">
+                {d("tuto_next" as DTKey)} <ChevronRight className="w-4 h-4" />
               </button>
             )}
           </div>
