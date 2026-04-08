@@ -22,16 +22,16 @@ interface TutorialStep {
 }
 
 const STEPS: TutorialStep[] = [
-  { icon: <Eye className="w-6 h-6" />,            titleKey: "tuto_fa_visibility" as DTKey,  color: "text-slate-300",   target: '[data-tuto-fa="visibility"]', position: "bottom" },
-  { icon: <Pencil className="w-6 h-6" />,         titleKey: "tuto_fa_edit_layer" as DTKey,  color: "text-pink-300",    target: '[data-tuto-fa="edit-layer"]', position: "bottom" },
-  { icon: <MousePointer2 className="w-6 h-6" />,  titleKey: "tuto_fa_select" as DTKey,      color: "text-teal-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Square className="w-6 h-6" />,         titleKey: "tuto_fa_draw" as DTKey,        color: "text-cyan-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Trash2 className="w-6 h-6" />,         titleKey: "tuto_fa_delete" as DTKey,      color: "text-red-300",     target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Eraser className="w-6 h-6" />,         titleKey: "tuto_fa_eraser" as DTKey,      color: "text-orange-300",  target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Copy className="w-6 h-6" />,           titleKey: "tuto_fa_translation" as DTKey, color: "text-orange-300",  target: '[data-tuto-fa="translation"]',position: "bottom" },
-  { icon: <PlusCircle className="w-6 h-6" />,     titleKey: "tuto_fa_custom_type" as DTKey, color: "text-violet-300",  target: '[data-tuto-fa="custom-type"]',position: "bottom" },
-  { icon: <Ruler className="w-6 h-6" />,          titleKey: "tuto_fa_measure" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fa="measure"]',    position: "bottom" },
-  { icon: <Download className="w-6 h-6" />,       titleKey: "tuto_fa_export" as DTKey,      color: "text-emerald-300", target: '[data-tuto-fa="export"]',     position: "bottom" },
+  { icon: <Eye className="w-6 h-6" />,            titleKey: "tuto_fa_visibility" as DTKey,  color: "text-slate-300",   target: '[data-tuto-fa="visibility"]' },
+  { icon: <Pencil className="w-6 h-6" />,         titleKey: "tuto_fa_edit_layer" as DTKey,  color: "text-pink-300",    target: '[data-tuto-fa="edit-layer"]' },
+  { icon: <MousePointer2 className="w-6 h-6" />,  titleKey: "tuto_fa_select" as DTKey,      color: "text-teal-300",    target: '[data-tuto-fa="select"]' },
+  { icon: <Square className="w-6 h-6" />,         titleKey: "tuto_fa_draw" as DTKey,        color: "text-cyan-300",    target: '[data-tuto-fa="draw"]' },
+  { icon: <Trash2 className="w-6 h-6" />,         titleKey: "tuto_fa_delete" as DTKey,      color: "text-red-300",     target: '[data-tuto-fa="delete"]' },
+  { icon: <Eraser className="w-6 h-6" />,         titleKey: "tuto_fa_eraser" as DTKey,      color: "text-orange-300",  target: '[data-tuto-fa="eraser"]' },
+  { icon: <Copy className="w-6 h-6" />,           titleKey: "tuto_fa_translation" as DTKey, color: "text-orange-300",  target: '[data-tuto-fa="translation"]' },
+  { icon: <PlusCircle className="w-6 h-6" />,     titleKey: "tuto_fa_custom_type" as DTKey, color: "text-violet-300",  target: '[data-tuto-fa="custom-type"]' },
+  { icon: <Ruler className="w-6 h-6" />,          titleKey: "tuto_fa_measure" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fa="measure"]' },
+  { icon: <Download className="w-6 h-6" />,       titleKey: "tuto_fa_export" as DTKey,      color: "text-emerald-300", target: '[data-tuto-fa="export"]' },
   { icon: <RefreshCw className="w-6 h-6" />,      titleKey: "tuto_fa_shortcuts" as DTKey,   color: "text-amber-300" },
 ];
 
@@ -99,12 +99,12 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
   }, [step, show]);
 
   useEffect(() => {
-    updateSpotlight();
+    const t1 = setTimeout(updateSpotlight, 50);
+    const t2 = setTimeout(updateSpotlight, 350);
+    const t3 = setTimeout(updateSpotlight, 700);
     const onUpdate = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(updateSpotlight); };
     window.addEventListener("resize", onUpdate);
-    window.addEventListener("scroll", onUpdate, true);
-    const interval = setInterval(updateSpotlight, 100);
-    return () => { window.removeEventListener("resize", onUpdate); window.removeEventListener("scroll", onUpdate, true); clearInterval(interval); cancelAnimationFrame(rafRef.current); };
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); window.removeEventListener("resize", onUpdate); cancelAnimationFrame(rafRef.current); };
   }, [updateSpotlight]);
 
   const dismiss = () => {
