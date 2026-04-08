@@ -406,6 +406,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         )}
         {/* Mask filter: Tous | Murs | Ouvertures */}
         <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
+          <div data-tuto-fr="filter" className="flex gap-1">
           {([
             { id: "all" as MaskFilterMode, label: d("fr_filter_all" as DTKey) },
             { id: "walls" as MaskFilterMode, label: d("fr_filter_walls" as DTKey) },
@@ -418,7 +419,8 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {f.label}
             </button>
           ))}
-          <button data-tuto-fr="filter" onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
+          </div>
+          <button onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
             <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
           </button>
@@ -661,7 +663,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
       </div>
 
       {/* ══ Advanced Tools (collapsible) ══ */}
-      <div className="glass rounded-2xl border border-white/10 overflow-hidden mb-4">
+      <div data-tuto-fr="advanced" className="glass rounded-2xl border border-white/10 overflow-hidden mb-4">
         <button
           type="button"
           onClick={() => setShowAdvancedTools(v => !v)}
@@ -768,7 +770,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={() => setShowDevis(true)}>
           <Receipt className="w-4 h-4" /> {d("fa_quote" as DTKey)}
         </Button>
-        <span data-tuto-fr="export" className="contents">
+        <div data-tuto-fr="export" className="flex flex-wrap gap-3">
         <Button variant="outline" onClick={exportCSV}>
           <Download className="w-4 h-4" /> CSV
         </Button>
@@ -778,7 +780,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
         <Button variant="outline" onClick={exportPDF}>
           <Download className="w-4 h-4" /> PDF
         </Button>
-        </span>
+        </div>
         <Button onClick={onGoEditor} className="bg-amber-600 hover:bg-amber-700">
           {d("fa_go_editor")} <ArrowRight className="w-4 h-4" />
         </Button>

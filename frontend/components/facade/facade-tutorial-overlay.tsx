@@ -68,6 +68,26 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   }, [step, show]);
 
+  // Lock body scroll + block wheel/keys while tutorial is open
+  useEffect(() => {
+    if (!show) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const blockWheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); };
+    const blockKeys = (e: KeyboardEvent) => {
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","PageUp","PageDown","Space","Home","End"].includes(e.code)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("wheel", blockWheel, { passive: false });
+    window.addEventListener("keydown", blockKeys);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("wheel", blockWheel);
+      window.removeEventListener("keydown", blockKeys);
+    };
+  }, [show]);
+
   const updateSpotlight = useCallback(() => {
     const current = STEPS[step];
     if (!current?.target || !show) { setSpotlight(null); return; }
@@ -99,17 +119,19 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
 
   return (
     <>
-      {/* Dark overlay with spotlight hole — non-clickable, no event capture */}
-      <svg className="fixed inset-0 z-[9999] w-full h-full pointer-events-none">
-        <defs>
-          <mask id="fa-tuto-mask">
-            <rect width="100%" height="100%" fill="white" />
-            {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
-          </mask>
-        </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#fa-tuto-mask)" />
-        {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
-      </svg>
+      {/* Strict overlay — captures all clicks, blocks page interaction */}
+      <div className="fixed inset-0 z-[9999]" style={{ pointerEvents: "auto" }} onClick={e => e.stopPropagation()} onWheel={e => e.preventDefault()}>
+        <svg className="w-full h-full pointer-events-none">
+          <defs>
+            <mask id="fa-tuto-mask">
+              <rect width="100%" height="100%" fill="white" />
+              {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
+            </mask>
+          </defs>
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.7)" mask="url(#fa-tuto-mask)" />
+          {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
+        </svg>
+      </div>
 
       {/* Popup — FIXED bottom-right, always visible regardless of scroll */}
       <AnimatePresence mode="wait">
