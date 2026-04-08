@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, Pencil, PlusCircle, RefreshCw, ChevronRight, ChevronLeft, X, Eraser, Copy, MousePointer2, Square, Trash2, Ruler, Download } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
@@ -91,7 +92,8 @@ export default function FacadeTutorialOverlay({ forceShow }: { forceShow?: boole
   const isLast = step === STEPS.length - 1;
   const sp = spotlight;
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <>
       {sp ? (
         <>
@@ -151,6 +153,7 @@ export default function FacadeTutorialOverlay({ forceShow }: { forceShow?: boole
           </div>
         </motion.div>
       </AnimatePresence>
-    </>
+    </>,
+    document.body
   );
 }
