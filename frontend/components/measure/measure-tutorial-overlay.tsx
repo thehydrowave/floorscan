@@ -30,13 +30,14 @@ const STEPS: TutorialStep[] = [
   { icon: <Download className="w-6 h-6" />,    titleKey: "tuto_me_step7_title" as DTKey, descKey: "tuto_me_step7_desc" as DTKey, color: "text-sky-400" },
 ];
 
-export default function MeasureTutorialOverlay({ forceShow: externalForce }: { forceShow?: boolean }) {
+export default function MeasureTutorialOverlay({ forceShow: externalForce }: { forceShow?: number | boolean }) {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
 
+  // Auto-show on first visit
   useEffect(() => {
     try {
       if (!localStorage.getItem(STORAGE_KEY)) {
@@ -46,6 +47,7 @@ export default function MeasureTutorialOverlay({ forceShow: externalForce }: { f
     } catch {}
   }, []);
 
+  // Force-show when button clicked (counter increments each time)
   useEffect(() => {
     if (externalForce) { setShow(true); setStep(0); }
   }, [externalForce]);
