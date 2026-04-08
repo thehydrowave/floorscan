@@ -30,31 +30,37 @@ const STEPS: TutorialStep[] = [
   { icon: <Download className="w-6 h-6" />,    titleKey: "tuto_me_step7_title" as DTKey, descKey: "tuto_me_step7_desc" as DTKey, color: "text-sky-400" },
 ];
 
-export default function MeasureTutorialOverlay({ forceShow: externalForce }: { forceShow?: number | boolean }) {
+// Ref-based API: call MeasureTutorialOverlay.open() from parent
+let _openTutorial: (() => void) | null = null;
+export function openMeasureTutorial() {
+  if (_openTutorial) _openTutorial();
+}
+
+export default function MeasureTutorialOverlay() {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
 
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
 
+  // Register the open function so parent can call it
+  useEffect(() => {
+    _openTutorial = () => {
+      setShow(true);
+      setStep(0);
+    };
+    return () => { _openTutorial = null; };
+  }, []);
+
   // Auto-show on first visit
   useEffect(() => {
     try {
       if (!localStorage.getItem(STORAGE_KEY)) {
-        const t = setTimeout(() => setShow(true), 800);
+        const t = setTimeout(() => { setShow(true); setStep(0); }, 800);
         return () => clearTimeout(t);
       }
     } catch {}
   }, []);
-
-  // Force-show when button clicked
-  useEffect(() => {
-    if (externalForce) {
-      console.log("[MeasureTuto] forceShow triggered:", externalForce);
-      setShow(true);
-      setStep(0);
-    }
-  }, [externalForce]);
 
   const dismiss = useCallback(() => {
     setShow(false);
