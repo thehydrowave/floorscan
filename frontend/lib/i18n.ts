@@ -108,6 +108,16 @@ export const T = {
   footer_rights:   { fr:"Tous droits réservés.", en:"All rights reserved.", es:"Todos los derechos reservados.", de:"Alle Rechte vorbehalten.", it:"Tutti i diritti riservati." },
   footer_confid:   { fr:"Confidentialité", en:"Privacy", es:"Privacidad", de:"Datenschutz", it:"Privacy" },
 
+  // ── Chantier mode selector card ──
+  sel_ch_title:    { fr:"Suivi de chantier", en:"Site tracking", es:"Seguimiento de obra", de:"Baustellenverfolgung", it:"Monitoraggio cantiere" },
+  sel_ch_desc:     { fr:"Avancement · Inventaire · Réserves · Planning · Budget · Documents", en:"Progress · Inventory · Reserves · Planning · Budget · Documents", es:"Progreso · Inventario · Reservas · Planning · Presupuesto · Documentos", de:"Fortschritt · Inventar · Reserven · Planung · Budget · Dokumente", it:"Avanzamento · Inventario · Riserve · Pianificazione · Budget · Documenti" },
+  sel_ch_tag1:     { fr:"Par pièce", en:"Per room", es:"Por habitación", de:"Pro Raum", it:"Per stanza" },
+  sel_ch_tag2:     { fr:"Portes & fenêtres IA", en:"AI doors & windows", es:"Puertas y ventanas IA", de:"KI Türen & Fenster", it:"Porte & finestre IA" },
+  sel_ch_tag3:     { fr:"Gantt", en:"Gantt", es:"Gantt", de:"Gantt", it:"Gantt" },
+  sel_ch_tag4:     { fr:"Budget", en:"Budget", es:"Presupuesto", de:"Budget", it:"Budget" },
+  sel_ch_tag5:     { fr:"Documents", en:"Documents", es:"Documentos", de:"Dokumente", it:"Documenti" },
+  chantier_banner: { fr:"Module Suivi de chantier — WIP · Données sauvegardées localement", en:"Site tracking module — WIP · Data saved locally", es:"Módulo seguimiento de obra — WIP · Datos guardados localmente", de:"Baustellenverfolgung — WIP · Lokal gespeichert", it:"Monitoraggio cantiere — WIP · Dati salvati localmente" },
+
   // ── Landing — Trust section ──────────────────────────────────────────────
   trust_title1:    { fr:"La confiance des", en:"Trusted by", es:"La confianza de los", de:"Das Vertrauen der", it:"La fiducia dei" },
   trust_title2:    { fr:"professionnels BTP", en:"construction professionals", es:"profesionales de la construcción", de:"Bauprofis", it:"professionisti edili" },
