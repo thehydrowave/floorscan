@@ -246,7 +246,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [sessionId, setSessionId]           = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
-  const [showMeasureTuto, setShowMeasureTuto] = useState(false);
+  const [showMeasureTuto, setShowMeasureTuto] = useState(0);
   const [vsMatches, setVsMatches]               = useState<VisualSearchMatch[]>([]);
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
@@ -1056,7 +1056,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
-                    <button onClick={() => { resetMeasureTutorial(); setShowMeasureTuto(v => !v); }}
+                    <button onClick={() => { resetMeasureTutorial(); setShowMeasureTuto(v => v + 1); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
                       title={d("tuto_header" as DTKey)}>
                       <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
