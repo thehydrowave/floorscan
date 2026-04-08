@@ -356,7 +356,50 @@ def analyze(req: AnalyzeRequest):
     cfg["pipeline_mode"]    = req.pipeline_mode
 
     try:
-        result = pipeline.run_analysis(img_rgb, pixels_per_meter=ppm, cfg=cfg)
+        if req.model_id == "pixel_ia_mix":
+            from inference_sdk import InferenceHTTPClient
+            from pipeline_diagonal import run_pipeline_i
+            img_pil = Image.fromarray(img_rgb).convert("RGB")
+            client = InferenceHTTPClient(api_url="https://serverless.roboflow.com", api_key=cfg["api_key"])
+            raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
+            plan_b64 = pipeline._np_to_b64(img_rgb)
+            H, W = img_rgb.shape[:2]
+            _empty = np.zeros((H, W), np.uint8)
+            _m_doors_raw = raw.get("_m_doors_raw", _empty)
+            _m_wins_raw = raw.get("_m_windows_raw", _empty)
+            _m_walls_raw = raw.get("_m_walls_raw", _empty)
+            result = {
+                "doors_count": raw.get("doors_count", 0),
+                "windows_count": raw.get("windows_count", 0),
+                "french_doors_count": 0,
+                "mask_doors_b64": raw.get("mask_doors_b64"),
+                "mask_windows_b64": raw.get("mask_windows_b64"),
+                "mask_walls_ai_b64": raw.get("mask_walls_b64"),
+                "overlay_openings_b64": plan_b64,
+                "overlay_interior_b64": raw.get("mask_hab_b64"),
+                "plan_b64": plan_b64,
+                "surfaces": {
+                    "area_building_m2": raw.get("footprint_area_m2"),
+                    "perim_building_m": None,
+                    "area_hab_m2": raw.get("hab_area_m2"),
+                    "perim_interior_m": None,
+                    "area_walls_m2": raw.get("walls_area_m2"),
+                },
+                "pixels_per_meter": ppm,
+                "rooms": raw.get("rooms", []),
+                "openings": [],
+                # Internal raw masks for session storage (editor needs these)
+                "_m_doors": _m_doors_raw,
+                "_m_windows": _m_wins_raw,
+                "_walls": _m_walls_raw,
+                "_m_walls_ai": _m_walls_raw,
+                "_m_walls_pixel": _empty,
+                "_m_cloisons": _empty,
+                "_m_french_doors": _empty,
+                "_mask_rooms_rgba": None,
+            }
+        else:
+            result = pipeline.run_analysis(img_rgb, pixels_per_meter=ppm, cfg=cfg)
     except Exception as e:
         raise HTTPException(500, f"Erreur analyse : {e}")
 

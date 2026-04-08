@@ -9,6 +9,22 @@ export type TravauxCategorie =
   | "peinture" | "carrelage" | "parquet"
   | "isolation" | "placo" | "autre";
 
+import { dt, DTKey } from "@/lib/i18n";
+type Lang = "fr" | "en" | "es" | "de" | "it";
+
+const CAT_KEYS: Record<TravauxCategorie, DTKey> = {
+  gros_oeuvre: "ch_cat_gros_oeuvre" as DTKey, sol: "ch_cat_sol" as DTKey, murs: "ch_cat_murs" as DTKey, plafond: "ch_cat_plafond" as DTKey,
+  menuiseries_int: "ch_cat_menuiseries_int" as DTKey, menuiseries_ext: "ch_cat_menuiseries_ext" as DTKey,
+  electricite: "ch_cat_electricite" as DTKey, plomberie: "ch_cat_plomberie" as DTKey, chauffage: "ch_cat_chauffage" as DTKey,
+  peinture: "ch_cat_peinture" as DTKey, carrelage: "ch_cat_carrelage" as DTKey, parquet: "ch_cat_parquet" as DTKey,
+  isolation: "ch_cat_isolation" as DTKey, placo: "ch_cat_placo" as DTKey, autre: "ch_cat_autre" as DTKey,
+};
+export const getCategorieLabels = (lang: Lang): Record<TravauxCategorie, string> => {
+  const r = {} as Record<TravauxCategorie, string>;
+  for (const [k, v] of Object.entries(CAT_KEYS)) r[k as TravauxCategorie] = dt(v, lang);
+  return r;
+};
+/** @deprecated Use getCategorieLabels(lang) — kept for backward compat */
 export const CATEGORIE_LABELS: Record<TravauxCategorie, string> = {
   gros_oeuvre: "Gros œuvre", sol: "Sol", murs: "Murs / Cloisons", plafond: "Plafond",
   menuiseries_int: "Menuiseries int.", menuiseries_ext: "Menuiseries ext.",
@@ -36,6 +52,10 @@ export const CATEGORIE_COLORS: Record<TravauxCategorie, string> = {
 
 export type TacheStatut = "a_faire" | "en_cours" | "termine" | "bloque";
 
+export const getStatutLabels = (lang: Lang): Record<TacheStatut, string> => ({
+  a_faire: dt("ch_st_a_faire" as DTKey, lang), en_cours: dt("ch_st_en_cours" as DTKey, lang), termine: dt("ch_st_termine" as DTKey, lang), bloque: dt("ch_st_bloque" as DTKey, lang),
+});
+/** @deprecated Use getStatutLabels(lang) */
 export const STATUT_LABELS: Record<TacheStatut, string> = {
   a_faire: "À faire", en_cours: "En cours", termine: "Terminé", bloque: "Bloqué",
 };
@@ -92,6 +112,10 @@ export interface ChantierPiece {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type InventaireStatut = "commande" | "livre" | "pose" | "retour";
+export const getInventaireStatutLabels = (lang: Lang): Record<InventaireStatut, string> => ({
+  commande: dt("ch_inv_commande" as DTKey, lang), livre: dt("ch_inv_livre" as DTKey, lang), pose: dt("ch_inv_pose" as DTKey, lang), retour: dt("ch_inv_retour" as DTKey, lang),
+});
+/** @deprecated Use getInventaireStatutLabels(lang) */
 export const INVENTAIRE_STATUT_LABELS: Record<InventaireStatut, string> = {
   commande: "Commandé", livre: "Livré", pose: "Posé", retour: "Retour / SAV",
 };
@@ -106,6 +130,13 @@ export type InventaireCategorie =
   | "gros_oeuvre" | "menuiseries" | "electricite" | "plomberie"
   | "chauffage" | "revetements" | "isolation" | "finitions" | "equipements" | "autre";
 
+export const getInventaireCatLabels = (lang: Lang): Record<InventaireCategorie, string> => ({
+  gros_oeuvre: dt("ch_icat_gros_oeuvre" as DTKey, lang), menuiseries: dt("ch_icat_menuiseries" as DTKey, lang), electricite: dt("ch_icat_electricite" as DTKey, lang),
+  plomberie: dt("ch_icat_plomberie" as DTKey, lang), chauffage: dt("ch_icat_chauffage" as DTKey, lang), revetements: dt("ch_icat_revetements" as DTKey, lang),
+  isolation: dt("ch_icat_isolation" as DTKey, lang), finitions: dt("ch_icat_finitions" as DTKey, lang), equipements: dt("ch_icat_equipements" as DTKey, lang),
+  autre: dt("ch_icat_autre" as DTKey, lang),
+});
+/** @deprecated Use getInventaireCatLabels(lang) */
 export const INVENTAIRE_CAT_LABELS: Record<InventaireCategorie, string> = {
   gros_oeuvre: "Gros œuvre / Béton", menuiseries: "Menuiseries", electricite: "Électricité",
   plomberie: "Plomberie", chauffage: "Chauffage / VMC", revetements: "Revêtements",
@@ -144,12 +175,20 @@ export interface InventaireArticle {
 export type ReserveStatut  = "ouverte" | "en_cours" | "levee" | "rejetee";
 export type ReserveNiveau  = "bloquante" | "majeure" | "mineure" | "observation";
 
+export const getReserveStatutLabels = (lang: Lang): Record<ReserveStatut, string> => ({
+  ouverte: dt("ch_rs_ouverte" as DTKey, lang), en_cours: dt("ch_rs_en_cours" as DTKey, lang), levee: dt("ch_rs_levee" as DTKey, lang), rejetee: dt("ch_rs_rejetee" as DTKey, lang),
+});
+/** @deprecated Use getReserveStatutLabels(lang) */
 export const RESERVE_STATUT_LABELS: Record<ReserveStatut, string> = {
   ouverte: "Ouverte", en_cours: "En cours", levee: "Levée", rejetee: "Rejetée",
 };
 export const RESERVE_STATUT_COLORS: Record<ReserveStatut, string> = {
   ouverte: "#EF4444", en_cours: "#F59E0B", levee: "#10B981", rejetee: "#6B7280",
 };
+export const getReserveNiveauLabels = (lang: Lang): Record<ReserveNiveau, string> => ({
+  bloquante: dt("ch_rn_bloquante" as DTKey, lang), majeure: dt("ch_rn_majeure" as DTKey, lang), mineure: dt("ch_rn_mineure" as DTKey, lang), observation: dt("ch_rn_observation" as DTKey, lang),
+});
+/** @deprecated Use getReserveNiveauLabels(lang) */
 export const RESERVE_NIVEAU_LABELS: Record<ReserveNiveau, string> = {
   bloquante: "Bloquante", majeure: "Majeure", mineure: "Mineure", observation: "Observation",
 };

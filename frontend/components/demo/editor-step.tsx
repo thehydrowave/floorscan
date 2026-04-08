@@ -924,7 +924,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
       if (!diff || diff.length === 0) {
         // Room fully erased — delete it
         sendEditRoom({ action: "delete_room", room_id: selectedRoomId });
-        toast({ title: "Pièce entièrement gommée", variant: "default" });
+        toast({ title: d("ed_room_erased" as DTKey), variant: "default" });
         return;
       }
 
@@ -1007,10 +1007,10 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
         setZones(prev => prev.map(z => z.id === room.linkedZoneId ? { ...z, points: finalPoly.map(p => ({ x: p.x, y: p.y })) } : z));
       }
 
-      toast({ title: "Zone gommée de la pièce", variant: "success" });
+      toast({ title: d("ed_zone_erased" as DTKey), variant: "success" });
     } catch (err) {
       console.error("Room erase error:", err);
-      toast({ title: "Erreur de gommage", variant: "error" });
+      toast({ title: d("ed_erase_error" as DTKey), variant: "error" });
     }
   }, [selectedRoomId, result, imageNatural, sendEditRoom]);
 
@@ -1939,12 +1939,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   // ── Export CSV (mode mesure, editor) ──────────────────────────────────────
   const exportMeasureXlsx = () => {
     exportEditorXlsx(result, zones, surfaceTypes, linearMeasures, imageNatural);
-    toast({ title: "Export XLSX ✓", variant: "success" });
+    toast({ title: d("re_xlsx_ok" as DTKey), variant: "success" });
   };
 
   const exportMeasurePdf = async () => {
     setExportingMeasurePdf(true);
     try {
+      await exportEditorMeasurePdf(result, zones, surfaceTypes, imageNatural);
       await exportEditorMeasurePdf(result, zones, surfaceTypes, imageNatural);
       toast({ title: d("ed_export_ok"), variant: "success" });
     } catch (e: any) {
@@ -2017,8 +2018,8 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             </Button>
           )}
           {/* Tutorial replay */}
-          <Button size="sm" variant="outline" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title="Revoir le tutoriel">
-            <span className="text-xs">Tutorial</span>
+          <Button size="sm" variant="outline" onClick={() => { resetEditorTutorial(); setShowTuto(v => !v); }} title={d("ed_replay_tuto" as DTKey)}>
+            <span className="text-xs">{d("tuto_header" as DTKey)}</span>
           </Button>
           {/* Export dropdown */}
           <div className="relative">
@@ -2043,7 +2044,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Measure XLSX export */}
                   <button onClick={() => { exportMeasureXlsx(); setExportOpen(false); }} disabled={zones.length === 0}
                     className="flex items-center gap-2 px-3 py-2 rounded-md text-xs text-slate-300 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40 w-full text-left">
-                    <FileDown className="w-3.5 h-3.5" /> XLSX Métré
+                    <FileDown className="w-3.5 h-3.5" /> {d("ed_xlsx_metre" as DTKey)}
                   </button>
                   {/* Measure PDF export */}
                   <button onClick={() => { exportMeasurePdf(); setExportOpen(false); }} disabled={exportingMeasurePdf || zones.length === 0}
@@ -2076,7 +2077,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {([
               { key: "doors",        Icon: DoorOpen,         active: "border-fuchsia-500/30 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", show: showDoors,        set: setShowDoors,        title: d("ed_doors") },
               { key: "windows",      Icon: AppWindow,        active: "border-cyan-500/30 bg-cyan-500/10",       iconColor: "text-cyan-400",    show: showWindows,      set: setShowWindows,      title: d("ed_windows") },
-              { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10",  iconColor: "text-orange-400",  show: showFrenchDoors,  set: setShowFrenchDoors,  title: "Portes-fenêtres" },
+              { key: "french_doors", Icon: Columns2,         active: "border-orange-500/30 bg-orange-500/10",  iconColor: "text-orange-400",  show: showFrenchDoors,  set: setShowFrenchDoors,  title: d("ed_french_doors" as DTKey) },
               { key: "walls",        Icon: BrickWall,        active: "border-amber-500/30 bg-amber-500/10",    iconColor: "text-amber-400",   show: showWalls,        set: setShowWalls,        title: d("ed_concrete") },
               { key: "cloisons",    Icon: SeparatorVertical, active: "border-blue-500/30 bg-blue-500/10",      iconColor: "text-blue-400",    show: showCloisons,    set: setShowCloisons,    title: d("ed_partitions") },
               { key: "rooms",        Icon: LayoutGrid,       active: "border-emerald-500/30 bg-emerald-500/10",iconColor: "text-emerald-400", show: showRooms,        set: setShowRooms,        title: d("ed_rooms") },
@@ -2088,7 +2089,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                 {show ? <Eye className={cn("w-2.5 h-2.5", iconColor)} /> : <EyeOff className="w-2.5 h-2.5 text-slate-600" />}
               </button>
             ))}
-            <button onClick={() => setShowOpeningOverlay(v => !v)} title="Numéros d'ouvertures"
+            <button onClick={() => setShowOpeningOverlay(v => !v)} title={d("ed_opening_numbers" as DTKey)}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
                 showOpeningOverlay ? "border-white/20 bg-white/10 text-white" : "border-white/5 text-slate-600 hover:text-slate-400")}>
               <Hash size={10} />
@@ -2122,7 +2123,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
             {/* Linear + Count visibility */}
             <button onClick={() => { setShowLinearMeasures(v => !v); }}
-              title="Mesures lin\u00e9aires"
+              title={d("ed_linear_measures" as DTKey)}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-all",
                 showLinearMeasures ? "border-sky-500/30 bg-sky-500/10 text-sky-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <Ruler size={10} className="text-sky-400" />
@@ -2139,15 +2140,15 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               return true;
             }).map(l => {
               const layerMeta: Record<typeof l, { Icon: ElementType; label: string; active: string; iconColor: string; tooltip: string }> = {
-                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", tooltip: "Portes : dessinez, effacez ou corrigez les masques de portes d\u00e9tect\u00e9es par l'IA" },
-                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400",    tooltip: "Fen\u00eatres : dessinez, effacez ou corrigez les masques de fen\u00eatres d\u00e9tect\u00e9es par l'IA" },
-                french_door: { Icon: Columns2,          label: "P-Fen\u00eatres",       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400",  tooltip: "Portes-fen\u00eatres : dessinez ou corrigez les masques de portes-fen\u00eatres (baies vitr\u00e9es)" },
-                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400",     tooltip: "Murs porteurs : dessinez ou corrigez les masques des murs en b\u00e9ton/porteurs" },
-                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400",    tooltip: "Cloisons : dessinez ou corrigez les cloisons int\u00e9rieures l\u00e9g\u00e8res" },
-                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent",      tooltip: "Surface habitable : dessinez ou corrigez le masque de la surface int\u00e9rieure habitable" },
-                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400",  tooltip: "Pi\u00e8ces : s\u00e9lectionnez, renommez, d\u00e9coupez ou fusionnez les pi\u00e8ces d\u00e9tect\u00e9es. Shift+clic pour fusionner." },
-                surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400",  tooltip: "Surfaces : dessinez des zones de rev\u00eatement (carrelage, parquet, peinture...) pour le m\u00e9tr\u00e9" },
-                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400",     tooltip: "Outils de mesure : distance, angle, annotations et recalibrage de l'\u00e9chelle" },
+                door:        { Icon: DoorOpen,          label: d("ed_doors"),      active: "border-fuchsia-500/40 bg-fuchsia-500/10", iconColor: "text-fuchsia-400", tooltip: d("ed_tt_doors_full" as DTKey) },
+                window:      { Icon: AppWindow,         label: d("ed_windows"),    active: "border-cyan-500/40 bg-cyan-500/10",       iconColor: "text-cyan-400",    tooltip: d("ed_tt_windows_full" as DTKey) },
+                french_door: { Icon: Columns2,          label: d("ed_p_fenetres" as DTKey),       active: "border-orange-500/40 bg-orange-500/10",   iconColor: "text-orange-400",  tooltip: d("ed_tt_french_doors_full" as DTKey) },
+                wall:        { Icon: BrickWall,         label: d("ed_concrete"),   active: "border-red-500/40 bg-red-500/10",         iconColor: "text-red-400",     tooltip: d("ed_tt_walls_full" as DTKey) },
+                cloison:     { Icon: SeparatorVertical, label: d("ed_partitions"), active: "border-blue-500/40 bg-blue-500/10",       iconColor: "text-blue-400",    tooltip: d("ed_tt_partitions_full" as DTKey) },
+                interior:    { Icon: Home,              label: d("ed_living_s"),   active: "border-accent/40 bg-accent/10",           iconColor: "text-accent",      tooltip: d("ed_tt_living_full" as DTKey) },
+                rooms:       { Icon: LayoutGrid,        label: d("ed_rooms"),      active: "border-emerald-500/40 bg-emerald-500/10", iconColor: "text-emerald-400",  tooltip: d("ed_tt_rooms_full" as DTKey) },
+                surface:     { Icon: PaintBucket,       label: d("sf_surfaces" as DTKey),  active: "border-violet-500/40 bg-violet-500/10",   iconColor: "text-violet-400",  tooltip: d("ed_tt_surfaces_full" as DTKey) },
+                utilities:   { Icon: Wrench,            label: d("ut_tools" as DTKey),    active: "border-sky-500/40 bg-sky-500/10",         iconColor: "text-sky-400",     tooltip: d("ed_tt_tools_full" as DTKey) },
               };
               const m = layerMeta[l];
               // Separator before surface & utilities
@@ -2180,7 +2181,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">TOOLS</span>
 
             <button onClick={() => { setTool("select"); setLayer(null); fitToView(); setShowDoors(true); setShowWindows(true); setShowFrenchDoors(false); setShowWalls(false); setShowCloisons(false); }}
-              title="Selection — reinitialiser la vue"
+              title={d("ed_tt_select_reset" as DTKey)}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "select" && layer === null ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <MousePointer2 className="w-3 h-3" /> Select
@@ -2191,7 +2192,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
             {/* AI Detection (was "Detect similar") */}
             <button data-tuto="vs-btn"
               onClick={() => { setTool(tool === "visual_search" ? "select" : "visual_search" as EditorTool); if (tool !== "visual_search") setVsCrop(null); setVsEditMode("search"); }}
-              title="AI Detection — Détection automatique d'éléments similaires"
+              title={d("ed_tt_ai_detection" as DTKey)}
               className={cn("flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all",
                 tool === "visual_search" ? "border-red-500/40 bg-red-500/15 text-red-400" : "border-red-500/20 text-red-400 hover:bg-red-500/10")}>
               <Search className="w-3.5 h-3.5" /> AI Detection
@@ -2237,27 +2238,27 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
             {/* Text annotation */}
             <button onClick={() => setTool("text" as EditorTool)}
-              title="Annotation texte"
+              title={d("ed_tt_text" as DTKey)}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Type className="w-3 h-3" /> Texte
+              <Type className="w-3 h-3" /> {d("ed_text_label" as DTKey)}
             </button>
 
             {/* Linear measurement */}
             <button onClick={() => setTool("linear" as EditorTool)}
-              title="Mesure de distance linéaire"
+              title={d("ed_tt_linear" as DTKey)}
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-              <Ruler className="w-3 h-3" /> Linéaire
+              <Ruler className="w-3 h-3" /> {d("ed_linear_label" as DTKey)}
             </button>
 
             {/* Count tool with dropdown */}
             <div className="relative">
               <button onClick={() => { setShowCountDropdown(v => !v); }}
-                title="Comptage"
+                title={d("ed_tt_count" as DTKey)}
                 className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                   tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                <Hash className="w-3 h-3" /> Comptage
+                <Hash className="w-3 h-3" /> {d("ed_count_label" as DTKey)}
                 <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
               </button>
               {showCountDropdown && (
@@ -2265,7 +2266,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   <div className="fixed inset-0 z-40" onClick={() => setShowCountDropdown(false)} />
                   <div className="absolute bottom-full left-0 mb-1 z-50 glass border border-sky-500/20 rounded-xl p-2 shadow-2xl min-w-48"
                     onClick={e => e.stopPropagation()}>
-                    <p className="text-[9px] text-sky-400 uppercase tracking-wider font-semibold mb-1.5 px-1">Categories</p>
+                    <p className="text-[9px] text-sky-400 uppercase tracking-wider font-semibold mb-1.5 px-1">{d("ed_categories" as DTKey)}</p>
                     {countGroups.map(grp => (
                       <button key={grp.id}
                         onClick={() => { setActiveCountGroupId(grp.id); setTool("count"); setShowCountDropdown(false); }}
@@ -2283,7 +2284,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     ))}
                     <div className="border-t border-white/10 mt-1.5 pt-1.5">
                       <button onClick={() => {
-                        const name = prompt("Nom de la categorie :");
+                        const name = prompt(d("ed_prompt_category" as DTKey));
                         if (!name?.trim()) return;
                         const colors = ["#f472b6", "#34d399", "#fb923c", "#818cf8", "#22d3ee", "#fbbf24"];
                         const color = colors[countGroups.length % colors.length];
@@ -2294,7 +2295,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         setShowCountDropdown(false);
                       }}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-slate-500 hover:text-white hover:bg-white/5 w-full text-left">
-                        <Plus className="w-3 h-3" /> Creer une categorie
+                        <Plus className="w-3 h-3" /> {d("ed_create_category" as DTKey)}
                       </button>
                     </div>
                   </div>
@@ -2304,7 +2305,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
             {/* Measurement info */}
             {tool === "linear" && !ppm && (
-              <span className="text-[10px] text-amber-400 ml-1">⚠ Calibrez l'échelle pour afficher en mètres</span>
+              <span className="text-[10px] text-amber-400 ml-1">{d("ed_warn_calibrate" as DTKey)}</span>
             )}
             {ppm && linearMeasures.length > 0 && (
               <span className="text-[10px] text-sky-400 font-mono ml-1">
@@ -2345,7 +2346,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   </button>
                   {isAdmin && (layer === "door" || layer === "window" || layer === "french_door" || layer === "interior") && (
                     <button onClick={() => setTool("sam")}
-                      title="Détection IA automatique : cliquez sur un élément pour le détecter automatiquement (SAM)"
+                      title={d("ed_tt_sam" as DTKey)}
                       className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                         tool === "sam" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                       <Sparkles className="w-3 h-3" /> {d("ed_ia_auto")}
@@ -2372,7 +2373,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   {/* Floor type (surface) selector — before room type */}
                   <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
                   <div className="flex items-center gap-1 relative">
-                    <span className="text-[9px] text-slate-500 shrink-0">Sol :</span>
+                    <span className="text-[9px] text-slate-500 shrink-0">{d("ed_floor_label" as DTKey)}</span>
                     <select
                       value={activeFloorTypeId}
                       onChange={e => {
@@ -2395,7 +2396,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       }}
                       className="bg-slate-800 border border-white/10 rounded-lg px-1.5 py-0.5 text-[10px] text-white max-w-28"
                     >
-                      <option value="">— Aucun —</option>
+                      <option value="">{d("ed_none" as DTKey)}</option>
                       {surfaceTypes.map(st => (
                         <option key={st.id} value={st.id}>{st.name}</option>
                       ))}
@@ -2406,7 +2407,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     })()}
 
                     {/* Create new floor type button */}
-                    <button onClick={() => setShowNewFloorType(v => !v)} title="Créer un type de sol"
+                    <button onClick={() => setShowNewFloorType(v => !v)} title={d("ed_create_floor" as DTKey)}
                       className="w-5 h-5 rounded-full border border-dashed border-violet-500/40 text-violet-400 text-[10px] flex items-center justify-center hover:bg-violet-500/10 transition-colors shrink-0">
                       +
                     </button>
@@ -2415,7 +2416,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     {showNewFloorType && (
                       <div className="absolute top-full left-0 mt-1 z-50 glass border border-violet-500/20 rounded-xl p-3 shadow-2xl min-w-52"
                         onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                        <p className="text-[9px] text-violet-400 uppercase tracking-wider font-semibold mb-2">Nouveau type de sol</p>
+                        <p className="text-[9px] text-violet-400 uppercase tracking-wider font-semibold mb-2">{d("ed_new_floor_type" as DTKey)}</p>
                         <div className="flex flex-col gap-2">
                           <input
                             autoFocus
@@ -2433,11 +2434,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                               }
                               if (e.key === "Escape") setShowNewFloorType(false);
                             }}
-                            placeholder="Nom du type de sol..."
+                            placeholder={d("ed_floor_type_ph" as DTKey)}
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500/40"
                           />
                           <div className="flex items-center gap-2">
-                            <label className="text-[10px] text-slate-500 shrink-0">Couleur</label>
+                            <label className="text-[10px] text-slate-500 shrink-0">{d("ed_color_label" as DTKey)}</label>
                             <div className="flex gap-1 flex-wrap">
                               {["#3B82F6", "#F97316", "#8B5CF6", "#6B7280", "#EC4899", "#10B981", "#F59E0B", "#EF4444"].map(c => (
                                 <button key={c} onClick={() => setNewFloorTypeColor(c)}
@@ -2459,11 +2460,11 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                                 setShowNewFloorType(false);
                               }}
                               className="flex-1 py-1 text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 rounded-lg hover:bg-violet-500/30 transition-colors disabled:opacity-30">
-                              Créer
+                              {d("ed_create_btn" as DTKey)}
                             </button>
                             <button onClick={() => setShowNewFloorType(false)}
                               className="px-2 py-1 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
-                              Annuler
+                              {d("ed_cancel_btn" as DTKey)}
                             </button>
                           </div>
                         </div>
@@ -2484,7 +2485,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                       }
                     }}
                     className="bg-slate-800 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white"
-                    title="Type de pièce"
+                    title={d("ed_room_type_tt" as DTKey)}
                   >
                     {ROOM_TYPES.map(rt => (
                       <option key={rt.type} value={rt.type}>{d(rt.i18nKey)}</option>
@@ -2509,22 +2510,22 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                   )}
                   <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
                   <button onClick={() => { setRoomEraserMode("rect"); setTool("select"); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
-                    title="Gomme rectangle — dessinez un rectangle pour retirer une zone de la pièce sélectionnée"
+                    title={d("ed_tt_eraser_rect" as DTKey)}
                     disabled={selectedRoomId === null}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       roomEraserMode === "rect" ? "border-red-500/40 bg-red-500/10 text-red-400"
                       : selectedRoomId !== null ? "border-white/5 text-slate-500 hover:text-slate-300"
                       : "border-white/5 text-slate-700 opacity-40 cursor-not-allowed")}>
-                    <Eraser className="w-3 h-3" /> Gomme rect
+                    <Eraser className="w-3 h-3" /> {d("ed_eraser_rect" as DTKey)}
                   </button>
                   <button onClick={() => { setRoomEraserMode("poly"); setTool("select"); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
-                    title="Gomme polygone — dessinez un polygone pour retirer une zone de la pièce sélectionnée"
+                    title={d("ed_tt_eraser_poly" as DTKey)}
                     disabled={selectedRoomId === null}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       roomEraserMode === "poly" ? "border-red-500/40 bg-red-500/10 text-red-400"
                       : selectedRoomId !== null ? "border-white/5 text-slate-500 hover:text-slate-300"
                       : "border-white/5 text-slate-700 opacity-40 cursor-not-allowed")}>
-                    <Eraser className="w-3 h-3" /> Gomme poly
+                    <Eraser className="w-3 h-3" /> {d("ed_eraser_poly" as DTKey)}
                   </button>
                   {roomEraserMode && (
                     <button onClick={() => { setRoomEraserMode(null); setRoomEraserPoly([]); roomEraserStartRef.current = null; }}
@@ -2533,14 +2534,14 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                     </button>
                   )}
                   <button onClick={() => { setTool("add_poly"); pts.current = []; }}
-                    title="Créer une pièce : dessinez un polygone"
+                    title={d("ed_create_room" as DTKey)}
                     className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                       tool === "add_poly" && layer === "rooms" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <PenLine className="w-3 h-3" /> Créer
+                    <PenLine className="w-3 h-3" /> {d("ed_create_room_btn" as DTKey)}
                   </button>
                   {tool === "add_poly" && layer === "rooms" && (
                     <button onClick={finishPoly}
-                      title="Valider le polygone de la pièce"
+                      title={d("ed_validate_room" as DTKey)}
                       className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 animate-pulse">
                       <Check className="w-3 h-3" /> {d("ed_validate")}
                     </button>
@@ -2557,7 +2558,7 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                         style={{ background: getRoomColor(rt.type) }} />
                     ))}
                     {/* Add custom room type */}
-                    <label className="relative w-4 h-4 cursor-pointer" title="Couleur personnalisée">
+                    <label className="relative w-4 h-4 cursor-pointer" title={d("ed_custom_color" as DTKey)}>
                       <span className="flex items-center justify-center w-4 h-4 rounded-full border-2 border-dashed border-slate-500 text-slate-500 text-[8px] font-bold hover:border-white hover:text-white transition-colors">+</span>
                       <input type="color" value="#94a3b8"
                         onChange={e => {
@@ -2630,37 +2631,37 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               {layer === "utilities" && (
                 <>
                   <button onClick={() => setTool("linear")}
-                    title="Mesure de distance : cliquez 2 points pour mesurer une longueur en mètres"
+                    title={d("ed_tt_linear_measure" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Ruler className="w-2.5 h-2.5" /> {d("ut_linear" as DTKey)}
                   </button>
                   <button onClick={() => setTool("angle")}
-                    title="Mesure d'angle : cliquez 3 points (point de départ, sommet, point d'arrivée) pour mesurer un angle en degrés"
+                    title={d("ed_tt_angle_measure" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "angle" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Compass className="w-2.5 h-2.5" /> {d("ut_angle" as DTKey)}
                   </button>
                   <button onClick={() => setTool("count")}
-                    title="Annotation : cliquez sur le plan pour placer des points. Créez des catégories (prises, radiateurs, etc.) dans le panneau latéral"
+                    title={d("ed_tt_count_annotation" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "count" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Hash className="w-2.5 h-2.5" /> {d("ut_count" as DTKey)}
                   </button>
                   <button onClick={() => setTool("text")}
-                    title="Annotation texte : cliquez sur le plan pour placer un texte libre"
+                    title={d("ed_tt_text_full" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "text" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Type className="w-2.5 h-2.5" /> Texte
+                    <Type className="w-2.5 h-2.5" /> {d("ed_text_label" as DTKey)}
                   </button>
                   <button onClick={() => setTool("circle")}
-                    title="Mesure de cercle : cliquez le centre puis le bord pour mesurer rayon/diamètre/surface"
+                    title={d("ed_tt_circle" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "circle" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
-                    <Circle className="w-2.5 h-2.5" /> Cercle
+                    <Circle className="w-2.5 h-2.5" /> {d("ed_circle_label" as DTKey)}
                   </button>
                   <button onClick={() => setTool("rescale")}
-                    title="Recalibrer l'échelle : cliquez 2 points d'une distance connue pour ajuster le rapport pixels/mètres"
+                    title={d("ed_tt_rescale" as DTKey)}
                     className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                       tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
                     <Maximize2 className="w-2.5 h-2.5" /> {d("ut_rescale" as DTKey)}
@@ -2743,14 +2744,14 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
               <div className="absolute top-3 right-3 z-20 flex items-center gap-1 glass border border-white/10 rounded-lg p-1">
                 <button onClick={() => setZoom(z => Math.min(12, z * 1.3))}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Zoom +"><ZoomIn className="w-3.5 h-3.5" /></button>
+                  title={d("ed_zoom_in" as DTKey)}><ZoomIn className="w-3.5 h-3.5" /></button>
                 <button onClick={() => setZoom(z => { const nz = Math.max(0.3, z * 0.75); if (nz <= 0.32) { fitToView(); return nz; } return nz; })}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Zoom −"><ZoomOut className="w-3.5 h-3.5" /></button>
+                  title={d("ed_zoom_out" as DTKey)}><ZoomOut className="w-3.5 h-3.5" /></button>
                 <div className="w-px h-5 bg-white/10" />
                 <button onClick={fitToView}
                   className="w-7 h-7 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-                  title="Ajuster à la fenêtre"><Maximize2 className="w-3 h-3" /></button>
+                  title={d("ed_fit_window" as DTKey)}><Maximize2 className="w-3 h-3" /></button>
                 {Math.abs(zoom - 1) > 0.05 && (
                   <span className="text-[9px] text-slate-500 font-mono pl-0.5">{zoom.toFixed(1)}x</span>
                 )}
@@ -2776,17 +2777,17 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
                           ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                           : "text-slate-400 hover:text-white hover:bg-white/10"
                       }`}
-                      title={showOriginal ? "Revenir à la vue analysée" : "Image originale (masques masqués)"}
+                      title={showOriginal ? d("ed_tt_analyzed" as DTKey) : d("ed_tt_original" as DTKey)}
                     >
-                      {showOriginal ? "Vue analysée" : "Original"}
+                      {showOriginal ? d("ed_view_analyzed" as DTKey) : d("ed_view_original" as DTKey)}
                     </button>
                     {isAdmin && cropRect && (
                       <button
                         onClick={() => { setShowFullPlan(true); /* masks stay as-is, only active ones show in full plan */ }}
                         className="px-2 py-1 rounded text-[10px] font-medium text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/40 border border-transparent transition-colors"
-                        title="Vue complète : image originale avec détections recalées (admin)"
+                        title={d("ed_tt_full_view" as DTKey)}
                       >
-                        Vue complète
+                        {d("ed_full_view" as DTKey)}
                       </button>
                     )}
                   </>

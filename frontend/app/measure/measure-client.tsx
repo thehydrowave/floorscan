@@ -3,14 +3,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid } from "lucide-react";
+import { ScanLine, ArrowLeft, Upload, Ruler, PenLine, BarChart3, Loader2, ImageIcon, FileDown, BookOpen, ChevronLeft, ChevronRight, FileText, PlusCircle, Download, FolderOpen, Layers, Plus, X, RotateCcw, FileBox, LayoutGrid, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
+import MeasureTutorialOverlay, { resetMeasureTutorial } from "@/components/measure/measure-tutorial-overlay";
 import MarkupsList from "@/components/measure/markups-list";
-import { SurfaceType, MeasureZone, PlanSnapshot, DEFAULT_SURFACE_TYPES, ROOM_SURFACE_TYPES, EMPRISE_TYPE, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, DEFAULT_LINEAR_CATEGORIES, DEFAULT_COUNT_GROUPS, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, DEFAULT_LAYERS } from "@/lib/measure-types";
+import { SurfaceType, MeasureZone, PlanSnapshot, getDefaultSurfaceTypes, getRoomSurfaceTypes, getEmpriseType, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, getDefaultLinearCategories, getDefaultCountGroups, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, getDefaultLayers } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
 import ThemeSwitcher from "@/components/ui/theme-switcher";
 import { useLang } from "@/lib/lang-context";
@@ -156,33 +157,33 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
   // Measure state
   const [zones, setZones] = useState<MeasureZone[]>([]);
-  const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(DEFAULT_SURFACE_TYPES);
-  const [activeTypeId, setActiveTypeId] = useState(DEFAULT_SURFACE_TYPES[0].id);
+  const [surfaceTypes, setSurfaceTypes] = useState<SurfaceType[]>(() => getDefaultSurfaceTypes(lang));
+  const [activeTypeId, setActiveTypeId] = useState(() => getDefaultSurfaceTypes(lang)[0].id);
 
   // Room panel mode
-  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count">("metre");
+  const [panelMode, setPanelMode] = useState<"metre" | "rooms" | "linear" | "count" | "layers">("metre");
   const allTypes = useMemo(
-    () => [...surfaceTypes, ...ROOM_SURFACE_TYPES, EMPRISE_TYPE],
-    [surfaceTypes]
+    () => [...surfaceTypes, ...getRoomSurfaceTypes(lang), getEmpriseType(lang)],
+    [surfaceTypes, lang]
   );
-  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count") => {
+  const handlePanelModeChange = useCallback((mode: "metre" | "rooms" | "linear" | "count" | "layers") => {
     setPanelMode(mode);
     if (mode === "rooms") {
-      setActiveTypeId(ROOM_SURFACE_TYPES[0].id);
+      setActiveTypeId(getRoomSurfaceTypes(lang)[0].id);
     } else if (mode === "metre") {
-      setActiveTypeId(surfaceTypes[0]?.id || DEFAULT_SURFACE_TYPES[0].id);
+      setActiveTypeId(surfaceTypes[0]?.id || getDefaultSurfaceTypes(lang)[0].id);
     }
-  }, [surfaceTypes]);
+  }, [surfaceTypes, lang]);
 
   // Linear tool state
-  const [linearCategories, setLinearCategories] = useState<LinearCategory[]>(DEFAULT_LINEAR_CATEGORIES);
+  const [linearCategories, setLinearCategories] = useState<LinearCategory[]>(() => getDefaultLinearCategories(lang));
   const [linearMeasures, setLinearMeasures]     = useState<LinearMeasure[]>([]);
-  const [activeLinearCategoryId, setActiveLinearCategoryId] = useState(DEFAULT_LINEAR_CATEGORIES[0].id);
+  const [activeLinearCategoryId, setActiveLinearCategoryId] = useState(() => getDefaultLinearCategories(lang)[0].id);
 
   // Count tool state
-  const [countGroups, setCountGroups]   = useState<CountGroup[]>(DEFAULT_COUNT_GROUPS);
+  const [countGroups, setCountGroups]   = useState<CountGroup[]>(() => getDefaultCountGroups(lang));
   const [countPoints, setCountPoints]   = useState<CountPoint[]>([]);
-  const [activeCountGroupId, setActiveCountGroupId] = useState(DEFAULT_COUNT_GROUPS[0].id);
+  const [activeCountGroupId, setActiveCountGroupId] = useState(() => getDefaultCountGroups(lang)[0].id);
 
   // Selection state (lifted from canvas for cross-component use)
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -203,7 +204,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [markupAnnotations, setMarkupAnnotations] = useState<MarkupAnnotation[]>([]);
   // Groups & Layers
   const [markupGroups, setMarkupGroups] = useState<MarkupGroup[]>([]);
-  const [measureLayers, setMeasureLayers] = useState<MeasureLayer[]>(DEFAULT_LAYERS);
+  const [measureLayers, setMeasureLayers] = useState<MeasureLayer[]>(() => getDefaultLayers(lang));
   const [activeLayerId, setActiveLayerId] = useState("lyr_general");
 
   // Undo / Redo history
@@ -245,6 +246,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [sessionId, setSessionId]           = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
+  const [showMeasureTuto, setShowMeasureTuto] = useState(false);
   const [vsMatches, setVsMatches]               = useState<VisualSearchMatch[]>([]);
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
@@ -383,17 +385,17 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
     historyRef.current = []; futureRef.current = [];
     setHistoryLen(0); setFutureLen(0);
     setImageB64(null); setImageMime("image/png"); setImageNatural({ w: 0, h: 0 });
-    setZones([]); setSurfaceTypes(DEFAULT_SURFACE_TYPES);
+    setZones([]); setSurfaceTypes(getDefaultSurfaceTypes(lang));
     setPpm(null); setProjectName(""); setClientName("");
     setClientAddress(""); setQuoteNumber(""); setQuoteDate(new Date().toISOString().slice(0, 10));
     setSavedPlans([]); setCurrentPlanName("Plan 1"); setActivePlanId("plan-main");
-    setActiveTypeId(DEFAULT_SURFACE_TYPES[0].id); setStep(0);
+    setActiveTypeId(getDefaultSurfaceTypes(lang)[0].id); setStep(0);
     // Reset all new module states
-    setLinearMeasures([]); setLinearCategories(DEFAULT_LINEAR_CATEGORIES);
-    setCountPoints([]); setCountGroups(DEFAULT_COUNT_GROUPS);
+    setLinearMeasures([]); setLinearCategories(getDefaultLinearCategories(lang));
+    setCountPoints([]); setCountGroups(getDefaultCountGroups(lang));
     setAngleMeasurements([]); setCircleMeasures([]);
     setTextAnnotations([]); setMarkupAnnotations([]);
-    setMarkupGroups([]); setMeasureLayers(DEFAULT_LAYERS);
+    setMarkupGroups([]); setMeasureLayers(getDefaultLayers(lang));
     setActiveLayerId("lyr_general"); setDisplayUnit("m");
     setSelectedZoneId(null); setSelectedLinearId(null);
     setCustomDetections([]); setVsMatches([]);
@@ -1042,7 +1044,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     ))}
                     <button onClick={addNewPlan}
                       className="glass border border-white/10 border-dashed rounded-lg px-3 py-1.5 text-xs text-slate-500 hover:text-white hover:border-white/30 transition-colors flex items-center gap-1">
-                      <Plus className="w-3 h-3" /> Nouveau plan
+                      <Plus className="w-3 h-3" /> {d("sv_new_plan" as DTKey)}
                     </button>
                   </div>
                 )}
@@ -1054,11 +1056,16 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
+                    <button onClick={() => { resetMeasureTutorial(); setShowMeasureTuto(v => !v); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
+                      title={d("tuto_header" as DTKey)}>
+                      <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
+                    </button>
                     <button
                       onClick={newProject}
                       className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-2.5 py-1.5 transition-colors"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                      <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
                     </button>
                     <Button size="sm" onClick={() => setStep(4)} disabled={zones.length === 0}>
                       {d("me_view_results")}
@@ -1139,7 +1146,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   onDeleteDetection={(id) => setCustomDetections(prev => prev.filter(d => d.id !== id))}
                   panelMode={panelMode}
                   onPanelModeChange={handlePanelModeChange}
-                  roomTypes={[...ROOM_SURFACE_TYPES, EMPRISE_TYPE]}
+                  roomTypes={[...getRoomSurfaceTypes(lang), getEmpriseType(lang)]}
                   linearCategories={linearCategories}
                   linearMeasures={linearMeasures}
                   onLinearCategoriesChange={setLinearCategories}
@@ -1155,6 +1162,10 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                   angleMeasurements={angleMeasurements}
                   circleMeasures={circleMeasures}
                   displayUnit={displayUnit}
+                  layers={measureLayers}
+                  onLayersChange={setMeasureLayers}
+                  activeLayerId={activeLayerId}
+                  onActiveLayerIdChange={setActiveLayerId}
                 />
               </div>
             </div>
@@ -1463,7 +1474,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                     onClick={newProject}
                     className="flex items-center gap-1.5 text-xs text-red-400/80 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 rounded-lg px-3 py-2 transition-colors"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                    <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
                   </button>
                   <Button variant="outline" onClick={() => setStep(3)}>
                     {d("me_back_survey")}
@@ -1556,7 +1567,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                 className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 glass border border-red-500/25 hover:border-red-500/50 rounded-lg px-3 py-1.5 transition-colors"
                 title="Effacer le projet et repartir de zéro"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Recommencer
+                <RotateCcw className="w-3.5 h-3.5" /> {d("sv_restart" as DTKey)}
               </button>
             )}
             <Link href="/" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors">
@@ -1567,6 +1578,8 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
       </div>
 
       {content}
+
+      <MeasureTutorialOverlay forceShow={showMeasureTuto} />
     </div>
   );
 }

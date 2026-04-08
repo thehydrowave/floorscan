@@ -89,6 +89,7 @@ interface SpotlightRect { x: number; y: number; w: number; h: number; }
 
 export default function UploadTutorialOverlay({ forceShow: externalForce }: { forceShow?: boolean }) {
   const { lang } = useLang();
+  const d = (key: DTKey) => dt(key, lang);
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
   const [spotlight, setSpotlight] = useState<SpotlightRect | null>(null);
@@ -193,7 +194,7 @@ export default function UploadTutorialOverlay({ forceShow: externalForce }: { fo
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-accent" />
-                <span className="text-sm font-display font-700 text-white">Tutoriel</span>
+                <span className="text-sm font-display font-700 text-white">{d("tuto_header")}</span>
               </div>
               <button onClick={dismiss} className="text-slate-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
                 <X className="w-4 h-4" />
@@ -229,12 +230,12 @@ export default function UploadTutorialOverlay({ forceShow: externalForce }: { fo
               <button onClick={() => step > 0 ? setStep(s => s - 1) : dismiss()}
                 className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors">
                 <ChevronLeft className="w-3.5 h-3.5" />
-                {step > 0 ? "Précédent" : "Passer"}
+                {step > 0 ? d("tuto_prev") : d("tuto_skip")}
               </button>
               <button onClick={() => isLast ? dismiss() : setStep(s => s + 1)}
                 className={cn("flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all",
                   isLast ? "bg-accent text-white hover:bg-accent/80" : "bg-white/10 text-white hover:bg-white/15")}>
-                {isLast ? "Commencer" : "Suivant"}
+                {isLast ? d("tuto_begin") : d("tuto_next")}
                 {!isLast && <ChevronRight className="w-3.5 h-3.5" />}
               </button>
             </div>

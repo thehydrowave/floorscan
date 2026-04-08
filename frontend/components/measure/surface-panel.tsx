@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2, Upload } from "lucide-react";
+import { Plus, Trash2, Check, Package, Download, Search, Home, Ruler, Hash, FileText, Table2, Upload, Layers, Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import {
   SurfaceType, MeasureZone,
   aggregateByType, aggregatePerimeterByType,
@@ -13,9 +13,11 @@ import {
   CircleMeasure, circleMetrics,
   DisplayUnit, UNIT_LABELS_AREA, UNIT_LABELS_VOLUME,
   slopeCorrectedArea, zoneVolumeM3,
+  MeasureLayer,
 } from "@/lib/measure-types";
+import { cn } from "@/lib/utils";
 import { useLang } from "@/lib/lang-context";
-import { dt } from "@/lib/i18n";
+import { dt, DTKey } from "@/lib/i18n";
 import type { CustomDetection } from "@/lib/types";
 import { PdfBuilder, safeTxt, fmtQty, C, TABLE, TYPO, PAGE } from "@/lib/pdf-theme";
 import * as XLSX from "xlsx";
@@ -39,8 +41,8 @@ interface SurfacePanelProps {
   customDetections?: CustomDetection[];
   onDeleteDetection?: (id: string) => void;
   // Room mode
-  panelMode?: "metre" | "rooms" | "linear" | "count";
-  onPanelModeChange?: (mode: "metre" | "rooms" | "linear" | "count") => void;
+  panelMode?: "metre" | "rooms" | "linear" | "count" | "layers";
+  onPanelModeChange?: (mode: "metre" | "rooms" | "linear" | "count" | "layers") => void;
   roomTypes?: SurfaceType[];
   // Linear tool
   linearCategories?: LinearCategory[];
@@ -60,6 +62,11 @@ interface SurfacePanelProps {
   angleMeasurements?: AngleMeasurement[];
   circleMeasures?: CircleMeasure[];
   displayUnit?: DisplayUnit;
+  // Layers
+  layers?: MeasureLayer[];
+  onLayersChange?: (layers: MeasureLayer[]) => void;
+  activeLayerId?: string;
+  onActiveLayerIdChange?: (id: string) => void;
 }
 
 export default function SurfacePanel({
@@ -74,6 +81,7 @@ export default function SurfacePanel({
   onCountGroupsChange, onCountPointsChange,
   activeCountGroupId = "", onActiveCountGroupChange,
   angleMeasurements = [], circleMeasures = [], displayUnit = "m" as DisplayUnit,
+  layers, onLayersChange, activeLayerId, onActiveLayerIdChange,
 }: SurfacePanelProps) {
   const { lang } = useLang();
   const d = (k: string) => dt(k as any, lang);
@@ -635,14 +643,21 @@ export default function SurfacePanel({
             <button onClick={() => onPanelModeChange?.("linear")}
               className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors border-r border-white/10 truncate ${
                 panelMode === "linear" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-500 hover:text-slate-300"}`}>
-              <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">ml</span>
+              <Ruler className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_linear" as DTKey)}</span>
             </button>
           )}
           {hasCountTab && (
             <button onClick={() => onPanelModeChange?.("count")}
               className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
                 panelMode === "count" ? "bg-pink-500/20 text-pink-400" : "text-slate-500 hover:text-slate-300"}`}>
-              <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">Comptage</span>
+              <Hash className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_count" as DTKey)}</span>
+            </button>
+          )}
+          {layers && layers.length > 0 && (
+            <button onClick={() => onPanelModeChange?.("layers")}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-medium transition-colors truncate ${
+                panelMode === "layers" ? "bg-blue-500/20 text-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+              <Layers className="w-3 h-3 shrink-0" /> <span className="truncate">{d("sv_tab_layers" as DTKey)}</span>
             </button>
           )}
         </div>
@@ -652,11 +667,11 @@ export default function SurfacePanel({
       {panelMode === "metre" && (
         <>
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Types de surface</h3>
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_surface_types" as DTKey)}</h3>
             <div className="flex items-center gap-1">
               {/* Import CSV prix */}
               <input ref={csvInputRef} type="file" accept=".csv,.txt" onChange={importPriceCSV} className="hidden" />
-              <button onClick={() => csvInputRef.current?.click()} title="Importer prix CSV (Nom;Prix/m²)"
+              <button onClick={() => csvInputRef.current?.click()} title={d("sv_import_csv" as DTKey)}
                 className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-amber-400 transition-colors">
                 <Upload className="w-3.5 h-3.5" />
               </button>
@@ -687,7 +702,7 @@ export default function SurfacePanel({
             <div className="glass border border-white/10 rounded-xl p-3 flex flex-col gap-2">
               <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addType(); if (e.key === "Escape") setAdding(false); }}
-                placeholder="Nom du type..."
+                placeholder={d("sv_type_name_ph" as DTKey)}
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-600 outline-none focus:border-accent" />
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_COLORS.map(c => (
@@ -704,7 +719,7 @@ export default function SurfacePanel({
               </div>
               <button onClick={addType} disabled={!newName.trim()}
                 className="flex items-center justify-center gap-1.5 bg-accent hover:bg-accent/80 disabled:opacity-40 text-white rounded-lg py-1.5 text-xs font-medium transition-colors">
-                <Check className="w-3.5 h-3.5" /> Ajouter
+                <Check className="w-3.5 h-3.5" /> {d("sv_add" as DTKey)}
               </button>
             </div>
           )}
@@ -738,7 +753,7 @@ export default function SurfacePanel({
                         {zoneCount > 0 ? ppm ? `${area.toFixed(2)} m²` : `${zoneCount} zone${zoneCount > 1 ? "s" : ""}` : "—"}
                       </span>
                       {ppm && perimM > 0 && (
-                        <span className="text-[10px] text-slate-600 font-mono">{perimM.toFixed(1)} ml périm.</span>
+                        <span className="text-[10px] text-slate-600 font-mono">{perimM.toFixed(1)} {d("sv_ml_perim" as DTKey)}</span>
                       )}
                     </div>
                     {!DEFAULT_IDS.includes(type.id) && (
@@ -749,11 +764,11 @@ export default function SurfacePanel({
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 px-3 pb-1.5 flex-wrap min-w-0" onClick={e => e.stopPropagation()}>
-                    <span className="text-[10px] text-slate-600 shrink-0">€/m²</span>
+                    <span className="text-[10px] text-slate-600 shrink-0">{d("sv_price_m2" as DTKey)}</span>
                     <input type="number" value={type.pricePerM2 ?? ""} onChange={e => updatePrice(type.id, e.target.value)}
                       placeholder="0" min={0} step={1}
                       className="w-14 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent shrink-0" />
-                    <span className="text-[10px] text-slate-600 shrink-0">Chute</span>
+                    <span className="text-[10px] text-slate-600 shrink-0">{d("sv_chute" as DTKey)}</span>
                     <input type="number" value={type.wastePercent ?? 10} onChange={e => updateWaste(type.id, e.target.value)}
                       placeholder="10" min={0} max={100} step={1}
                       className="w-11 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent shrink-0" />
@@ -768,9 +783,9 @@ export default function SurfacePanel({
                     <div className="flex items-center gap-2 px-3 pb-2" onClick={e => e.stopPropagation()}>
                       <Package className="w-3 h-3 text-slate-600 shrink-0" />
                       <input type="number" value={type.boxSizeM2 ?? ""} onChange={e => updateBoxSize(type.id, e.target.value)}
-                        placeholder="m²/boîte" min={0} step={0.1}
+                        placeholder={d("sv_m2_box" as DTKey)} min={0} step={0.1}
                         className="w-20 bg-white/5 border border-white/10 rounded px-2 py-0.5 text-xs text-white font-mono focus:outline-none focus:border-accent" />
-                      <span className="text-xs text-slate-600">m²/boîte</span>
+                      <span className="text-xs text-slate-600">{d("sv_m2_box" as DTKey)}</span>
                       <span className="ml-auto text-xs text-slate-400 font-mono">
                         {areaCmd.toFixed(2)} m²
                         {boxes !== null && <span className="text-amber-400 ml-1">→ {boxes} boîtes</span>}
@@ -785,7 +800,7 @@ export default function SurfacePanel({
           {customDetections.length > 0 && (
             <div className="mt-3 pt-3 border-t border-white/5">
               <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <Search className="w-3 h-3" /> Détections
+                <Search className="w-3 h-3" /> {d("sv_detections" as DTKey)}
               </h3>
               <div className="flex flex-col gap-1.5">
                 {customDetections.map(det => (
@@ -811,14 +826,14 @@ export default function SurfacePanel({
           {zones.length > 0 && (
             <div className="mt-2 pt-3 border-t border-white/5 flex flex-col gap-1">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-500">Total net</span>
+                <span className="text-xs text-slate-500">{d("sv_total_net" as DTKey)}</span>
                 <span className="font-mono text-sm text-white font-600">
                   {ppm ? `${totalAll.toFixed(2)} m²` : `${zones.filter(z => !z.isDeduction).length} zone${zones.length > 1 ? "s" : ""}`}
                 </span>
               </div>
               {ppm && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">À commander (avec chutes)</span>
+                  <span className="text-xs text-slate-500">{d("sv_to_order" as DTKey)}</span>
                   <span className="font-mono text-xs text-amber-400">
                     {types.reduce((sum, t) => {
                       const a = totals[t.id] ?? 0;
@@ -829,13 +844,13 @@ export default function SurfacePanel({
               )}
               {hasPrices && ppm && totalHT > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">Total HT</span>
+                  <span className="text-xs text-slate-500">{d("sv_total_ht" as DTKey)}</span>
                   <span className="font-mono text-sm text-accent font-600">
                     {totalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                   </span>
                 </div>
               )}
-              {!ppm && <p className="text-xs text-slate-600 mt-1">Définissez l'échelle pour voir les m²</p>}
+              {!ppm && <p className="text-xs text-slate-600 mt-1">{d("sv_scale_msg" as DTKey)}</p>}
               <div className="flex gap-1 mt-1">
                 <button onClick={exportCSV}
                   className="flex-1 flex items-center justify-center gap-1 text-xs text-slate-500 hover:text-slate-300 glass border border-white/5 rounded-lg py-1.5 transition-colors">
@@ -860,7 +875,7 @@ export default function SurfacePanel({
         <>
           {/* Ceiling height + volume */}
           <div className="flex items-center gap-2 glass border border-blue-500/20 rounded-xl px-3 py-2">
-            <span className="text-xs text-slate-400 shrink-0">H plafond</span>
+            <span className="text-xs text-slate-400 shrink-0">{d("sv_h_ceiling" as DTKey)}</span>
             <input type="number" value={ceilingHeightM} min={1.5} max={10} step={0.05}
               onChange={e => setCeilingHeightM(Math.max(1, parseFloat(e.target.value) || 2.5))}
               className="w-16 bg-transparent border-b border-blue-500/30 text-blue-300 text-xs font-mono text-center focus:outline-none focus:border-blue-400" />
@@ -979,7 +994,7 @@ export default function SurfacePanel({
       {panelMode === "linear" && (
         <>
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Catégories linéaires</h3>
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_linear_cats" as DTKey)}</h3>
             <button onClick={() => setAddingLinear(v => !v)}
               className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />
@@ -998,7 +1013,7 @@ export default function SurfacePanel({
                   }
                   if (e.key === "Escape") setAddingLinear(false);
                 }}
-                placeholder="Nom de la catégorie..."
+                placeholder={d("sv_cat_name_ph" as DTKey)}
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-600 outline-none focus:border-emerald-500" />
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_COLORS.map(c => (
@@ -1017,7 +1032,7 @@ export default function SurfacePanel({
                 }}
                 disabled={!newLinearName.trim()}
                 className="flex items-center justify-center gap-1.5 bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg py-1.5 text-xs font-medium transition-colors">
-                <Check className="w-3.5 h-3.5" /> Ajouter
+                <Check className="w-3.5 h-3.5" /> {d("sv_add" as DTKey)}
               </button>
             </div>
           )}
@@ -1037,7 +1052,7 @@ export default function SurfacePanel({
                     <span className={`text-sm font-medium flex-1 ${isActive ? "text-white" : "text-slate-300"}`}>{cat.name}</span>
                     <div className="flex flex-col items-end gap-0">
                       <span className="text-xs text-slate-400 font-mono">
-                        {lineCount > 0 ? ppm ? `${totalM.toFixed(2)} ml` : `${lineCount} seg.` : "—"}
+                        {lineCount > 0 ? ppm ? `${totalM.toFixed(2)} ml` : `${lineCount} ${d("sv_seg" as DTKey)}` : "—"}
                       </span>
                       {ht !== null && (
                         <span className="text-[10px] text-emerald-400 font-mono">{ht.toFixed(2)} €</span>
@@ -1052,7 +1067,7 @@ export default function SurfacePanel({
                     </button>
                   </div>
                   <div className="flex items-center gap-2 px-3 pb-2 min-w-0" onClick={e => e.stopPropagation()}>
-                    <span className="text-[10px] text-slate-600 shrink-0">€/ml</span>
+                    <span className="text-[10px] text-slate-600 shrink-0">{d("sv_price_ml" as DTKey)}</span>
                     <input type="number" value={cat.pricePerM ?? ""} min={0} step={0.5}
                       onChange={e => {
                         const v = parseFloat(e.target.value);
@@ -1072,14 +1087,14 @@ export default function SurfacePanel({
           {linearMeasures.length > 0 && ppm && (
             <div className="mt-2 pt-3 border-t border-white/5 flex flex-col gap-1">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-500">Total linéaire</span>
+                <span className="text-xs text-slate-500">{d("sv_total_linear" as DTKey)}</span>
                 <span className="font-mono text-sm text-emerald-400 font-600">
                   {Object.values(linearTotals).reduce((a, b) => a + b, 0).toFixed(2)} ml
                 </span>
               </div>
               {linearTotalHT > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">Total HT</span>
+                  <span className="text-xs text-slate-500">{d("sv_total_ht" as DTKey)}</span>
                   <span className="font-mono text-sm text-accent font-600">
                     {linearTotalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €
                   </span>
@@ -1090,7 +1105,7 @@ export default function SurfacePanel({
 
           {linearCategories.length === 0 && (
             <p className="text-xs text-slate-600 text-center py-4">
-              Ajoutez une catégorie puis utilisez l'outil <strong className="text-slate-400">Linéaire</strong> pour mesurer.
+              {d("sv_linear_hint" as DTKey)}
             </p>
           )}
         </>
@@ -1100,7 +1115,7 @@ export default function SurfacePanel({
       {panelMode === "count" && (
         <>
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">Groupes de comptage</h3>
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_count_groups" as DTKey)}</h3>
             <button onClick={() => setAddingCount(v => !v)}
               className="glass border border-white/10 rounded-lg p-1 text-slate-400 hover:text-white transition-colors">
               <Plus className="w-3.5 h-3.5" />
@@ -1119,7 +1134,7 @@ export default function SurfacePanel({
                   }
                   if (e.key === "Escape") setAddingCount(false);
                 }}
-                placeholder="Nom du groupe..."
+                placeholder={d("sv_group_name_ph" as DTKey)}
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-600 outline-none focus:border-pink-500" />
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_COLORS.map(c => (
@@ -1138,7 +1153,7 @@ export default function SurfacePanel({
                 }}
                 disabled={!newCountName.trim()}
                 className="flex items-center justify-center gap-1.5 bg-pink-600/80 hover:bg-pink-600 disabled:opacity-40 text-white rounded-lg py-1.5 text-xs font-medium transition-colors">
-                <Check className="w-3.5 h-3.5" /> Ajouter
+                <Check className="w-3.5 h-3.5" /> {d("sv_add" as DTKey)}
               </button>
             </div>
           )}
@@ -1172,7 +1187,7 @@ export default function SurfacePanel({
                     </button>
                   </div>
                   <div className="flex items-center gap-2 px-3 pb-2 min-w-0 flex-wrap" onClick={e => e.stopPropagation()}>
-                    <span className="text-[10px] text-slate-600 shrink-0">€/u</span>
+                    <span className="text-[10px] text-slate-600 shrink-0">{d("sv_price_u" as DTKey)}</span>
                     <input type="number" value={grp.pricePerUnit ?? ""} min={0} step={1}
                       onChange={e => {
                         const v = parseFloat(e.target.value);
@@ -1187,7 +1202,7 @@ export default function SurfacePanel({
                         e.stopPropagation();
                         onCountPointsChange?.(countPoints.filter(p => p.groupId !== grp.id));
                       }} className="ml-auto text-[10px] text-slate-600 hover:text-red-400 transition-colors shrink-0">
-                        Effacer {qty}×
+                        {d("sv_clear_qty" as DTKey)} {qty}×
                       </button>
                     )}
                   </div>
@@ -1200,12 +1215,12 @@ export default function SurfacePanel({
           {countPoints.length > 0 && (
             <div className="mt-2 pt-3 border-t border-white/5 flex flex-col gap-1">
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-500">Total éléments</span>
+                <span className="text-xs text-slate-500">{d("sv_total_items" as DTKey)}</span>
                 <span className="font-mono text-sm text-pink-400 font-600">{countPoints.length} ×</span>
               </div>
               {countTotalHT > 0 && (
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500">Total HT</span>
+                  <span className="text-xs text-slate-500">{d("sv_total_ht" as DTKey)}</span>
                   <span className="font-mono text-sm text-accent font-600">
                     {countTotalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €
                   </span>
@@ -1216,10 +1231,73 @@ export default function SurfacePanel({
 
           {countGroups.length === 0 && (
             <p className="text-xs text-slate-600 text-center py-4">
-              Ajoutez un groupe puis utilisez l'outil <strong className="text-slate-400"># Comptage</strong> pour placer des points.
+              {d("sv_count_hint" as DTKey)}
             </p>
           )}
         </>
+      )}
+
+      {/* ── LAYERS MODE ── */}
+      {panelMode === "layers" && layers && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-600 text-slate-400 uppercase tracking-wide">{d("sv_tab_layers" as DTKey)}</h3>
+          </div>
+
+          {/* Layer list */}
+          <div className="flex flex-col gap-1">
+            {layers.map(lyr => {
+              const isActive = activeLayerId === lyr.id;
+              const isProtected = ["lyr_general", "lyr_structure", "lyr_annotation"].includes(lyr.id);
+              return (
+                <div key={lyr.id}
+                  className={cn("flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all cursor-pointer",
+                    isActive ? "bg-white/10 border border-white/20" : "border border-transparent hover:bg-white/5")}
+                  onClick={() => onActiveLayerIdChange?.(lyr.id)}>
+                  {/* Color dot */}
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: lyr.color }} />
+                  {/* Name */}
+                  <span className={cn("flex-1 text-xs truncate", isActive ? "text-white font-medium" : "text-slate-400")}>
+                    {lyr.name}
+                  </span>
+                  {/* Visibility toggle */}
+                  <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l)); }}
+                    className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                    title={lyr.visible ? d("sv_layer_visible" as DTKey) : d("sv_layer_hidden" as DTKey)}>
+                    {lyr.visible ? <Eye className="w-3 h-3 text-slate-400" /> : <EyeOff className="w-3 h-3 text-slate-600" />}
+                  </button>
+                  {/* Lock toggle */}
+                  <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l)); }}
+                    className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                    title={lyr.locked ? d("sv_layer_locked" as DTKey) : d("sv_layer_unlocked" as DTKey)}>
+                    {lyr.locked ? <Lock className="w-3 h-3 text-amber-400" /> : <Unlock className="w-3 h-3 text-slate-600" />}
+                  </button>
+                  {/* Delete */}
+                  {!isProtected && (
+                    <button onClick={(e) => { e.stopPropagation(); onLayersChange?.(layers.filter(l => l.id !== lyr.id)); }}
+                      className="p-0.5 rounded hover:bg-red-500/10 transition-colors"
+                      title={d("sv_layer_delete" as DTKey)}>
+                      <Trash2 className="w-3 h-3 text-slate-600 hover:text-red-400" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add new layer button */}
+          <button onClick={() => {
+            const newId = `lyr_${Date.now()}`;
+            const colors = ["#6B7280", "#3B82F6", "#F97316", "#EF4444", "#06B6D4", "#10B981", "#F59E0B", "#8B5CF6"];
+            const color = colors[layers.length % colors.length];
+            const name = d("sv_layer_new" as DTKey);
+            onLayersChange?.([...layers, { id: newId, name, color, visible: true, locked: false }]);
+            onActiveLayerIdChange?.(newId);
+          }}
+            className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-white border border-dashed border-white/10 hover:border-white/30 rounded-xl py-2 transition-colors">
+            <Plus className="w-3.5 h-3.5" /> {d("sv_layer_new" as DTKey)}
+          </button>
+        </div>
       )}
     </div>
   );

@@ -1,3 +1,5 @@
+import { dt, DTKey } from "@/lib/i18n";
+
 export interface AssemblyItem {
   ref: string;       // référence article / SKU
   label: string;     // description
@@ -32,12 +34,13 @@ export interface LinearMeasure {
   points: { x: number; y: number }[]; // normalized 0-1, open polyline
 }
 
-export const DEFAULT_LINEAR_CATEGORIES: LinearCategory[] = [
-  { id: "lin_plinthe",    name: "Plinthe",              color: "#F97316" },
-  { id: "lin_joint",      name: "Joint de dilatation",  color: "#8B5CF6" },
-  { id: "lin_cimaise",    name: "Cimaise",              color: "#10B981" },
-  { id: "lin_baguette",   name: "Baguette d'angle",     color: "#06B6D4" },
+export const getDefaultLinearCategories = (lang: string): LinearCategory[] => [
+  { id: "lin_plinthe",    name: dt("sv_lin_baseboard" as DTKey, lang as any), color: "#F97316" },
+  { id: "lin_joint",      name: dt("sv_lin_joint" as DTKey, lang as any),     color: "#8B5CF6" },
+  { id: "lin_cimaise",    name: dt("sv_lin_rail" as DTKey, lang as any),      color: "#10B981" },
+  { id: "lin_baguette",   name: dt("sv_lin_corner" as DTKey, lang as any),    color: "#06B6D4" },
 ];
+export const DEFAULT_LINEAR_CATEGORIES: LinearCategory[] = getDefaultLinearCategories("fr");
 
 /** Longueur en mètres d'une mesure linéaire */
 export function linearLengthM(
@@ -90,12 +93,13 @@ export interface CountPoint {
   y: number; // normalized 0-1
 }
 
-export const DEFAULT_COUNT_GROUPS: CountGroup[] = [
-  { id: "cnt_prise",        name: "Prise électrique", color: "#F59E0B" },
-  { id: "cnt_interrupteur", name: "Interrupteur",      color: "#06B6D4" },
-  { id: "cnt_luminaire",    name: "Luminaire",         color: "#EC4899" },
-  { id: "cnt_siphon",       name: "Siphon",            color: "#10B981" },
+export const getDefaultCountGroups = (lang: string): CountGroup[] => [
+  { id: "cnt_prise",        name: dt("sv_cnt_outlet" as DTKey, lang as any),  color: "#F59E0B" },
+  { id: "cnt_interrupteur", name: dt("sv_cnt_switch" as DTKey, lang as any),  color: "#06B6D4" },
+  { id: "cnt_luminaire",    name: dt("sv_cnt_light" as DTKey, lang as any),   color: "#EC4899" },
+  { id: "cnt_siphon",       name: dt("sv_cnt_drain" as DTKey, lang as any),   color: "#10B981" },
 ];
+export const DEFAULT_COUNT_GROUPS: CountGroup[] = getDefaultCountGroups("fr");
 
 export interface MeasureZone {
   id: string;
@@ -119,13 +123,14 @@ export interface PlanSnapshot {
   ppm: number | null;
 }
 
-export const DEFAULT_SURFACE_TYPES: SurfaceType[] = [
-  { id: "carrelage", name: "Carrelage",  color: "#3B82F6", wastePercent: 10, pricePerM2: 35 },
-  { id: "parquet",   name: "Parquet",    color: "#F97316", wastePercent: 10, pricePerM2: 50 },
-  { id: "peinture",  name: "Peinture",   color: "#8B5CF6", wastePercent: 15, pricePerM2: 12 },
-  { id: "beton",     name: "Béton",      color: "#6B7280", wastePercent: 10, pricePerM2: 80 },
-  { id: "moquette",  name: "Moquette",   color: "#EC4899", wastePercent: 10, pricePerM2: 25 },
+export const getDefaultSurfaceTypes = (lang: string): SurfaceType[] => [
+  { id: "carrelage", name: dt("sv_sf_tiling" as DTKey, lang as any),    color: "#3B82F6", wastePercent: 10, pricePerM2: 35 },
+  { id: "parquet",   name: dt("sv_sf_parquet" as DTKey, lang as any),   color: "#F97316", wastePercent: 10, pricePerM2: 50 },
+  { id: "peinture",  name: dt("sv_sf_paint" as DTKey, lang as any),     color: "#8B5CF6", wastePercent: 15, pricePerM2: 12 },
+  { id: "beton",     name: dt("sv_sf_concrete" as DTKey, lang as any),  color: "#6B7280", wastePercent: 10, pricePerM2: 80 },
+  { id: "moquette",  name: dt("sv_sf_carpet" as DTKey, lang as any),    color: "#EC4899", wastePercent: 10, pricePerM2: 25 },
 ];
+export const DEFAULT_SURFACE_TYPES: SurfaceType[] = getDefaultSurfaceTypes("fr");
 
 /** Shoelace formula — points en coords normalisées (0-1), imageW/H en px */
 export function polygonAreaPx(
@@ -286,24 +291,26 @@ export function splitPolygonByLine(
 
 // ── Room types (pièces) + Emprise au sol ─────────────────────────────────────
 
-export const ROOM_SURFACE_TYPES: SurfaceType[] = [
-  { id: "room_bedroom",  name: "Chambre",        color: "#818cf8" },
-  { id: "room_living",   name: "Séjour",         color: "#34d399" },
-  { id: "room_kitchen",  name: "Cuisine",        color: "#fb923c" },
-  { id: "room_bathroom", name: "Salle de bain",  color: "#22d3ee" },
-  { id: "room_hallway",  name: "Couloir",        color: "#94a3b8" },
-  { id: "room_office",   name: "Bureau",         color: "#a78bfa" },
-  { id: "room_wc",       name: "WC",             color: "#fbbf24" },
-  { id: "room_dining",   name: "Salle à manger", color: "#f472b6" },
-  { id: "room_storage",  name: "Rangement",      color: "#78716c" },
-  { id: "room_garage",   name: "Garage",         color: "#6b7280" },
-  { id: "room_balcony",  name: "Balcon",         color: "#86efac" },
-  { id: "room_laundry",  name: "Buanderie",      color: "#67e8f9" },
+export const getRoomSurfaceTypes = (lang: string): SurfaceType[] => [
+  { id: "room_bedroom",  name: dt("sv_room_bedroom" as DTKey, lang as any),  color: "#818cf8" },
+  { id: "room_living",   name: dt("sv_room_living" as DTKey, lang as any),   color: "#34d399" },
+  { id: "room_kitchen",  name: dt("sv_room_kitchen" as DTKey, lang as any),  color: "#fb923c" },
+  { id: "room_bathroom", name: dt("sv_room_bathroom" as DTKey, lang as any), color: "#22d3ee" },
+  { id: "room_hallway",  name: dt("sv_room_hallway" as DTKey, lang as any),  color: "#94a3b8" },
+  { id: "room_office",   name: dt("sv_room_office" as DTKey, lang as any),   color: "#a78bfa" },
+  { id: "room_wc",       name: dt("sv_room_wc" as DTKey, lang as any),      color: "#fbbf24" },
+  { id: "room_dining",   name: dt("sv_room_dining" as DTKey, lang as any),   color: "#f472b6" },
+  { id: "room_storage",  name: dt("sv_room_storage" as DTKey, lang as any),  color: "#78716c" },
+  { id: "room_garage",   name: dt("sv_room_garage" as DTKey, lang as any),   color: "#6b7280" },
+  { id: "room_balcony",  name: dt("sv_room_balcony" as DTKey, lang as any),  color: "#86efac" },
+  { id: "room_laundry",  name: dt("sv_room_laundry" as DTKey, lang as any),  color: "#67e8f9" },
 ];
+export const ROOM_SURFACE_TYPES: SurfaceType[] = getRoomSurfaceTypes("fr");
 
-export const EMPRISE_TYPE: SurfaceType = {
-  id: "room_emprise", name: "Emprise au sol", color: "#60A5FA",
-};
+export const getEmpriseType = (lang: string): SurfaceType => ({
+  id: "room_emprise", name: dt("sv_emprise" as DTKey, lang as any), color: "#60A5FA",
+});
+export const EMPRISE_TYPE: SurfaceType = getEmpriseType("fr");
 
 /** All room types including emprise */
 export const ALL_ROOM_TYPES: SurfaceType[] = [...ROOM_SURFACE_TYPES, EMPRISE_TYPE];
@@ -499,16 +506,17 @@ export interface MeasureLayer {
   locked: boolean;
 }
 
-export const DEFAULT_LAYERS: MeasureLayer[] = [
-  { id: "lyr_general",    name: "Général",      color: "#6B7280", visible: true, locked: false },
-  { id: "lyr_archi",      name: "Architecture", color: "#3B82F6", visible: true, locked: false },
-  { id: "lyr_structure",  name: "Structure",    color: "#F97316", visible: true, locked: false },
-  { id: "lyr_electrical", name: "Électricité",  color: "#EF4444", visible: true, locked: false },
-  { id: "lyr_plumbing",   name: "Plomberie",    color: "#06B6D4", visible: true, locked: false },
-  { id: "lyr_mechanical", name: "CVC",          color: "#10B981", visible: true, locked: false },
-  { id: "lyr_fire",       name: "Incendie",     color: "#F59E0B", visible: true, locked: false },
-  { id: "lyr_interior",   name: "Finitions",    color: "#8B5CF6", visible: true, locked: false },
+export const getDefaultLayers = (lang: string): MeasureLayer[] => [
+  { id: "lyr_general",    name: dt("layer_general" as DTKey, lang as any),      color: "#6B7280", visible: true, locked: false },
+  { id: "lyr_archi",      name: dt("layer_architecture" as DTKey, lang as any), color: "#3B82F6", visible: true, locked: false },
+  { id: "lyr_structure",  name: dt("layer_structure" as DTKey, lang as any),    color: "#F97316", visible: true, locked: false },
+  { id: "lyr_electrical", name: dt("layer_electricite" as DTKey, lang as any),  color: "#EF4444", visible: true, locked: false },
+  { id: "lyr_plumbing",   name: dt("layer_plomberie" as DTKey, lang as any),   color: "#06B6D4", visible: true, locked: false },
+  { id: "lyr_mechanical", name: dt("layer_cvc" as DTKey, lang as any),         color: "#10B981", visible: true, locked: false },
+  { id: "lyr_fire",       name: dt("layer_incendie" as DTKey, lang as any),    color: "#F59E0B", visible: true, locked: false },
+  { id: "lyr_interior",   name: dt("layer_finitions" as DTKey, lang as any),   color: "#8B5CF6", visible: true, locked: false },
 ];
+export const DEFAULT_LAYERS: MeasureLayer[] = getDefaultLayers("fr");
 
 // ── Tool Chest presets (Bluebeam-style) ─────────────────────────────────────
 

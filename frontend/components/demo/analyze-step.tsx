@@ -51,6 +51,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
   const [error, setError] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [selectedModel, setSelectedModel] = useState<"standard" | "houses">("standard");
   const elapsedRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -94,7 +95,7 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
         body: JSON.stringify({
           session_id: sessionId,
           roboflow_api_key: config.apiKey,
-          model_id: config.modelName,
+          model_id: selectedModel === "houses" ? "pixel_ia_mix" : config.modelName,
           pixels_per_meter: ppm ?? null,
           conf_min_door: 0.05,
           conf_min_win: 0.15,
@@ -178,6 +179,32 @@ export default function AnalyzeStep({ sessionId, config, ppm, onAnalyzed, onSess
                 <p className="text-white font-600 text-base mb-1">{d("an_ready_go")}</p>
                 <p className="text-slate-400 text-sm">{d("an_ready_desc")}</p>
               </div>
+
+              {/* Houses mode toggle */}
+              <button
+                onClick={() => setSelectedModel(m => m === "houses" ? "standard" : "houses")}
+                className={cn(
+                  "w-full flex items-center gap-3 rounded-xl border px-4 py-3 transition-all",
+                  selectedModel === "houses"
+                    ? "border-amber-500/40 bg-amber-500/5"
+                    : "border-white/10 hover:border-white/20 hover:bg-white/[0.02]"
+                )}
+              >
+                <Home className={cn("w-5 h-5 shrink-0", selectedModel === "houses" ? "text-amber-400" : "text-slate-500")} />
+                <div className="flex-1 text-left">
+                  <span className={cn("text-sm font-600", selectedModel === "houses" ? "text-white" : "text-slate-300")}>{d("an_model_houses")}</span>
+                  <p className="text-[11px] text-slate-500">{d("an_model_houses_desc")}</p>
+                </div>
+                <div className={cn(
+                  "w-9 h-5 rounded-full p-0.5 transition-all shrink-0",
+                  selectedModel === "houses" ? "bg-amber-500" : "bg-white/15"
+                )}>
+                  <div className={cn(
+                    "w-4 h-4 rounded-full bg-white transition-transform",
+                    selectedModel === "houses" ? "translate-x-4" : "translate-x-0"
+                  )} />
+                </div>
+              </button>
 
               {/* Summary pills */}
               <div className="flex flex-wrap gap-2 justify-center">

@@ -342,13 +342,8 @@ export default function MeasureCanvas({
   const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
   // Markup drag state
   const dragMarkupRef = useRef<{ id: string; kind: "markup" | "text" | "circle"; startNorm: { x: number; y: number }; origX1: number; origY1: number; origX2: number; origY2: number } | null>(null);
-  // Layers panel & Tool Chest panel
-  const [showLayersPanel, setShowLayersPanel] = useState(false);
+  // Tool Chest panel
   const [showToolChest, setShowToolChest] = useState(false);
-  // Layer creation modal
-  const [newLayerModalOpen, setNewLayerModalOpen] = useState(false);
-  const [newLayerName, setNewLayerName] = useState("");
-  const [newLayerColor, setNewLayerColor] = useState("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"));
   // Dropdown menus
   const [showAnnotDropdown, setShowAnnotDropdown] = useState(false);
   const [showEraserDropdown, setShowEraserDropdown] = useState(false);
@@ -1759,41 +1754,16 @@ export default function MeasureCanvas({
   return (
     <div className="flex flex-col gap-2">
 
-      {/* ══ BAR 1 : CALQUES ══ */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 min-w-0 overflow-x-auto overflow-y-visible">
-        <Layers size={12} className="text-blue-400 shrink-0" />
-        <span className="text-[9px] text-blue-400 uppercase tracking-wider font-semibold mr-1 shrink-0">CALQUES</span>
+      {/* ══ BAR 1 : UNDO/REDO ══ */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 min-w-0">
+        {/* Active layer indicator */}
+        {(() => { const lyr = layers.find(l => l.id === activeLayerId); return lyr ? (
+          <div className="flex items-center gap-1.5 mr-auto">
+            <span className="w-2.5 h-2.5 rounded-full ring-1 ring-white/20 shrink-0" style={{ background: lyr.color }} />
+            <span className="text-[10px] text-slate-400 truncate max-w-24">{lyr.name}</span>
+          </div>
+        ) : null; })()}
 
-        {/* ── Inline layer buttons ── */}
-        {layers.map(lyr => (
-          <button key={lyr.id}
-            onClick={() => onActiveLayerIdChange?.(lyr.id)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${
-              activeLayerId === lyr.id
-                ? "border-blue-500/40 bg-blue-500/15 text-white shadow-sm shadow-blue-500/10"
-                : "border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/10 hover:bg-white/5"
-            }`}>
-            <span className={`w-2.5 h-2.5 rounded-full ring-1 shrink-0 ${activeLayerId === lyr.id ? "ring-white/30" : "ring-white/10"}`} style={{ background: lyr.color }} />
-            <span className="truncate max-w-20">{lyr.name}</span>
-            {lyr.locked && <Lock className="w-2.5 h-2.5 text-red-400 shrink-0" />}
-            {!lyr.visible && <EyeOff className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
-          </button>
-        ))}
-
-        {/* Create new layer */}
-        <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
-          title={d("mc_create_layer" as DTKey)}
-          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] border border-dashed border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/50 transition-all">
-          {d("mc_new_layer" as DTKey)}
-        </button>
-
-        {/* Manage layers (open panel) */}
-        <button onClick={() => setShowLayersPanel(v => !v)} title={d("mc_manage_layers" as DTKey)}
-          className={`p-1 rounded text-slate-500 hover:text-blue-400 transition-colors ${showLayersPanel ? "text-blue-400 bg-blue-500/10" : ""}`}>
-          <Wrench size={11} />
-        </button>
-
-        {/* ── Right side: just undo/redo ── */}
         <div className="ml-auto flex items-center gap-1">
           <button onClick={undoLast} title={d("common_undo" as DTKey)}
             disabled={drawingPoints.length === 0 && !canUndo}
@@ -3288,121 +3258,6 @@ export default function MeasureCanvas({
             </div>
           );
         })()}
-
-        {/* ── Layers panel overlay ── */}
-        {showLayersPanel && (
-          <div className="absolute top-14 left-4 z-50 glass border border-blue-500/30 rounded-2xl p-3 shadow-2xl min-w-72 pointer-events-auto max-h-96 overflow-y-auto"
-            onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wider">{d("mc_layers" as DTKey)}</span>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => { setNewLayerName(""); setNewLayerColor("#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0")); setNewLayerModalOpen(true); }}
-                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-[10px] px-2 py-1 border border-blue-500/30 rounded-lg hover:bg-blue-500/10 transition-all">
-                  + {d("mc_layer_create" as DTKey)}
-                </button>
-                <button onClick={() => setShowLayersPanel(false)} className="text-slate-500 hover:text-white p-0.5 rounded hover:bg-white/5 transition-colors">
-                  <span className="text-xs">✕</span>
-                </button>
-              </div>
-            </div>
-
-            {/* New layer creation form (inline modal) */}
-            {newLayerModalOpen && (
-              <div className="mb-3 p-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                <p className="text-[10px] text-blue-300 font-medium mb-2 uppercase tracking-wider">{d("mc_new_layer_title" as DTKey)}</p>
-                <div className="flex flex-col gap-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newLayerName}
-                    onChange={e => setNewLayerName(e.target.value)}
-                    onKeyDown={e => {
-                      e.stopPropagation();
-                      if (e.key === "Enter" && newLayerName.trim()) {
-                        const id = `lyr_${Date.now()}`;
-                        onLayersChange?.([...layers, { id, name: newLayerName.trim(), color: newLayerColor, visible: true, locked: false }]);
-                        onActiveLayerIdChange?.(id);
-                        setNewLayerModalOpen(false);
-                      }
-                      if (e.key === "Escape") setNewLayerModalOpen(false);
-                    }}
-                    placeholder={d("mc_layer_name_ph" as DTKey)}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500/40"
-                  />
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] text-slate-500 shrink-0">{d("mc_layer_color" as DTKey)}</label>
-                    <input type="color" value={newLayerColor}
-                      onChange={e => setNewLayerColor(e.target.value)}
-                      className="w-6 h-6 rounded-lg border border-white/20 cursor-pointer p-0 shrink-0" />
-                    <span className="text-[10px] text-slate-500 font-mono">{newLayerColor}</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      disabled={!newLayerName.trim()}
-                      onClick={() => {
-                        const id = `lyr_${Date.now()}`;
-                        onLayersChange?.([...layers, { id, name: newLayerName.trim(), color: newLayerColor, visible: true, locked: false }]);
-                        onActiveLayerIdChange?.(id);
-                        setNewLayerModalOpen(false);
-                      }}
-                      className="flex-1 py-1.5 text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors disabled:opacity-30">
-                      {d("mc_layer_create" as DTKey)}
-                    </button>
-                    <button onClick={() => setNewLayerModalOpen(false)}
-                      className="px-3 py-1.5 text-[10px] border border-white/10 text-slate-400 rounded-lg hover:text-white transition-colors">
-                      {d("common_cancel" as DTKey)}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Layer list */}
-            <div className="flex flex-col gap-0.5">
-              {layers.map(lyr => {
-                const zoneCount = zones.filter(z => (z.layer ?? "lyr_general") === lyr.id).length;
-                const mkCount = markupAnnotations.filter(m => (m.layer ?? "lyr_general") === lyr.id).length;
-                const total = zoneCount + mkCount;
-                return (
-                  <div key={lyr.id} className={`group flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs transition-all cursor-pointer ${
-                    activeLayerId === lyr.id ? "bg-blue-500/10 border border-blue-500/30 shadow-sm" : "border border-transparent hover:bg-white/5 hover:border-white/5"
-                  }`}
-                    onClick={() => onActiveLayerIdChange?.(lyr.id)}>
-                    <button onClick={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, visible: !l.visible } : l)); }}
-                      className="text-slate-400 hover:text-white shrink-0" title={lyr.visible ? "Masquer" : "Afficher"}>
-                      {lyr.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 opacity-40" />}
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, locked: !l.locked } : l)); }}
-                      className="text-slate-400 hover:text-white shrink-0" title={lyr.locked ? "Déverrouiller" : "Verrouiller"}>
-                      {lyr.locked ? <Lock className="w-3.5 h-3.5 text-red-400" /> : <Unlock className="w-3.5 h-3.5 opacity-40" />}
-                    </button>
-                    <span className="w-4 h-4 rounded-md ring-1 ring-white/20 shrink-0 cursor-pointer relative overflow-hidden group/color"
-                      style={{ background: lyr.color }}>
-                      <input type="color" value={lyr.color}
-                        onChange={e => { e.stopPropagation(); onLayersChange?.(layers.map(l => l.id === lyr.id ? { ...l, color: e.target.value } : l)); }}
-                        onClick={e => e.stopPropagation()}
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" title="Changer la couleur" />
-                    </span>
-                    <span className={`flex-1 text-left truncate ${activeLayerId === lyr.id ? "text-white font-medium" : "text-slate-400"}`}>
-                      {lyr.name}
-                    </span>
-                    {total > 0 && <span className="text-[9px] text-slate-600 font-mono bg-white/5 px-1.5 py-0.5 rounded-md">{total}</span>}
-                    {lyr.id !== "lyr_general" && lyr.id !== "lyr_structure" && lyr.id !== "lyr_annotation" && (
-                      <button onClick={e => {
-                        e.stopPropagation();
-                        if (!confirm(`Supprimer le calque "${lyr.name}" ?`)) return;
-                        onLayersChange?.(layers.filter(l => l.id !== lyr.id));
-                        if (activeLayerId === lyr.id) onActiveLayerIdChange?.("lyr_general");
-                      }} className="text-slate-600 hover:text-red-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Supprimer">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* ── Tool Chest panel overlay ── */}
         {showToolChest && (
