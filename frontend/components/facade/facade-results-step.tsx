@@ -405,7 +405,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           </button>
         )}
         {/* Mask filter: Tous | Murs | Ouvertures */}
-        <div id="fr-tuto-filter" className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
+        <div data-tuto-fr="filter" className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
           {([
             { id: "all" as MaskFilterMode, label: d("fr_filter_all" as DTKey) },
             { id: "walls" as MaskFilterMode, label: d("fr_filter_walls" as DTKey) },

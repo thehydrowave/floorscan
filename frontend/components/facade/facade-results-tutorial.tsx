@@ -27,7 +27,7 @@ const STEPS: TutorialStep[] = [
   { icon: <PenSquare className="w-6 h-6" />, titleKey: "tuto_fr_edit" as DTKey,     color: "text-amber-300",   target: '[data-tuto-fr="edit"]' },
   { icon: <ZoomIn className="w-6 h-6" />,    titleKey: "tuto_fr_zoom" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fr="zoom"]' },
   { icon: <Download className="w-6 h-6" />,  titleKey: "tuto_fr_export" as DTKey,   color: "text-violet-300",  target: '[data-tuto-fr="export"]' },
-  { icon: <Wrench className="w-6 h-6" />,    titleKey: "tuto_fr_advanced" as DTKey, color: "text-rose-300",    target: '[data-tuto-fr="advanced"]' },
+  { icon: <Wrench className="w-6 h-6" />,    titleKey: "tuto_fr_advanced" as DTKey, color: "text-rose-300" },
 ];
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
