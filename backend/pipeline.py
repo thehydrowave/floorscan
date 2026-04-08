@@ -129,6 +129,13 @@ PIPELINE_DEFINITIONS = [
         "description": "Murs via wall-detection-qpxun/1 + morphologie + Hough",
         "color": "#0EA5E9",  # sky
     },
+    {
+        "id": "W", "name": "Pure CV Walls (W)",
+        "model_ids": [],
+        "type": "pure_cv_walls",
+        "description": "Murs LSD+morpho directionnelle (CV pure) + portes/fenêtres IA",
+        "color": "#06B6D4",  # cyan
+    },
 ]
 
 # Labels structurels à exclure des pièces détectées
@@ -2637,6 +2644,27 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
             "is_diagonal": True, "is_hybrid": True,
         }
 
+    # ── Pipeline W: Pure CV Walls (LSD + morpho directionnelle) ──
+    try:
+        logger.info("Building pure CV walls pipeline W...")
+        from pipeline_v4 import run_pipeline_w
+        results["W"] = run_pipeline_w(img_rgb, img_pil, client, ppm, cfg)
+        logger.info("Pipeline W built: doors=%d, windows=%d, diagonal_pct=%.1f%%",
+                     results["W"].get("doors_count", 0), results["W"].get("windows_count", 0),
+                     (results["W"].get("diagonal_stats") or {}).get("diagonal_pct", 0))
+    except Exception as e:
+        logger.error("Pipeline W failed: %s", e, exc_info=True)
+        results["W"] = {
+            "id": "W", "name": "Pure CV Walls (W)",
+            "description": "Murs LSD+morpho directionnelle (CV pure) + portes/fenêtres IA",
+            "color": "#06B6D4",
+            "doors_count": 0, "windows_count": 0,
+            "mask_doors_b64": None, "mask_windows_b64": None, "mask_walls_b64": None,
+            "mask_footprint_b64": None, "footprint_area_m2": None, "rooms_count": 0, "rooms": [],
+            "mask_rooms_b64": None, "timing_seconds": 0, "error": str(e),
+            "is_diagonal": True,
+        }
+
     # ── Clean up internal raw masks before JSON serialization ──
     for pid in list(results.keys()):
         for k in list(results[pid].keys()):
@@ -2645,8 +2673,8 @@ def run_comparison(img_rgb: np.ndarray, ppm: float, cfg: dict,
 
     total_time = round(time.time() - t0, 2)
 
-    # ── Build comparison table (K, P first = latest tests) ──
-    ordered = ["Z", "K", "P", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
+    # ── Build comparison table (W first = latest test) ──
+    ordered = ["W", "Z", "K", "P", "J", "I", "H", "G", "F", "A", "B", "C", "D", "E"]
     table_rows = []
     for pid in ordered:
         r = results.get(pid, {})
