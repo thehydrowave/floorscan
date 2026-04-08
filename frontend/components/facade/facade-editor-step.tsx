@@ -1233,11 +1233,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
           </div>
 
           {/* ══ BAR 2 : EDIT LAYER ══ */}
-          <div data-tuto-fa="edit-layer" className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 glass rounded-xl border border-white/10 shrink-0 flex-wrap">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mr-1 shrink-0">EDIT</span>
 
             {/* Layer buttons: Window + Surface nette */}
-            <button onClick={() => { setAddType("window"); setActiveLayer("window"); setVisibility(v => ({ ...v, window: true })); if (tool === "select") setTool("add_rect"); }}
+            <button data-tuto-fa="edit-layer" onClick={() => { setAddType("window"); setActiveLayer("window"); setVisibility(v => ({ ...v, window: true })); if (tool === "select") setTool("add_rect"); }}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                 addType === "window" ? "border-pink-500/40 bg-pink-500/10 text-pink-400" : "border-white/5 hover:border-white/10 hover:bg-white/5")}>
               <AppWindow className={cn("w-4 h-4 shrink-0", "text-pink-400")} />
@@ -1312,9 +1312,8 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
             ))}
 
             {/* Add custom type button */}
-            <span data-tuto-fa="custom-type" className="contents">
             {!showNewTypeForm ? (
-              <button onClick={() => { setShowNewTypeForm(true); setNewTypeName(""); setNewTypeColor(CUSTOM_COLORS[0]); setNewTypeReplacesWall(false); }}
+              <button data-tuto-fa="custom-type" onClick={() => { setShowNewTypeForm(true); setNewTypeName(""); setNewTypeColor(CUSTOM_COLORS[0]); setNewTypeReplacesWall(false); }}
                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] border border-dashed border-white/20 text-slate-500 hover:text-slate-300 hover:border-white/30 transition-all">
                 <Plus className="w-3 h-3" /> {d("fe_add_type" as DTKey)}
               </button>
@@ -1358,18 +1357,16 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                   className="text-slate-500 hover:text-red-400"><X className="w-3 h-3" /></button>
               </div>
             )}
-            </span>{/* end custom-type tuto target */}
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
 
             {/* Tools */}
-            <span data-tuto-fa="tools" className="contents">
-            <button onClick={() => { setTool("select"); setDrawingPoly([]); }} title="Sélection"
+            <button data-tuto-fa="select" onClick={() => { setTool("select"); setDrawingPoly([]); }} title="Sélection"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "select" ? "border-teal-500/40 bg-teal-500/10 text-teal-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <MousePointer2 className="w-3 h-3" /> {d("fe_selection" as DTKey)}
             </button>
-            <button onClick={() => { setTool("add_rect"); setSelectedId(null); }} title="Dessiner rectangle"
+            <button data-tuto-fa="draw" onClick={() => { setTool("add_rect"); setSelectedId(null); }} title="Dessiner rectangle"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "add_rect" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Square className="w-3 h-3" /> {d("fe_draw" as DTKey)}
@@ -1379,12 +1376,12 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "add_polygon" ? "border-accent/40 bg-accent/10 text-accent" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Pentagon className="w-3 h-3" /> {d("fe_free_shape" as DTKey)}
             </button>
-            <button onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Supprimer élément"
+            <button data-tuto-fa="delete" onClick={() => { setTool("erase_rect"); setDrawingPoly([]); }} title="Supprimer élément"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "erase_rect" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Trash2 className="w-3 h-3" /> {d("fe_delete" as DTKey)}
             </button>
-            <button onClick={() => { setTool("eraser"); setSelectedId(null); }} title="Gomme — affiner les zones"
+            <button data-tuto-fa="eraser" onClick={() => { setTool("eraser"); setSelectedId(null); }} title="Gomme — affiner les zones"
               className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition-all",
                 tool === "eraser" ? "border-orange-500/40 bg-orange-500/10 text-orange-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Eraser className="w-3 h-3" /> {d("fe_eraser" as DTKey)}
@@ -1404,13 +1401,11 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
               </div>
             )}
 
-            </span>{/* end tools tuto target */}
 
             <div className="w-px h-4 bg-white/10 shrink-0 mx-0.5" />
 
             {/* Measurement tools */}
-            <span data-tuto-fa="measure" className="contents">
-            <button onClick={() => setTool("linear")} title="Mesure de distance"
+            <button data-tuto-fa="measure" onClick={() => setTool("linear")} title="Mesure de distance"
               className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] border transition-all",
                 tool === "linear" ? "border-sky-500/40 bg-sky-500/10 text-sky-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Ruler className="w-2.5 h-2.5" /> {d("fe_linear" as DTKey)}
@@ -1430,7 +1425,6 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 tool === "rescale" ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/5 text-slate-500 hover:text-slate-300")}>
               <Ruler className="w-2.5 h-2.5" /> {d("fe_scale" as DTKey)}
             </button>
-            </span>{/* end measure tuto target */}
 
             <button data-tuto-fa="translation" onClick={() => {
               setTool("translation");

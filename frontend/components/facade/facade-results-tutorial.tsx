@@ -24,9 +24,9 @@ const STEPS: TutorialStep[] = [
   { icon: <Filter className="w-6 h-6" />,    titleKey: "tuto_fr_filter" as DTKey,   color: "text-slate-300",   target: '[data-tuto-fr="filter"]' },
   { icon: <BarChart3 className="w-6 h-6" />, titleKey: "tuto_fr_summary" as DTKey,  color: "text-emerald-300", target: '[data-tuto-fr="summary"]' },
   { icon: <PenSquare className="w-6 h-6" />, titleKey: "tuto_fr_edit" as DTKey,     color: "text-amber-300",   target: '[data-tuto-fr="edit"]' },
+  { icon: <ZoomIn className="w-6 h-6" />,    titleKey: "tuto_fr_zoom" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fr="zoom"]' },
   { icon: <Download className="w-6 h-6" />,  titleKey: "tuto_fr_export" as DTKey,   color: "text-violet-300",  target: '[data-tuto-fr="export"]' },
-  { icon: <ZoomIn className="w-6 h-6" />,    titleKey: "tuto_fr_zoom" as DTKey,     color: "text-sky-300" },
-  { icon: <Wrench className="w-6 h-6" />,    titleKey: "tuto_fr_advanced" as DTKey, color: "text-rose-300" },
+  { icon: <Wrench className="w-6 h-6" />,    titleKey: "tuto_fr_advanced" as DTKey, color: "text-rose-300",    target: '[data-tuto-fr="advanced"]' },
 ];
 
 interface SpotlightRect { x: number; y: number; w: number; h: number; }
@@ -55,6 +55,26 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
     el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   }, [step, show]);
 
+  // Lock body scroll + block wheel/keys while tutorial is open
+  useEffect(() => {
+    if (!show) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const blockWheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); };
+    const blockKeys = (e: KeyboardEvent) => {
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","PageUp","PageDown","Space","Home","End"].includes(e.code)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("wheel", blockWheel, { passive: false });
+    window.addEventListener("keydown", blockKeys);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("wheel", blockWheel);
+      window.removeEventListener("keydown", blockKeys);
+    };
+  }, [show]);
+
   // Track spotlight position (updates on scroll/resize)
   const updateSpotlight = useCallback(() => {
     if (!show) { setSpotlight(null); return; }
@@ -68,12 +88,13 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
   }, [step, show]);
 
   useEffect(() => {
-    updateSpotlight();
+    // After scrollIntoView completes, capture the spotlight position
+    const t1 = setTimeout(updateSpotlight, 50);
+    const t2 = setTimeout(updateSpotlight, 350);
+    const t3 = setTimeout(updateSpotlight, 700);
     const onUpdate = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(updateSpotlight); };
     window.addEventListener("resize", onUpdate);
-    window.addEventListener("scroll", onUpdate, true);
-    const interval = setInterval(updateSpotlight, 100);
-    return () => { window.removeEventListener("resize", onUpdate); window.removeEventListener("scroll", onUpdate, true); clearInterval(interval); cancelAnimationFrame(rafRef.current); };
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); window.removeEventListener("resize", onUpdate); cancelAnimationFrame(rafRef.current); };
   }, [updateSpotlight]);
 
   const dismiss = () => { setShow(false); try { localStorage.setItem(STORAGE_KEY, "1"); } catch {} };
@@ -87,17 +108,19 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
 
   return (
     <>
-      {/* Dimmed overlay with spotlight cutout */}
-      <svg className="fixed inset-0 z-[9999] w-full h-full pointer-events-none">
-        <defs>
-          <mask id="fr-tuto-mask">
-            <rect width="100%" height="100%" fill="white" />
-            {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
-          </mask>
-        </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#fr-tuto-mask)" />
-        {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
-      </svg>
+      {/* Strict overlay — captures all clicks, blocks page interaction */}
+      <div className="fixed inset-0 z-[9999]" style={{ pointerEvents: "auto" }} onClick={e => e.stopPropagation()} onWheel={e => e.preventDefault()}>
+        <svg className="w-full h-full pointer-events-none">
+          <defs>
+            <mask id="fr-tuto-mask">
+              <rect width="100%" height="100%" fill="white" />
+              {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
+            </mask>
+          </defs>
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.7)" mask="url(#fr-tuto-mask)" />
+          {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
+        </svg>
+      </div>
 
       {/* Popup — FIXED bottom-right, always visible regardless of scroll */}
       <AnimatePresence mode="wait">

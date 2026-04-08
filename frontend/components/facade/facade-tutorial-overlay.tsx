@@ -22,16 +22,16 @@ interface TutorialStep {
 }
 
 const STEPS: TutorialStep[] = [
-  { icon: <Eye className="w-6 h-6" />,            titleKey: "tuto_fa_visibility" as DTKey,  color: "text-slate-300",   target: '[data-tuto-fa="visibility"]', position: "bottom" },
-  { icon: <Pencil className="w-6 h-6" />,         titleKey: "tuto_fa_edit_layer" as DTKey,  color: "text-pink-300",    target: '[data-tuto-fa="edit-layer"]', position: "bottom" },
-  { icon: <MousePointer2 className="w-6 h-6" />,  titleKey: "tuto_fa_select" as DTKey,      color: "text-teal-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Square className="w-6 h-6" />,         titleKey: "tuto_fa_draw" as DTKey,        color: "text-cyan-300",    target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Trash2 className="w-6 h-6" />,         titleKey: "tuto_fa_delete" as DTKey,      color: "text-red-300",     target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Eraser className="w-6 h-6" />,         titleKey: "tuto_fa_eraser" as DTKey,      color: "text-orange-300",  target: '[data-tuto-fa="tools"]',      position: "bottom" },
-  { icon: <Copy className="w-6 h-6" />,           titleKey: "tuto_fa_translation" as DTKey, color: "text-orange-300",  target: '[data-tuto-fa="translation"]',position: "bottom" },
-  { icon: <PlusCircle className="w-6 h-6" />,     titleKey: "tuto_fa_custom_type" as DTKey, color: "text-violet-300",  target: '[data-tuto-fa="custom-type"]',position: "bottom" },
-  { icon: <Ruler className="w-6 h-6" />,          titleKey: "tuto_fa_measure" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fa="measure"]',    position: "bottom" },
-  { icon: <Download className="w-6 h-6" />,       titleKey: "tuto_fa_export" as DTKey,      color: "text-emerald-300", target: '[data-tuto-fa="export"]',     position: "bottom" },
+  { icon: <Eye className="w-6 h-6" />,            titleKey: "tuto_fa_visibility" as DTKey,  color: "text-slate-300",   target: '[data-tuto-fa="visibility"]' },
+  { icon: <Pencil className="w-6 h-6" />,         titleKey: "tuto_fa_edit_layer" as DTKey,  color: "text-pink-300",    target: '[data-tuto-fa="edit-layer"]' },
+  { icon: <MousePointer2 className="w-6 h-6" />,  titleKey: "tuto_fa_select" as DTKey,      color: "text-teal-300",    target: '[data-tuto-fa="select"]' },
+  { icon: <Square className="w-6 h-6" />,         titleKey: "tuto_fa_draw" as DTKey,        color: "text-cyan-300",    target: '[data-tuto-fa="draw"]' },
+  { icon: <Trash2 className="w-6 h-6" />,         titleKey: "tuto_fa_delete" as DTKey,      color: "text-red-300",     target: '[data-tuto-fa="delete"]' },
+  { icon: <Eraser className="w-6 h-6" />,         titleKey: "tuto_fa_eraser" as DTKey,      color: "text-orange-300",  target: '[data-tuto-fa="eraser"]' },
+  { icon: <Copy className="w-6 h-6" />,           titleKey: "tuto_fa_translation" as DTKey, color: "text-orange-300",  target: '[data-tuto-fa="translation"]' },
+  { icon: <PlusCircle className="w-6 h-6" />,     titleKey: "tuto_fa_custom_type" as DTKey, color: "text-violet-300",  target: '[data-tuto-fa="custom-type"]' },
+  { icon: <Ruler className="w-6 h-6" />,          titleKey: "tuto_fa_measure" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fa="measure"]' },
+  { icon: <Download className="w-6 h-6" />,       titleKey: "tuto_fa_export" as DTKey,      color: "text-emerald-300", target: '[data-tuto-fa="export"]' },
   { icon: <RefreshCw className="w-6 h-6" />,      titleKey: "tuto_fa_shortcuts" as DTKey,   color: "text-amber-300" },
 ];
 
@@ -68,6 +68,26 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   }, [step, show]);
 
+  // Lock body scroll + block wheel/keys while tutorial is open
+  useEffect(() => {
+    if (!show) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const blockWheel = (e: WheelEvent) => { e.preventDefault(); e.stopPropagation(); };
+    const blockKeys = (e: KeyboardEvent) => {
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","PageUp","PageDown","Space","Home","End"].includes(e.code)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("wheel", blockWheel, { passive: false });
+    window.addEventListener("keydown", blockKeys);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("wheel", blockWheel);
+      window.removeEventListener("keydown", blockKeys);
+    };
+  }, [show]);
+
   const updateSpotlight = useCallback(() => {
     const current = STEPS[step];
     if (!current?.target || !show) { setSpotlight(null); return; }
@@ -79,12 +99,12 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
   }, [step, show]);
 
   useEffect(() => {
-    updateSpotlight();
+    const t1 = setTimeout(updateSpotlight, 50);
+    const t2 = setTimeout(updateSpotlight, 350);
+    const t3 = setTimeout(updateSpotlight, 700);
     const onUpdate = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(updateSpotlight); };
     window.addEventListener("resize", onUpdate);
-    window.addEventListener("scroll", onUpdate, true);
-    const interval = setInterval(updateSpotlight, 100);
-    return () => { window.removeEventListener("resize", onUpdate); window.removeEventListener("scroll", onUpdate, true); clearInterval(interval); cancelAnimationFrame(rafRef.current); };
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); window.removeEventListener("resize", onUpdate); cancelAnimationFrame(rafRef.current); };
   }, [updateSpotlight]);
 
   const dismiss = () => {
@@ -99,17 +119,19 @@ export default function FacadeTutorialOverlay({ forceShow: externalForce }: { fo
 
   return (
     <>
-      {/* Dark overlay with spotlight hole — non-clickable, no event capture */}
-      <svg className="fixed inset-0 z-[9999] w-full h-full pointer-events-none">
-        <defs>
-          <mask id="fa-tuto-mask">
-            <rect width="100%" height="100%" fill="white" />
-            {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
-          </mask>
-        </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.65)" mask="url(#fa-tuto-mask)" />
-        {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
-      </svg>
+      {/* Strict overlay — captures all clicks, blocks page interaction */}
+      <div className="fixed inset-0 z-[9999]" style={{ pointerEvents: "auto" }} onClick={e => e.stopPropagation()} onWheel={e => e.preventDefault()}>
+        <svg className="w-full h-full pointer-events-none">
+          <defs>
+            <mask id="fa-tuto-mask">
+              <rect width="100%" height="100%" fill="white" />
+              {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
+            </mask>
+          </defs>
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.7)" mask="url(#fa-tuto-mask)" />
+          {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#f59e0b" strokeWidth={3} className="animate-pulse" />}
+        </svg>
+      </div>
 
       {/* Popup — FIXED bottom-right, always visible regardless of scroll */}
       <AnimatePresence mode="wait">
