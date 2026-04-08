@@ -47,12 +47,19 @@ export default function MeasureTutorialOverlay({ forceShow: externalForce }: { f
     } catch {}
   }, []);
 
-  // Force-show when button clicked (counter increments each time)
+  // Force-show when button clicked
   useEffect(() => {
-    if (externalForce) { setShow(true); setStep(0); }
+    if (externalForce) {
+      console.log("[MeasureTuto] forceShow triggered:", externalForce);
+      setShow(true);
+      setStep(0);
+    }
   }, [externalForce]);
 
-  const dismiss = () => { setShow(false); try { localStorage.setItem(STORAGE_KEY, "1"); } catch {} };
+  const dismiss = useCallback(() => {
+    setShow(false);
+    try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
+  }, []);
 
   if (!show) return null;
 

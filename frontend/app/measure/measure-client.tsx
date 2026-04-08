@@ -1056,7 +1056,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
-                    <button onClick={() => { resetMeasureTutorial(); setShowMeasureTuto(v => v + 1); }}
+                    <button onClick={() => { console.log("[MeasureTuto] Button clicked, resetting + incrementing"); resetMeasureTutorial(); setShowMeasureTuto(v => { console.log("[MeasureTuto] counter:", v, "->", v+1); return v + 1; }); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
                       title={d("tuto_header" as DTKey)}>
                       <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
