@@ -274,6 +274,31 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
   const [activeCountGroupId, setActiveCountGroupId] = useState<string>(DEFAULT_COUNT_GROUPS[0].id);
   const [countGroupVisibility, setCountGroupVisibility] = useState<Record<string, boolean>>({});
   const [sidebarTab, setSidebarTab] = useState<"results" | "rooms" | "visibility">("results");
+  // Resizable sidebar width (persisted in localStorage)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 280;
+    const saved = parseInt(localStorage.getItem("floorscan_editor_sidebar_w") ?? "280", 10);
+    return isNaN(saved) ? 280 : Math.max(220, Math.min(700, saved));
+  });
+  const sidebarDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const onSidebarDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarDragRef.current = { startX: e.clientX, startW: sidebarWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (!sidebarDragRef.current) return;
+      const delta = sidebarDragRef.current.startX - ev.clientX;
+      const newW = Math.max(220, Math.min(700, sidebarDragRef.current.startW + delta));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      sidebarDragRef.current = null;
+      try { localStorage.setItem("floorscan_editor_sidebar_w", String(sidebarWidth)); } catch {}
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // Text annotations & Circle measurements (Wave 4)
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
@@ -3874,8 +3899,13 @@ export default function EditorStep({ sessionId, initialResult, initialCustomDete
 
           </div>
 
-          {/* \u2550\u2550 RIGHT SIDEBAR \u2550\u2550 */}
-          <div className="w-[280px] shrink-0 flex flex-col gap-1.5 overflow-hidden">
+          {/* ══ DRAG HANDLE ══ */}
+          <div onMouseDown={onSidebarDragStart}
+            className="shrink-0 w-1.5 hover:w-2 bg-white/5 hover:bg-orange-500/40 cursor-col-resize transition-all rounded-full"
+            title="Glisser pour redimensionner" />
+
+          {/* ══ RIGHT SIDEBAR ══ */}
+          <div className="shrink-0 flex flex-col gap-1.5 overflow-hidden" style={{ width: sidebarWidth }}>
             <div className="flex glass border border-white/10 rounded-lg p-0.5 gap-0.5 shrink-0">
               {([
                 { id: "results" as const, label: d("ed_ia_results") },
