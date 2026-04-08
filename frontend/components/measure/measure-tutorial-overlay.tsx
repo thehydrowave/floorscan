@@ -36,24 +36,21 @@ export default function MeasureTutorialOverlay({ forceShow: externalForce }: { f
 
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
-  const hasAutoShown = useRef(false);
 
-  // Auto-show on first visit (only once per mount)
+  // Auto-show on first visit
   useEffect(() => {
-    if (hasAutoShown.current) return;
     try {
-      const seen = localStorage.getItem(STORAGE_KEY);
-      if (!seen) {
-        hasAutoShown.current = true;
-        const t = setTimeout(() => { setShow(true); setStep(0); }, 800);
+      if (!localStorage.getItem(STORAGE_KEY)) {
+        const t = setTimeout(() => setShow(true), 800);
         return () => clearTimeout(t);
       }
     } catch {}
   }, []);
 
-  // Force-show when button clicked (counter increments each time)
+  // Force-show when button clicked
   useEffect(() => {
     if (externalForce) {
+      console.log("[MeasureTuto] forceShow triggered:", externalForce);
       setShow(true);
       setStep(0);
     }
