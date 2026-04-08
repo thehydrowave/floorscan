@@ -160,7 +160,6 @@ export default function DemoClient() {
       </div>
 
       {demoMode==="chantier"&&<div className="bg-orange-500/10 border-b border-orange-500/20"><div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm"><AlertTriangle className="w-4 h-4 text-orange-400 shrink-0"/><span className="text-orange-300/90">{d("chantier_banner" as any)}</span></div></div>}
-      {demoMode==="facade"&&<div className="bg-amber-500/10 border-b border-amber-500/20"><div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm"><AlertTriangle className="w-4 h-4 text-amber-400 shrink-0"/><span className="text-amber-300/90">{d("fa_mock_warn")}</span></div></div>}
       {demoMode==="diff"&&<div className="bg-teal-500/10 border-b border-teal-500/20"><div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm"><AlertTriangle className="w-4 h-4 text-teal-400 shrink-0"/><span className="text-teal-300/90">{d("di_mock_warn")}</span></div></div>}
       {demoMode==="cartouche"&&<div className="bg-violet-500/10 border-b border-violet-500/20"><div className="max-w-7xl mx-auto px-6 py-2.5 flex items-center gap-2.5 text-sm"><AlertTriangle className="w-4 h-4 text-violet-400 shrink-0"/><span className="text-violet-300/90">{d("ca_mock_warn")}</span></div></div>}
 

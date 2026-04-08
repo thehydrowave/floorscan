@@ -1107,13 +1107,7 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-      {/* Mock warning */}
-      {result.is_mock && (
-        <div className="mb-4 glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-          <p className="text-sm text-amber-300/80">{d("fa_mock_warn")}</p>
-        </div>
-      )}
+
 
       {/* ── Summary bar ABOVE canvas ── */}
       <div className="flex items-center gap-4 px-4 py-2 glass rounded-xl border border-white/10 mb-2 flex-wrap">
