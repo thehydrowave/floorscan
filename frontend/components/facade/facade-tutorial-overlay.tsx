@@ -118,7 +118,7 @@ export default function FacadeTutorialOverlay({ forceShow }: { forceShow?: boole
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -16 }}
           transition={{ duration: 0.2 }}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] w-[min(440px,calc(100vw-32px))] glass border-2 border-orange-500/60 bg-slate-900/95 rounded-2xl p-5 shadow-2xl"
+          className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] w-[min(480px,calc(100vw-32px))] glass border-2 border-orange-500/60 bg-slate-900/98 rounded-2xl p-5 shadow-2xl"
           style={{ boxShadow: "0 0 60px rgba(245,158,11,0.3)" }}
         >
           <div className="flex gap-1 mb-4">
