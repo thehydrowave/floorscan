@@ -286,8 +286,8 @@ export default function ScaleStep({ imageB64, onScaled, onBack }: ScaleStepProps
       </AnimatePresence>
 
       <button onClick={() => { resetScaleTutorial(); setShowScaleTuto(v => !v); }}
-        className="fixed bottom-6 left-6 z-50 flex items-center gap-1.5 px-3 py-2 glass border border-white/10 rounded-xl text-xs text-slate-400 hover:text-white transition-colors">
-        <BookOpen className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
+        className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 border-orange-500 bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 shadow-lg shadow-orange-500/20 transition-all">
+        <BookOpen className="w-4 h-4" /> {d("tuto_header" as DTKey)}
       </button>
       <ScaleTutorialOverlay forceShow={showScaleTuto} />
     </motion.div>
