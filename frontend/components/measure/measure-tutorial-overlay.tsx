@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PenLine, PaintBucket, Home, Ruler, Hash, Layers, Download, Sparkles, X, ChevronRight, ChevronLeft } from "lucide-react";
 import { useLang } from "@/lib/lang-context";
@@ -8,9 +8,14 @@ import { dt, DTKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "floorscan_measure_tuto_seen";
+const OPEN_EVENT = "floorscan:open-measure-tuto";
 
 export function resetMeasureTutorial() {
   try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}
+
+export function openMeasureTutorial() {
+  window.dispatchEvent(new Event(OPEN_EVENT));
 }
 
 interface TutorialStep {
@@ -30,12 +35,6 @@ const STEPS: TutorialStep[] = [
   { icon: <Download className="w-6 h-6" />,    titleKey: "tuto_me_step7_title" as DTKey, descKey: "tuto_me_step7_desc" as DTKey, color: "text-sky-400" },
 ];
 
-// Ref-based API: call MeasureTutorialOverlay.open() from parent
-let _openTutorial: (() => void) | null = null;
-export function openMeasureTutorial() {
-  if (_openTutorial) _openTutorial();
-}
-
 export default function MeasureTutorialOverlay() {
   const { lang } = useLang();
   const d = (key: DTKey) => dt(key, lang);
@@ -43,13 +42,11 @@ export default function MeasureTutorialOverlay() {
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
 
-  // Register the open function so parent can call it
+  // Listen for open event from button
   useEffect(() => {
-    _openTutorial = () => {
-      setShow(true);
-      setStep(0);
-    };
-    return () => { _openTutorial = null; };
+    const handler = () => { setShow(true); setStep(0); };
+    window.addEventListener(OPEN_EVENT, handler);
+    return () => window.removeEventListener(OPEN_EVENT, handler);
   }, []);
 
   // Auto-show on first visit
@@ -77,16 +74,13 @@ export default function MeasureTutorialOverlay() {
       {show && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           className="fixed inset-0 z-[9999]" onClick={dismiss}>
-          {/* Dark overlay */}
           <div className="absolute inset-0 bg-black/70" />
 
-          {/* Centered tooltip */}
           <motion.div key={step} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.25 }}
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass rounded-2xl border border-white/15 p-5 w-[380px] shadow-2xl"
             style={{ zIndex: 10000 }}
             onClick={e => e.stopPropagation()}>
-            {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-accent" />
@@ -97,7 +91,6 @@ export default function MeasureTutorialOverlay() {
               </button>
             </div>
 
-            {/* Progress */}
             <div className="flex gap-1 mb-4">
               {STEPS.map((_, i) => (
                 <div key={i} className={cn("h-1 rounded-full flex-1 transition-all duration-300",
@@ -105,7 +98,6 @@ export default function MeasureTutorialOverlay() {
               ))}
             </div>
 
-            {/* Content */}
             <div className="flex items-start gap-3 mb-5">
               <div className={cn("shrink-0 w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center", current.color)}>
                 {current.icon}
@@ -119,7 +111,6 @@ export default function MeasureTutorialOverlay() {
               </div>
             </div>
 
-            {/* Navigation */}
             <div className="flex justify-between items-center">
               <button onClick={() => step > 0 ? setStep(s => s - 1) : dismiss()}
                 className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors">
