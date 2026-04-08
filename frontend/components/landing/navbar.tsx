@@ -147,21 +147,21 @@ export default function Navbar() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 4, scale: 0.97 }}
                     transition={{ duration: 0.12 }}
-                    className="absolute right-0 top-full mt-1.5 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl shadow-black/30 overflow-hidden z-50"
+                    className="absolute right-0 top-full mt-1.5 w-48 bg-[var(--surface)] border border-[var(--border-base)] rounded-xl shadow-xl shadow-black/20 overflow-hidden z-50"
                   >
-                    <div className="px-3.5 py-2.5 border-b border-slate-700/50">
-                      <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-0.5">{isAdmin ? "Admin" : "Utilisateur"}</p>
+                    <div className="px-3.5 py-2.5 border-b border-[var(--border-base)]">
+                      <p className="text-xs text-[var(--text-muted)] truncate">{user?.email}</p>
+                      <p className="text-[10px] text-[var(--text-soft)] uppercase tracking-wider mt-0.5">{isAdmin ? "Admin" : "Utilisateur"}</p>
                     </div>
                     {isAdmin && (
                       <Link href="/admin" onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-amber-400 hover:bg-slate-700/50 transition-colors">
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-amber-400 hover:bg-[var(--surface-alt)] transition-colors">
                         <Shield className="w-3.5 h-3.5" /> Administration
                       </Link>
                     )}
                     <button
                       onClick={() => { setUserMenuOpen(false); signOut({ callbackUrl: "/" }); }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-slate-700/50 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface-alt)] transition-colors"
                     >
                       <LogOut className="w-3.5 h-3.5" /> Deconnexion
                     </button>
@@ -170,7 +170,7 @@ export default function Navbar() {
               </AnimatePresence>
             </div>
           ) : (
-            <Button variant="outline" size="sm" asChild className="border-slate-700 text-slate-300 hover:bg-slate-800">
+            <Button variant="outline" size="sm" asChild className="border-[var(--border-base)] text-[var(--foreground)] bg-[var(--surface)] hover:bg-[var(--surface-alt)] hover:border-[var(--glass-border)]">
               <Link href="/login"><User className="w-3.5 h-3.5" /> Connexion</Link>
             </Button>
           )}
