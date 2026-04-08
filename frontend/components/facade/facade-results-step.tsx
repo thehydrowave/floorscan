@@ -405,8 +405,7 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
           </button>
         )}
         {/* Mask filter: Tous | Murs | Ouvertures */}
-        <div className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
-          <div data-tuto-fr="filter" className="flex gap-1">
+        <div id="fr-tuto-filter" className="flex gap-1 glass rounded-lg border border-white/10 p-0.5">
           {([
             { id: "all" as MaskFilterMode, label: d("fr_filter_all" as DTKey) },
             { id: "walls" as MaskFilterMode, label: d("fr_filter_walls" as DTKey) },
@@ -419,7 +418,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
               {f.label}
             </button>
           ))}
-          </div>
           <button onClick={() => { resetFacadeResultsTutorial(); setShowTuto(v => !v); }} title={d("common_tutorial" as DTKey)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
             <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
