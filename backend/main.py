@@ -356,12 +356,18 @@ def analyze(req: AnalyzeRequest):
     cfg["pipeline_mode"]    = req.pipeline_mode
 
     try:
-        if req.model_id == "pixel_ia_mix":
+        if req.model_id in ("pixel_ia_mix", "pure_cv_walls"):
             from inference_sdk import InferenceHTTPClient
-            from pipeline_diagonal import run_pipeline_i
             img_pil = Image.fromarray(img_rgb).convert("RGB")
             client = InferenceHTTPClient(api_url="https://serverless.roboflow.com", api_key=cfg["api_key"])
-            raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
+
+            if req.model_id == "pure_cv_walls":
+                from pipeline_v4 import run_pipeline_w
+                raw = run_pipeline_w(img_rgb, img_pil, client, ppm, cfg)
+            else:
+                from pipeline_diagonal import run_pipeline_i
+                raw = run_pipeline_i(img_rgb, img_pil, client, ppm, cfg)
+
             plan_b64 = pipeline._np_to_b64(img_rgb)
             H, W = img_rgb.shape[:2]
             _empty = np.zeros((H, W), np.uint8)
