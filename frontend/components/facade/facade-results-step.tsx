@@ -330,13 +330,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-5xl mx-auto">
 
-      {/* Mock banner */}
-      {result.is_mock && (
-        <div className="mb-6 glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-          <p className="text-sm text-amber-300/80">{d("fa_mock_warn")}</p>
-        </div>
-      )}
 
       {/* KPI cards — per-zone breakdown if zones exist, else global */}
       {perZoneStats && perZoneStats.length > 0 ? (
@@ -623,13 +616,6 @@ export default function FacadeResultsStep({ result, onGoEditor, onRestart, onBac
                 {Math.abs(maskZoom - 1) > 0.05 && <span className="text-[9px] text-slate-500 font-mono pl-0.5">{maskZoom.toFixed(1)}x</span>}
               </div>
 
-              {/* Demo badge */}
-              {result.is_mock && (
-                <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 rounded-md
-                  bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-medium pointer-events-none">
-                  <AlertTriangle className="w-3 h-3" /> {d("fr_demo" as DTKey)}
-                </div>
-              )}
             </div>{/* /canvas panel */}
 
           </div>{/* /flex col */}

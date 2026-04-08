@@ -23,10 +23,10 @@ interface TutorialStep {
 
 const STEPS: TutorialStep[] = [
   { icon: <Filter className="w-6 h-6" />,     titleKey: "tuto_fr_filter" as DTKey,   color: "text-slate-300",   target: '[data-tuto-fr="filter"]',  position: "bottom" },
-  { icon: <ZoomIn className="w-6 h-6" />,     titleKey: "tuto_fr_zoom" as DTKey,     color: "text-sky-300",     target: '[data-tuto-fr="zoom"]',    position: "left" },
   { icon: <BarChart3 className="w-6 h-6" />,  titleKey: "tuto_fr_summary" as DTKey,  color: "text-emerald-300", target: '[data-tuto-fr="summary"]', position: "bottom" },
   { icon: <PenSquare className="w-6 h-6" />,  titleKey: "tuto_fr_edit" as DTKey,     color: "text-amber-300",   target: '[data-tuto-fr="edit"]',    position: "bottom" },
-  { icon: <Download className="w-6 h-6" />,   titleKey: "tuto_fr_export" as DTKey,   color: "text-violet-300",  target: '[data-tuto-fr="export"]',  position: "bottom" },
+  { icon: <Download className="w-6 h-6" />,   titleKey: "tuto_fr_export" as DTKey,   color: "text-violet-300",  target: '[data-tuto-fr="export"]',  position: "top" },
+  { icon: <ZoomIn className="w-6 h-6" />,     titleKey: "tuto_fr_zoom" as DTKey,     color: "text-sky-300" },
   { icon: <Wrench className="w-6 h-6" />,     titleKey: "tuto_fr_advanced" as DTKey, color: "text-rose-300" },
 ];
 
@@ -79,18 +79,16 @@ export default function FacadeResultsTutorial({ forceShow }: { forceShow?: boole
 
   return (
     <>
-      <div className="fixed inset-0 z-[9999]" onClick={dismiss}>
-        <svg className="w-full h-full">
-          <defs>
-            <mask id="fr-tuto-mask">
-              <rect width="100%" height="100%" fill="white" />
-              {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
-            </mask>
-          </defs>
-          <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#fr-tuto-mask)" />
-          {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#8b5cf6" strokeWidth={2.5} className="animate-pulse" />}
-        </svg>
-      </div>
+      <svg className="fixed inset-0 z-[9999] w-full h-full pointer-events-none">
+        <defs>
+          <mask id="fr-tuto-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="black" />}
+          </mask>
+        </defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#fr-tuto-mask)" />
+        {spotlight && <rect x={spotlight.x} y={spotlight.y} width={spotlight.w} height={spotlight.h} rx={12} fill="none" stroke="#8b5cf6" strokeWidth={2.5} className="animate-pulse" />}
+      </svg>
       <AnimatePresence mode="wait">
         <motion.div key={step} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}
           className="fixed z-[10000] w-80 glass border border-white/20 rounded-2xl p-5 shadow-2xl"

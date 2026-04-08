@@ -411,12 +411,6 @@ export default function FacadeAnalyzeStep({
                 </div>
               </div>
 
-              {/* Mock warning */}
-              <div className="w-full glass rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-amber-300/80 leading-relaxed">{d("fa_mock_warn")}</p>
-              </div>
-
               {/* ── ROI Section ── */}
               <div className="w-full flex flex-col gap-3">
                 {/* Toggle ROI */}
