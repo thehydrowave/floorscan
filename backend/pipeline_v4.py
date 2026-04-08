@@ -135,12 +135,10 @@ def _detect_walls_lsd(gray: np.ndarray, color_mask: np.ndarray,
                       H: int, W: int,
                       min_length: int = 20,
                       thickness: int = 3) -> np.ndarray:
-    """Détecte les segments de murs via LSD (Line Segment Detector).
+    """Détecte les segments de murs via LSD ou Canny+Hough (fallback).
 
-    LSD est supérieur à Hough pour les murs car :
-    - Pas besoin de grille angulaire (détecte tout angle)
-    - Fournit l'épaisseur du segment (width)
-    - Moins de faux positifs que HoughLinesP
+    Tente LSD d'abord (meilleur pour les diagonales), puis fallback
+    sur Canny+HoughLinesP si LSD n'est pas disponible (opencv-headless).
     """
     # Préparer l'image : lisser pour réduire le bruit texte
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
@@ -149,44 +147,64 @@ def _detect_walls_lsd(gray: np.ndarray, color_mask: np.ndarray,
     if color_mask is not None and cv2.countNonZero(color_mask) > 0:
         blurred[color_mask > 0] = 255
 
-    # Créer le détecteur LSD (paramètres positionnels)
-    lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
-
-    lines_result = lsd.detect(blurred)
-    segments = lines_result[0]
-    widths = lines_result[1] if len(lines_result) > 1 else None
-
     mask = np.zeros((H, W), np.uint8)
 
-    if segments is None:
-        logger.info("[W-lsd] No segments detected")
+    # ── Tenter LSD (disponible dans opencv-contrib ou opencv >= 4.8) ──
+    try:
+        lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
+        lines_result = lsd.detect(blurred)
+        segments = lines_result[0]
+        widths = lines_result[1] if len(lines_result) > 1 else None
+
+        if segments is not None:
+            n_kept = 0
+            for i, seg in enumerate(segments):
+                x1, y1, x2, y2 = seg[0]
+                length = math.hypot(x2 - x1, y2 - y1)
+                if length < min_length:
+                    continue
+                width = widths[i][0] if widths is not None else 1.0
+                if width < 1.5 and length < min_length * 3:
+                    continue
+                draw_thick = max(thickness, int(width * 0.8))
+                cv2.line(mask, (int(x1), int(y1)), (int(x2), int(y2)),
+                         255, draw_thick, cv2.LINE_AA)
+                n_kept += 1
+            logger.info("[W-lsd] LSD: %d/%d segments kept", n_kept, len(segments))
+            return mask
+
+    except (cv2.error, AttributeError):
+        logger.info("[W-lsd] LSD not available, using Canny+Hough fallback")
+
+    # ── Fallback : Canny + HoughLinesP (fonctionne partout) ──
+    edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
+
+    # Masquer les zones colorées dans les edges aussi
+    if color_mask is not None and cv2.countNonZero(color_mask) > 0:
+        edges[color_mask > 0] = 0
+
+    min_dim = min(H, W)
+    max_gap = max(5, int(min_dim * 0.008))
+
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180,
+                            threshold=20, minLineLength=min_length,
+                            maxLineGap=max_gap)
+
+    if lines is None:
+        logger.info("[W-lsd] Hough fallback: no segments detected")
         return mask
 
     n_kept = 0
-    for i, seg in enumerate(segments):
-        x1, y1, x2, y2 = seg[0]
+    for line in lines:
+        x1, y1, x2, y2 = map(int, line[0])
         length = math.hypot(x2 - x1, y2 - y1)
-
         if length < min_length:
             continue
-
-        # Épaisseur du segment détecté par LSD
-        width = widths[i][0] if widths is not None else 1.0
-
-        # On veut garder les segments assez épais (murs) OU assez longs
-        # Les murs sont typiquement width >= 2 ET length >= 30
-        if width < 1.5 and length < min_length * 3:
-            continue
-
-        # Dessiner le segment avec une épaisseur proportionnelle
-        draw_thick = max(thickness, int(width * 0.8))
-        cv2.line(mask, (int(x1), int(y1)), (int(x2), int(y2)),
-                 255, draw_thick, cv2.LINE_AA)
+        cv2.line(mask, (x1, y1), (x2, y2), 255, thickness, cv2.LINE_AA)
         n_kept += 1
 
-    logger.info("[W-lsd] %d/%d segments kept (min_len=%d)",
-                n_kept, len(segments), min_length)
-
+    logger.info("[W-lsd] Hough fallback: %d/%d segments kept",
+                n_kept, len(lines))
     return mask
 
 
