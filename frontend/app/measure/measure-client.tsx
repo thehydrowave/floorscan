@@ -9,7 +9,7 @@ import ScaleStep from "@/components/demo/scale-step";
 import MeasureCanvas from "@/components/measure/measure-canvas";
 import SurfacePanel from "@/components/measure/surface-panel";
 import MeasureCropStep from "@/components/measure/measure-crop-step";
-import MeasureTutorialOverlay, { resetMeasureTutorial } from "@/components/measure/measure-tutorial-overlay";
+import MeasureTutorialOverlay, { resetMeasureTutorial, openMeasureTutorial } from "@/components/measure/measure-tutorial-overlay";
 import MarkupsList from "@/components/measure/markups-list";
 import { SurfaceType, MeasureZone, PlanSnapshot, getDefaultSurfaceTypes, getRoomSurfaceTypes, getEmpriseType, aggregateByType, aggregatePerimeterByType, polygonAreaPx, polygonPerimeterM, LinearCategory, LinearMeasure, CountGroup, CountPoint, getDefaultLinearCategories, getDefaultCountGroups, AngleMeasurement, CircleMeasure, DisplayUnit, TextAnnotation, MarkupAnnotation, MarkupGroup, MeasureLayer, getDefaultLayers } from "@/lib/measure-types";
 import LangSwitcher from "@/components/ui/lang-switcher";
@@ -246,7 +246,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
   const [sessionId, setSessionId]           = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
   const [showRestoreBanner, setShowRestoreBanner] = useState(false);
-  const [showMeasureTuto, setShowMeasureTuto] = useState(0);
+  // Tutorial state removed — using openMeasureTutorial() directly
   const [vsMatches, setVsMatches]               = useState<VisualSearchMatch[]>([]);
   const [customDetections, setCustomDetections] = useState<CustomDetection[]>([]);
 
@@ -1056,7 +1056,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
                         {ppm.toFixed(1)} px/m
                       </span>
                     )}
-                    <button onClick={() => { console.log("[MeasureTuto] Button clicked, resetting + incrementing"); resetMeasureTutorial(); setShowMeasureTuto(v => { console.log("[MeasureTuto] counter:", v, "->", v+1); return v + 1; }); }}
+                    <button onClick={() => { resetMeasureTutorial(); openMeasureTutorial(); }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white border border-white/10 hover:border-accent/30 hover:bg-accent/5 transition-all"
                       title={d("tuto_header" as DTKey)}>
                       <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
@@ -1579,7 +1579,7 @@ export default function MeasureClient({ embedded = false }: { embedded?: boolean
 
       {content}
 
-      <MeasureTutorialOverlay forceShow={showMeasureTuto} />
+      <MeasureTutorialOverlay />
     </div>
   );
 }
