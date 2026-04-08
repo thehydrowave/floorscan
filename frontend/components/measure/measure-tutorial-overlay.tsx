@@ -36,12 +36,16 @@ export default function MeasureTutorialOverlay({ forceShow: externalForce }: { f
 
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
+  const hasAutoShown = useRef(false);
 
-  // Auto-show on first visit
+  // Auto-show on first visit (only once per mount)
   useEffect(() => {
+    if (hasAutoShown.current) return;
     try {
-      if (!localStorage.getItem(STORAGE_KEY)) {
-        const t = setTimeout(() => setShow(true), 800);
+      const seen = localStorage.getItem(STORAGE_KEY);
+      if (!seen) {
+        hasAutoShown.current = true;
+        const t = setTimeout(() => { setShow(true); setStep(0); }, 800);
         return () => clearTimeout(t);
       }
     } catch {}
@@ -49,10 +53,16 @@ export default function MeasureTutorialOverlay({ forceShow: externalForce }: { f
 
   // Force-show when button clicked (counter increments each time)
   useEffect(() => {
-    if (externalForce) { setShow(true); setStep(0); }
+    if (externalForce) {
+      setShow(true);
+      setStep(0);
+    }
   }, [externalForce]);
 
-  const dismiss = () => { setShow(false); try { localStorage.setItem(STORAGE_KEY, "1"); } catch {} };
+  const dismiss = useCallback(() => {
+    setShow(false);
+    try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
+  }, []);
 
   if (!show) return null;
 
