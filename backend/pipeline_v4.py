@@ -44,70 +44,74 @@ def _detect_walls_v4(img_rgb: np.ndarray,
     """Détection de murs pure CV, optimisée pour plans avec murs en biais.
 
     Étapes :
-      1. Filtrage couleur HSV → exclure meubles/mobilier coloré
-      2. Seuillage adaptatif + OTSU → capturer lignes sombres
-      3. Filtrage par épaisseur → garder uniquement les traits d'épaisseur "mur"
-      4. LSD (Line Segment Detector) → détecter les segments à tout angle
-      5. Reconstruction directionnelle → épaissir les segments LSD
-      6. Fusion seuil + LSD → masque final robuste
+      1. Filtrage couleur HSV agressif → exclure meubles/mobilier/plantes
+      2. Seuillage OTSU sur luminosité (pas adaptatif — trop de bruit)
+      3. Filtrage par épaisseur → garder uniquement les traits "mur"
+      4. Filtrage par forme (elongation) → exclure les blobs compacts (meubles)
+      5. LSD/Hough → segments à tout angle
+      6. Morphologie directionnelle → fermer les gaps diagonaux
+      7. Fusion + nettoyage final
 
     Retourne un masque binaire uint8 (0/255).
     """
     H, W = img_rgb.shape[:2]
     min_thick, max_thick = wall_thickness_range
 
-    # ── 1. Color-aware preprocessing ──────────────────────────
+    # ── 1. Color-aware preprocessing (AGRESSIF) ─────────────
     hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
     _, s_ch, v_ch = cv2.split(hsv)
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
-    # Masque couleur : zones saturées = meubles/déco (exclure)
-    _, color_mask = cv2.threshold(s_ch, 45, 255, cv2.THRESH_BINARY)
-    # Dilater légèrement pour couvrir les bords des meubles
-    k_color = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    color_mask = cv2.dilate(color_mask, k_color, iterations=1)
+    # Masque couleur : seuil bas (30) pour capturer TOUS les éléments colorés
+    # Plans illustrés : meubles, plantes, tapis, sols colorés, etc.
+    _, color_mask = cv2.threshold(s_ch, 30, 255, cv2.THRESH_BINARY)
+    # Dilater fortement pour couvrir les bords + ombres des meubles
+    k_color = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    color_mask = cv2.dilate(color_mask, k_color, iterations=2)
 
-    # ── 2. Double seuillage (OTSU + adaptatif) ───────────────
-    # OTSU global
-    _, binary_otsu = cv2.threshold(v_ch, 0, 255,
-                                   cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Aussi exclure les zones trop claires (fond blanc, zones vides)
+    # et les zones moyennement sombres mais pas assez (gris texte)
+    _, too_light = cv2.threshold(v_ch, 200, 255, cv2.THRESH_BINARY)
 
-    # Adaptatif local (rattrape les murs dans les zones de contraste variable)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    binary_adapt = cv2.adaptiveThreshold(
-        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, blockSize=51, C=12)
+    logger.info("[W-walls] color exclusion: %d px (%.1f%%)",
+                cv2.countNonZero(color_mask),
+                cv2.countNonZero(color_mask) / (H * W) * 100)
 
-    # Union des deux seuillages
-    binary = cv2.bitwise_or(binary_otsu, binary_adapt)
+    # ── 2. Seuillage OTSU uniquement (adaptatif retire trop de bruit) ──
+    _, binary = cv2.threshold(v_ch, 0, 255,
+                              cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-    # Soustraire les zones colorées (meubles, mobilier)
+    # Soustraire TOUT ce qui est coloré
     binary = cv2.subtract(binary, color_mask)
 
     # ── 3. Filtrage morphologique par épaisseur ──────────────
-    # Open pour supprimer le texte et les lignes fines (< min_thick px)
+    # Open AGRESSIF pour supprimer texte, hachures, lignes fines, mobilier
+    open_size = max(min_thick, 4)
     k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
-                                       (min_thick, min_thick))
-    walls_thick = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
+                                       (open_size, open_size))
+    walls_thick = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=2)
 
     # Fermeture pour reconnecter les segments de murs interrompus
     k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     walls_thick = cv2.morphologyEx(walls_thick, cv2.MORPH_CLOSE,
                                    k_close, iterations=2)
 
-    # Supprimer les petits composants (texte résiduel, artefacts)
-    walls_thick = _remove_small_components(walls_thick, min_area=text_max_area)
+    # ── 4. Filtrage par forme : garder les composants ALLONGÉS (murs) ──
+    #    Exclure les blobs compacts (meubles, plantes, icônes)
+    walls_thick = _filter_by_elongation(walls_thick,
+                                        min_area=text_max_area,
+                                        min_elongation=2.5)
 
-    logger.info("[W-walls] after thickness filter: %d px (%.1f%%)",
+    logger.info("[W-walls] after shape filter: %d px (%.1f%%)",
                 cv2.countNonZero(walls_thick),
                 cv2.countNonZero(walls_thick) / (H * W) * 100)
 
-    # ── 4. LSD (Line Segment Detector) — détecte segments à tout angle ──
+    # ── 5. LSD/Hough — détecte segments à tout angle ────────
     lsd_mask = _detect_walls_lsd(gray, color_mask, H, W,
-                                 min_length=max(15, int(min(H, W) * 0.015)),
+                                 min_length=max(20, int(min(H, W) * 0.025)),
                                  thickness=max(2, min_thick))
 
-    # ── 5. Morphologie directionnelle sur angles dominants ───
+    # ── 6. Morphologie directionnelle sur angles dominants ───
     dominant_angles = _detect_dominant_angles_fast(walls_thick, H, W)
     if dominant_angles:
         directional_mask = _directional_close(walls_thick, dominant_angles,
@@ -115,14 +119,15 @@ def _detect_walls_v4(img_rgb: np.ndarray,
         walls_thick = cv2.bitwise_or(walls_thick, directional_mask)
         logger.info("[W-walls] directional close at angles %s", dominant_angles)
 
-    # ── 6. Fusion : seuil morpho + LSD ─────────────────────
-    # LSD capture les murs fins que le seuil rate, et vice-versa
+    # ── 7. Fusion : morpho + LSD ────────────────────────────
     combined = cv2.bitwise_or(walls_thick, lsd_mask)
 
-    # Nettoyage final léger
+    # Nettoyage final : re-filtrer les petits artefacts
     k_final = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, k_final, iterations=1)
-    combined = _remove_small_components(combined, min_area=200)
+    combined = _filter_by_elongation(combined,
+                                     min_area=max(300, text_max_area),
+                                     min_elongation=2.0)
 
     logger.info("[W-walls] final: %d px (%.1f%%)",
                 cv2.countNonZero(combined),
@@ -329,6 +334,60 @@ def _remove_small_components(mask: np.ndarray, min_area: int = 200) -> np.ndarra
     out = np.zeros_like(mask)
     for i in range(1, num):
         if stats[i, cv2.CC_STAT_AREA] >= min_area:
+            out[labels == i] = 255
+
+    return out
+
+
+def _filter_by_elongation(mask: np.ndarray,
+                          min_area: int = 300,
+                          min_elongation: float = 2.5) -> np.ndarray:
+    """Filtre les composants par elongation : garde uniquement les formes allongées.
+
+    Les murs sont allongés (largeur >> épaisseur), les meubles/plantes sont compacts.
+    Elongation = max(w, h) / min(w, h) du bounding box.
+    Un mur typique a une élongation > 3, un meuble < 2.
+
+    Les très grands composants (> 5x min_area) sont gardés même si compacts
+    (peuvent être des jonctions de murs en L/T).
+    """
+    if cv2.countNonZero(mask) == 0:
+        return mask
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(
+        (mask > 0).astype(np.uint8), connectivity=8)
+
+    out = np.zeros_like(mask)
+    large_threshold = min_area * 8  # seuil "grand composant"
+
+    for i in range(1, num):
+        area = stats[i, cv2.CC_STAT_AREA]
+        w = stats[i, cv2.CC_STAT_WIDTH]
+        h = stats[i, cv2.CC_STAT_HEIGHT]
+
+        if area < min_area:
+            continue
+
+        # Elongation du bounding box
+        short_side = max(1, min(w, h))
+        long_side = max(w, h)
+        elongation = long_side / short_side
+
+        # Compacité : area / (w * h) — un mur fin a une faible compacité
+        # Un blob compact (meuble) a compacité > 0.4
+        bbox_area = max(1, w * h)
+        compactness = area / bbox_area
+
+        # Garder si :
+        # - Assez allongé (mur)
+        # - OU très grand (jonction de murs, contour extérieur)
+        # - OU faible compacité (forme fine, même si pas super allongée)
+        if elongation >= min_elongation:
+            out[labels == i] = 255
+        elif area >= large_threshold:
+            out[labels == i] = 255
+        elif compactness < 0.35 and area >= min_area:
+            # Forme fine/irrégulière (pas un blob plein)
             out[labels == i] = 255
 
     return out
