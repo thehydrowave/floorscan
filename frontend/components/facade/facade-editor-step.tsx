@@ -1196,10 +1196,10 @@ export default function FacadeEditorStep({ result, onGoResults, onRestart, initi
                 <ArrowLeft className="w-3.5 h-3.5" /> {d("fe_results" as DTKey)}
               </Button>
               <Button size="sm" variant="ghost" onClick={onRestart}><RotateCcw className="w-3.5 h-3.5" /></Button>
-              <Button size="sm" onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }}
-                className="flex items-center gap-1 border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
-                <Sparkles className="w-3 h-3" /> {d("tuto_header" as DTKey)}
-              </Button>
+              <button onClick={() => { resetFacadeTutorial(); setShowTuto(s => !s); }} title={d("common_tutorial" as DTKey)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all">
+                <Sparkles className="w-3.5 h-3.5" /> {d("tuto_header" as DTKey)}
+              </button>
             </div>
           </div>
           <FacadeTutorialOverlay forceShow={showTuto} />
